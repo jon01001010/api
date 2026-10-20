@@ -1,0 +1,53 @@
+name: Probe Hexagon SDK V69 toolchain
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/probe-hexagon-v69-sdk.yml'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up verified Hexagon SDK
+        uses: ./.github/actions/setup-hexagon-sdk
+      - name: Check V69 compiler and prebuilt support
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          {
+            echo '# Hexagon SDK V69 toolchain inventory'
+            echo
+            echo "SDK: ${HEXAGON_SDK_ROOT}"
+            echo "Tools: ${HEXAGON_TOOLS_ROOT}"
+            echo
+            echo '## Available V69 toolchain directories'
+            find "$HEXAGON_TOOLS_ROOT" -maxdepth 6 -iname '*v69*' -print | head -100 || true
+            echo
+            echo '## Available HTP prebuilt directories'
+            find "$HEXAGON_TOOLS_ROOT" -maxdepth 6 -iname '*toolv*_v*' -print | head -100 || true
+            echo
+            echo '## Compiler'
+            find "$HEXAGON_TOOLS_ROOT" -maxdepth 5 -name hexagon-clang -type f -print | head -10
+            echo
+            echo '## SDK CMake helpers'
+            ls -l "$HEXAGON_SDK_ROOT/build/cmake/hexagon_fun.cmake" || true
+            echo
+            echo '## V69 feasibility'
+            if find "$HEXAGON_TOOLS_ROOT" -maxdepth 6 -iname '*v69*' -print -quit | grep -q .; then
+              echo 'V69-named files exist; actual compilation still unverified.'
+            else
+              echo 'No V69-named toolchain directories found; inspect compiler targets and prebuilt requirements before adding a v69 skeleton.'
+            fi
+          } | tee report/v69-sdk.txt
+      - name: Upload inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hexagon-v69-sdk-probe-${{ github.run_id }}
+          path: report/
+          retention-days: 14
