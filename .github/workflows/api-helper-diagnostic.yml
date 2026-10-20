@@ -120,6 +120,7 @@ jobs:
           path: |
             node_modules/llama.rn/android/.cxx
             node_modules/llama.rn/android/build/intermediates/cxx
+            node_modules/llama.rn/android/build/generated/source/codegen
           key: pocketagent-native-arm64-v1-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}
           restore-keys: |
             pocketagent-native-arm64-v1-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-
