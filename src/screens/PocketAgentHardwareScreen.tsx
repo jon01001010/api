@@ -6,6 +6,7 @@ import {useIsFocused} from '@react-navigation/native';
 import {modelStore} from '../store';
 import {DeviceOption, getDeviceOptions} from '../utils/deviceSelection';
 import {LocalApiCard} from './SettingsScreen/LocalApiCard';
+import NativeHardwareInfo from '../specs/NativeHardwareInfo';
 
 export const PocketAgentHardwareScreen = observer(() => {
   const focused = useIsFocused();
@@ -13,13 +14,26 @@ export const PocketAgentHardwareScreen = observer(() => {
   const [checking, setChecking] = useState(false);
   const [scanError, setScanError] = useState('');
   const [scanResult, setScanResult] = useState('');
+  const [hardwareInfo, setHardwareInfo] = useState('Not checked');
 
   const refresh = useCallback(async () => {
     setChecking(true);
     setScanError('');
     setScanResult('Scanning inference runtime…');
     try {
-      const discovered = await getDeviceOptions();
+      const [discovered, cpu, gpu, chipset] = await Promise.all([
+        getDeviceOptions(),
+        NativeHardwareInfo.getCPUInfo().catch(() => null),
+        NativeHardwareInfo.getGPUInfo().catch(() => null),
+        NativeHardwareInfo.getChipset?.().catch(() => 'Unknown chipset') ?? Promise.resolve('Unknown chipset'),
+      ]);
+      setHardwareInfo([
+        `Chipset: ${chipset || cpu?.socModel || 'Unknown'}`,
+        `CPU: ${cpu?.cores ?? 'Unknown'} cores`,
+        `GPU: ${gpu?.renderer || 'Unknown'}`,
+        `GPU OpenCL capability: ${gpu?.supportsOpenCL ? 'reported' : 'not reported'}`,
+        'Hexagon runtime: checked separately through inference backend discovery',
+      ].join('\n'));
       setOptions(discovered);
       const accelerators = discovered.filter(option => option.id !== 'cpu' && option.id !== 'auto');
       setScanResult(accelerators.length
@@ -71,6 +85,13 @@ export const PocketAgentHardwareScreen = observer(() => {
           {options.length === 0 && !checking && !scanError && (
             <Text>No inference backends detected yet.</Text>
           )}
+        </Card.Content>
+      </Card>
+      <Card>
+        <Card.Title title="Physical hardware" subtitle="Reported by Android hardware information" />
+        <Card.Content>
+          <Text variant="bodyMedium">{hardwareInfo}</Text>
+          <Text variant="bodySmall">A chipset or GPU capability does not guarantee an available llama.cpp acceleration backend.</Text>
         </Card.Content>
       </Card>
       <Card>
