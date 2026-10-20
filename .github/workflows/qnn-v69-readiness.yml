@@ -1,0 +1,55 @@
+name: QNN V69 build readiness
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/qnn-v69-readiness.yml'
+permissions:
+  contents: read
+jobs:
+  readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout pinned QNN fork
+        run: |
+          set -euo pipefail
+          git clone https://github.com/chraac/llama.cpp.git upstream
+          git -C upstream checkout --detach 897501a78b4aa61ebb17a61acf8d78957c4effd0
+      - name: Evaluate V69 support and build blockers
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('upstream/ggml/src/ggml-qnn')
+          npu=(root/'npu/CMakeLists.txt').read_text()
+          host=(root/'npu/host/host_device.cpp').read_text()
+          util=(root/'npu/host/util.cpp').read_text()
+          types=(root/'qnn/qnn-types.hpp').read_text()
+          qnn=(root/'qnn/qnn-lib.cpp').read_text()
+          builds=sorted(set(re.findall(r'-DDSP_VERSION=v(\d+)',npu)))
+          facts={
+            'Host-side V69 recognized': 'hexagon::V69' in host and 'case 0x69:' in util,
+            'QNN V69 op package named': 'QnnGgmlOpPackage_v69' in qnn,
+            'Custom V69 DSP build target present': '69' in builds,
+            'SM7450 explicitly mapped': 'SM7450' in types,
+          }
+          lines=['# V69 build readiness','', 'Pinned fork: 897501a78b4aa61ebb17a61acf8d78957c4effd0', '', '## Findings']
+          lines.extend(f'- {k}: **{v}**' for k,v in facts.items())
+          lines.extend(['',f'- DSP targets configured: {", ".join("v"+v for v in builds)}',
+          '', '## Interpretation',
+          'V69 runtime recognition is not equivalent to a compiled V69 DSP skeleton.',
+          'QNN SDK V69 runtime/stub/skeleton availability and license must be verified separately.',
+          'No APK or NPU backend is produced by this workflow.'])
+          Path('report/readiness.md').write_text('\n'.join(lines)+'\n')
+          print('\n'.join(lines))
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qnn-v69-readiness-${{ github.run_id }}
+          path: report/
+          retention-days: 14
