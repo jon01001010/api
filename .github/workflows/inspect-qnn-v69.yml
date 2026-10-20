@@ -1,0 +1,51 @@
+name: Inspect legacy QNN V69 support
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/inspect-qnn-v69.yml'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout candidate source only
+        run: |
+          set -euo pipefail
+          git clone --depth=1 https://github.com/chraac/llama-cpp-qnn-builder.git upstream
+          git -C upstream submodule update --init --depth=1 llama.cpp
+      - name: Inspect backend support and requirements
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          {
+            echo '# Legacy QNN backend inspection'
+            echo
+            echo 'Builder revision:'
+            git -C upstream rev-parse HEAD
+            echo 'llama.cpp fork revision:'
+            git -C upstream/llama.cpp rev-parse HEAD
+            echo
+            echo '## V69 / SM7450 / runtime references'
+            grep -RInE 'V69|v69|SM7450|sm7450|QnnHtp|libQnn|HTP|GGML_QNN' upstream/llama.cpp/ggml/src/ggml-qnn upstream/docs upstream/docker 2>/dev/null | head -250 || true
+            echo
+            echo '## QNN source files'
+            find upstream/llama.cpp/ggml/src/ggml-qnn -maxdepth 3 -type f | sort | head -150 || true
+            echo
+            echo '## License files'
+            find upstream -maxdepth 3 -iname '*LICENSE*' -type f | head -30
+            echo
+            echo '## SDK references'
+            grep -RInE 'QNN_SDK|QAIRT|QnnHtpV|HEXAGON_SDK' upstream/docker upstream/docs 2>/dev/null | head -100 || true
+          } > report/qnn-inspection.txt
+          cat report/qnn-inspection.txt
+      - name: Keep report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-qnn-v69-inspection-${{ github.run_id }}
+          path: report/
+          if-no-files-found: warn
+          retention-days: 14
