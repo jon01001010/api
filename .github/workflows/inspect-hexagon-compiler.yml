@@ -1,0 +1,52 @@
+name: Inspect Hexagon compiler layout
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/inspect-hexagon-compiler.yml'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up verified Hexagon SDK
+        uses: ./.github/actions/setup-hexagon-sdk
+      - name: Inventory executable layout and compiler alternatives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          {
+            echo '# Hexagon compiler layout'
+            echo "SDK: $HEXAGON_SDK_ROOT"
+            echo "Tools: $HEXAGON_TOOLS_ROOT"
+            echo
+            echo '## Tools/bin'
+            ls -la "$HEXAGON_TOOLS_ROOT/Tools/bin" 2>&1 | head -100 || true
+            echo
+            echo '## Likely compiler executables, including symlinks'
+            find "$HEXAGON_TOOLS_ROOT" -maxdepth 9 \( -iname '*clang*' -o -iname '*llvm*' -o -iname '*hexagon*gcc*' -o -iname '*hexagon*cc*' \) -print | head -160 || true
+            echo
+            echo '## ELF executables near bin'
+            find "$HEXAGON_TOOLS_ROOT" -maxdepth 5 -type d -name bin -print | head -50
+            echo
+            echo '## Compiler version from likely location'
+            for compiler in "$HEXAGON_TOOLS_ROOT/Tools/bin/hexagon-clang" "$HEXAGON_TOOLS_ROOT/Tools/bin/clang" "$HEXAGON_TOOLS_ROOT/Tools/bin/hexagon-clang++"; do
+              if [ -x "$compiler" ]; then
+                echo "FOUND $compiler"
+                "$compiler" --version | head -8 || true
+              fi
+            done
+            echo
+            echo 'This inventory does not compile code or modify the SDK.'
+          } 2>&1 | tee report/compiler-layout.txt
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hexagon-compiler-layout-${{ github.run_id }}
+          path: report/
+          retention-days: 14
