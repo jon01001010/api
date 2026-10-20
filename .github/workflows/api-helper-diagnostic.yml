@@ -124,6 +124,21 @@ jobs:
           key: pocketagent-native-arm64-v1-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}
           restore-keys: |
             pocketagent-native-arm64-v1-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-
+      - name: Inspect native cache and disk budget
+        if: inputs.stage == 'apk'
+        run: |
+          set -euo pipefail
+          echo 'Disk available before native compilation:'
+          df -h /
+          echo 'Cached llama.rn native build directories:'
+          du -sh node_modules/llama.rn/android/.cxx node_modules/llama.rn/android/build/intermediates/cxx node_modules/llama.rn/android/build/generated/source/codegen 2>/dev/null || true
+          echo 'Largest Android and Gradle directories:'
+          du -sh android/.gradle android/app/.cxx android/app/build "$HOME/.gradle/caches" "$HOME/.hexagon-sdk" 2>/dev/null || true
+          free_kb=$(df -Pk / | awk 'NR==2 {print $4}')
+          if (( free_kb < 6291456 )); then
+            echo "::error::Less than 6 GiB free before native compilation; refusing to exhaust runner disk." >&2
+            exit 1
+          fi
       - name: Assemble and verify NPU APK
         if: inputs.stage == 'apk'
         timeout-minutes: 90
