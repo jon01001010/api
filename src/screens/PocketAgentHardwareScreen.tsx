@@ -5,16 +5,22 @@ import {Button, Card, RadioButton, Text} from 'react-native-paper';
 import {useIsFocused} from '@react-navigation/native';
 import {modelStore} from '../../store';
 import {DeviceOption, getDeviceOptions} from '../../utils/deviceSelection';
+import {LocalApiCard} from './SettingsScreen/LocalApiCard';
 
 export const PocketAgentHardwareScreen = observer(() => {
   const focused = useIsFocused();
   const [options, setOptions] = useState<DeviceOption[]>([]);
   const [checking, setChecking] = useState(false);
+  const [scanError, setScanError] = useState('');
 
   const refresh = useCallback(async () => {
     setChecking(true);
+    setScanError('');
     try {
       setOptions(await getDeviceOptions());
+    } catch (error) {
+      setScanError(error instanceof Error ? error.message : 'Hardware scan failed');
+      setOptions([]);
     } finally {
       setChecking(false);
     }
@@ -52,7 +58,8 @@ export const PocketAgentHardwareScreen = observer(() => {
           <Button onPress={refresh} loading={checking} disabled={checking}>
             Scan hardware
           </Button>
-          {options.length === 0 && !checking && (
+          {scanError ? <Text>{scanError}</Text> : null}
+          {options.length === 0 && !checking && !scanError && (
             <Text>No inference backends detected yet.</Text>
           )}
         </Card.Content>
@@ -78,6 +85,24 @@ export const PocketAgentHardwareScreen = observer(() => {
           </Text>
         </Card.Content>
       </Card>
+      <Card>
+        <Card.Title title="Execution diagnostics" />
+        <Card.Content>
+          <Text variant="bodyMedium">
+            Configured processor: {selected === 'hexagon' ? 'Hexagon NPU' : selected === 'gpu' ? 'GPU' : 'CPU'}
+          </Text>
+          <Text variant="bodyMedium">
+            Model context: {modelStore.context ? 'Loaded' : 'Not loaded'}
+          </Text>
+          <Text variant="bodyMedium">
+            Verified NPU execution: Not yet measured
+          </Text>
+          <Text variant="bodySmall">
+            Hardware detection and configuration alone cannot confirm where model operations execute.
+          </Text>
+        </Card.Content>
+      </Card>
+      <LocalApiCard />
     </ScrollView>
   );
 });
