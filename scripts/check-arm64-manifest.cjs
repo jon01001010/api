@@ -1,0 +1,12 @@
+const assert = require('node:assert/strict');
+const {arm64Manifest} = require('./arm64-payload-manifest.cjs');
+const original = require('./android-payload-manifest.json');
+const before = JSON.stringify(original);
+const result = arm64Manifest(original);
+assert.deepEqual(result.abis, original.abis.filter(item => item.abi === 'arm64-v8a'));
+assert.equal(result.abis.length, 1);
+assert.equal(JSON.stringify(original), before);
+assert.deepEqual(result.matching, original.matching);
+assert.throws(() => arm64Manifest({...original, abis: []}));
+assert.throws(() => arm64Manifest({...original, abis: [result.abis[0], result.abis[0]]}));
+console.log('ARM64 manifest: all rules preserved; missing/duplicate ABI rejected');

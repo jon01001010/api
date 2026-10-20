@@ -1,0 +1,99 @@
+name: API Helper diagnostic build
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Run one build stage
+        type: choice
+        default: configuration
+        options: [configuration, compilation, apk]
+permissions:
+  contents: read
+concurrency:
+  group: api-helper-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.0.0'
+          cache-read-only: false
+          cache-cleanup: on-success
+      - name: Install locked dependencies and patches
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          chmod +x scripts/postinstall.sh
+          npm install --global yarn@1.22.22
+          yarn install --frozen-lockfile --non-interactive
+          node node_modules/patch-package/index.js --error-on-fail
+      - name: Install Android packages
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.3.13750724' 'ndk;27.0.12077973' 'cmake;3.22.1'
+          python3 - <<'PY'
+          import os, subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from android_build_tools import normalize_ndk
+          for revision in ('27.3.13750724', '27.0.12077973'):
+              compiler = normalize_ndk(Path(os.environ['ANDROID_HOME']) / 'ndk' / revision, revision)
+              subprocess.run([str(compiler), '--version'], check=True)
+          PY
+      - name: Prepare diagnostic configuration
+        run: python3 scripts/prepare-diagnostic-config.py
+      - name: Verify Hexagon SDK for APK stage
+        if: inputs.stage == 'apk'
+        uses: ./.github/actions/setup-hexagon-sdk
+      - name: Configuration
+        if: github.event_name == 'push' || inputs.stage == 'configuration'
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          gradle -p android --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a help 2>&1 | tee diagnostic-build.log
+      - name: Compilation
+        if: inputs.stage == 'compilation'
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          gradle -p android --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a :app:compileProdDebugKotlin :app:compileProdDebugJavaWithJavac 2>&1 | tee diagnostic-build.log
+      - name: Assemble and verify NPU APK
+        if: inputs.stage == 'apk'
+        timeout-minutes: 35
+        run: |
+          set -euo pipefail
+          bash scripts/build-api-helper-npu.sh 2>&1 | tee diagnostic-build.log
+      - name: Keep logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-logs-${{ inputs.stage || 'configuration' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            diagnostic-build.log
+            android/app/build/outputs/api-helper-npu-payload.txt
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Keep verified APK
+        if: success() && inputs.stage == 'apk'
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-helper-npu-debug-${{ github.run_id }}-${{ github.run_attempt }}
+          path: android/app/build/outputs/apk/prod/debug/app-prod-debug.apk
+          if-no-files-found: error
+          retention-days: 14

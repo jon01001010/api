@@ -1,0 +1,12 @@
+diff --git a/node_modules/braces/lib/parse.js b/node_modules/braces/lib/parse.js
+--- a/node_modules/braces/lib/parse.js
++++ b/node_modules/braces/lib/parse.js
+@@ -74,6 +74,8 @@
+   push({ type: 'bos' });
+ 
+   while (index < length) {
++    // API Helper: bound AST depth before recursive compile/expand/stringify.
++    if (stack.length > 32) throw new SyntaxError('Brace nesting limit exceeded');
+     block = stack[stack.length - 1];
+     value = advance();
+ 

@@ -1,7 +1,7 @@
-# API Helper
+# API Helper build status
 
-Free, no ads. Based on PocketPal; upstream license notices will be preserved.
+Imported from api-helper_2026-10-19_10-12-28_PT_source.zip.
 
-Source checkpoint: api-helper_2026-10-19_10-12-28_PT_source.zip
+No APK or on-device NPU acceleration has been verified. The diagnostic workflow runs configuration checks on pushes to main. Compilation and APK stages can be selected manually in Actions.
 
-Build status: source import pending. No APK or on-device NPU execution has been verified. The first GitHub Actions stage will check Android build configuration.
+Upstream release workflows are preserved under .github/disabled-upstream-workflows and do not run. Generated Python caches are excluded. Upstream license notices are preserved.

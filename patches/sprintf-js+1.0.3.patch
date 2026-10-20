@@ -1,0 +1,17 @@
+diff --git a/node_modules/sprintf-js/src/sprintf.js b/node_modules/sprintf-js/src/sprintf.js
+--- a/node_modules/sprintf-js/src/sprintf.js
++++ b/node_modules/sprintf-js/src/sprintf.js
+@@ -29,7 +29,12 @@
+                 output[output.length] = parse_tree[i]
+             }
+             else if (node_type === "array") {
+-                match = parse_tree[i] // convenience purposes only
++                match = parse_tree[i].slice() // do not mutate the cached format
++                // API Helper: numeric precision is bounded before JS conversion.
++                // Clamp rather than allowing an uncaught RangeError from toFixed/etc.
++                if (match[7] !== undefined && /[efg]/.test(match[8])) {
++                    match[7] = String(Math.max(match[8] === 'g' ? 1 : 0, Math.min(100, Number(match[7]))))
++                }
+                 if (match[2]) { // keyword argument
+                     arg = argv[cursor]
+                     for (k = 0; k < match[2].length; k++) {
