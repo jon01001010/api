@@ -121,20 +121,22 @@ jobs:
             node_modules/llama.rn/android/.cxx
             node_modules/llama.rn/android/build/intermediates/cxx
           key: pocketagent-native-arm64-v1-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}
+          restore-keys: |
+            pocketagent-native-arm64-v1-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-
       - name: Assemble and verify NPU APK
         if: inputs.stage == 'apk'
         timeout-minutes: 90
         run: |
           set -euo pipefail
           bash scripts/build-api-helper-npu.sh 2>&1 | tee diagnostic-build.log
-      - name: Save successful native build intermediates
-        if: success() && inputs.stage == 'apk'
+      - name: Save native compilation progress
+        if: always() && inputs.stage == 'apk'
         uses: actions/cache/save@v4
         with:
           path: |
             node_modules/llama.rn/android/.cxx
             node_modules/llama.rn/android/build/intermediates/cxx
-          key: pocketagent-native-arm64-v1-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}
+          key: pocketagent-native-arm64-v1-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-${{ github.run_id }}
       - name: Keep logs
         if: always()
         uses: actions/upload-artifact@v4
