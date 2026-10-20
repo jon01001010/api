@@ -98,10 +98,10 @@ export const AboutScreen: React.FC = () => {
           <View style={styles.header}>
             <View style={styles.headerContent}>
               <Text variant="titleLarge" style={styles.title}>
-                PocketPal AI
+                PocketAgent
               </Text>
               <Text variant="bodyMedium" style={styles.description}>
-                {l10n.about.description}
+                Local AI models and an experimental on-device API. Built on PocketPal AI, llama.cpp and llama.rn.
               </Text>
               <View style={styles.versionContainer}>
                 <TouchableOpacity
@@ -125,9 +125,9 @@ export const AboutScreen: React.FC = () => {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{l10n.about.supportProject}</Text>
+            <Text style={styles.sectionTitle}>Open-source foundations</Text>
             <Text variant="bodyMedium" style={styles.description}>
-              {l10n.about.supportProjectDescription}
+              PocketAgent builds on the open-source PocketPal AI project. You can support its original maintainers here.
             </Text>
             <Button
               mode="outlined"
@@ -152,7 +152,7 @@ export const AboutScreen: React.FC = () => {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{l10n.about.tour}</Text>
             <Text variant="bodyMedium" style={styles.description}>
-              {l10n.about.tourDescription}
+              Replay the welcome screens to explore the app.
             </Text>
             <Button
               mode="outlined"
