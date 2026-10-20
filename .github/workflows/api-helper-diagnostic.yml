@@ -147,13 +147,13 @@ jobs:
             exit 1
           fi
       - name: Assemble and verify NPU APK
-        if: inputs.stage == 'apk' || inputs.stage == 'native' || inputs.stage == 'native'
+        if: inputs.stage == 'apk' || inputs.stage == 'native'
         timeout-minutes: 110
         run: |
           set -euo pipefail
           bash scripts/build-api-helper-npu.sh 2>&1 | tee diagnostic-build.log
       - name: Record native build disk usage
-        if: always() && inputs.stage == 'apk' || inputs.stage == 'native'
+        if: always() && (inputs.stage == 'apk' || inputs.stage == 'native')
         run: |
           echo 'Disk after native build:' > native-build-diagnostics.txt
           df -h / >> native-build-diagnostics.txt
@@ -190,7 +190,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Keep verified APK
-        if: success() && (inputs.stage == 'apk' || inputs.stage == 'native') || inputs.stage == 'native'
+        if: success() && (inputs.stage == 'apk' || inputs.stage == 'native')
         uses: actions/upload-artifact@v4
         with:
           name: api-helper-npu-debug-${{ github.run_id }}-${{ github.run_attempt }}
