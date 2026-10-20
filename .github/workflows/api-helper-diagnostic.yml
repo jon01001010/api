@@ -112,6 +112,14 @@ jobs:
           gradle -p android --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a :app:compileProdDebugKotlin :app:compileProdDebugJavaWithJavac 2>&1 | tee diagnostic-build.log
       # Restore native intermediates from a prior attempt with matching inputs.
       # Cache reuse is best-effort and does not establish build correctness.
+      - name: Validate native variant selection
+        if: inputs.stage == 'apk'
+        run: |
+          set -euo pipefail
+          node scripts/verify-android-payload.js --print-variants | tee native-variants.txt
+          test -s native-variants.txt
+          echo 'Required ARM64 native variants:'
+          cat native-variants.txt
       - name: Restore native build intermediates
         if: inputs.stage == 'apk'
         uses: actions/cache/restore@v4
@@ -177,6 +185,7 @@ jobs:
           path: |
             diagnostic-build.log
             native-build-diagnostics.txt
+            native-variants.txt
             android/app/build/outputs/api-helper-npu-payload.txt
           if-no-files-found: warn
           retention-days: 14
