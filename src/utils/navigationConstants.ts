@@ -6,6 +6,7 @@ export const ROUTES = {
   PALS: 'Pals (experimental)',
   BENCHMARK: 'Benchmark',
   SETTINGS: 'Settings',
+  POCKETAGENT_HARDWARE: 'PocketAgent Hardware',
   APP_INFO: 'App Info',
 
   // Dev tools route. Only available in debug mode.
