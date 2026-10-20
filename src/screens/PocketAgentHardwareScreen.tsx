@@ -12,14 +12,22 @@ export const PocketAgentHardwareScreen = observer(() => {
   const [options, setOptions] = useState<DeviceOption[]>([]);
   const [checking, setChecking] = useState(false);
   const [scanError, setScanError] = useState('');
+  const [scanResult, setScanResult] = useState('');
 
   const refresh = useCallback(async () => {
     setChecking(true);
     setScanError('');
+    setScanResult('Scanning inference runtime…');
     try {
-      setOptions(await getDeviceOptions());
+      const discovered = await getDeviceOptions();
+      setOptions(discovered);
+      const accelerators = discovered.filter(option => option.id !== 'cpu' && option.id !== 'auto');
+      setScanResult(accelerators.length
+        ? `Scan complete: ${discovered.map(option => option.label).join(', ')}. Backend availability does not confirm model offload.`
+        : 'Scan complete: CPU only. The inference runtime did not report an OpenCL GPU or Hexagon NPU backend.');
     } catch (error) {
       setScanError(error instanceof Error ? error.message : 'Hardware scan failed');
+      setScanResult('Scan failed.');
       setOptions([]);
     } finally {
       setChecking(false);
@@ -58,6 +66,7 @@ export const PocketAgentHardwareScreen = observer(() => {
           <Button onPress={refresh} loading={checking} disabled={checking}>
             Scan hardware
           </Button>
+          {scanResult ? <Text variant="bodyMedium" accessibilityLiveRegion="polite">{scanResult}</Text> : null}
           {scanError ? <Text>{scanError}</Text> : null}
           {options.length === 0 && !checking && !scanError && (
             <Text>No inference backends detected yet.</Text>
