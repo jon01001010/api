@@ -21,7 +21,7 @@ echo "Disk before native build:"
 df -h .
 (
   cd android
-  bash ./gradlew --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a assembleProdDebug
+  exec setsid bash ./gradlew --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a assembleProdDebug
 ) &
 build_pid=$!
 disk_stop_marker=$(mktemp)
@@ -35,8 +35,11 @@ monitor_disk() {
       df -h . >&2
       du -sh android/.cxx android/app/.cxx android/app/build "$HOME/.gradle" "$HOME/.hexagon-sdk" 2>/dev/null >&2 || true
       echo "disk-limit" > "$disk_stop_marker"
-      pkill -TERM -P "$build_pid" 2>/dev/null || true
-      kill -TERM "$build_pid" 2>/dev/null || true
+      # setsid gives Gradle its own process group, including child CMake jobs.
+      # A group signal prevents orphaned native compilers from filling the disk.
+      kill -TERM -- "-$build_pid" 2>/dev/null || true
+      sleep 3
+      kill -KILL -- "-$build_pid" 2>/dev/null || true
       return 1
     fi
   done
