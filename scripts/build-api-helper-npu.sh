@@ -12,11 +12,44 @@ fi
 export ORG_GRADLE_PROJECT_rnllamaBuildFromSource=true
 ORG_GRADLE_PROJECT_rnllamaVariants=$(node scripts/verify-android-payload.js --print-variants)
 export ORG_GRADLE_PROJECT_rnllamaVariants
-# Reduce peak native build disk use; do not run several heavy C++ compiles at once.
+# Gradle and CMake produce large intermediates; monitor free space so the
+# Actions worker can still write logs and upload diagnostics on failure.
 export CMAKE_BUILD_PARALLEL_LEVEL=2
+export CMAKE_JOB_POOLS=compile=2
+export GRADLE_OPTS="${GRADLE_OPTS:-} -Dorg.gradle.workers.max=2"
 echo "Disk before native build:"
 df -h .
-(cd android && bash ./gradlew --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a assembleProdDebug)
+(
+  cd android
+  bash ./gradlew --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a assembleProdDebug
+) &
+build_pid=$!
+monitor_disk() {
+  while kill -0 "$build_pid" 2>/dev/null; do
+    sleep 20
+    free_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+    if (( free_kb < 2097152 )); then
+      echo "::error::Less than 2 GiB free during native compilation; stopping to preserve runner diagnostics." >&2
+      df -h . >&2
+      du -sh android/.cxx android/app/.cxx android/app/build "$HOME/.gradle" "$HOME/.hexagon-sdk" 2>/dev/null >&2 || true
+      kill -TERM "$build_pid" 2>/dev/null || true
+      return 1
+    fi
+  done
+}
+monitor_disk &
+monitor_pid=$!
+set +e
+wait "$build_pid"
+build_result=$?
+set -e
+kill "$monitor_pid" 2>/dev/null || true
+wait "$monitor_pid" 2>/dev/null || true
+if (( build_result != 0 )); then
+  echo "::error::Native Gradle build failed (exit $build_result)." >&2
+  df -h . >&2
+  exit "$build_result"
+fi
 echo "Disk after native build:"
 df -h .
 payload_manifest=$(mktemp)
