@@ -1,3 +1,9 @@
+<div align="center">
+
+<img src="assets/pocketagent-brand.svg" alt="PocketAgent blue robot logo and branding" width="520" />
+
+</div>
+
 # PocketAgent
 
 **Private experimental Android app — work in progress. Not ready for public release.**
