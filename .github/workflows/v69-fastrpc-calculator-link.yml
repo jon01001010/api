@@ -1,0 +1,70 @@
+name: Link V69 FastRPC calculator and compile host stub
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/v69-fastrpc-calculator-link.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up verified Hexagon SDK
+        uses: ./.github/actions/setup-hexagon-sdk
+      - name: Build FastRPC calculator halves
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report/generated
+          {
+            cat > report/generated/pocketagent_probe.idl <<'EOF'
+          interface pocketagent_probe {
+              long add(in long a, in long b, rout long result);
+          };
+          EOF
+            cd report/generated
+            "$HEXAGON_SDK_ROOT/ipc/fastrpc/qaic/bin/qaic" pocketagent_probe.idl
+            cat > pocketagent_probe_impl.c <<'EOF'
+          #include "pocketagent_probe.h"
+          int pocketagent_probe_add(int a, int b, int *result) {
+              if (!result) return -1;
+              *result = a + b;
+              return 0;
+          }
+          EOF
+            mapfile -t dirs < <(find "$HEXAGON_SDK_ROOT" \( -name AEEStdDef.h -o -name remote.h -o -name AEEStdErr.h \) -printf '%h\n' | sort -u)
+            args=(-I.)
+            for d in "${dirs[@]}"; do args+=("-I$d"); done
+            CC="$HEXAGON_TOOLS_ROOT/Tools/bin/hexagon-clang"
+            echo '## Compile V69 skeleton and implementation'
+            "$CC" -mv69 -O2 -fPIC "${args[@]}" -c pocketagent_probe_skel.c -o pocketagent_probe_skel.o
+            "$CC" -mv69 -O2 -fPIC "${args[@]}" -c pocketagent_probe_impl.c -o pocketagent_probe_impl.o
+            echo '## Link DSP skeleton library (unresolved runtime symbols permitted)'
+            "$CC" -mv69 -shared -fPIC -nostdlib -Wl,-soname,libpocketagent_probe_skel.so pocketagent_probe_skel.o pocketagent_probe_impl.o -o libpocketagent_probe_skel.so
+            file libpocketagent_probe_skel.so
+            readelf -Ws libpocketagent_probe_skel.so | grep -E 'pocketagent_probe|UND' | head -45
+            echo '## Compile Android ARM64 host stub with NDK if available'
+            NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
+            if [ -z "$NDK" ] && [ -d "$ANDROID_HOME/ndk" ]; then
+              NDK=$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+            fi
+            if [ -z "$NDK" ]; then
+              echo 'BLOCKED: Android NDK unavailable'
+              exit 1
+            fi
+            CLANG="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+            "$CLANG" -fPIC "${args[@]}" -c pocketagent_probe_stub.c -o pocketagent_probe_stub_android.o
+            file pocketagent_probe_stub_android.o
+            echo 'PASS: DSP library linked and Android ARM64 host stub compiled'
+            echo 'Runtime dependencies may remain unresolved; no device execution or inference is claimed.'
+          } 2>&1 | tee report/result.txt
+      - name: Upload binaries and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v69-fastrpc-calculator-${{ github.run_id }}
+          path: report/
+          retention-days: 14
