@@ -145,6 +145,14 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/build-api-helper-npu.sh 2>&1 | tee diagnostic-build.log
+      - name: Record native build disk usage
+        if: always() && inputs.stage == 'apk'
+        run: |
+          echo 'Disk after native build:' > native-build-diagnostics.txt
+          df -h / >> native-build-diagnostics.txt
+          echo 'Native build cache sizes:' >> native-build-diagnostics.txt
+          du -sh node_modules/llama.rn/android/.cxx node_modules/llama.rn/android/build/intermediates/cxx node_modules/llama.rn/android/build/generated/source/codegen android/app/.cxx android/app/build 2>/dev/null >> native-build-diagnostics.txt || true
+          cat native-build-diagnostics.txt
       - name: Save native compilation progress
         if: always() && inputs.stage == 'apk'
         uses: actions/cache/save@v4
@@ -160,6 +168,7 @@ jobs:
           name: diagnostic-logs-${{ inputs.stage || 'configuration' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             diagnostic-build.log
+            native-build-diagnostics.txt
             android/app/build/outputs/api-helper-npu-payload.txt
           if-no-files-found: warn
           retention-days: 14
