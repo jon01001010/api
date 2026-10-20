@@ -50,6 +50,7 @@ import {
   DevToolsScreen,
 } from './src/screens';
 import PalsScreen from './src/screens/PalsScreen';
+import {PocketAgentHardwareScreen} from './src/screens/PocketAgentHardwareScreen';
 import {OnboardingStack} from './src/screens/OnboardingScreens';
 
 // Check if app is in debug mode
@@ -167,6 +168,11 @@ const App = observer(() => {
                               headerStyle: styles.headerWithoutDivider,
                               title: currentL10n.screenTitles.benchmark,
                             }}
+                          />
+                          <Drawer.Screen
+                            name={ROUTES.POCKETAGENT_HARDWARE}
+                            component={gestureHandlerRootHOC(PocketAgentHardwareScreen)}
+                            options={{title: 'PocketAgent Hardware'}}
                           />
                           <Drawer.Screen
                             name={ROUTES.SETTINGS}
