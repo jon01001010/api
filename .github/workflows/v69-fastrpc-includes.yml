@@ -1,0 +1,54 @@
+name: Compile V69 FastRPC skeleton with SDK includes
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/v69-fastrpc-includes.yml'
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up verified Hexagon SDK
+        uses: ./.github/actions/setup-hexagon-sdk
+      - name: Generate and compile V69 skeleton
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report/generated
+          {
+            cat > report/generated/pocketagent_probe.idl <<'EOF'
+          interface pocketagent_probe {
+              long add(in long a, in long b, rout long result);
+          };
+          EOF
+            cd report/generated
+            "$HEXAGON_SDK_ROOT/ipc/fastrpc/qaic/bin/qaic" pocketagent_probe.idl
+            echo '## Locate required SDK headers'
+            for name in AEEStdDef.h remote.h AEEStdErr.h; do
+              find "$HEXAGON_SDK_ROOT" -name "$name" -print | head -12
+            done
+            mapfile -t dirs < <(find "$HEXAGON_SDK_ROOT" -name AEEStdDef.h -printf '%h\n' | sort -u)
+            if (( ${#dirs[@]} == 0 )); then
+              echo 'FAIL: AEEStdDef.h absent from SDK'
+              exit 1
+            fi
+            args=(-I.)
+            for d in "${dirs[@]}"; do args+=("-I$d"); done
+            while IFS= read -r d; do args+=("-I$d"); done < <(find "$HEXAGON_SDK_ROOT" \( -name remote.h -o -name AEEStdErr.h \) -printf '%h\n' | sort -u)
+            echo '## Compile generated DSP skeleton'
+            "$HEXAGON_TOOLS_ROOT/Tools/bin/hexagon-clang" -mv69 -O2 -fPIC "${args[@]}" -c pocketagent_probe_skel.c -o pocketagent_probe_skel.o
+            file pocketagent_probe_skel.o
+            echo 'PASS: generated FastRPC skeleton compiled for V69'
+            echo 'No claim of RPC linkage, device loading, or NPU inference.'
+          } 2>&1 | tee report/result.txt
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v69-fastrpc-includes-${{ github.run_id }}
+          path: report/
+          retention-days: 14
