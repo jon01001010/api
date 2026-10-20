@@ -1,180 +1,31 @@
-<div align="center">
+# PocketAgent
 
-<img src="src/assets/pocketpal-dark-v2.png" alt="PocketPal AI logo" width="120" />
+**Private experimental Android app — work in progress. Not ready for public release.**
 
-# PocketPal AI
+PocketAgent is a fork of [PocketPal AI](https://github.com/a-ghorbani/pocketpal-ai), focused on local GGUF inference, device hardware diagnostics, and a local text-only API.
 
-**A private AI assistant that runs entirely on your phone.**
+## Current status
 
-Chat with language models, give them a voice, and let them use tools — all on-device. No account, no cloud, no internet required.
+- Android APK builds are being tested on a physical phone.
+- CPU inference is available through the upstream llama.cpp / llama.rn stack.
+- Qualcomm Hexagon NPU offload is **not yet verified**. Detecting a chipset or GPU does not establish NPU execution.
+- Hardware diagnostics report physical hardware and discovered inference backends.
+- The local text API is experimental and subject to model/runtime requirements.
+- Pals and other inherited PocketPal features remain part of the app.
 
-<a href="https://pocketpal.dev/"><strong>pocketpal.dev</strong></a> ·
-<a href="#get-the-app">Get the app</a> ·
-<a href="https://pocketpal.dev/leaderboard">Leaderboard</a> ·
-<a href="https://palshub.ai/">PalsHub</a> ·
-<a href="https://github.com/a-ghorbani/pocketpal-ai/discussions">Discussions</a>
+This repository is a development fork, not an official PocketPal AI release. Do not rely on it for critical data or unattended device actions.
 
-<br/>
+## Android test builds
 
-[![App Store](https://img.shields.io/badge/App_Store-Download-0D96F6?logo=apple&logoColor=white)](https://apps.apple.com/us/app/pocketpal-ai/id6502579498)
-[![Google Play](https://img.shields.io/badge/Google_Play-Get_it-414141?logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.pocketpalai)
+See [GitHub Actions](https://github.com/jon01001010/api/actions) for experimental APK workflow runs and their artifacts. Build success does not guarantee hardware acceleration.
 
-[![Latest release](https://img.shields.io/github/v/release/a-ghorbani/pocketpal-ai?sort=semver)](https://github.com/a-ghorbani/pocketpal-ai/releases)
-[![License: MIT](https://img.shields.io/github/license/a-ghorbani/pocketpal-ai)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/a-ghorbani/pocketpal-ai)](https://github.com/a-ghorbani/pocketpal-ai/stargazers)
-[![Open issues](https://img.shields.io/github/issues/a-ghorbani/pocketpal-ai)](https://github.com/a-ghorbani/pocketpal-ai/issues)
-[![Sponsor](https://img.shields.io/github/sponsors/a-ghorbani?logo=githubsponsors)](https://github.com/sponsors/a-ghorbani)
+## Upstream acknowledgements
 
-</div>
-
----
-
-## Why PocketPal AI?
-
-Most AI apps are a thin window onto someone else's server — every message you type gets shipped off, logged, and analyzed somewhere you can't see. PocketPal flips that around: **the AI lives on your phone, and your conversations never leave it.**
-
-- **🔒 Private by default** — every prompt, response, and document stays on your device. Nothing is uploaded or stored on external servers.
-- **✈️ Works offline** — download a model once and it just works, with no connection and no account. On a plane, on a trail, anywhere.
-- **📱 Runs on hardware you already own** — real language models, voices, and tools, tuned to make the most of your phone's CPU, GPU, and NPU.
-- **🆓 Free and open source** — no subscription, no "pro" tier to unlock the AI. MIT-licensed and built in the open.
-
-> **Privacy note:** The only data that ever leaves your device is what you explicitly choose to share — benchmark results (if you opt into the leaderboard) and feedback you submit through the app.
-
-## Contents
-
-- [Features](#features)
-- [Get the app](#get-the-app)
-- [How it works](#how-it-works)
-- [Using the app](#using-the-app)
-- [For developers](#for-developers)
-- [Contributing](#contributing)
-- [Roadmap](#roadmap)
-- [Community & support](#community--support)
-- [License](#license)
-
-## Features
-
-- **🧠 On-device chat** — run GGUF language models (Gemma, Qwen, Phi, Llama, and more) fully offline.
-- **🗣️ Text-to-speech** — give your assistant a voice with on-device neural TTS (Kokoro and other engines), no cloud calls.
-- **🎭 Pals** — create personalized assistants with their own model, system prompt, and personality (Assistant and Roleplay types).
-- **🛍️ [PalsHub](https://palshub.ai/)** — discover and install community Pals, including premium ones via in-app purchase.
-- **🛠️ Talents & tools** — let capable Pals call built-in tools (calculator, date/time, rich HTML rendering) inside a tool-use loop.
-- **📥 Hugging Face integration** — search and download GGUF models, including gated ones, directly from the HF Hub with your access token.
-- **📊 Benchmarking** — measure tokens/sec and memory, and optionally compare on the [AI Phone Leaderboard](https://pocketpal.dev/leaderboard).
-- **⚡ Hardware acceleration** — CPU, GPU (Metal on iOS, OpenCL/Adreno on Android), and NPU (Qualcomm Hexagon) inference paths, with graceful fallback.
-- **🌍 Localized** — available in 11 languages, on phones and tablets, including full iPad support.
-
-## Get the app
-
-| Platform | |
-| --- | --- |
-| **iOS / iPadOS** | [![Download on the App Store](https://img.shields.io/badge/App_Store-Download-0D96F6?logo=apple&logoColor=white)](https://apps.apple.com/us/app/pocketpal-ai/id6502579498) |
-| **Android** | [![Get it on Google Play](https://img.shields.io/badge/Google_Play-Get_it-414141?logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.pocketpalai) |
-
-**Three steps to your first chat:**
-
-1. **Install** PocketPal from the App Store or Google Play.
-2. **Download a model** — tap the menu (☰) → **Models**, pick one that fits your phone, and download (or add one from Hugging Face).
-3. **Load it and start chatting** — that's it, you're running AI fully offline.
-
-## How it works
-
-You don't need to know any of this to use PocketPal — but if you're curious how a phone runs real AI offline, here's the short version.
-
-PocketPal is a four-layer stack, from the silicon up to the chat UI. Each layer has one job, and the dependency direction is strictly top-down — the JS app talks to native bridges, bridges talk to inference engines, engines target hardware backends.
-
-<div align="center">
-  <img src="assets/images and logos/stack-diagram-dark.png" alt="PocketPal AI on-device stack — UI & Tool Use → Bridging → Engine → Hardware" width="100%">
-</div>
-
-| Layer | What runs here |
-| --- | --- |
-| **UI & Tool Use** | The React Native app (UI via React Native Paper, state via MobX, chat history in WatermelonDB). The **`AgentRunner`** drives each chat turn — streaming tokens, dispatching **Talents** (tools) when the model calls them, and feeding results back for follow-up reasoning. **Pals** are configurable personas; **PalsHub** is the in-app marketplace for sharing and buying them. |
-| **Bridging** | Native modules that connect JavaScript to the engines. [`llama.rn`](https://github.com/mybigday/llama.rn) bridges LLM inference over JSI; [`react-native-speech`](https://github.com/a-ghorbani/react-native-speech) and `onnxruntime-react-native` bridge text-to-speech. |
-| **Engine** | The inference engines. **llama.cpp** runs language models in the quantized **GGUF** format. **ONNX Runtime** runs TTS voice models in the **ONNX** format. |
-| **Hardware** | Where the math actually happens. PocketPal targets **CPU** (universal fallback), **GPU** (Metal on iOS, OpenCL on Qualcomm Adreno for Android), and **NPU** (Qualcomm Hexagon) — falling back gracefully and offloading partial layers when a full backend isn't available. |
-
-## Using the app
-
-<details>
-<summary><strong>📥 Download & load a model</strong></summary>
-
-<br/>
-
-1. Open the app and tap the **Menu** (☰), then go to **Models**.
-2. Pick a model from the list and tap **Download**, or tap **+** to add one from Hugging Face or local storage.
-3. From Hugging Face, search GGUF models and choose a quantization that fits your device's memory and storage — download now or bookmark for later.
-4. After downloading, tap **Load** (or use the chevron icon left of the chat input to load right from the chat screen).
-
-<img src="assets/images and logos/Download_models.png" alt="Download Models" width="100%">
-</details>
-
-<details>
-<summary><strong>💬 Chat</strong></summary>
-
-<br/>
-
-1. Make sure a model is loaded.
-2. Open the **Chat** page and start talking.
-3. The screen stays awake during inference and deactivates when idle.
-4. **Copy** a full response with the copy icon, or long-press a paragraph to copy just that.
-5. **Edit** any of your messages with a long-press — the AI regenerates from your change. Hit **retry** for a fresh answer, optionally with a different model.
-
-<img src="assets/images and logos/Chat.png" alt="Chat" width="83%">
-</details>
-
-<details>
-<summary><strong>🎭 Pals & PalsHub</strong></summary>
-
-<br/>
-
-Create personalized assistants:
-- **Assistant Pal** — pick a default model, set a system prompt (write it yourself or have the app generate one), and customize the chat input color.
-- **Roleplay Pal** — everything above, plus location, the AI's role, and other contextual parameters.
-
-Switch personas with the Pal picker on the chat page. Browse **[PalsHub](https://palshub.ai/)** in-app to discover community Pals, including premium ones via in-app purchase.
-
-<img src="assets/images and logos/Pals.png" alt="Assistant Pal" width="100%">
-<p><em>Creating a cocktail-recipe assistant</em></p>
-</details>
-
-<details>
-<summary><strong>📊 Benchmark your device</strong></summary>
-
-<br/>
-
-1. Open the **Benchmark** page.
-2. Run performance tests to compare speed and efficiency across models.
-3. Review tokens/sec and memory usage.
-4. Optionally share your results to the [AI Phone Leaderboard](https://pocketpal.dev/leaderboard).
-
-<img src="assets/images and logos/Benchmark.png" alt="Benchmark" width="100%">
-</details>
-
-<details>
-<summary><strong>🔑 Set up a Hugging Face token (for gated models)</strong></summary>
-
-<br/>
-
-1. Create an access token in your Hugging Face account ([docs](https://huggingface.co/docs/hub/en/security-tokens)).
-2. In PocketPal, go to **Settings → Set Token**, paste it, and save.
-
-<img src="assets/images and logos/Token_in_pocketpal.png" alt="Token setup" width="66%">
-</details>
-
-<details>
-<summary><strong>💌 Send feedback</strong></summary>
-
-<br/>
-
-Go to **App Info → "Sharing your thoughts"**, type your feedback — feature requests, suggestions, anything — and submit.
-
-<img src="assets/images and logos/Send_Feedback.png" alt="Send feedback" width="50%">
-</details>
+PocketAgent is based on **PocketPal AI** by its original contributors, under the repository's [MIT license](LICENSE). It also uses llama.rn and llama.cpp. The original project is at [a-ghorbani/pocketpal-ai](https://github.com/a-ghorbani/pocketpal-ai). The original upstream documentation remains available there.
 
 ## For developers
 
-PocketPal is a standard React Native app. If you can build a React Native project, you can build PocketPal.
+PocketAgent is a React Native Android experiment based on PocketPal AI.
 
 ### Prerequisites
 
@@ -188,8 +39,8 @@ See the [React Native environment setup](https://reactnative.dev/docs/set-up-you
 ### Clone, install & run
 
 ```bash
-git clone https://github.com/a-ghorbani/pocketpal-ai
-cd pocketpal-ai
+git clone https://github.com/jon01001010/api
+cd api
 
 nvm use                       # match the pinned Node version
 yarn install                  # install JS dependencies
