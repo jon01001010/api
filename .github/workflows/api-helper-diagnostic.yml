@@ -110,9 +110,8 @@ jobs:
         run: |
           set -euo pipefail
           gradle -p android --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a :app:compileProdDebugKotlin :app:compileProdDebugJavaWithJavac 2>&1 | tee diagnostic-build.log
-      # Restore compiled native objects from a previous successful build.
-      # Keyed by source/patches and pinned build inputs; never reuse a cache
-      # across changes to native source or build tool versions.
+      # Restore native intermediates from a prior attempt with matching inputs.
+      # Cache reuse is best-effort and does not establish build correctness.
       - name: Restore native build intermediates
         if: inputs.stage == 'apk'
         uses: actions/cache/restore@v4
@@ -160,6 +159,7 @@ jobs:
           path: |
             node_modules/llama.rn/android/.cxx
             node_modules/llama.rn/android/build/intermediates/cxx
+            node_modules/llama.rn/android/build/generated/source/codegen
           key: pocketagent-native-arm64-v1-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Keep logs
         if: always()
