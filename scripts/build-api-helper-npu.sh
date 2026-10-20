@@ -24,6 +24,8 @@ df -h .
   bash ./gradlew --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a assembleProdDebug
 ) &
 build_pid=$!
+disk_stop_marker=$(mktemp)
+trap 'rm -f "$disk_stop_marker"' EXIT
 monitor_disk() {
   while kill -0 "$build_pid" 2>/dev/null; do
     sleep 20
@@ -32,6 +34,8 @@ monitor_disk() {
       echo "::error::Less than 2 GiB free during native compilation; stopping to preserve runner diagnostics." >&2
       df -h . >&2
       du -sh android/.cxx android/app/.cxx android/app/build "$HOME/.gradle" "$HOME/.hexagon-sdk" 2>/dev/null >&2 || true
+      echo "disk-limit" > "$disk_stop_marker"
+      pkill -TERM -P "$build_pid" 2>/dev/null || true
       kill -TERM "$build_pid" 2>/dev/null || true
       return 1
     fi
@@ -45,6 +49,10 @@ build_result=$?
 set -e
 kill "$monitor_pid" 2>/dev/null || true
 wait "$monitor_pid" 2>/dev/null || true
+if [[ -s "$disk_stop_marker" ]]; then
+  echo "::error::Disk safety threshold reached; build stopped early." >&2
+  exit 1
+fi
 if (( build_result != 0 )); then
   echo "::error::Native Gradle build failed (exit $build_result)." >&2
   df -h . >&2
