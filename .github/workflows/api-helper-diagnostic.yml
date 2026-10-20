@@ -44,7 +44,7 @@ jobs:
         with:
           gradle-version: '9.0.0'
           cache-read-only: false
-          cache-cleanup: on-success
+          cache-cleanup: always
       - name: Install locked dependencies and patches
         timeout-minutes: 12
         run: |
@@ -79,6 +79,19 @@ jobs:
           # sdkmanager can leave large temporary archives after installing NDKs.
           rm -rf "$HOME/.android/cache" || true
           echo 'Disk after Android SDK installation:'
+          df -h /
+      - name: Remove unused preinstalled Android NDKs
+        if: inputs.stage == 'apk'
+        run: |
+          set -euo pipefail
+          # Keep only the two explicitly pinned NDK versions installed above.
+          for ndk in "$ANDROID_HOME"/ndk/*; do
+            [ -d "$ndk" ] || continue
+            case "${ndk##*/}" in
+              27.3.13750724|27.0.12077973) ;;
+              *) echo "Removing unused NDK: $ndk"; rm -rf "$ndk" ;;
+            esac
+          done
           df -h /
       - name: Prepare diagnostic configuration
         run: python3 scripts/prepare-diagnostic-config.py
