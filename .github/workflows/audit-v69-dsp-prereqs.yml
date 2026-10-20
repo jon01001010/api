@@ -1,0 +1,54 @@
+name: Audit V69 DSP skeleton prerequisites
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/audit-v69-dsp-prereqs.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up verified Hexagon SDK
+        uses: ./.github/actions/setup-hexagon-sdk
+      - name: Audit FastRPC and IDL tools without altering app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          {
+            echo '# V69 DSP skeleton prerequisites'
+            echo "SDK: $HEXAGON_SDK_ROOT"
+            echo
+            echo '## SDK IDL and FastRPC components'
+            find "$HEXAGON_SDK_ROOT" -maxdepth 9 \( -iname '*qaic*' -o -iname '*fastrpc*' -o -iname '*adsprpc*' -o -iname '*cdsprpc*' -o -iname '*rpcmem*' -o -iname '*hexagon_fun.cmake' \) -print | head -160 || true
+            echo
+            echo '## SDK V69-specific libraries'
+            find "$HEXAGON_TOOLS_ROOT/Tools/target/hexagon/lib/v69" -maxdepth 3 -type f -print | head -100 || true
+            echo
+            echo '## NPU and QNN SDK roots, if provisioned'
+            for key in QNN_SDK_ROOT QNN_SDK_PATH HEXAGON_SDK_ROOT; do
+              val="${!key:-}"
+              if [ -n "$val" ]; then
+                echo "$key=$val"
+                test -d "$val" && echo '  directory exists' || echo '  directory missing'
+              else
+                echo "$key not set"
+              fi
+            done
+            echo
+            echo '## Device runtime prerequisite reminders'
+            echo 'A linkable Hexagon ELF does not imply an Android-loadable FastRPC skeleton.'
+            echo 'Check IDL-generated host/DSP stubs, signed deployment requirements, DSP domain, and device permissions.'
+            echo 'Qualcomm QNN HTP may offer an alternate path using vendor-supplied DSP skeletons.'
+          } 2>&1 | tee report/prerequisites.txt
+      - name: Upload audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v69-dsp-prereqs-${{ github.run_id }}
+          path: report/
+          retention-days: 14
