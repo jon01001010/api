@@ -1,0 +1,52 @@
+name: Compile Hexagon V69 smoke test
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/compile-hexagon-v69.yml'
+permissions:
+  contents: read
+jobs:
+  compile-v69:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up verified Hexagon SDK
+        uses: ./.github/actions/setup-hexagon-sdk
+      - name: Locate compiler and compile V69
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          {
+            echo '# V69 compiler smoke test'
+            echo "SDK: $HEXAGON_SDK_ROOT"
+            echo "Tools: $HEXAGON_TOOLS_ROOT"
+            echo
+            echo '## Compiler candidates'
+            find "$HEXAGON_TOOLS_ROOT" -type f \( -name hexagon-clang -o -name hexagon-clang++ \) -print | head -20
+            COMPILER=$(find "$HEXAGON_TOOLS_ROOT" -type f -name hexagon-clang -print -quit)
+            if [ -z "$COMPILER" ]; then
+              echo 'FAIL: hexagon-clang missing'
+              exit 1
+            fi
+            echo "Selected compiler: $COMPILER"
+            "$COMPILER" --version
+            cat > report/v69-smoke.c <<'EOF'
+          int v69_smoke(int a, int b) { return a * 7 + b; }
+          EOF
+            "$COMPILER" -mv69 -O2 -c report/v69-smoke.c -o report/v69-smoke.o
+            echo 'PASS: compiled with -mv69'
+            file report/v69-smoke.o
+            readelf -h report/v69-smoke.o
+            echo
+            echo 'NOTE: This verifies compilation only; no DSP skeleton, runtime or on-device execution.'
+          } 2>&1 | tee report/compile-log.txt
+      - name: Upload smoke-test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hexagon-v69-compile-${{ github.run_id }}
+          path: report/
+          retention-days: 14
