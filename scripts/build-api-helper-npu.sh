@@ -25,10 +25,16 @@ df -h .
 ) &
 build_pid=$!
 disk_stop_marker=$(mktemp)
-trap 'rm -f "$disk_stop_marker"' EXIT
+cleanup() {
+  kill "$monitor_pid" 2>/dev/null || true
+  wait "$monitor_pid" 2>/dev/null || true
+  rm -f "$disk_stop_marker" "${payload_manifest:-}"
+}
+trap cleanup EXIT
 monitor_disk() {
   while kill -0 "$build_pid" 2>/dev/null; do
     sleep 20
+    kill -0 "$build_pid" 2>/dev/null || break
     free_kb=$(df -Pk . | awk 'NR==2 {print $4}')
     if (( free_kb < 2097152 )); then
       echo "::error::Less than 2 GiB free during native compilation; stopping to preserve runner diagnostics." >&2
@@ -64,7 +70,6 @@ fi
 echo "Disk after native build:"
 df -h .
 payload_manifest=$(mktemp)
-trap 'rm -f "$payload_manifest"' EXIT
 node scripts/arm64-payload-manifest.cjs "$payload_manifest"
 node scripts/verify-android-payload.js \
   --manifest "$payload_manifest" \
