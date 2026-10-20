@@ -110,12 +110,31 @@ jobs:
         run: |
           set -euo pipefail
           gradle -p android --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a :app:compileProdDebugKotlin :app:compileProdDebugJavaWithJavac 2>&1 | tee diagnostic-build.log
+      # Restore compiled native objects from a previous successful build.
+      # Keyed by source/patches and pinned build inputs; never reuse a cache
+      # across changes to native source or build tool versions.
+      - name: Restore native build intermediates
+        if: inputs.stage == 'apk'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules/llama.rn/android/.cxx
+            node_modules/llama.rn/android/build/intermediates/cxx
+          key: pocketagent-native-arm64-v1-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}
       - name: Assemble and verify NPU APK
         if: inputs.stage == 'apk'
         timeout-minutes: 90
         run: |
           set -euo pipefail
           bash scripts/build-api-helper-npu.sh 2>&1 | tee diagnostic-build.log
+      - name: Save successful native build intermediates
+        if: success() && inputs.stage == 'apk'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            node_modules/llama.rn/android/.cxx
+            node_modules/llama.rn/android/build/intermediates/cxx
+          key: pocketagent-native-arm64-v1-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}
       - name: Keep logs
         if: always()
         uses: actions/upload-artifact@v4
