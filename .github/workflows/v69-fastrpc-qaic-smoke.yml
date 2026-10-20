@@ -1,0 +1,56 @@
+name: Generate V69 FastRPC calculator interface
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/v69-fastrpc-qaic-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  qaic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up verified Hexagon SDK
+        uses: ./.github/actions/setup-hexagon-sdk
+      - name: Generate host stub and DSP skeleton
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report/generated
+          QAIC="$HEXAGON_SDK_ROOT/ipc/fastrpc/qaic/bin/qaic"
+          CC="$HEXAGON_TOOLS_ROOT/Tools/bin/hexagon-clang"
+          {
+            echo '# FastRPC V69 IDL smoke test'
+            echo "qaic: $QAIC"
+            file "$QAIC"
+            "$QAIC" -h || true
+            cat > report/generated/pocketagent_probe.idl <<'EOF'
+          interface pocketagent_probe {
+              long add(in long a, in long b, rout long result);
+          };
+          EOF
+            echo '## Generate code'
+            cd report/generated
+            "$QAIC" pocketagent_probe.idl
+            echo '## Generated files'
+            ls -lah
+            echo '## Compile generated DSP skeleton if available'
+            SKEL=$(find . -maxdepth 1 -name '*_skel.c' -print -quit)
+            if [ -z "$SKEL" ]; then
+              echo 'FAIL: no generated DSP skeleton'
+              exit 1
+            fi
+            "$CC" -mv69 -O2 -fPIC -I. -I"$HEXAGON_SDK_ROOT/ipc/fastrpc/remote/ship/hexagon_ReleaseG" -c "$SKEL" -o pocketagent_probe_skel.o
+            file pocketagent_probe_skel.o
+            echo 'PASS: qaic generated a skeleton and V69 compiler compiled it'
+            echo 'NOTE: host stub, RPC linkage, device execution, and NPU inference remain unverified.'
+          } 2>&1 | tee report/result.txt
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v69-fastrpc-qaic-${{ github.run_id }}
+          path: report/
+          retention-days: 14
