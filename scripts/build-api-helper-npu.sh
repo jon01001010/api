@@ -12,7 +12,13 @@ fi
 export ORG_GRADLE_PROJECT_rnllamaBuildFromSource=true
 ORG_GRADLE_PROJECT_rnllamaVariants=$(node scripts/verify-android-payload.js --print-variants)
 export ORG_GRADLE_PROJECT_rnllamaVariants
-(cd android && bash ./gradlew --no-daemon -PreactNativeArchitectures=arm64-v8a assembleProdDebug)
+# Reduce peak native build disk use; do not run several heavy C++ compiles at once.
+export CMAKE_BUILD_PARALLEL_LEVEL=2
+echo "Disk before native build:"
+df -h .
+(cd android && bash ./gradlew --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a assembleProdDebug)
+echo "Disk after native build:"
+df -h .
 payload_manifest=$(mktemp)
 trap 'rm -f "$payload_manifest"' EXIT
 node scripts/arm64-payload-manifest.cjs "$payload_manifest"
