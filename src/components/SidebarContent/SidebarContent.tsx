@@ -566,6 +566,13 @@ export const SidebarContent: React.FC<DrawerContentComponentProps> = observer(
               testID="drawer-item-benchmark"
             />
             <Drawer.Item
+              label="PocketAgent Hardware"
+              icon={() => <SettingsIcon width={24} height={24} stroke={theme.colors.primary} />}
+              onPress={() => props.navigation.navigate(ROUTES.POCKETAGENT_HARDWARE)}
+              style={styles.menuDrawerItem}
+              testID="drawer-item-pocketagent-hardware"
+            />
+            <Drawer.Item
               label={l10n.components.sidebarContent.menuItems.settings}
               icon={() => (
                 <SettingsIcon
