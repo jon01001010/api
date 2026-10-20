@@ -366,6 +366,32 @@ export const SettingsScreen: React.FC = observer(() => {
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled">
           <LocalApiCard />
+          {Platform.OS === 'android' && (
+            <Card elevation={0} style={styles.card}>
+              <Card.Title title="PocketAgent Hardware" />
+              <Card.Content>
+                <Text variant="titleMedium">Detected inference backends</Text>
+                <Text variant="bodySmall" style={styles.textDescription}>
+                  {deviceOptions.map(option => option.label).join(', ') ||
+                    'Checking available backends...'}
+                </Text>
+                <Text variant="titleMedium">Configured backend</Text>
+                <Text variant="bodySmall" style={styles.textDescription}>
+                  {getCurrentDeviceId() === 'hexagon'
+                    ? 'Hexagon NPU (selected)'
+                    : getCurrentDeviceId() === 'gpu'
+                      ? 'GPU (selected)'
+                      : 'CPU (selected)'}
+                </Text>
+                <Text variant="bodySmall" style={styles.textDescription}>
+                  Selection applies when the model is next loaded. NPU execution
+                  is not verified until a compatible model runs successfully.
+                  If Hexagon is not listed below, the runtime has not detected
+                  an available NPU backend.
+                </Text>
+              </Card.Content>
+            </Card>
+          )}
           {/* Model Initialization Settings */}
           <Card elevation={0} style={styles.card}>
             <Card.Title title={l10n.settings.modelInitializationSettings} />
