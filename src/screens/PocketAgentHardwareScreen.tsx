@@ -3,8 +3,8 @@ import {ScrollView, View} from 'react-native';
 import {observer} from 'mobx-react-lite';
 import {Button, Card, RadioButton, Text} from 'react-native-paper';
 import {useIsFocused} from '@react-navigation/native';
-import {modelStore} from '../../store';
-import {DeviceOption, getDeviceOptions} from '../../utils/deviceSelection';
+import {modelStore} from '../store';
+import {DeviceOption, getDeviceOptions} from '../utils/deviceSelection';
 import {LocalApiCard} from './SettingsScreen/LocalApiCard';
 
 export const PocketAgentHardwareScreen = observer(() => {
