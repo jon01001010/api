@@ -1,0 +1,48 @@
+name: Link Hexagon V69 shared library
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/link-hexagon-v69.yml'
+permissions:
+  contents: read
+jobs:
+  link-v69:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up verified Hexagon SDK
+        uses: ./.github/actions/setup-hexagon-sdk
+      - name: Compile and link V69 DSP shared object
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          CC="$HEXAGON_TOOLS_ROOT/Tools/bin/hexagon-clang"
+          {
+            echo '# V69 DSP shared library smoke test'
+            "$CC" --version | head -5
+            cat > report/v69_dsp.c <<'EOF'
+          __attribute__((visibility("default")))
+          int pocketagent_v69_probe(int a, int b) { return a * 7 + b; }
+          EOF
+            echo '## Compile PIC object'
+            "$CC" -mv69 -O2 -fPIC -c report/v69_dsp.c -o report/v69_dsp.o
+            file report/v69_dsp.o
+            echo '## Link shared object'
+            "$CC" -mv69 -shared -fPIC -nostdlib -Wl,-soname,libpocketagent_v69_probe.so report/v69_dsp.o -o report/libpocketagent_v69_probe.so
+            echo '## Inspect linked library'
+            file report/libpocketagent_v69_probe.so
+            readelf -h report/libpocketagent_v69_probe.so
+            readelf -d report/libpocketagent_v69_probe.so
+            readelf -Ws report/libpocketagent_v69_probe.so | grep pocketagent_v69_probe
+            echo 'PASS: V69 shared ELF linked. No runtime, RPC, HTP, or inference compatibility implied.'
+          } 2>&1 | tee report/result.txt
+      - name: Upload report and binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hexagon-v69-shared-link-${{ github.run_id }}
+          path: report/
+          retention-days: 14
