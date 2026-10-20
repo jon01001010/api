@@ -1,0 +1,41 @@
+name: Compile Hexagon V69 smoke test
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/compile-hexagon-v69-fixed.yml'
+permissions:
+  contents: read
+jobs:
+  compile-v69:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up verified Hexagon SDK
+        uses: ./.github/actions/setup-hexagon-sdk
+      - name: Compile and inspect Hexagon V69 object
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          COMPILER="$HEXAGON_TOOLS_ROOT/Tools/bin/hexagon-clang"
+          {
+            test -x "$COMPILER"
+            echo "Compiler: $COMPILER"
+            "$COMPILER" --version
+            printf '%s\n' 'int v69_smoke(int a, int b) { return a * 7 + b; }' > report/v69-smoke.c
+            "$COMPILER" -mv69 -O2 -c report/v69-smoke.c -o report/v69-smoke.o
+            echo 'PASS: Hexagon V69 object compiled'
+            file report/v69-smoke.o
+            readelf -h report/v69-smoke.o
+            "$HEXAGON_TOOLS_ROOT/Tools/bin/hexagon-llvm-objdump" -d report/v69-smoke.o || true
+            echo 'NOTE: compilation only, not on-device NPU inference'
+          } 2>&1 | tee report/result.txt
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hexagon-v69-compile-fixed-${{ github.run_id }}
+          path: report/
+          retention-days: 14
