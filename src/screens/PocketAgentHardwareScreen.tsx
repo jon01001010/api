@@ -4,7 +4,7 @@ import {observer} from 'mobx-react-lite';
 import {Button, Card, RadioButton, Text} from 'react-native-paper';
 import {useIsFocused} from '@react-navigation/native';
 import {modelStore} from '../store';
-import {DeviceOption, getDeviceOptions} from '../utils/deviceSelection';
+import {DeviceOption, getDeviceOptions, getAvailableDevices} from '../utils/deviceSelection';
 import {LocalApiCard} from './SettingsScreen/LocalApiCard';
 import NativeHardwareInfo from '../specs/NativeHardwareInfo';
 
@@ -21,8 +21,9 @@ export const PocketAgentHardwareScreen = observer(() => {
     setScanError('');
     setScanResult('Scanning inference runtime…');
     try {
-      const [discovered, cpu, gpu, chipset] = await Promise.all([
+      const [discovered, rawBackends, cpu, gpu, chipset] = await Promise.all([
         getDeviceOptions(),
+        getAvailableDevices(),
         NativeHardwareInfo.getCPUInfo().catch(() => null),
         NativeHardwareInfo.getGPUInfo().catch(() => null),
         NativeHardwareInfo.getChipset?.().catch(() => 'Unknown chipset') ?? Promise.resolve('Unknown chipset'),
@@ -32,13 +33,14 @@ export const PocketAgentHardwareScreen = observer(() => {
         `CPU: ${cpu?.cores ?? 'Unknown'} cores`,
         `GPU: ${gpu?.renderer || 'Unknown'}`,
         `GPU OpenCL capability: ${gpu?.supportsOpenCL ? 'reported' : 'not reported'}`,
-        'Hexagon runtime: checked separately through inference backend discovery',
+        `Inference backends: ${rawBackends.length ? rawBackends.map(device => `${device.deviceName || 'Unnamed'} (${device.type || 'unknown type'})`).join(', ') : 'none reported'}`,
+        `Hexagon HTP backend: ${rawBackends.some(device => device.deviceName?.startsWith('HTP')) ? 'reported' : 'not reported'}`,
       ].join('\n'));
       setOptions(discovered);
       const accelerators = discovered.filter(option => option.id !== 'cpu' && option.id !== 'auto');
       setScanResult(accelerators.length
         ? `Scan complete: ${discovered.map(option => option.label).join(', ')}. Backend availability does not confirm model offload.`
-        : 'Scan complete: CPU only. The inference runtime did not report an OpenCL GPU or Hexagon NPU backend.');
+        : `Scan complete: CPU only. ${rawBackends.length ? 'Native backend enumeration returned devices, but no selectable GPU or Hexagon backend.' : 'Native backend enumeration returned no devices.'}`);
     } catch (error) {
       setScanError(error instanceof Error ? error.message : 'Hardware scan failed');
       setScanResult('Scan failed.');
