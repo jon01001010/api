@@ -15,6 +15,31 @@ export const PocketAgentHardwareScreen = observer(() => {
   const [scanError, setScanError] = useState('');
   const [scanResult, setScanResult] = useState('');
   const [hardwareInfo, setHardwareInfo] = useState('Not checked');
+  const [npuTestBusy, setNpuTestBusy] = useState(false);
+  const [npuTestResult, setNpuTestResult] = useState('Not tested');
+
+  const testNpu = useCallback(async () => {
+    setNpuTestBusy(true);
+    setNpuTestResult('Checking available inference backends…');
+    try {
+      const [backends, chipset] = await Promise.all([
+        getAvailableDevices(),
+        NativeHardwareInfo.getChipset?.().catch(() => 'Unknown') ?? Promise.resolve('Unknown'),
+      ]);
+      const htp = backends.filter(device => /HTP|Hexagon|QNN/i.test(`${device.deviceName || ''} ${device.type || ''}`));
+      setNpuTestResult([
+        `Chipset: ${chipset || 'Unknown'}`,
+        `NPU inference backend: ${htp.length ? htp.map(d => d.deviceName || d.type).join(', ') : 'not exposed by current inference engine'}`,
+        'FastRPC calculator: NOT RUN — this APK does not yet include the device-test native bridge or a verified loadable DSP skeleton.',
+        'NPU execution: NOT VERIFIED. No model was offloaded.',
+        'This is a safe, read-only capability check; it does not modify the CPU inference path.',
+      ].join('\n'));
+    } catch (error) {
+      setNpuTestResult(`NPU check failed: ${error instanceof Error ? error.message : String(error)}. No DSP code was executed.`);
+    } finally {
+      setNpuTestBusy(false);
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     setChecking(true);
