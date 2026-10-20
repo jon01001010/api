@@ -1,0 +1,64 @@
+name: Inspect Snapdragon V69 candidate (no APK changes)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/inspect-v69-candidate.yml'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Download upstream Snapdragon release
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://github.com/TriDefender/llama.cpp-snapdragon_kernels/releases/download/b-2026-10-19-0ce8cd114/llama-cpp-snapdragon-b-2026-10-19-0ce8cd114.tar.gz'
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 240 "$URL" -o candidate.tar.gz
+          echo '420455bcdffa3f239df816f120bd94fcc41644eb8d16937c16d015c46bb3819f  candidate.tar.gz' | sha256sum --check
+      - name: Inspect archive without executing third-party binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report extracted
+          tar -tzf candidate.tar.gz > report/archive-list.txt
+          # Reject absolute or parent-traversal paths before extraction.
+          python3 - <<'PY'
+          import tarfile
+          with tarfile.open('candidate.tar.gz','r:gz') as t:
+              for m in t.getmembers():
+                  p=m.name
+                  if p.startswith('/') or '..' in p.split('/') or not (m.isfile() or m.isdir()):
+                      raise SystemExit('Unsafe archive member: '+p)
+          PY
+          tar -xzf candidate.tar.gz -C extracted
+          {
+            echo '# Snapdragon V69 candidate inspection'
+            echo
+            echo 'Source: TriDefender llama.cpp-snapdragon_kernels b-2026-10-19-0ce8cd114'
+            echo 'SHA256 verified against GitHub release metadata.'
+            echo
+            echo '## Relevant libraries'
+            find extracted -type f \( -iname '*v69*' -o -iname '*hexagon*' -o -iname '*opencl*' -o -iname '*qnn*' \) | sort
+            echo
+            echo '## ELF ARM architecture and dependencies'
+            while IFS= read -r file; do
+              case "$file" in *.so)
+                echo "--- $file"
+                file "$file"
+                readelf -d "$file" 2>/dev/null | grep -E 'NEEDED|SONAME' || true
+                ;;
+              esac
+            done < <(find extracted -type f -name '*.so' | sort)
+          } > report/inspection.txt
+          cat report/inspection.txt
+      - name: Upload inspection report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v69-candidate-inspection-${{ github.run_id }}
+          path: report/
+          if-no-files-found: warn
+          retention-days: 14
