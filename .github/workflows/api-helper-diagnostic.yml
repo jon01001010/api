@@ -151,6 +151,13 @@ jobs:
           df -h / >> native-build-diagnostics.txt
           echo 'Native build cache sizes:' >> native-build-diagnostics.txt
           du -sh node_modules/llama.rn/android/.cxx node_modules/llama.rn/android/build/intermediates/cxx node_modules/llama.rn/android/build/generated/source/codegen android/app/.cxx android/app/build 2>/dev/null >> native-build-diagnostics.txt || true
+          echo 'Native object counts:' >> native-build-diagnostics.txt
+          for dir in node_modules/llama.rn/android/.cxx node_modules/llama.rn/android/build/intermediates/cxx android/app/.cxx; do
+            if [ -d "$dir" ]; then
+              printf '%s: ' "$dir" >> native-build-diagnostics.txt
+              find "$dir" -type f -name '*.o' | wc -l >> native-build-diagnostics.txt
+            fi
+          done
           cat native-build-diagnostics.txt
       - name: Save native compilation progress
         if: always() && inputs.stage == 'apk'
