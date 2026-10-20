@@ -2,12 +2,14 @@ name: API Helper diagnostic build
 on:
   push:
     branches: [main]
+    paths:
+      - '.github/workflows/api-helper-diagnostic.yml'
   workflow_dispatch:
     inputs:
       stage:
         description: Run one build stage
         type: choice
-        default: configuration
+        default: apk
         options: [configuration, compilation, native, apk]
 permissions:
   contents: read
@@ -23,7 +25,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Free runner disk space for native SDK
-        if: inputs.stage == 'apk' || inputs.stage == 'native'
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         run: |
           set -euo pipefail
           echo "Disk before cleanup:"
@@ -72,7 +74,7 @@ jobs:
               subprocess.run([str(compiler), '--version'], check=True)
           PY
       - name: Reclaim SDK installation caches
-        if: inputs.stage == 'apk' || inputs.stage == 'native'
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         run: |
           set -euo pipefail
           rm -rf "$HOME/.npm/_cacache" "$HOME/.cache/yarn" || true
@@ -81,7 +83,7 @@ jobs:
           echo 'Disk after Android SDK installation:'
           df -h /
       - name: Remove unused preinstalled Android NDKs
-        if: inputs.stage == 'apk' || inputs.stage == 'native'
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         run: |
           set -euo pipefail
           # Keep only the two explicitly pinned NDK versions installed above.
@@ -96,10 +98,10 @@ jobs:
       - name: Prepare diagnostic configuration
         run: python3 scripts/prepare-diagnostic-config.py
       - name: Verify Hexagon SDK for APK stage
-        if: inputs.stage == 'apk' || inputs.stage == 'native'
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         uses: ./.github/actions/setup-hexagon-sdk
       - name: Configuration
-        if: github.event_name == 'push' || inputs.stage == 'configuration'
+        if: inputs.stage == 'configuration'
         timeout-minutes: 8
         run: |
           set -euo pipefail
@@ -113,7 +115,7 @@ jobs:
       # Restore native intermediates from a prior attempt with matching inputs.
       # Cache reuse is best-effort and does not establish build correctness.
       - name: Validate native variant selection
-        if: inputs.stage == 'apk' || inputs.stage == 'native'
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         run: |
           set -euo pipefail
           node scripts/verify-android-payload.js --print-variants | tee native-variants.txt
@@ -121,7 +123,7 @@ jobs:
           echo 'Required ARM64 native variants:'
           cat native-variants.txt
       - name: Restore native build intermediates
-        if: inputs.stage == 'apk' || inputs.stage == 'native'
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -132,7 +134,7 @@ jobs:
           restore-keys: |
             pocketagent-native-arm64-v2-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-
       - name: Inspect native cache and disk budget
-        if: inputs.stage == 'apk' || inputs.stage == 'native'
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         run: |
           set -euo pipefail
           echo 'Disk available before native compilation:'
@@ -147,13 +149,13 @@ jobs:
             exit 1
           fi
       - name: Assemble and verify NPU APK
-        if: inputs.stage == 'apk' || inputs.stage == 'native'
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         timeout-minutes: 110
         run: |
           set -euo pipefail
           bash scripts/build-api-helper-npu.sh 2>&1 | tee diagnostic-build.log
       - name: Record native build disk usage
-        if: always() && (inputs.stage == 'apk' || inputs.stage == 'native')
+        if: always() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
         run: |
           echo 'Disk after native build:' > native-build-diagnostics.txt
           df -h / >> native-build-diagnostics.txt
@@ -168,7 +170,7 @@ jobs:
           done
           cat native-build-diagnostics.txt
       - name: Save native compilation progress
-        if: always() && inputs.stage == 'apk' || inputs.stage == 'native'
+        if: always() && github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
@@ -190,7 +192,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Keep verified APK
-        if: success() && (inputs.stage == 'apk' || inputs.stage == 'native')
+        if: success() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
         uses: actions/upload-artifact@v4
         with:
           name: api-helper-npu-debug-${{ github.run_id }}-${{ github.run_attempt }}
