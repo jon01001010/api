@@ -71,6 +71,15 @@ jobs:
               compiler = normalize_ndk(Path(os.environ['ANDROID_HOME']) / 'ndk' / revision, revision)
               subprocess.run([str(compiler), '--version'], check=True)
           PY
+      - name: Reclaim SDK installation caches
+        if: inputs.stage == 'apk'
+        run: |
+          set -euo pipefail
+          rm -rf "$HOME/.npm/_cacache" "$HOME/.cache/yarn" || true
+          # sdkmanager can leave large temporary archives after installing NDKs.
+          rm -rf "$HOME/.android/cache" || true
+          echo 'Disk after Android SDK installation:'
+          df -h /
       - name: Prepare diagnostic configuration
         run: python3 scripts/prepare-diagnostic-config.py
       - name: Verify Hexagon SDK for APK stage
