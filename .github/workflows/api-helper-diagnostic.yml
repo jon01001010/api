@@ -154,6 +154,7 @@ jobs:
           cat native-build-diagnostics.txt
       - name: Save native compilation progress
         if: always() && inputs.stage == 'apk'
+        continue-on-error: true
         uses: actions/cache/save@v4
         with:
           path: |
