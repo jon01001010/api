@@ -42,6 +42,10 @@ jobs:
           npm install --global yarn@1.22.22
           yarn install --frozen-lockfile --non-interactive
           node node_modules/patch-package/index.js --error-on-fail
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: ''
       - name: Install Android packages
         timeout-minutes: 12
         run: |
