@@ -33,3 +33,19 @@ export function generatedToolPrompt(names: string[]): string {
   return 'Available tools (request a tool call using the model\'s supported function-call format; never pretend a tool executed):\n' +
     tools.map(t => '- ' + t.function.name + ': ' + t.function.description).join('\n');
 }
+
+// Agent iteration ceiling; independent of model and enforced by the runner.
+const AGENT_TURNS_KEY = '@pocketagent/agent/max-turns/v1';
+export async function readAgentMaxTurns(): Promise<number> {
+  try {
+    const raw = await AsyncStorage.getItem(AGENT_TURNS_KEY);
+    const value = Number(raw);
+    return raw !== null && Number.isInteger(value) && value >= 5 && value <= 500 ? value : 20;
+  } catch {
+    return 20;
+  }
+}
+export async function writeAgentMaxTurns(value: number): Promise<void> {
+  if (!Number.isInteger(value) || value < 5 || value > 500) throw new Error('Agent limit must be 5–500');
+  await AsyncStorage.setItem(AGENT_TURNS_KEY, String(value));
+}
