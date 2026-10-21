@@ -8,6 +8,16 @@ import com.facebook.react.uimanager.ViewManager
 
 class BackgroundInferenceModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
     override fun getName() = "BackgroundInference"
+    override fun initialize() {
+        super.initialize()
+        BackgroundInferenceService.reactContext = context
+    }
+    override fun invalidate() {
+        if (BackgroundInferenceService.reactContext === context) BackgroundInferenceService.reactContext = null
+        super.invalidate()
+    }
+    @ReactMethod fun addListener(eventName: String) {}
+    @ReactMethod fun removeListeners(count: Int) {}
     @ReactMethod fun start(promise: Promise) {
         try {
             val intent = Intent(context, BackgroundInferenceService::class.java)
