@@ -202,3 +202,5 @@ jobs:
           retention-days: 14
 
 # PocketAgent OpenAI API connector verification build 2026-10-21
+
+# Verify PocketAgent agent-loop slider build 2026-10-21
