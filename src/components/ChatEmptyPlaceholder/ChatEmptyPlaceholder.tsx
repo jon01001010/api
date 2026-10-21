@@ -1,5 +1,5 @@
 import React, {useContext} from 'react';
-import {Image, View} from 'react-native';
+import {Image, Platform, View} from 'react-native';
 import {Button, Text} from 'react-native-paper';
 import {observer} from 'mobx-react';
 
@@ -85,7 +85,7 @@ export const ChatEmptyPlaceholder = observer(
       <View
         style={[styles.container, {marginBottom: bottomComponentHeight + 100}]}>
         <Image
-          source={require('../../assets/pocketpal-dark-v2.png')}
+          source={Platform.OS === 'android' ? {uri: 'pocketagent_logo'} : require('../../assets/pocketpal-dark-v2.png')}
           style={styles.logo}
           resizeMode="contain"
         />
