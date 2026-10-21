@@ -177,7 +177,7 @@ export const ToolboxScreen: React.FC = () => {
                   const controller = new AbortController();
                   const timeout = setTimeout(() => controller.abort(), 8000);
                   try {
-                    const response = await fetch(parsed.toString(), {method: 'GET', headers: {Accept: 'application/json'}, signal: controller.signal});
+                    const response = await fetch(parsed.toString(), {method: 'GET', redirect: 'error', headers: {Accept: 'application/json'}, signal: controller.signal});
                     const declaredLength = Number(response.headers.get('content-length') ?? '0');
                     if (declaredLength > 32768) throw new Error('Response exceeds 32 KB limit');
                     const reader = response.body?.getReader();
