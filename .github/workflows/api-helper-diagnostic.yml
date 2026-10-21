@@ -148,7 +148,7 @@ jobs:
             echo "::error::Less than 6 GiB free before native compilation; refusing to exhaust runner disk." >&2
             exit 1
           fi
-      # Verify PocketAgent splash branding in the Android APK.
+      # Verify global tool controls and system prompt in the Android APK.
       - name: Assemble and verify NPU APK
         if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         timeout-minutes: 110
