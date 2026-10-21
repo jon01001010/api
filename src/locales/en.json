@@ -893,7 +893,7 @@
         "generatingPromptRequired": "Generating prompt is required when using AI prompt",
         "promptModelRequired": "Prompt generation model is required when using AI prompt"
       },
-      "talents": "Talents",
+      "talents": "Toolbox",
       "talentNames": {
         "render_html": "HTML preview",
         "calculate": "Math expressions",
