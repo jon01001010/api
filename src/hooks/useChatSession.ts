@@ -658,6 +658,7 @@ export const useChatSession = (
 
     // Run UI clears on abort, not on drain.
     let uiStopped = false;
+    let completedNormally = false;
     const uiStop = () => {
       if (uiStopped) {
         return;
@@ -670,7 +671,7 @@ export const useChatSession = (
       chatSessionStore.setToolCallTokenCount(0);
       try {
         deactivateKeepAwake();
-        void finishBackgroundInference().catch(error => console.warn('Could not stop inference notification', error));
+        void finishBackgroundInference(completedNormally && !lease.signal.aborted).catch(error => console.warn('Could not stop inference notification', error));
       } catch (error) {
         console.error('Failed to deactivate keep awake after chat:', error);
       }
@@ -683,10 +684,12 @@ export const useChatSession = (
 
     try {
       await startBackgroundInference().catch(error => console.warn('Background inference service unavailable', error));
-      return await sendUnderLease(message, lease, {
+      const result = await sendUnderLease(message, lease, {
         stop: uiStop,
         isStopped: () => uiStopped,
       });
+      completedNormally = !lease.signal.aborted;
+      return result;
     } finally {
       cancelSubscription?.remove();
       lease.signal.removeEventListener('abort', uiStop);
