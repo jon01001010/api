@@ -50,6 +50,7 @@ import {
   DevToolsScreen,
 } from './src/screens';
 import PalsScreen from './src/screens/PalsScreen';
+import {ToolboxScreen} from './src/screens/ToolboxScreen';
 import {PocketAgentHardwareScreen} from './src/screens/PocketAgentHardwareScreen';
 import {OnboardingStack} from './src/screens/OnboardingScreens';
 
@@ -160,6 +161,11 @@ const App = observer(() => {
                               headerStyle: styles.headerWithoutDivider,
                               title: currentL10n.screenTitles.models,
                             }}
+                          />
+                          <Drawer.Screen
+                            name={ROUTES.TOOLBOX}
+                            component={gestureHandlerRootHOC(ToolboxScreen)}
+                            options={{title: 'Toolbox'}}
                           />
                           <Drawer.Screen
                             name={ROUTES.BENCHMARK}
