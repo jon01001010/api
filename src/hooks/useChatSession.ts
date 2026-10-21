@@ -1,5 +1,5 @@
 import React, {useRef} from 'react';
-import {AccessibilityInfo} from 'react-native';
+import {AccessibilityInfo, DeviceEventEmitter, Platform} from 'react-native';
 
 import {toJS} from 'mobx';
 import type {JinjaFormattedChatResult} from 'llama.rn';
@@ -652,6 +652,9 @@ export const useChatSession = (
       return;
     }
     leaseRef.current = lease;
+    const cancelSubscription = Platform.OS === 'android'
+      ? DeviceEventEmitter.addListener('PocketAgentInferenceCancel', () => lease.abort())
+      : null;
 
     // Run UI clears on abort, not on drain.
     let uiStopped = false;
@@ -685,6 +688,7 @@ export const useChatSession = (
         isStopped: () => uiStopped,
       });
     } finally {
+      cancelSubscription?.remove();
       lease.signal.removeEventListener('abort', uiStop);
       uiStop();
       if (leaseRef.current === lease) {
