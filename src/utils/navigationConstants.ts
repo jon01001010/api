@@ -4,6 +4,7 @@ export const ROUTES = {
   CHAT: 'Chat',
   MODELS: 'Models',
   PALS: 'Pals (experimental)',
+  TOOLBOX: 'Toolbox',
   BENCHMARK: 'Benchmark',
   SETTINGS: 'Settings',
   POCKETAGENT_HARDWARE: 'PocketAgent Hardware',
