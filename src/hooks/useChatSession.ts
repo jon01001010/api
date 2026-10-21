@@ -54,6 +54,8 @@ import {
   talentRegistry,
 } from '../services/talents';
 import type {ToolDefinition} from '../services/talents/types';
+import {deriveToolSchemas} from '../services/talents';
+import {readGlobalTools, readGlobalPrompt, generatedToolPrompt} from '../utils/globalToolSettings';
 import {
   agentStateReducer,
   createTriggerMarkerCache,
@@ -764,9 +766,39 @@ export const useChatSession = (
 
     currentMessageInfo.current = messageInfo;
 
-    // Allowed talent names for this Pal. The runner rejects any
-    // tool call whose function.name isn't in this list.
-    const palTalents = (pal?.pact?.talents ?? []).map(t => t.name);
+    // Global tool selection applies to plain chats as well as named assistants.
+    // Fail closed if storage cannot be read; never advertise unavailable tools.
+    let globalNames: string[] = [];
+    let globalInstructions = '';
+    try {
+      [globalNames, globalInstructions] = await Promise.all([
+        readGlobalTools(), readGlobalPrompt(),
+      ]);
+    } catch (e) {
+      console.warn('[chat] global tool settings unavailable', e);
+    }
+    const palTalents = [...new Set([
+      ...(pal?.pact?.talents ?? []).map(t => t.name),
+      ...globalNames,
+    ])];
+    cleanCompletionParams.tools = deriveToolSchemas(palTalents);
+    const globalText = [globalInstructions.trim(), generatedToolPrompt(palTalents)]
+      .filter(Boolean).join('\n\n');
+    if (globalText) {
+      const messages = cleanCompletionParams.messages ?? [];
+      const first = messages[0];
+      if (first?.role === 'system' && typeof first.content === 'string') {
+        cleanCompletionParams.messages = [
+          {...first, content: first.content + '\n\n' + globalText},
+          ...messages.slice(1),
+        ];
+      } else {
+        cleanCompletionParams.messages = [
+          {role: 'system', content: globalText},
+          ...messages,
+        ];
+      }
+    }
 
     const completionStartTime = Date.now();
     const timeToFirstTokenMs: {value: number | null} = {value: null};
