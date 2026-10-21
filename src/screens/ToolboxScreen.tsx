@@ -1,14 +1,16 @@
-import React, {useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ScrollView, View} from 'react-native';
 import {Button, Card, Chip, Dialog, Portal, Text, TextInput} from 'react-native-paper';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
 
 type Draft = {id: string; name: string; description: string; parameters: string};
+const STORAGE_KEY = '@pocketagent/toolbox/drafts/v1';
 let draftCounter = 0;
 
 /**
  * Toolbox editor prototype: custom tool definitions are local screen drafts,
- * NOT executable plugins and NOT persisted yet. Built-ins are protected.
+ * NOT executable plugins. Drafts are persisted on-device. Built-ins are protected.
  */
 export const ToolboxScreen: React.FC = () => {
   const tools = useMemo(() => {
@@ -21,12 +23,39 @@ export const ToolboxScreen: React.FC = () => {
   }, []);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [editing, setEditing] = useState<Draft | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [storageError, setStorageError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(STORAGE_KEY)
+      .then(raw => {
+        if (!active) return;
+        if (raw) {
+          const data: unknown = JSON.parse(raw);
+          if (!Array.isArray(data) || !data.every(item =>
+            item && typeof item.id === 'string' && typeof item.name === 'string' &&
+            typeof item.description === 'string' && typeof item.parameters === 'string'
+          )) throw new Error('Stored drafts have an invalid format');
+          setDrafts(data as Draft[]);
+        }
+      })
+      .catch(e => {if (active) setStorageError('Could not load drafts: ' + String(e));})
+      .finally(() => {if (active) setLoaded(true);});
+    return () => {active = false;};
+  }, []);
+
+  useEffect(() => {
+    if (!loaded || storageError) return;
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(drafts))
+      .catch(e => setStorageError('Could not save drafts: ' + String(e)));
+  }, [drafts, loaded, storageError]);
   const [error, setError] = useState('');
 
   const newDraft = (tool?: (typeof tools)[number]) => {
     draftCounter += 1;
     setEditing({
-      id: 'draft_' + draftCounter,
+      id: 'draft_' + Date.now() + '_' + draftCounter,
       name: tool ? tool.name + '_copy' : 'my_tool',
       description: tool?.description ?? '',
       parameters: tool?.parameters ?? '{"type":"object","properties":{}}',
@@ -35,7 +64,7 @@ export const ToolboxScreen: React.FC = () => {
   };
 
   const saveDraft = () => {
-    if (!editing) return;
+    if (!editing || !loaded) return;
     if (!/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/.test(editing.name)) {
       setError('Name must be 1–64 letters, numbers or underscores, starting with a letter or underscore.');
       return;
@@ -62,7 +91,9 @@ export const ToolboxScreen: React.FC = () => {
       <ScrollView contentContainerStyle={{padding: 16, gap: 12}}>
         <Text variant="titleLarge">Toolbox</Text>
         <Text variant="bodyMedium">Installed tools and custom tool drafts. Built-in tools cannot be modified. Drafts do not execute or grant permissions.</Text>
-        <Button mode="contained" onPress={() => newDraft()}>Create tool draft</Button>
+        <Button mode="contained" disabled={!loaded} onPress={() => newDraft()}>Create tool draft</Button>
+        {!loaded ? <Text>Loading saved drafts…</Text> : null}
+        {storageError ? <Text style={{color: 'red'}}>{storageError}</Text> : null}
         {tools.map(tool => (
           <Card key={tool.name} mode="outlined">
             <Card.Content>
@@ -90,7 +121,7 @@ export const ToolboxScreen: React.FC = () => {
             </Card.Content>
           </Card>
         ))}
-        <Text variant="bodySmall">Drafts currently last only until this screen unmounts. Saving, execution and permission controls will be added separately.</Text>
+        <Text variant="bodySmall">Drafts are stored on this device. They are definitions only: execution and permissions are not implemented.</Text>
       </ScrollView>
       <Portal>
         <Dialog visible={editing !== null} onDismiss={() => setEditing(null)}>
