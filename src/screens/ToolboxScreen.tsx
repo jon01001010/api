@@ -1,7 +1,9 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ScrollView, View} from 'react-native';
-import {Button, Card, Chip, Dialog, Portal, Text, TextInput} from 'react-native-paper';
+import {Button, Card, Chip, Dialog, Portal, Text, TextInput, Switch} from 'react-native-paper';
+import {observer} from 'mobx-react-lite';
+import {palStore} from '../store';
 import {safeMath} from '../services/talents/safeMath';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
 
@@ -13,7 +15,7 @@ let draftCounter = 0;
  * Toolbox editor prototype: custom tool definitions are local screen drafts,
  * NOT executable plugins. Drafts are persisted on-device. Built-ins are protected.
  */
-export const ToolboxScreen: React.FC = () => {
+export const ToolboxScreen: React.FC = observer(() => {
   const tools = useMemo(() => {
     registerDefaultTalents();
     return talentRegistry.getAll().map(engine => ({
@@ -22,6 +24,27 @@ export const ToolboxScreen: React.FC = () => {
       parameters: JSON.stringify(engine.toToolDefinition().function.parameters ?? {}, null, 2),
     }));
   }, []);
+  const [selectedPalId, setSelectedPalId] = useState<string | null>(null);
+  const [toggleError, setToggleError] = useState('');
+  const [savingTool, setSavingTool] = useState<string | null>(null);
+  const assistants = palStore.getLocalPals();
+  const selectedPal = assistants.find(p => p.id === selectedPalId) ?? null;
+  const toggleBuiltIn = async (name: string, enabled: boolean) => {
+    if (!selectedPal || savingTool) return;
+    const existing = selectedPal.pact?.talents ?? [];
+    const updated = enabled
+      ? [...existing.filter(t => t.name !== name), {name, necessity: 'required' as const}]
+      : existing.filter(t => t.name !== name);
+    setSavingTool(name);
+    setToggleError('');
+    try {
+      await palStore.updatePal(selectedPal.id, {pact: {talents: updated}});
+    } catch (e) {
+      setToggleError('Could not save tool setting: ' + String(e));
+    } finally {
+      setSavingTool(null);
+    }
+  };
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [editing, setEditing] = useState<Draft | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -98,6 +121,12 @@ export const ToolboxScreen: React.FC = () => {
       <ScrollView contentContainerStyle={{padding: 16, gap: 12}}>
         <Text variant="titleLarge">Toolbox</Text>
         <Text variant="bodyMedium">Installed tools and custom tool drafts. Built-in tools cannot be modified. Custom text tools can be tested locally, but cannot yet be called by the agent.</Text>
+        <Text variant="titleMedium">Enable tools for an assistant</Text>
+        <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 6}}>
+          {assistants.map(p => <Button key={p.id} mode={selectedPalId === p.id ? 'contained' : 'outlined'} onPress={() => setSelectedPalId(p.id)}>{p.name}</Button>)}
+        </View>
+        {!selectedPal ? <Text variant="bodySmall">Select an assistant above to enable its built-in tools. No tool is enabled globally.</Text> : null}
+        {toggleError ? <Text style={{color: 'red'}}>{toggleError}</Text> : null}
         <Button mode="contained" disabled={!loaded} onPress={() => newDraft()}>Create tool draft</Button>
         {!loaded ? <Text>Loading saved drafts…</Text> : null}
         {storageError ? <Text style={{color: 'red'}}>{storageError}</Text> : null}
@@ -107,6 +136,7 @@ export const ToolboxScreen: React.FC = () => {
               <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8}}>
                 <Text variant="titleMedium" style={{flex: 1}}>{tool.name}</Text>
                 <Chip compact>Built-in</Chip>
+                <Switch testID={'toolbox-toggle-' + tool.name} disabled={!selectedPal || savingTool !== null} value={selectedPal?.pact?.talents?.some(t => t.name === tool.name) ?? false} onValueChange={enabled => toggleBuiltIn(tool.name, enabled)} />
               </View>
               <Text variant="bodyMedium">{tool.description}</Text>
               <Button onPress={() => newDraft(tool)}>Duplicate to draft</Button>
@@ -214,4 +244,4 @@ export const ToolboxScreen: React.FC = () => {
       </Portal>
     </>
   );
-};
+});
