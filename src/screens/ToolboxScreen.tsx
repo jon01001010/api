@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useState} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ScrollView, View} from 'react-native';
 import {Button, Card, Chip, Dialog, Portal, Text, TextInput} from 'react-native-paper';
+import {safeMath} from '../services/talents/safeMath';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
 
 type Draft = {id: string; name: string; description: string; parameters: string; kind?: 'text_uppercase' | 'text_lowercase' | 'text_trim'};
