@@ -769,7 +769,7 @@
     },
     "chatPalModelPickerSheet": {
       "modelsTab": "Models",
-      "palsTab": "Pals",
+      "palsTab": "Assistants",
       "noPal": "No Pal",
       "disablePal": "Disable active pal",
       "noDescription": "No description",
@@ -1252,7 +1252,7 @@
   "screenTitles": {
     "chat": "Chat",
     "models": "Models",
-    "pals": "Pals (experimental)",
+    "pals": "Assistants",
     "benchmark": "Benchmark",
     "settings": "Settings",
     "appInfo": "App Info",
