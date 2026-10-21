@@ -200,3 +200,5 @@ jobs:
           path: android/app/build/outputs/apk/prod/debug/app-prod-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+# PocketAgent OpenAI API connector verification build 2026-10-21
