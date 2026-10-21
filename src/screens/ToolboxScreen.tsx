@@ -5,6 +5,7 @@ import Slider from '@react-native-community/slider';
 import {Button, Card, Chip, Dialog, Portal, Text, TextInput, Switch} from 'react-native-paper';
 import {readGlobalTools, writeGlobalTools, readGlobalPrompt, writeGlobalPrompt, generatedToolPrompt, readAgentMaxTurns, writeAgentMaxTurns} from '../utils/globalToolSettings';
 import {safeMath} from '../services/talents/safeMath';
+import {isBackgroundInferenceEnabled, setBackgroundInferenceEnabled} from '../utils/backgroundInference';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
 
 type Draft = {id: string; name: string; description: string; parameters: string; kind?: 'text_uppercase' | 'text_lowercase' | 'text_trim' | 'calculator' | 'http_get'};
@@ -27,6 +28,7 @@ export const ToolboxScreen: React.FC = () => {
   const [enabledTools, setEnabledTools] = useState<string[]>([]);
   const [globalPrompt, setGlobalPrompt] = useState('');
   const [agentMaxTurns, setAgentMaxTurns] = useState(20);
+  const [backgroundEnabled, setBackgroundEnabled] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [toggleError, setToggleError] = useState('');
   const [savingTool, setSavingTool] = useState<string | null>(null);
@@ -37,6 +39,7 @@ export const ToolboxScreen: React.FC = () => {
       .catch(e => {if (mounted) setToggleError('Could not load global settings: ' + String(e));});
     return () => {mounted = false;};
   }, []);
+  useEffect(() => {isBackgroundInferenceEnabled().then(setBackgroundEnabled).catch(() => {});}, []);
   const toggleBuiltIn = async (name: string, enabled: boolean) => {
     if (!settingsLoaded || savingTool) return;
     const next = enabled ? [...enabledTools.filter(n => n !== name), name] : enabledTools.filter(n => n !== name);
@@ -127,6 +130,12 @@ export const ToolboxScreen: React.FC = () => {
       <ScrollView contentContainerStyle={{padding: 16, gap: 12}}>
         <Text variant="titleLarge">Toolbox</Text>
         <Text variant="bodyMedium">Installed tools and custom tool drafts. Built-in tools cannot be modified. Custom text tools can be tested locally, but cannot yet be called by the agent.</Text>
+        <Text variant="titleMedium">Background inference (experimental)</Text>
+        <Switch value={backgroundEnabled} onValueChange={value => {
+          setBackgroundInferenceEnabled(value).then(() => setBackgroundEnabled(value))
+            .catch(e => setToggleError(String(e)));
+        }} />
+        <Text variant="bodySmall">Keep a foreground Android notification while Qwen generates. Android may still interrupt inference; test before relying on it.</Text>
         <Text variant="titleMedium">Agent loop limits</Text>
         <Text variant="bodyMedium">Maximum tool iterations: {agentMaxTurns}</Text>
         <Slider minimumValue={5} maximumValue={500} step={5} value={agentMaxTurns}
