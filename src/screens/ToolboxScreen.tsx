@@ -163,8 +163,12 @@ export const ToolboxScreen: React.FC = () => {
             <Button onPress={() => {
               if (!testDraft) return;
               const value = testInput.slice(0, 10000);
-              const result = testDraft.kind === 'calculator' ? String(safeMath(value)) : testDraft.kind === 'text_uppercase' ? value.toUpperCase() : testDraft.kind === 'text_lowercase' ? value.toLowerCase() : value.trim();
-              setTestOutput('Result: ' + result);
+              try {
+                const result = testDraft.kind === 'calculator' ? String(safeMath(value)) : testDraft.kind === 'text_uppercase' ? value.toUpperCase() : testDraft.kind === 'text_lowercase' ? value.toLowerCase() : value.trim();
+                setTestOutput('Result: ' + result);
+              } catch (error) {
+                setTestOutput('Error: ' + (error instanceof Error ? error.message : String(error)));
+              }
             }}>Run test</Button>
           </Dialog.Actions>
         </Dialog>
