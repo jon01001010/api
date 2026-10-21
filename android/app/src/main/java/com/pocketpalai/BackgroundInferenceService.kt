@@ -8,6 +8,8 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.facebook.react.bridge.ReactApplicationContext
 
 /** Keeps a user-started inference session foreground-visible; inference itself stays in llama.rn. */
 class BackgroundInferenceService : Service() {
@@ -16,7 +18,7 @@ class BackgroundInferenceService : Service() {
         const val ACTION_CANCEL = "com.pocketpal.INFERENCE_CANCEL"
         const val CHANNEL = "pocketagent_inference"
         const val ID = 8821
-        @Volatile var onCancel: (() -> Unit)? = null
+        @Volatile var reactContext: ReactApplicationContext? = null
     }
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onCreate() {
@@ -31,12 +33,12 @@ class BackgroundInferenceService : Service() {
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_CANCEL) {
-            onCancel?.invoke()
+            reactContext?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)?.emit("PocketAgentInferenceCancel", null)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
-        val launch = packageManager.getLaunchIntentForPackage(packageName)
+        val launch = packageManager.getLaunchIntentForPackage(packageName) ?: Intent(this, packageManager.getLaunchIntentForPackage(packageName)?.component?.className?.let { Class.forName(it) } ?: javaClass)
         val pending = PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val cancel = PendingIntent.getService(this, 1, Intent(this, BackgroundInferenceService::class.java).setAction(ACTION_CANCEL), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(this, CHANNEL)
