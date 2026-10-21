@@ -429,6 +429,32 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
             </View>
           )}
 
+          {/* OpenAI uses the existing OpenAI-compatible remote backend.
+              Claude needs its own Messages API adapter; do not route it here. */}
+          {!selectedServerId && (
+            <View style={{marginBottom: 12}}>
+              <Text variant="titleSmall">Cloud chat API</Text>
+              <Text variant="bodySmall">
+                OpenAI can use the existing remote chat connector. An API key is required and usage is billed separately. Claude support is coming in a separate adapter.
+              </Text>
+              <Button
+                mode="outlined"
+                testID="openai-api-preset"
+                onPress={() => {
+                  setUrl('https://api.openai.com/v1');
+                  setServerName('OpenAI');
+                  setServerType('openai' as ServerType);
+                  setSelectedServerId(null);
+                  setProbeResult(null);
+                  setAvailableModels([]);
+                  setUrlError('');
+                }}>
+                Configure OpenAI API
+              </Button>
+              <Text variant="bodySmall">Enter your API key below, then connect to list available models. Keys are stored using Android secure storage.</Text>
+            </View>
+          )}
+
           {/* Known Server Chips */}
           {serverStore.servers.length > 0 && (
             <View style={styles.chipsSection}>
