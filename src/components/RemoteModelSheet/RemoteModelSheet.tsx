@@ -187,7 +187,9 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
     // Trigger probe on url change (only when not using a known server chip)
     useEffect(() => {
       if (!selectedServerId) {
-        debouncedProbe(url);
+        if (!(url.trim() === 'https://api.openai.com/v1' && !apiKeyRef.current.trim())) {
+          debouncedProbe(url);
+        }
       }
       return () => {
         debouncedProbe.cancel();
@@ -349,7 +351,9 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
     // Show API key + server name fields when probe attempted (success OR auth failure)
     // This lets users enter an API key after a 401, then retry
     const showServerFields =
-      probeResult !== null && !isProbing && !selectedServerId;
+      (probeResult !== null || url.trim() === 'https://api.openai.com/v1') &&
+      !isProbing &&
+      !selectedServerId;
 
     const isRouter =
       !!selectedServerId && routerStore.isRouter(selectedServerId);
@@ -441,6 +445,8 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
                 mode="outlined"
                 testID="openai-api-preset"
                 onPress={() => {
+                  setApiKey('');
+                  apiKeyRef.current = '';
                   setUrl('https://api.openai.com/v1');
                   setServerName('OpenAI');
                   setServerType('OpenAI');
