@@ -40,6 +40,7 @@ export async function readAgentMaxTurns(): Promise<number> {
   try {
     const raw = await AsyncStorage.getItem(AGENT_TURNS_KEY);
     const value = Number(raw);
+    // Missing settings use the conservative default; malformed values fail closed.
     return raw !== null && Number.isInteger(value) && value >= 5 && value <= 500 ? value : 20;
   } catch {
     return 20;
