@@ -38,7 +38,7 @@ class BackgroundInferenceService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        val launch = packageManager.getLaunchIntentForPackage(packageName) ?: Intent(this, packageManager.getLaunchIntentForPackage(packageName)?.component?.className?.let { Class.forName(it) } ?: javaClass)
+        val launch = packageManager.getLaunchIntentForPackage(packageName) ?: Intent(this, MainActivity::class.java)
         val pending = PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val cancel = PendingIntent.getService(this, 1, Intent(this, BackgroundInferenceService::class.java).setAction(ACTION_CANCEL), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(this, CHANNEL)
