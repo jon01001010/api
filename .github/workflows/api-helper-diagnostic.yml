@@ -170,7 +170,7 @@ jobs:
           done
           cat native-build-diagnostics.txt
       - name: Save native compilation progress
-        if: always() && github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
+        if: always() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
