@@ -545,7 +545,7 @@ export const SidebarContent: React.FC<DrawerContentComponentProps> = observer(
               testID="drawer-item-chat"
             />
             <Drawer.Item
-              label={l10n.components.sidebarContent.menuItems.pals}
+              label="Assistants"
               icon={() => <PalIcon stroke={theme.colors.primary} />}
               onPress={() => props.navigation.navigate(ROUTES.PALS)}
               style={styles.menuDrawerItem}
@@ -557,6 +557,13 @@ export const SidebarContent: React.FC<DrawerContentComponentProps> = observer(
               onPress={() => props.navigation.navigate(ROUTES.MODELS)}
               style={styles.menuDrawerItem}
               testID="drawer-item-models"
+            />
+            <Drawer.Item
+              label="Toolbox"
+              icon={() => <SettingsIcon width={24} height={24} stroke={theme.colors.primary} />}
+              onPress={() => props.navigation.navigate(ROUTES.TOOLBOX)}
+              style={styles.menuDrawerItem}
+              testID="drawer-item-toolbox"
             />
             <Drawer.Item
               label={l10n.components.sidebarContent.menuItems.benchmark}
