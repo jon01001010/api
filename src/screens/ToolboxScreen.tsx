@@ -1,8 +1,9 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ScrollView, View} from 'react-native';
+import Slider from '@react-native-community/slider';
 import {Button, Card, Chip, Dialog, Portal, Text, TextInput, Switch} from 'react-native-paper';
-import {readGlobalTools, writeGlobalTools, readGlobalPrompt, writeGlobalPrompt, generatedToolPrompt} from '../utils/globalToolSettings';
+import {readGlobalTools, writeGlobalTools, readGlobalPrompt, writeGlobalPrompt, generatedToolPrompt, readAgentMaxTurns, writeAgentMaxTurns} from '../utils/globalToolSettings';
 import {safeMath} from '../services/talents/safeMath';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
 
@@ -25,13 +26,14 @@ export const ToolboxScreen: React.FC = () => {
   }, []);
   const [enabledTools, setEnabledTools] = useState<string[]>([]);
   const [globalPrompt, setGlobalPrompt] = useState('');
+  const [agentMaxTurns, setAgentMaxTurns] = useState(20);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [toggleError, setToggleError] = useState('');
   const [savingTool, setSavingTool] = useState<string | null>(null);
   useEffect(() => {
     let mounted = true;
-    Promise.all([readGlobalTools(), readGlobalPrompt()])
-      .then(([names, prompt]) => {if (mounted) {setEnabledTools(names); setGlobalPrompt(prompt); setSettingsLoaded(true);}})
+    Promise.all([readGlobalTools(), readGlobalPrompt(), readAgentMaxTurns()])
+      .then(([names, prompt, maxTurns]) => {if (mounted) {setEnabledTools(names); setGlobalPrompt(prompt); setAgentMaxTurns(maxTurns); setSettingsLoaded(true);}})
       .catch(e => {if (mounted) setToggleError('Could not load global settings: ' + String(e));});
     return () => {mounted = false;};
   }, []);
@@ -125,6 +127,12 @@ export const ToolboxScreen: React.FC = () => {
       <ScrollView contentContainerStyle={{padding: 16, gap: 12}}>
         <Text variant="titleLarge">Toolbox</Text>
         <Text variant="bodyMedium">Installed tools and custom tool drafts. Built-in tools cannot be modified. Custom text tools can be tested locally, but cannot yet be called by the agent.</Text>
+        <Text variant="titleMedium">Agent loop limits</Text>
+        <Text variant="bodyMedium">Maximum tool iterations: {agentMaxTurns}</Text>
+        <Slider minimumValue={5} maximumValue={500} step={5} value={agentMaxTurns}
+          onValueChange={setAgentMaxTurns}
+          onSlidingComplete={value => writeAgentMaxTurns(value).catch(e => setToggleError(String(e)))} />
+        <Text variant="bodySmall">The agent can stop earlier when its task is complete. Maximum 500 steps.</Text>
         <Text variant="titleMedium">Global tools (off by default)</Text>
         <Text variant="bodySmall">Enabled tools are available in ordinary model chats. All new tools start off.</Text>
         {toggleError ? <Text style={{color: 'red'}}>{toggleError}</Text> : null}
