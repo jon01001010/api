@@ -41,6 +41,7 @@ import {
   visibleStepContent,
 } from '../utils/chat';
 import {activateKeepAwake, deactivateKeepAwake} from '../utils/keepAwake';
+import {startBackgroundInference, finishBackgroundInference} from '../utils/backgroundInference';
 import {
   toApiCompletionParams,
   ApiCompletionParams,
@@ -666,6 +667,7 @@ export const useChatSession = (
       chatSessionStore.setToolCallTokenCount(0);
       try {
         deactivateKeepAwake();
+        void finishBackgroundInference().catch(error => console.warn('Could not stop inference notification', error));
       } catch (error) {
         console.error('Failed to deactivate keep awake after chat:', error);
       }
@@ -677,6 +679,7 @@ export const useChatSession = (
     }
 
     try {
+      await startBackgroundInference().catch(error => console.warn('Background inference service unavailable', error));
       return await sendUnderLease(message, lease, {
         stop: uiStop,
         isStopped: () => uiStopped,
