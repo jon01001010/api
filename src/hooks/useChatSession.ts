@@ -55,7 +55,7 @@ import {
 } from '../services/talents';
 import type {ToolDefinition} from '../services/talents/types';
 import {deriveToolSchemas} from '../services/talents';
-import {readGlobalTools, readGlobalPrompt, generatedToolPrompt} from '../utils/globalToolSettings';
+import {readGlobalTools, readGlobalPrompt, generatedToolPrompt, readAgentMaxTurns} from '../utils/globalToolSettings';
 import {
   agentStateReducer,
   createTriggerMarkerCache,
@@ -851,8 +851,10 @@ export const useChatSession = (
 
     let undone: UndoneSend | undefined;
     try {
+      const agentMaxTurns = await readAgentMaxTurns();
       const events = runAgent({
         engine,
+        maxTurns: agentMaxTurns,
         initialParams: cleanCompletionParams as ApiCompletionParams,
         allowedTalentNames: palTalents,
         talentLookup: name => talentRegistry.get(name),
