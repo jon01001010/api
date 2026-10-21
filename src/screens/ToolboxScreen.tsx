@@ -5,7 +5,7 @@ import {Button, Card, Chip, Dialog, Portal, Text, TextInput} from 'react-native-
 import {safeMath} from '../services/talents/safeMath';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
 
-type Draft = {id: string; name: string; description: string; parameters: string; kind?: 'text_uppercase' | 'text_lowercase' | 'text_trim'};
+type Draft = {id: string; name: string; description: string; parameters: string; kind?: 'text_uppercase' | 'text_lowercase' | 'text_trim' | 'calculator'};
 const STORAGE_KEY = '@pocketagent/toolbox/drafts/v1';
 let draftCounter = 0;
 
@@ -140,6 +140,7 @@ export const ToolboxScreen: React.FC = () => {
                 <Button onPress={() => setEditing(d => d ? {...d, kind: 'text_trim'} : d)}>Trim</Button>
                 <Button onPress={() => setEditing(d => d ? {...d, kind: 'text_uppercase'} : d)}>Uppercase</Button>
                 <Button onPress={() => setEditing(d => d ? {...d, kind: 'text_lowercase'} : d)}>Lowercase</Button>
+                <Button onPress={() => setEditing(d => d ? {...d, kind: 'calculator'} : d)}>Calculator</Button>
               </View>
               <TextInput label="Parameters (JSON schema)" mode="outlined" multiline value={editing?.parameters ?? ''} onChangeText={parameters => setEditing(d => d ? {...d, parameters} : d)} style={{marginVertical: 6}} />
               {error ? <Text style={{color: 'red'}}>{error}</Text> : null}
