@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {NativeModules, Platform} from 'react-native';
+import {AppState, NativeModules, Platform} from 'react-native';
 
 const KEY = '@pocketagent/background-inference/enabled/v1';
 export async function isBackgroundInferenceEnabled(): Promise<boolean> {
@@ -13,6 +13,6 @@ export async function startBackgroundInference(): Promise<void> {
     await NativeModules.BackgroundInference?.start();
   }
 }
-export async function finishBackgroundInference(): Promise<void> {
-  if (Platform.OS === 'android') await NativeModules.BackgroundInference?.finish();
+export async function finishBackgroundInference(completed = false): Promise<void> {
+  if (Platform.OS === 'android') await NativeModules.BackgroundInference?.finish(completed && AppState.currentState !== 'active');
 }
