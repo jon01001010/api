@@ -206,3 +206,5 @@ jobs:
 # Verify PocketAgent agent-loop slider build 2026-10-21
 
 # Experimental background inference APK verification 2026-10-21
+
+# Verify background completion notification and cancellation wiring 2026-10-21
