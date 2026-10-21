@@ -5,7 +5,7 @@ import {Button, Card, Chip, Dialog, Portal, Text, TextInput} from 'react-native-
 import {safeMath} from '../services/talents/safeMath';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
 
-type Draft = {id: string; name: string; description: string; parameters: string; kind?: 'text_uppercase' | 'text_lowercase' | 'text_trim' | 'calculator'};
+type Draft = {id: string; name: string; description: string; parameters: string; kind?: 'text_uppercase' | 'text_lowercase' | 'text_trim' | 'calculator' | 'http_get'};
 const STORAGE_KEY = '@pocketagent/toolbox/drafts/v1';
 let draftCounter = 0;
 
@@ -29,6 +29,8 @@ export const ToolboxScreen: React.FC = () => {
   const [testDraft, setTestDraft] = useState<Draft | null>(null);
   const [testInput, setTestInput] = useState('  Hello PocketAgent  ');
   const [testOutput, setTestOutput] = useState('');
+  const [networkConsent, setNetworkConsent] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -121,7 +123,7 @@ export const ToolboxScreen: React.FC = () => {
                 <Button onPress={() => {setEditing({...draft}); setError('');}}>Edit</Button>
                 <Button onPress={() => newDraft({name: draft.name, description: draft.description, parameters: draft.parameters})}>Duplicate</Button>
                 <Button onPress={() => setDrafts(previous => previous.filter(t => t.id !== draft.id))}>Delete</Button>
-                <Button onPress={() => {setTestDraft(draft); setTestOutput('');}}>Test</Button>
+                <Button onPress={() => {setTestDraft(draft); setTestOutput(''); setNetworkConsent(false); setTestInput(draft.kind === 'http_get' ? 'https://api.github.com/zen' : '  Hello PocketAgent  ');}}>Test</Button>
               </View>
             </Card.Content>
           </Card>
@@ -141,6 +143,7 @@ export const ToolboxScreen: React.FC = () => {
                 <Button onPress={() => setEditing(d => d ? {...d, kind: 'text_uppercase'} : d)}>Uppercase</Button>
                 <Button onPress={() => setEditing(d => d ? {...d, kind: 'text_lowercase'} : d)}>Lowercase</Button>
                 <Button onPress={() => setEditing(d => d ? {...d, kind: 'calculator'} : d)}>Calculator</Button>
+                <Button onPress={() => setEditing(d => d ? {...d, kind: 'http_get'} : d)}>HTTP GET</Button>
               </View>
               <TextInput label="Parameters (JSON schema)" mode="outlined" multiline value={editing?.parameters ?? ''} onChangeText={parameters => setEditing(d => d ? {...d, parameters} : d)} style={{marginVertical: 6}} />
               {error ? <Text style={{color: 'red'}}>{error}</Text> : null}
@@ -154,22 +157,58 @@ export const ToolboxScreen: React.FC = () => {
         <Dialog visible={testDraft !== null} onDismiss={() => setTestDraft(null)}>
           <Dialog.Title>Test {testDraft?.name}</Dialog.Title>
           <Dialog.Content>
-            <Text variant="bodySmall">Local text-only test. No network, files or agent calls.</Text>
-            <TextInput label="Input text" mode="outlined" multiline value={testInput} onChangeText={setTestInput} />
+            <Text variant="bodySmall">Tests are manual only. HTTP GET sends a request to the selected public HTTPS endpoint; no agent or file access.</Text>
+            <TextInput label={testDraft?.kind === 'http_get' ? 'HTTPS URL' : 'Input text'} mode="outlined" multiline value={testInput} onChangeText={setTestInput} />
+            {testDraft?.kind === 'http_get' ? <Button mode={networkConsent ? 'contained' : 'outlined'} onPress={() => setNetworkConsent(v => !v)}>{networkConsent ? 'Network request approved' : 'Approve this network request'}</Button> : null}
             <Text selectable variant="bodyMedium">{testOutput}</Text>
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setTestDraft(null)}>Close</Button>
-            <Button onPress={() => {
+            <Button disabled={testing} onPress={() => setTestDraft(null)}>Close</Button>
+            <Button disabled={testing || (testDraft?.kind === 'http_get' && !networkConsent)} onPress={async () => {
               if (!testDraft) return;
               const value = testInput.slice(0, 10000);
               try {
+                if (testDraft.kind === 'http_get') {
+                  const parsed = new URL(value.trim());
+                  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port || parsed.hostname !== 'api.github.com') {
+                    throw new Error('Only public https://api.github.com endpoints are allowed in this initial test.');
+                  }
+                  setTesting(true);
+                  const controller = new AbortController();
+                  const timeout = setTimeout(() => controller.abort(), 8000);
+                  try {
+                    const response = await fetch(parsed.toString(), {method: 'GET', headers: {Accept: 'application/json'}, signal: controller.signal});
+                    const declaredLength = Number(response.headers.get('content-length') ?? '0');
+                    if (declaredLength > 32768) throw new Error('Response exceeds 32 KB limit');
+                    const reader = response.body?.getReader();
+                    if (!reader) throw new Error('Streaming response unavailable; refusing unbounded download');
+                    const chunks: Uint8Array[] = [];
+                    let size = 0;
+                    while (true) {
+                      const next = await reader.read();
+                      if (next.done) break;
+                      size += next.value.byteLength;
+                      if (size > 32768) {await reader.cancel(); throw new Error('Response exceeds 32 KB limit');}
+                      chunks.push(next.value);
+                    }
+                    const bytes = new Uint8Array(size);
+                    let offset = 0;
+                    chunks.forEach(chunk => {bytes.set(chunk, offset); offset += chunk.length;});
+                    const output = new TextDecoder().decode(bytes);
+                    setTestOutput('HTTP ' + response.status + ': ' + output.slice(0, 4000));
+                  } finally {
+                    clearTimeout(timeout);
+                    setTesting(false);
+                    setNetworkConsent(false);
+                  }
+                  return;
+                }
                 const result = testDraft.kind === 'calculator' ? String(safeMath(value)) : testDraft.kind === 'text_uppercase' ? value.toUpperCase() : testDraft.kind === 'text_lowercase' ? value.toLowerCase() : value.trim();
                 setTestOutput('Result: ' + result);
               } catch (error) {
                 setTestOutput('Error: ' + (error instanceof Error ? error.message : String(error)));
               }
-            }}>Run test</Button>
+            }}>{testing ? 'Running…' : 'Run test'}</Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>
