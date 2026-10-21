@@ -443,7 +443,7 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
                 onPress={() => {
                   setUrl('https://api.openai.com/v1');
                   setServerName('OpenAI');
-                  setServerType('openai' as ServerType);
+                  setServerType('OpenAI');
                   setSelectedServerId(null);
                   setProbeResult(null);
                   setAvailableModels([]);
