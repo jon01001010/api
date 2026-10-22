@@ -1,9 +1,7 @@
 name: API Helper diagnostic build
 on:
   push:
-    branches: [main]
-    paths:
-      - '.github/workflows/api-helper-diagnostic.yml'
+    branches: [main, 'checkpoint/pocketagent-2026-10-21-integration']
   workflow_dispatch:
     inputs:
       stage:
