@@ -34,6 +34,7 @@ import {
   HubRunSheetHost,
 } from './src/components';
 import {MarkdownProvider} from './src/components/MarkdownView';
+import {ToolPermissionDialog} from './src/components/ToolPermissionDialog';
 import {
   AutomationBridge,
   BenchmarkRunnerScreen,
@@ -114,6 +115,7 @@ const App = observer(() => {
       <SafeAreaProvider>
         <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
           <PaperProvider theme={theme}>
+            <ToolPermissionDialog />
             <L10nContext.Provider value={currentL10n}>
               <MarkdownProvider>
                 <NavigationContainer>

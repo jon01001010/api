@@ -9,6 +9,7 @@ import type {PageContent} from '../search/types';
 import {budgetPage} from '../search/searchBudget';
 import {wrapUntrusted} from './untrustedContent';
 import {allowReadUrls, extractUrls, matchReadUrl} from './readUrlAllowlist';
+import {checkNetworkUrl} from '../security/networkPolicy';
 
 /**
  * Reject non-http(s) schemes and embedded credentials so a malicious page
@@ -70,6 +71,14 @@ export class ReadUrlEngine implements TalentEngine {
     if (targetUrl === null) {
       const summary =
         'read_url: this URL is not allowed. Use a page on a site the user named, or copy a URL exactly from a web_search result or a page you read with read_url; or run web_search first.';
+      return {type: 'error', summary, errorMessage: summary};
+    }
+
+    // Fail closed before delegating to any search provider. This checks the
+    // model-selected destination, NOT provider-side DNS or redirects.
+    const networkDecision = checkNetworkUrl(targetUrl);
+    if (!networkDecision.allowed) {
+      const summary = `read_url: blocked destination (${networkDecision.reason})`;
       return {type: 'error', summary, errorMessage: summary};
     }
 

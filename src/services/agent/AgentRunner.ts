@@ -6,6 +6,8 @@ import type {
 import type {ChatMessage} from '../../utils/types';
 import type {AgentToolCall, AgentToolOutcome} from '../../utils/types';
 import {stopQuietly} from '../../utils/stopQuietly';
+import {recordToolDiagnostic} from './toolDiagnosticStore';
+import {permissionRequests} from '../security/permissionRequests';
 
 import type {
   AgentEvent,
@@ -168,6 +170,23 @@ async function executeOne(
       errorMessage: summary,
     };
     return {callId, toolName: fnName, result, responseContent: summary};
+  }
+
+  // Explicit user approval for capabilities with external side effects.
+  // Unknown/custom tools default to approval, never implicit permission.
+  const capability = fnName === 'read_url' || fnName === 'web_search'
+    ? 'network' : fnName === 'datetime' || fnName === 'calculate'
+      ? null : 'external_action';
+  if (capability) {
+    const approved = await permissionRequests.authorize(
+      fnName, capability, `Run ${fnName}`, signal,
+    );
+    if (!approved) {
+      const summary = `Permission denied for ${fnName}`;
+      return {callId, toolName: fnName,
+        result: {type: 'error', summary, errorMessage: summary},
+        responseContent: summary};
+    }
   }
 
   try {
@@ -445,6 +464,7 @@ export async function* runAgent(
 
       const outcomes: AgentToolOutcome[] = [];
       for (const call of calls) {
+        const startedAt = Date.now();
         yield {type: 'tool_call_started', call};
         const outcome = await executeOne(
           call,
@@ -452,6 +472,12 @@ export async function* runAgent(
           talentLookup,
           signal,
         );
+        recordToolDiagnostic(call.id, call.function.name,
+          call.function.arguments, startedAt,
+          signal?.aborted ? 'cancelled'
+            : outcome.responseContent.startsWith('Permission denied') ? 'denied'
+            : outcome.result.type === 'error' ? 'error' : 'success',
+          outcome.responseContent);
         outcomes.push(outcome);
         yield {type: 'tool_call_finished', outcome};
       }

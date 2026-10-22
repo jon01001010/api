@@ -5,6 +5,7 @@ import Slider from '@react-native-community/slider';
 import {Button, Card, Chip, Dialog, Portal, Text, TextInput, Switch} from 'react-native-paper';
 import {readGlobalTools, writeGlobalTools, readGlobalPrompt, writeGlobalPrompt, generatedToolPrompt, readAgentMaxTurns, writeAgentMaxTurns} from '../utils/globalToolSettings';
 import {safeMath} from '../services/talents/safeMath';
+import {ToolDiagnosticsPanel} from '../components/ToolDiagnosticsPanel';
 import {isBackgroundInferenceEnabled, setBackgroundInferenceEnabled} from '../utils/backgroundInference';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
 
@@ -129,6 +130,7 @@ export const ToolboxScreen: React.FC = () => {
     <>
       <ScrollView contentContainerStyle={{padding: 16, gap: 12}}>
         <Text variant="titleLarge">Toolbox</Text>
+        <ToolDiagnosticsPanel />
         <Text variant="bodyMedium">Installed tools and custom tool drafts. Built-in tools cannot be modified. Custom text tools can be tested locally, but cannot yet be called by the agent.</Text>
         <Text variant="titleMedium">Background inference (experimental)</Text>
         <Switch value={backgroundEnabled} onValueChange={value => {
