@@ -5,10 +5,16 @@ export class DatetimeEngine implements TalentEngine {
 
   async execute(args: Record<string, any>): Promise<TalentResult> {
     const tz = typeof args.timezone === 'string' ? args.timezone : undefined;
-    const phoneTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    const effectiveTz = tz ?? phoneTz;
-
     try {
+      const phoneTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      let effectiveTz = tz ?? phoneTz;
+      // Models occasionally pass city names or malformed zones. Fall back to
+      // the phone's zone instead of failing the entire agent turn.
+      try {
+        new Intl.DateTimeFormat('en-US', {timeZone: effectiveTz});
+      } catch {
+        effectiveTz = phoneTz;
+      }
       // Intl is the source of truth for tz math; dayjs-timezone is
       // unreliable on Hermes because it depends on ICU internals that
       // aren't fully exposed. Intl.DateTimeFormat also throws
