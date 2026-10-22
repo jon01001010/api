@@ -14,6 +14,11 @@ export class DatetimeEngine implements TalentEngine {
         new Intl.DateTimeFormat('en-US', {timeZone: effectiveTz});
       } catch {
         effectiveTz = phoneTz;
+        try {
+          new Intl.DateTimeFormat('en-US', {timeZone: effectiveTz});
+        } catch {
+          effectiveTz = 'UTC';
+        }
       }
       // Intl is the source of truth for tz math; dayjs-timezone is
       // unreliable on Hermes because it depends on ICU internals that
