@@ -208,3 +208,5 @@ jobs:
 # Experimental background inference APK verification 2026-10-21
 
 # Verify background completion notification and cancellation wiring 2026-10-21
+
+# Verify timezone fallback and background completion notification regression 2026-10-21
