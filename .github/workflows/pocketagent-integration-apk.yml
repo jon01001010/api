@@ -24,6 +24,15 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           test -d "$ANDROID_HOME"
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list_installed || true
+      - name: Reclaim runner disk space
+        run: |
+          echo "Disk before cleanup:"
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/powershell
+          sudo rm -rf /usr/local/lib/android/sdk/system-images /usr/local/lib/android/sdk/emulator
+          sudo apt-get clean
+          echo "Disk after cleanup:"
+          df -h /
       - name: Install dependencies
         run: yarn install --frozen-lockfile
       - name: TypeScript validation
@@ -31,7 +40,7 @@ jobs:
       - name: Custom tool storage tests
         run: yarn jest --runInBand --coverage=false CustomToolStorageAdapter
       - name: Build prodDebug APK
-        run: cd android && chmod +x gradlew && ./gradlew assembleProdDebug --no-daemon
+        run: cd android && chmod +x gradlew && ./gradlew assembleProdDebug --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
