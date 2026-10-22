@@ -1,0 +1,37 @@
+name: PocketAgent integration APK
+on:
+  push:
+    branches: [pocketagent-step1-integration]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: TypeScript validation
+        run: yarn typecheck
+      - name: Custom tool storage tests
+        run: yarn jest --runInBand --passWithNoTests CustomToolStorageAdapter
+      - name: Build prodDebug APK
+        run: cd android && chmod +x gradlew && ./gradlew assembleProdDebug --no-daemon
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketagent-prod-debug-apk
+          path: android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
