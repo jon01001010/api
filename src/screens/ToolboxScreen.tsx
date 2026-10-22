@@ -8,6 +8,7 @@ import {safeMath} from '../services/talents/safeMath';
 import {ToolDiagnosticsPanel} from '../components/ToolDiagnosticsPanel';
 import {isBackgroundInferenceEnabled, setBackgroundInferenceEnabled} from '../utils/backgroundInference';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
+import {DEFAULT_VOICE_MODE, VOICE_MODES, VoiceMode, explainPermission, PermissionFeature, AccessDuration} from '../utils/permissionExplanations';
 
 type Draft = {id: string; name: string; description: string; parameters: string; kind?: 'text_uppercase' | 'text_lowercase' | 'text_trim' | 'calculator' | 'http_get'};
 const STORAGE_KEY = '@pocketagent/toolbox/drafts/v1';
@@ -30,6 +31,9 @@ export const ToolboxScreen: React.FC = () => {
   const [globalPrompt, setGlobalPrompt] = useState('');
   const [agentMaxTurns, setAgentMaxTurns] = useState(20);
   const [backgroundEnabled, setBackgroundEnabled] = useState(false);
+  const [voicePreview, setVoicePreview] = useState<VoiceMode>(DEFAULT_VOICE_MODE);
+  const [permissionPreview, setPermissionPreview] = useState<PermissionFeature>('microphone');
+  const [durationPreview, setDurationPreview] = useState<AccessDuration>('once');
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [toggleError, setToggleError] = useState('');
   const [savingTool, setSavingTool] = useState<string | null>(null);
@@ -131,6 +135,36 @@ export const ToolboxScreen: React.FC = () => {
       <ScrollView contentContainerStyle={{padding: 16, gap: 12}}>
         <Text variant="titleLarge">Toolbox</Text>
         <ToolDiagnosticsPanel />
+        <Card mode="outlined">
+          <Card.Content>
+            <Text variant="titleMedium">Privacy onboarding preview</Text>
+            <Text variant="bodySmall">Design preview only. These choices do not activate or disable microphone features or grant Android permissions.</Text>
+            <Text variant="titleSmall">Voice modes</Text>
+            {(Object.keys(VOICE_MODES) as VoiceMode[]).map(mode => (
+              <Button key={mode} mode={voicePreview === mode ? 'contained-tonal' : 'text'} onPress={() => setVoicePreview(mode)}>
+                {VOICE_MODES[mode].title}
+              </Button>
+            ))}
+            <Text variant="bodyMedium">{VOICE_MODES[voicePreview].explanation}</Text>
+            <Text variant="titleSmall">Permission explanation preview</Text>
+            {(['microphone', 'file_read', 'internet', 'notifications', 'background_tasks'] as PermissionFeature[]).map(feature => (
+              <Button key={feature} mode={permissionPreview === feature ? 'contained-tonal' : 'text'} onPress={() => setPermissionPreview(feature)}>
+                {feature.replace(/_/g, ' ')}
+              </Button>
+            ))}
+            {(['once', 'task', 'remember'] as AccessDuration[]).map(duration => (
+              <Button key={duration} mode={durationPreview === duration ? 'contained-tonal' : 'text'} onPress={() => setDurationPreview(duration)}>
+                {duration === 'once' ? 'Just once' : duration === 'task' ? 'For this task' : 'Remember'}
+              </Button>
+            ))}
+            <Text variant="titleSmall">{explainPermission(permissionPreview, durationPreview).title}</Text>
+            <Text>Why: {explainPermission(permissionPreview, durationPreview).why}</Text>
+            <Text>Access: {explainPermission(permissionPreview, durationPreview).scope}</Text>
+            <Text>How long: {explainPermission(permissionPreview, durationPreview).duration}</Text>
+            <Text>Data: {explainPermission(permissionPreview, durationPreview).dataHandling}</Text>
+            <Text>{explainPermission(permissionPreview, durationPreview).canDecline}</Text>
+          </Card.Content>
+        </Card>
         <Text variant="bodyMedium">Installed tools and custom tool drafts. Built-in tools cannot be modified. Custom text tools can be tested locally, but cannot yet be called by the agent.</Text>
         <Text variant="titleMedium">Background inference (experimental)</Text>
         <Switch value={backgroundEnabled} onValueChange={value => {
