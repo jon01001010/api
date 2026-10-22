@@ -156,60 +156,17 @@ export const DownloadBanner: React.FC = observer(() => {
   );
 
   return (
-    <View style={styles.root}>
-      <Pressable
-        testID="download-banner"
-        accessibilityRole="button"
-        accessibilityLabel={
-          extraCount > 0
-            ? `${title}, ${eta}, ${extraLabel}`
-            : `${title}, ${eta}`
-        }
-        onPress={() => navigation.navigate(ROUTES.MODELS as never)}
-        style={styles.body}>
-        <View
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          style={[
-            styles.avatar,
-            pal?.color?.[0] ? {backgroundColor: pal.color[0]} : null,
-          ]}
-        />
-        <View style={styles.content}>
-          <View style={styles.titleRow}>
-            <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
-              {title}
-            </Text>
-            {extraCount > 0 ? (
-              <View testID="download-banner-extra-badge" style={styles.badge}>
-                <Text style={styles.badgeText}>{`+${extraCount}`}</Text>
-              </View>
-            ) : null}
-            {eta ? <Text style={styles.eta}>{eta}</Text> : null}
-          </View>
-          <View style={styles.track}>
-            <View style={[styles.fill, {width: `${clamped}%`}]} />
-          </View>
-        </View>
-      </Pressable>
-      <Pressable
-        testID="download-banner-stop"
-        accessibilityRole="button"
-        accessibilityLabel={l10n.common.stop}
-        onPress={() => modelStore.cancelDownload(visible.modelId)}
-        style={styles.stop}
-        hitSlop={8}>
-        <Text style={styles.stopText}>{l10n.common.stop}</Text>
-      </Pressable>
-      <Pressable
-        testID="download-banner-dismiss"
-        accessibilityRole="button"
-        accessibilityLabel={l10n.common.dismiss}
-        onPress={() => uiStore.dismissDownloadBanner(visible.modelId)}
-        style={styles.dismiss}
-        hitSlop={8}>
-        <XIcon width={14} height={14} stroke={theme.colors.onSurfaceVariant} />
-      </Pressable>
-    </View>
+    <Pressable
+      testID="download-banner"
+      accessibilityRole="button"
+      accessibilityLabel={extraCount > 0 ? `${title}, ${eta}, ${extraLabel}` : `${title}, ${eta}`}
+      accessibilityHint="Open Models to manage downloads"
+      onPress={() => navigation.navigate(ROUTES.MODELS as never)}
+      style={styles.root}>
+      <Text style={styles.compactProgress}>{`${Math.round(clamped)}%`}</Text>
+      <View style={styles.track}>
+        <View style={[styles.fill, {width: `${clamped}%`}]} />
+      </View>
+    </Pressable>
   );
 });
