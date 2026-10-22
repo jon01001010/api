@@ -29,7 +29,7 @@ jobs:
       - name: TypeScript validation
         run: yarn typecheck
       - name: Custom tool storage tests
-        run: yarn jest --runInBand --passWithNoTests CustomToolStorageAdapter
+        run: yarn jest --runInBand --coverage=false CustomToolStorageAdapter
       - name: Build prodDebug APK
         run: cd android && chmod +x gradlew && ./gradlew assembleProdDebug --no-daemon
       - name: Upload APK
