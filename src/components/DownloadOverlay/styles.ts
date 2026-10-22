@@ -7,8 +7,8 @@ export const overlayStyles = (theme: Theme, topInset: number) =>
     root: {
       position: 'absolute',
       top: topInset - 4,
-      left: 50,
-      right: 45,
+      right: 12,
+      width: 46,
       zIndex: 100,
     },
   });
@@ -18,13 +18,13 @@ export const bannerStyles = (theme: Theme) =>
     root: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: theme.spacing.s,
+      gap: 0,
       backgroundColor: theme.colors.background,
       borderRadius: theme.radius.m,
       borderWidth: theme.stroke.xs,
       borderColor: theme.colors.mutedLight,
-      paddingVertical: 6,
-      paddingHorizontal: 10,
+      paddingVertical: 5,
+      paddingHorizontal: 5,
       shadowColor: theme.colors.shadow,
       shadowOffset: {width: 0, height: 2},
       shadowOpacity: 0.06,
