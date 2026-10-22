@@ -31,6 +31,12 @@ export const bannerStyles = (theme: Theme) =>
       shadowRadius: 8,
       elevation: 4,
     },
+    compactProgress: {
+      ...theme.typography.captionS,
+      color: theme.colors.onBackground,
+      textAlign: 'center',
+      minWidth: 34,
+    },
     avatar: {
       width: 26,
       height: 26,
