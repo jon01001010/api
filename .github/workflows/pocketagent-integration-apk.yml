@@ -2,49 +2,205 @@ name: PocketAgent integration APK
 on:
   push:
     branches: [pocketagent-step1-integration]
+    paths:
+      - '.github/workflows/pocketagent-integration-apk.yml'
   workflow_dispatch:
+    inputs:
+      stage:
+        description: Run one build stage
+        type: choice
+        default: apk
+        options: [configuration, compilation, native, apk]
 permissions:
   contents: read
+concurrency:
+  group: api-helper-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  verify-and-build:
+  diagnostic:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Free runner disk space for native SDK
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
+        run: |
+          set -euo pipefail
+          echo "Disk before cleanup:"
+          df -h /
+          # Preinstalled toolchains not needed for this Android build.
+          sudo rm -rf /usr/share/dotnet /usr/share/swift /usr/local/share/powershell /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/lib/android/sdk/system-images
+          echo "Disk after cleanup:"
+          df -h /
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: yarn
+          node-version: '22.21.0'
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - name: Verify preinstalled Android SDK
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.0.0'
+          cache-read-only: false
+          cache-cleanup: always
+      - name: Install locked dependencies and patches
+        timeout-minutes: 12
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          test -d "$ANDROID_HOME"
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list_installed || true
-      - name: Reclaim runner disk space
-        run: |
-          echo "Disk before cleanup:"
-          df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/powershell
-          sudo rm -rf /usr/local/lib/android/sdk/system-images /usr/local/lib/android/sdk/emulator
-          sudo apt-get clean
-          echo "Disk after cleanup:"
-          df -h /
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
+          set -euo pipefail
+          chmod +x scripts/postinstall.sh
+          npm install --global yarn@1.22.22
+          yarn install --frozen-lockfile --non-interactive
+          node node_modules/patch-package/index.js --error-on-fail
       - name: TypeScript validation
         run: yarn typecheck
       - name: Custom tool storage tests
         run: yarn jest --runInBand --coverage=false CustomToolStorageAdapter
-      - name: Build prodDebug APK
-        run: cd android && chmod +x gradlew && ./gradlew assembleProdDebug --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a
-      - name: Upload APK
-        if: success()
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: ''
+      - name: Install Android packages
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.3.13750724' 'ndk;27.0.12077973' 'cmake;3.22.1'
+          python3 - <<'PY'
+          import os, subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from android_build_tools import normalize_ndk
+          for revision in ('27.3.13750724', '27.0.12077973'):
+              compiler = normalize_ndk(Path(os.environ['ANDROID_HOME']) / 'ndk' / revision, revision)
+              subprocess.run([str(compiler), '--version'], check=True)
+          PY
+      - name: Reclaim SDK installation caches
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
+        run: |
+          set -euo pipefail
+          rm -rf "$HOME/.npm/_cacache" "$HOME/.cache/yarn" || true
+          # sdkmanager can leave large temporary archives after installing NDKs.
+          rm -rf "$HOME/.android/cache" || true
+          echo 'Disk after Android SDK installation:'
+          df -h /
+      - name: Remove unused preinstalled Android NDKs
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
+        run: |
+          set -euo pipefail
+          # Keep only the two explicitly pinned NDK versions installed above.
+          for ndk in "$ANDROID_HOME"/ndk/*; do
+            [ -d "$ndk" ] || continue
+            case "${ndk##*/}" in
+              27.3.13750724|27.0.12077973) ;;
+              *) echo "Removing unused NDK: $ndk"; rm -rf "$ndk" ;;
+            esac
+          done
+          df -h /
+      - name: Prepare diagnostic configuration
+        run: python3 scripts/prepare-diagnostic-config.py
+      - name: Verify Hexagon SDK for APK stage
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
+        uses: ./.github/actions/setup-hexagon-sdk
+      - name: Configuration
+        if: inputs.stage == 'configuration'
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          gradle -p android --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a help 2>&1 | tee diagnostic-build.log
+      - name: Compilation
+        if: inputs.stage == 'compilation'
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          gradle -p android --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a :app:compileProdDebugKotlin :app:compileProdDebugJavaWithJavac 2>&1 | tee diagnostic-build.log
+      # Restore native intermediates from a prior attempt with matching inputs.
+      # Cache reuse is best-effort and does not establish build correctness.
+      - name: Validate native variant selection
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
+        run: |
+          set -euo pipefail
+          node scripts/verify-android-payload.js --print-variants | tee native-variants.txt
+          test -s native-variants.txt
+          echo 'Required ARM64 native variants:'
+          cat native-variants.txt
+      - name: Restore native build intermediates
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules/llama.rn/android/.cxx
+            node_modules/llama.rn/android/build/intermediates/cxx
+            node_modules/llama.rn/android/build/generated/source/codegen
+          key: pocketagent-native-arm64-v2-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-${{ github.run_id }}
+          restore-keys: |
+            pocketagent-native-arm64-v2-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-
+      - name: Inspect native cache and disk budget
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
+        run: |
+          set -euo pipefail
+          echo 'Disk available before native compilation:'
+          df -h /
+          echo 'Cached llama.rn native build directories:'
+          du -sh node_modules/llama.rn/android/.cxx node_modules/llama.rn/android/build/intermediates/cxx node_modules/llama.rn/android/build/generated/source/codegen 2>/dev/null || true
+          echo 'Largest Android and Gradle directories:'
+          du -sh android/.gradle android/app/.cxx android/app/build "$HOME/.gradle/caches" "$HOME/.hexagon-sdk" 2>/dev/null || true
+          free_kb=$(df -Pk / | awk 'NR==2 {print $4}')
+          if (( free_kb < 6291456 )); then
+            echo "::error::Less than 6 GiB free before native compilation; refusing to exhaust runner disk." >&2
+            exit 1
+          fi
+      # Rebuild after PocketAgent onboarding and Toolbox navigation updates.
+      - name: Assemble and verify NPU APK
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
+        timeout-minutes: 110
+        run: |
+          set -euo pipefail
+          bash scripts/build-api-helper-npu.sh 2>&1 | tee diagnostic-build.log
+      - name: Record native build disk usage
+        if: always() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
+        run: |
+          echo 'Disk after native build:' > native-build-diagnostics.txt
+          df -h / >> native-build-diagnostics.txt
+          echo 'Native build cache sizes:' >> native-build-diagnostics.txt
+          du -sh node_modules/llama.rn/android/.cxx node_modules/llama.rn/android/build/intermediates/cxx node_modules/llama.rn/android/build/generated/source/codegen android/app/.cxx android/app/build 2>/dev/null >> native-build-diagnostics.txt || true
+          echo 'Native object counts:' >> native-build-diagnostics.txt
+          for dir in node_modules/llama.rn/android/.cxx node_modules/llama.rn/android/build/intermediates/cxx android/app/.cxx; do
+            if [ -d "$dir" ]; then
+              printf '%s: ' "$dir" >> native-build-diagnostics.txt
+              find "$dir" -type f -name '*.o' | wc -l >> native-build-diagnostics.txt
+            fi
+          done
+          cat native-build-diagnostics.txt
+      - name: Save native compilation progress
+        if: always() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            node_modules/llama.rn/android/.cxx
+            node_modules/llama.rn/android/build/intermediates/cxx
+            node_modules/llama.rn/android/build/generated/source/codegen
+          key: pocketagent-native-arm64-v2-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Keep logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pocketagent-prod-debug-apk
-          path: android/app/build/outputs/apk/**/*.apk
+          name: diagnostic-logs-${{ inputs.stage || 'configuration' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            diagnostic-build.log
+            native-build-diagnostics.txt
+            native-variants.txt
+            android/app/build/outputs/api-helper-npu-payload.txt
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Keep verified APK
+        if: success() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketagent-integration-apk-${{ github.run_id }}-${{ github.run_attempt }}
+          path: android/app/build/outputs/apk/prod/debug/app-prod-debug.apk
           if-no-files-found: error
+          retention-days: 14
