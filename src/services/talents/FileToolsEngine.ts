@@ -31,7 +31,9 @@ export class FileToolsEngine implements TalentEngine {
         return {type: 'text', summary: await readWorkspace(name)};
       }
 
-      // Never rewrite binary imports using a text-only edit tool.\n      assertEditableTextName(name);\n      const content = checkText(args.content);
+      // Never rewrite binary imports using a text-only edit tool.
+      assertEditableTextName(name);
+      const content = checkText(args.content);
       const exists = await RNFS.exists(path);
       if (this.name === 'file_create' && exists) {
         throw new Error('File already exists. Use file_edit after reviewing existing content.');
