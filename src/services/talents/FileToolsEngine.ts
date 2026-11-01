@@ -41,7 +41,7 @@ export class FileToolsEngine implements TalentEngine {
       }
       const previous = exists ? await readWorkspace(name) : undefined;
       const approved = await requestFileApproval({
-        action: this.name, filename: name, content, previous,
+        action: this.name === 'file_create' ? 'file_create' : 'file_edit', filename: name, content, previous,
       }, ctx?.signal);
       if (!approved || ctx?.signal?.aborted) throw new Error('User denied or cancelled file change');
       // Refuse a stale proposal if the file changed during review.
@@ -49,14 +49,16 @@ export class FileToolsEngine implements TalentEngine {
           (exists && (await readWorkspace(name)) !== previous)) {
         throw new Error('File changed while awaiting approval; retry with latest content');
       }
-      const temp = workspacePath('pending-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '.txt');
+      const backup = workspacePath('backup-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '.txt');
+      if (exists) await RNFS.copyFile(path, backup);
       try {
-        await RNFS.writeFile(temp, content, 'utf8');
-        // Write only a private workspace file. Original Android document is never overwritten.
-        // Preserve the existing file if replacement fails: do not delete first.
         await RNFS.writeFile(path, content, 'utf8');
+      } catch (writeError) {
+        if (exists) await RNFS.copyFile(backup, path);
+        else if (await RNFS.exists(path)) await RNFS.unlink(path);
+        throw writeError;
       } finally {
-        if (await RNFS.exists(temp)) await RNFS.unlink(temp);
+        if (exists && await RNFS.exists(backup)) await RNFS.unlink(backup);
       }
       return {type: 'text', summary: (exists ? 'Updated ' : 'Created ') + name + ' in private workspace'};
     } catch (error) {
