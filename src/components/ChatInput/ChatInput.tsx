@@ -12,7 +12,7 @@ import {
 import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
 import {pick, keepLocalCopy, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import RNFS from '@dr.pogodin/react-native-fs';
-import {importWorkspace} from '../../services/talents/fileWorkspace';
+import {importWorkspaceCopy, normalizeImportName, isEditableTextName, MAX_FILE_BYTES, MAX_IMPORT_BYTES, checkText} from '../../services/talents/fileWorkspace';
 import {useCameraPermission} from 'react-native-vision-camera';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 
@@ -361,45 +361,54 @@ export const ChatInput = observer(
         });
         const file = selection[0];
         if (!file?.uri) return;
-        const name = (file.name || 'document.txt').replace(/[\r\n\[\]]/g, '_');
-        const extension = name.split('.').pop()?.toLowerCase();
-        const readable = ['txt', 'md', 'json', 'csv', 'xml', 'html',
-          'css', 'js', 'ts', 'tsx', 'jsx', 'py', 'java', 'kt',
-          'log', 'yaml', 'yml', 'sh', 'sql'];
-        if (!extension || !readable.includes(extension)) {
-          Alert.alert('Format not yet editable',
-            'You can select this file, but binary formats such as PDF, DOCX, ZIP and images need format-aware editing tools.');
-          return;
+        const requestedName = normalizeImportName(file.name || 'document.bin');
+        if (file.size != null && Number(file.size) > MAX_IMPORT_BYTES) {
+          throw new Error('This file exceeds the 32 MiB import limit.');
         }
-        const MAX_BYTES = 8 * 1024; // Conservative prompt/context allowance.
-        if (file.size != null && file.size > MAX_BYTES) {
-          Alert.alert('Document too large',
-            'This initial text importer supports files up to 8 KB. Larger files need chunked reading.');
-          return;
-        }
-        const copies = await keepLocalCopy({
-          files: [{uri: file.uri, fileName: name}],
+        const [copy] = await keepLocalCopy({
+          files: [{uri: file.uri, fileName: requestedName}],
           destination: 'cachesDirectory',
         });
-        const copy = copies[0];
-        if (copy?.status !== 'success' || !copy.localUri) {
-          throw new Error('Could not copy selected document');
+        if (!copy || copy.status !== 'success') {
+          throw new Error(copy?.status === 'error'
+            ? 'Android could not copy this document: ' + copy.copyError
+            : 'Android did not return a local copy');
         }
+        // keepLocalCopy returns a file:// URI, whereas RNFS expects a path.
         tempPath = decodeURIComponent(copy.localUri.replace(/^file:\/\//, ''));
         const info = await RNFS.stat(tempPath);
-        if (Number(info.size) > MAX_BYTES) {
-          Alert.alert('Document too large', 'This importer has an 8 KB limit.');
-          return;
+        const fileSize = Number(info.size);
+        if (!info.isFile() || !Number.isFinite(fileSize) || fileSize > MAX_IMPORT_BYTES) {
+          throw new Error('Not a regular file, or exceeds the 32 MiB import limit.');
         }
-        const content = await RNFS.readFile(tempPath, 'utf8');
-        await importWorkspace(name, content);
-        // File contents remain untrusted user data, not system instructions.
-        const imported = `[User-selected file stored in PocketAgentFiles: ${name}]\n${content}\n[End of file]\nTo edit and save this file, enable file_read and file_edit in Toolbox.`;
+
+        const isText = isEditableTextName(requestedName);
+        let content: string | undefined;
+        if (isText) {
+          if (fileSize > MAX_FILE_BYTES) {
+            throw new Error('Text/code files currently have a 16 KiB limit.');
+          }
+          content = checkText(await RNFS.readFile(tempPath, 'utf8'));
+          if (content.includes('\0')) {
+            throw new Error('The selected file contains binary data rather than text.');
+          }
+        }
+        // Save an independent workspace copy, never replace the Android original.
+        // A duplicate filename gets an incremented suffix.
+        const storedName = await importWorkspaceCopy(requestedName, tempPath, fileSize);
+        const imported = isText
+          ? `[User-selected text file saved in PocketAgentFiles: ${storedName}]\n${content}\n[End of file]\nTo edit and save this copy, enable file_read and file_edit in Toolbox.`
+          : `[User-selected binary file saved in PocketAgentFiles: ${storedName}; ${fileSize} bytes]\nThis file is stored, but the model needs format-specific tools to inspect or edit its binary contents.`;
         handleChangeText(`${value}${value ? '\n\n' : ''}${imported}`);
+        if (!isText) {
+          Alert.alert('File imported',
+            `${storedName} was saved in the PocketAgent workspace. Binary editing is not supported yet. For image analysis with a vision model, use Gallery.`);
+        }
       } catch (error) {
         if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) return;
+        const detail = error instanceof Error ? error.message : String(error);
         console.warn('Document selection failed', error);
-        Alert.alert('File import failed', 'Could not read the selected document.');
+        Alert.alert('File import failed', detail.slice(0, 320) || 'Unable to import the selected file.');
       } finally {
         if (tempPath) await RNFS.unlink(tempPath).catch(() => undefined);
       }
