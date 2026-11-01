@@ -10,7 +10,7 @@ import {
   Image,
 } from 'react-native';
 import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
-import {pick, keepLocalCopy, types, isCancel} from '@react-native-documents/picker';
+import {pick, keepLocalCopy, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import RNFS from '@dr.pogodin/react-native-fs';
 import {useCameraPermission} from 'react-native-vision-camera';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
@@ -395,7 +395,7 @@ export const ChatInput = observer(
         const imported = `[User-selected file: ${name}]\n${content}\n[End of file]`;
         handleChangeText(`${value}${value ? '\n\n' : ''}${imported}`);
       } catch (error) {
-        if (isCancel(error)) return;
+        if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) return;
         console.warn('Document selection failed', error);
         Alert.alert('File import failed', 'Could not read the selected document.');
       } finally {
