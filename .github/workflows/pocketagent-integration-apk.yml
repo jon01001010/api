@@ -1,5 +1,5 @@
 name: PocketAgent integration APK
-# Android Files picker: verify text-only model menu gating and v10 picker API (2026-11-01).
+# Validate private model file tools, workspace imports, and per-write approval (2026-11-01).
 on:
   push:
     branches: [pocketagent-step1-integration]
