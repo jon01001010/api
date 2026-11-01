@@ -10,6 +10,8 @@ import {
   Image,
 } from 'react-native';
 import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
+import {pick, keepLocalCopy, types, isCancel} from '@react-native-documents/picker';
+import RNFS from '@dr.pogodin/react-native-fs';
 import {useCameraPermission} from 'react-native-vision-camera';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 
@@ -345,6 +347,62 @@ export const ChatInput = observer(
       }
     };
 
+    // SAF picker: no blanket storage permission and no tool execution.
+    // This text-only import is intentionally bounded until format-aware
+    // editors and the full user-approved file-write flow are integrated.
+    const handleSelectFile = async () => {
+      setShowImageUploadMenu(false);
+      let tempPath: string | undefined;
+      try {
+        const selection = await pick({
+          type: [types.allFiles],
+          allowMultiSelection: false,
+        });
+        const file = selection[0];
+        if (!file?.uri) return;
+        const name = (file.name || 'document.txt').replace(/[\r\n\[\]]/g, '_');
+        const extension = name.split('.').pop()?.toLowerCase();
+        const readable = ['txt', 'md', 'json', 'csv', 'xml', 'html',
+          'css', 'js', 'ts', 'tsx', 'jsx', 'py', 'java', 'kt',
+          'log', 'yaml', 'yml', 'sh', 'sql'];
+        if (!extension || !readable.includes(extension)) {
+          Alert.alert('Format not yet editable',
+            'You can select this file, but binary formats such as PDF, DOCX, ZIP and images need format-aware editing tools.');
+          return;
+        }
+        const MAX_BYTES = 8 * 1024; // Conservative prompt/context allowance.
+        if (file.size != null && file.size > MAX_BYTES) {
+          Alert.alert('Document too large',
+            'This initial text importer supports files up to 8 KB. Larger files need chunked reading.');
+          return;
+        }
+        const copies = await keepLocalCopy({
+          files: [{uri: file.uri, fileName: name}],
+          destination: 'cachesDirectory',
+        });
+        const copy = copies[0];
+        if (copy?.status !== 'success' || !copy.localUri) {
+          throw new Error('Could not copy selected document');
+        }
+        tempPath = decodeURIComponent(copy.localUri.replace(/^file:\/\//, ''));
+        const info = await RNFS.stat(tempPath);
+        if (Number(info.size) > MAX_BYTES) {
+          Alert.alert('Document too large', 'This importer has an 8 KB limit.');
+          return;
+        }
+        const content = await RNFS.readFile(tempPath, 'utf8');
+        // File contents remain untrusted user data, not system instructions.
+        const imported = `[User-selected file: ${name}]\n${content}\n[End of file]`;
+        handleChangeText(`${value}${value ? '\n\n' : ''}${imported}`);
+      } catch (error) {
+        if (isCancel(error)) return;
+        console.warn('Document selection failed', error);
+        Alert.alert('File import failed', 'Could not read the selected document.');
+      } finally {
+        if (tempPath) await RNFS.unlink(tempPath).catch(() => undefined);
+      }
+    };
+
     // Remove an image from the selection
     const handleRemoveImage = (index: number) => {
       const newImages = [...selectedImages];
@@ -375,7 +433,7 @@ export const ChatInput = observer(
     const onSurfaceColor = currentActivePal?.color?.[0] || theme.colors.text;
     const onSurfaceColorVariant = onSurfaceColor + '55'; // for disabled state or placeholder text
     // // Plus button state
-    const isPlusButtonEnabled = !isStreaming && isVisionEnabled;
+    const isPlusButtonEnabled = !isStreaming && hasActiveModel;
     const plusColor = isPlusButtonEnabled
       ? onSurfaceColor
       : onSurfaceColorVariant;
@@ -517,20 +575,29 @@ export const ChatInput = observer(
                       onPress={
                         isPlusButtonEnabled ? handlePlusButtonPress : () => {}
                       }
-                      accessibilityLabel="Add image"
+                      accessibilityLabel="Add attachment"
                       accessibilityRole="button">
                       <PlusIcon width={20} height={20} stroke={plusColor} />
                     </TouchableOpacity>
                   }>
+                  {isVisionEnabled && (
+                    <Menu.Item
+                      label={l10n.camera?.takePhoto || 'Camera'}
+                      icon="camera"
+                      onPress={handleTakePhoto}
+                    />
+                  )}
+                  {isVisionEnabled && (
+                    <Menu.Item
+                      label={l10n.common?.gallery || 'Gallery'}
+                      icon="image"
+                      onPress={handleSelectImages}
+                    />
+                  )}
                   <Menu.Item
-                    label={l10n.camera?.takePhoto || 'Camera'}
-                    icon="camera"
-                    onPress={handleTakePhoto}
-                  />
-                  <Menu.Item
-                    label={l10n.common?.gallery || 'Gallery'}
-                    icon="image"
-                    onPress={handleSelectImages}
+                    label="Files"
+                    icon="file-document-outline"
+                    onPress={handleSelectFile}
                   />
                 </Menu>
               )}
