@@ -1,5 +1,5 @@
 name: PocketAgent integration APK
-# Validate file workspace and corrected exclusion of archived staging snapshots (2026-11-01).
+# Validate importer hotfix: text and PNG workspace imports plus duplicate filenames (2026-11-01).
 on:
   push:
     branches: [pocketagent-step1-integration]
@@ -60,6 +60,8 @@ jobs:
         run: yarn typecheck
       - name: Custom tool storage tests
         run: yarn jest --runInBand --coverage=false CustomToolStorageAdapter
+      - name: File workspace regression tests
+        run: yarn jest --runInBand --coverage=false fileWorkspace
       - name: Set up Android SDK command-line tools
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
