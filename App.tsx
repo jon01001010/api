@@ -34,6 +34,7 @@ import {
   HubRunSheetHost,
 } from './src/components';
 import {MarkdownProvider} from './src/components/MarkdownView';
+import {FileApprovalHost} from './src/components/FileApprovalHost';
 import {
   AutomationBridge,
   BenchmarkRunnerScreen,
@@ -115,6 +116,7 @@ const App = observer(() => {
         <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
           <PaperProvider theme={theme}>
             <L10nContext.Provider value={currentL10n}>
+              <FileApprovalHost />
               <MarkdownProvider>
                 <NavigationContainer>
                   <DeepLinkHandler />
