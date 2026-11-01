@@ -1,4 +1,4 @@
-import RNFS from '@dr.pogodin/react-native-fs';
+import * as RNFS from '@dr.pogodin/react-native-fs';
 
 export const FILE_ROOT = RNFS.DocumentDirectoryPath + '/PocketAgentFiles';
 /** Existing model text tools intentionally keep a small, bounded context. */
