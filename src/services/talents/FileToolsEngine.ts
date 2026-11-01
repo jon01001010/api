@@ -1,6 +1,6 @@
 import RNFS from '@dr.pogodin/react-native-fs';
 import type {TalentEngine, TalentResult, ToolDefinition, TalentExecuteContext} from './types';
-import {checkText, ensureWorkspace, MAX_FILE_BYTES, readWorkspace, safeWorkspaceName, workspacePath} from './fileWorkspace';
+import {checkText, ensureWorkspace, FILE_ROOT, readWorkspace, safeWorkspaceName, workspacePath} from './fileWorkspace';
 import {requestFileApproval} from './fileApprovalGate';
 
 type FileOperation = 'file_list' | 'file_read' | 'file_create' | 'file_edit';
@@ -17,7 +17,7 @@ export class FileToolsEngine implements TalentEngine {
       if (ctx?.signal?.aborted) throw new Error('Cancelled');
       await ensureWorkspace();
       if (this.name === 'file_list') {
-        const entries = await RNFS.readDir(workspacePath('list.txt').replace(/\/list\.txt$/, ''));
+        const entries = await RNFS.readDir(FILE_ROOT);
         const names = entries.filter(entry => entry.isFile())
           .map(entry => entry.name).filter(name => {
             try { safeWorkspaceName(name); return true; } catch { return false; }
@@ -53,8 +53,8 @@ export class FileToolsEngine implements TalentEngine {
       try {
         await RNFS.writeFile(temp, content, 'utf8');
         // Write only a private workspace file. Original Android document is never overwritten.
-        if (exists) await RNFS.unlink(path);
-        await RNFS.moveFile(temp, path);
+        // Preserve the existing file if replacement fails: do not delete first.
+        await RNFS.writeFile(path, content, 'utf8');
       } finally {
         if (await RNFS.exists(temp)) await RNFS.unlink(temp);
       }
