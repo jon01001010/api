@@ -1,5 +1,5 @@
 name: PocketAgent integration APK
-# Manual source-integration verification run: Android Files picker (2026-11-01).
+# Source validation build for Android Files picker with v10 cancellation API (2026-11-01).
 on:
   push:
     branches: [pocketagent-step1-integration]
