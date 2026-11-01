@@ -563,7 +563,7 @@ export const ChatInput = observer(
             {/* Left Controls */}
             <View style={styles.leftControls}>
               {/* Plus Button for Image Upload (only for regular chat) */}
-              {showImageUpload && !isVideoCapable && (
+              {(showImageUpload || hasActiveModel) && !isVideoCapable && (
                 <Menu
                   visible={showImageUploadMenu}
                   onDismiss={() => setShowImageUploadMenu(false)}
