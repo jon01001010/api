@@ -1,5 +1,5 @@
 name: PocketAgent integration APK
-# Validate importer hotfix: text and PNG workspace imports plus duplicate filenames (2026-11-01).
+# Validate RNFS namespace runtime fix for Android file workspace (2026-11-01).
 on:
   push:
     branches: [pocketagent-step1-integration]
