@@ -3,6 +3,7 @@ import {CalculateEngine} from './CalculateEngine';
 import {DatetimeEngine} from './DatetimeEngine';
 import {WebSearchEngine} from './WebSearchEngine';
 import {ReadUrlEngine} from './ReadUrlEngine';
+import {FileToolsEngine} from './FileToolsEngine';
 import {talentRegistry} from './TalentRegistry';
 import type {SearchAccess} from './searchAccess';
 import type {ToolDefinition, SystemPromptContext} from './types';
@@ -59,6 +60,9 @@ export function registerDefaultTalents(): void {
   talentRegistry.register(new RenderHtmlEngine());
   talentRegistry.register(new CalculateEngine());
   talentRegistry.register(new DatetimeEngine());
+  for (const name of ['file_list', 'file_read', 'file_create', 'file_edit'] as const) {
+    talentRegistry.register(new FileToolsEngine(name));
+  }
   const searchAccess = createSearchAccess();
   talentRegistry.register(new WebSearchEngine(searchAccess));
   talentRegistry.register(new ReadUrlEngine(searchAccess));
