@@ -12,6 +12,7 @@ import {
 import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
 import {pick, keepLocalCopy, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import RNFS from '@dr.pogodin/react-native-fs';
+import {importWorkspace} from '../../services/talents/fileWorkspace';
 import {useCameraPermission} from 'react-native-vision-camera';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 
@@ -391,8 +392,9 @@ export const ChatInput = observer(
           return;
         }
         const content = await RNFS.readFile(tempPath, 'utf8');
+        await importWorkspace(name, content);
         // File contents remain untrusted user data, not system instructions.
-        const imported = `[User-selected file: ${name}]\n${content}\n[End of file]`;
+        const imported = `[User-selected file stored in PocketAgentFiles: ${name}]\n${content}\n[End of file]\nTo edit and save this file, enable file_read and file_edit in Toolbox.`;
         handleChangeText(`${value}${value ? '\n\n' : ''}${imported}`);
       } catch (error) {
         if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) return;
