@@ -1,4 +1,4 @@
-import RNFS from '@dr.pogodin/react-native-fs';
+import * as RNFS from '@dr.pogodin/react-native-fs';
 import type {TalentEngine, TalentResult, ToolDefinition, TalentExecuteContext} from './types';
 import {assertEditableTextName, checkText, ensureWorkspace, FILE_ROOT, readWorkspace, safeWorkspaceName, workspacePath} from './fileWorkspace';
 import {requestFileApproval} from './fileApprovalGate';
