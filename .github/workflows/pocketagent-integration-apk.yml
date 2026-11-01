@@ -1,5 +1,5 @@
 name: PocketAgent integration APK
-# Validate private model file tools, workspace imports, and per-write approval (2026-11-01).
+# Validate file workspace and corrected exclusion of archived staging snapshots (2026-11-01).
 on:
   push:
     branches: [pocketagent-step1-integration]
