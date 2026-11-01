@@ -1,6 +1,6 @@
 import RNFS from '@dr.pogodin/react-native-fs';
 import type {TalentEngine, TalentResult, ToolDefinition, TalentExecuteContext} from './types';
-import {checkText, ensureWorkspace, FILE_ROOT, readWorkspace, safeWorkspaceName, workspacePath} from './fileWorkspace';
+import {assertEditableTextName, checkText, ensureWorkspace, FILE_ROOT, readWorkspace, safeWorkspaceName, workspacePath} from './fileWorkspace';
 import {requestFileApproval} from './fileApprovalGate';
 
 type FileOperation = 'file_list' | 'file_read' | 'file_create' | 'file_edit';
@@ -31,7 +31,7 @@ export class FileToolsEngine implements TalentEngine {
         return {type: 'text', summary: await readWorkspace(name)};
       }
 
-      const content = checkText(args.content);
+      // Never rewrite binary imports using a text-only edit tool.\n      assertEditableTextName(name);\n      const content = checkText(args.content);
       const exists = await RNFS.exists(path);
       if (this.name === 'file_create' && exists) {
         throw new Error('File already exists. Use file_edit after reviewing existing content.');
