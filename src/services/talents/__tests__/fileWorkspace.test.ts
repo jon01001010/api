@@ -1,13 +1,11 @@
-import RNFS from '@dr.pogodin/react-native-fs';
+import * as RNFS from '@dr.pogodin/react-native-fs';
 import {
   MAX_IMPORT_BYTES, importWorkspaceCopy, isEditableTextName,
   normalizeImportName, safeWorkspaceName,
 } from '../fileWorkspace';
 
 jest.mock('@dr.pogodin/react-native-fs', () => ({
-  __esModule: true,
-  default: {
-    DocumentDirectoryPath: '/private/documents',
+  DocumentDirectoryPath: '/private/documents',
     mkdir: jest.fn().mockResolvedValue(undefined),
     exists: jest.fn().mockResolvedValue(false),
     copyFile: jest.fn().mockResolvedValue(undefined),
@@ -15,7 +13,6 @@ jest.mock('@dr.pogodin/react-native-fs', () => ({
     unlink: jest.fn().mockResolvedValue(undefined),
     writeFile: jest.fn().mockResolvedValue(undefined),
     readFile: jest.fn().mockResolvedValue('hello world!'),
-  },
 }));
 
 const fsMock = RNFS as jest.Mocked<typeof RNFS>;
