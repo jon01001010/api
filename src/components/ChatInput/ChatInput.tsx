@@ -15,7 +15,7 @@ import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
 import {pick, keepLocalCopy, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import * as RNFS from '@dr.pogodin/react-native-fs';
 import Share from 'react-native-share';
-import {importWorkspaceCopy, normalizeImportName, isEditableTextName, MAX_FILE_BYTES, MAX_IMPORT_BYTES, checkText, ensureWorkspace, FILE_ROOT, safeWorkspaceName, workspacePath} from '../../services/talents/fileWorkspace';
+import {importWorkspaceCopy, normalizeImportName, isEditableTextName, getWorkspaceLimits, setWorkspaceLimits, WORKSPACE_LIMIT_PRESETS, MAX_IMPORT_BYTES, checkText, ensureWorkspace, FILE_ROOT, safeWorkspaceName, workspacePath} from '../../services/talents/fileWorkspace';
 import {useCameraPermission} from 'react-native-vision-camera';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 
@@ -176,6 +176,7 @@ export const ChatInput = observer(
     // State for image upload menu
     const [showImageUploadMenu, setShowImageUploadMenu] = React.useState(false);
     const [workspaceVisible, setWorkspaceVisible] = React.useState(false);
+    const [workspaceLimits, setWorkspaceLimitsState] = React.useState(getWorkspaceLimits());
     const [workspaceFiles, setWorkspaceFiles] = React.useState<{name: string; size: number}[]>([]);
     // State for showing "model not loaded" helper text
     const [showModelWarning, setShowModelWarning] = React.useState(false);
@@ -390,10 +391,10 @@ export const ChatInput = observer(
         const isText = isEditableTextName(requestedName);
         let content: string | undefined;
         if (isText) {
-          if (fileSize > MAX_FILE_BYTES) {
-            throw new Error('Text/code files currently have a 16 KiB limit.');
+          if (fileSize > getWorkspaceLimits().maxFileBytes) {
+            throw new Error('Text/code file exceeds configured workspace file limit.');
           }
-          content = checkText(await RNFS.readFile(tempPath, 'utf8'));
+          content = await RNFS.readFile(tempPath, 'utf8');
           if (content.includes('\0')) {
             throw new Error('The selected file contains binary data rather than text.');
           }
@@ -435,6 +436,23 @@ export const ChatInput = observer(
       } catch (error) {
         Alert.alert('Workspace unavailable', error instanceof Error ? error.message : String(error));
       }
+    };
+
+    const chooseWorkspaceLimit = (field: 'maxFileBytes' | 'maxToolTextBytes') => {
+      Alert.alert(field === 'maxFileBytes' ? 'Maximum text file size' : 'Maximum model tool text',
+        'Choose a limit. Larger model tool payloads use more context.',
+        [...WORKSPACE_LIMIT_PRESETS.map(bytes => ({
+          text: bytes >= 1048576 ? (bytes / 1048576) + ' MiB' : (bytes / 1024) + ' KiB',
+          onPress: async () => {
+            try {
+              const updated = {...getWorkspaceLimits(), [field]: bytes};
+              await setWorkspaceLimits(updated);
+              setWorkspaceLimitsState(updated);
+            } catch (error) {
+              Alert.alert('Settings failed', error instanceof Error ? error.message : String(error));
+            }
+          },
+        })), {text: 'Cancel', style: 'cancel' as const}]);
     };
 
     const shareWorkspaceFile = async (name: string) => {
@@ -517,6 +535,12 @@ export const ChatInput = observer(
               <Text variant="bodySmall" style={{marginVertical: 10}}>
                 Tap a file to share it or save a copy using Android's share sheet.
               </Text>
+              <TouchableOpacity onPress={() => chooseWorkspaceLimit('maxFileBytes')} style={{paddingVertical: 8}}>
+                <Text>Max text file: {Math.round(workspaceLimits.maxFileBytes / 1024)} KiB · Change</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => chooseWorkspaceLimit('maxToolTextBytes')} style={{paddingVertical: 8}}>
+                <Text>Model tool text: {Math.round(workspaceLimits.maxToolTextBytes / 1024)} KiB · Change</Text>
+              </TouchableOpacity>
               <FlatList
                 data={workspaceFiles}
                 keyExtractor={item => item.name}
