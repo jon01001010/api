@@ -60,7 +60,7 @@ export function registerDefaultTalents(): void {
   talentRegistry.register(new RenderHtmlEngine());
   talentRegistry.register(new CalculateEngine());
   talentRegistry.register(new DatetimeEngine());
-  for (const name of ['file_list', 'file_read', 'file_create', 'file_edit'] as const) {
+  for (const name of ['file_list', 'file_read', 'file_create', 'file_edit', 'file_info', 'file_search', 'file_read_range'] as const) {
     talentRegistry.register(new FileToolsEngine(name));
   }
   const searchAccess = createSearchAccess();
