@@ -424,6 +424,7 @@ export const ChatInput = observer(
       setShowImageUploadMenu(false);
       try {
         await ensureWorkspace();
+        setWorkspaceLimitsState(getWorkspaceLimits());
         const entries = await RNFS.readDir(FILE_ROOT);
         const files = entries.filter(entry => entry.isFile()).map(entry => ({
           name: entry.name,
