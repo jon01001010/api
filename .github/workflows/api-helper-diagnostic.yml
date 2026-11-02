@@ -44,7 +44,7 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.0.0'
+          gradle-version: wrapper
           cache-read-only: false
           cache-cleanup: always
       - name: Install locked dependencies and patches
@@ -105,15 +105,13 @@ jobs:
         timeout-minutes: 8
         run: |
           set -euo pipefail
-          gradle -p android --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a help 2>&1 | tee diagnostic-build.log
+          ./android/gradlew -p android --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a help 2>&1 | tee diagnostic-build.log
       - name: Compilation
         if: inputs.stage == 'compilation'
         timeout-minutes: 20
         run: |
           set -euo pipefail
           gradle -p android --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a :app:compileProdDebugKotlin :app:compileProdDebugJavaWithJavac 2>&1 | tee diagnostic-build.log
-      # Restore native intermediates from a prior attempt with matching inputs.
-      # Cache reuse is best-effort and does not establish build correctness.
       - name: Validate native variant selection
         if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         run: |
@@ -122,6 +120,8 @@ jobs:
           test -s native-variants.txt
           echo 'Required ARM64 native variants:'
           cat native-variants.txt
+      # Restore native intermediates from a prior attempt with matching inputs.
+      # Cache reuse is best-effort and does not establish build correctness.
       - name: Restore native build intermediates
         if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         uses: actions/cache/restore@v4
@@ -184,7 +184,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: diagnostic-logs-${{ inputs.stage || 'configuration' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: diagnostic-logs-${{ inputs.stage || 'apk' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             diagnostic-build.log
             native-build-diagnostics.txt
@@ -200,13 +200,3 @@ jobs:
           path: android/app/build/outputs/apk/prod/debug/app-prod-debug.apk
           if-no-files-found: error
           retention-days: 14
-
-# PocketAgent OpenAI API connector verification build 2026-10-21
-
-# Verify PocketAgent agent-loop slider build 2026-10-21
-
-# Experimental background inference APK verification 2026-10-21
-
-# Verify background completion notification and cancellation wiring 2026-10-21
-
-# Verify timezone fallback and background completion notification regression 2026-10-21
