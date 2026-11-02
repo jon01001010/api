@@ -24,10 +24,19 @@ df -h .
   exec setsid bash ./gradlew --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a assembleProdDebug
 ) &
 build_pid=$!
+monitor_pid=''
 disk_stop_marker=$(mktemp)
 cleanup() {
-  kill "$monitor_pid" 2>/dev/null || true
-  wait "$monitor_pid" 2>/dev/null || true
+  if [[ -n "${monitor_pid:-}" ]]; then
+    kill "$monitor_pid" 2>/dev/null || true
+    wait "$monitor_pid" 2>/dev/null || true
+  fi
+  if [[ -n "${build_pid:-}" ]] && kill -0 "$build_pid" 2>/dev/null; then
+    kill -TERM -- "-$build_pid" 2>/dev/null || true
+    sleep 1
+    kill -KILL -- "-$build_pid" 2>/dev/null || true
+    wait "$build_pid" 2>/dev/null || true
+  fi
   rm -f "$disk_stop_marker" "${payload_manifest:-}"
 }
 trap cleanup EXIT
