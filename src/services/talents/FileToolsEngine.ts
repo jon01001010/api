@@ -1,6 +1,6 @@
 import * as RNFS from '@dr.pogodin/react-native-fs';
 import type {TalentEngine, TalentResult, ToolDefinition, TalentExecuteContext} from './types';
-import {assertEditableTextName, checkText, ensureWorkspace, FILE_ROOT, readWorkspace, safeWorkspaceName, workspacePath} from './fileWorkspace';
+import {assertEditableTextName, checkText, ensureWorkspace, FILE_ROOT, getWorkspaceLimits, readWorkspace, safeWorkspaceName, workspacePath} from './fileWorkspace';
 import {requestFileApproval} from './fileApprovalGate';
 
 type FileOperation = 'file_list' | 'file_read' | 'file_create' | 'file_edit';
@@ -55,6 +55,7 @@ export class FileToolsEngine implements TalentEngine {
       if (exists) await RNFS.copyFile(path, backup);
       try {
         await RNFS.writeFile(path, content, 'utf8');
+        if (await RNFS.readFile(path, 'utf8') !== content) throw new Error('Post-write verification failed');
       } catch (writeError) {
         if (exists) await RNFS.copyFile(backup, path);
         else if (await RNFS.exists(path)) await RNFS.unlink(path);
@@ -70,6 +71,7 @@ export class FileToolsEngine implements TalentEngine {
 
   toToolDefinition(): ToolDefinition {
     const write = this.name === 'file_create' || this.name === 'file_edit';
+    const limit = getWorkspaceLimits().maxToolTextBytes;
     const list = this.name === 'file_list';
     return {type: 'function', function: {
       name: this.name,
@@ -79,7 +81,7 @@ export class FileToolsEngine implements TalentEngine {
         'Replace an EXISTING private text file only when the user explicitly requests editing that exact file. User must approve complete old/new contents before saving.',
       parameters: {type: 'object', properties: {
         ...(list ? {} : {filename: {type: 'string', description: 'Complete basename including supported text/code extension (e.g. test.txt or notes.md). Never modify an unrelated existing file if creation fails.'}}),
-        ...(write ? {content: {type: 'string', description: 'Complete replacement UTF-8 contents (16 KiB maximum)'}} : {}),
+        ...(write ? {content: {type: 'string', description: 'Complete replacement UTF-8 contents (' + limit + ' bytes maximum)'}} : {}),
       }, required: list ? [] : write ? ['filename', 'content'] : ['filename']},
     }};
   }
