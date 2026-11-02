@@ -8,11 +8,14 @@ import {
   Alert,
   ScrollView,
   Image,
+  Modal,
+  FlatList,
 } from 'react-native';
 import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
 import {pick, keepLocalCopy, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import * as RNFS from '@dr.pogodin/react-native-fs';
-import {importWorkspaceCopy, normalizeImportName, isEditableTextName, MAX_FILE_BYTES, MAX_IMPORT_BYTES, checkText} from '../../services/talents/fileWorkspace';
+import Share from 'react-native-share';
+import {importWorkspaceCopy, normalizeImportName, isEditableTextName, MAX_FILE_BYTES, MAX_IMPORT_BYTES, checkText, ensureWorkspace, FILE_ROOT, safeWorkspaceName, workspacePath} from '../../services/talents/fileWorkspace';
 import {useCameraPermission} from 'react-native-vision-camera';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 
@@ -172,6 +175,8 @@ export const ChatInput = observer(
       onDefaultImagesChange ?? setInternalSelectedImages;
     // State for image upload menu
     const [showImageUploadMenu, setShowImageUploadMenu] = React.useState(false);
+    const [workspaceVisible, setWorkspaceVisible] = React.useState(false);
+    const [workspaceFiles, setWorkspaceFiles] = React.useState<{name: string; size: number}[]>([]);
     // State for showing "model not loaded" helper text
     const [showModelWarning, setShowModelWarning] = React.useState(false);
     const isEditMode = chatSessionStore.isEditMode;
@@ -414,6 +419,43 @@ export const ChatInput = observer(
       }
     };
 
+    const openWorkspace = async () => {
+      setShowImageUploadMenu(false);
+      try {
+        await ensureWorkspace();
+        const entries = await RNFS.readDir(FILE_ROOT);
+        const files = entries.filter(entry => entry.isFile()).map(entry => ({
+          name: entry.name,
+          size: Number(entry.size),
+        })).filter(entry => {
+          try { safeWorkspaceName(entry.name); return true; } catch { return false; }
+        });
+        setWorkspaceFiles(files.sort((a, b) => a.name.localeCompare(b.name)));
+        setWorkspaceVisible(true);
+      } catch (error) {
+        Alert.alert('Workspace unavailable', error instanceof Error ? error.message : String(error));
+      }
+    };
+
+    const shareWorkspaceFile = async (name: string) => {
+      try {
+        const path = workspacePath(name);
+        const info = await RNFS.stat(path);
+        if (!info.isFile()) throw new Error('File is not available');
+        // Share the original private file via Android's chooser / content provider.
+        // This does not move or overwrite the workspace copy.
+        await Share.open({
+          url: 'file://' + path,
+          title: 'Save or share ' + name,
+          type: isEditableTextName(name) ? 'text/plain' :
+            name.toLowerCase().endsWith('.png') ? 'image/png' : 'application/octet-stream',
+          failOnCancel: false,
+        });
+      } catch (error) {
+        Alert.alert('Export failed', error instanceof Error ? error.message : String(error));
+      }
+    };
+
     // Remove an image from the selection
     const handleRemoveImage = (index: number) => {
       const newImages = [...selectedImages];
@@ -459,6 +501,38 @@ export const ChatInput = observer(
 
     return (
       <View style={styles.container}>
+        <Modal
+          visible={workspaceVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setWorkspaceVisible(false)}>
+          <View style={{flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.55)'}}>
+            <View style={{backgroundColor: theme.colors.surface, borderRadius: 16, padding: 16, maxHeight: '75%'}}>
+              <Text variant="titleMedium">PocketAgent workspace</Text>
+              <Text variant="bodySmall" style={{marginVertical: 10}}>
+                Tap a file to share it or save a copy using Android's share sheet.
+              </Text>
+              <FlatList
+                data={workspaceFiles}
+                keyExtractor={item => item.name}
+                ListEmptyComponent={<Text>No workspace files yet.</Text>}
+                renderItem={({item}) => (
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={'Share ' + item.name}
+                    onPress={() => shareWorkspaceFile(item.name)}
+                    style={{paddingVertical: 12, borderBottomWidth: 1, borderColor: theme.colors.outlineVariant}}>
+                    <Text>{item.name}</Text>
+                    <Text variant="bodySmall">{item.size} bytes · Share / Save</Text>
+                  </TouchableOpacity>
+                )}
+              />
+              <TouchableOpacity onPress={() => setWorkspaceVisible(false)} style={{alignSelf: 'flex-end', padding: 12}}>
+                <Text>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
         <View style={styles.inputContainer}>
           {/* Edit Bar (when in edit mode) */}
           {isEditMode && (
@@ -605,6 +679,11 @@ export const ChatInput = observer(
                       onPress={handleSelectImages}
                     />
                   )}
+                  <Menu.Item
+                    label="Workspace files / Share"
+                    icon="folder-outline"
+                    onPress={openWorkspace}
+                  />
                   <Menu.Item
                     label="Files"
                     icon="file-document-outline"
