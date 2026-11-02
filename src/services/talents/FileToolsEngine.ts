@@ -75,10 +75,10 @@ export class FileToolsEngine implements TalentEngine {
       name: this.name,
       description: this.name === 'file_list' ? 'List editable files in PocketAgent private workspace' :
         this.name === 'file_read' ? 'Read a text/code file from PocketAgent private workspace' :
-        this.name === 'file_create' ? 'Propose a new private text file. User must approve the complete contents before saving.' :
-        'Propose replacing an existing private text file. User must approve complete old/new contents before saving.',
+        this.name === 'file_create' ? 'Create a NEW private text/code file only, with explicit filename ending in .txt, .md, etc. User must approve full contents. If this fails, report the error; NEVER edit an unrelated existing file as a workaround.' :
+        'Replace an EXISTING private text file only when the user explicitly requests editing that exact file. User must approve complete old/new contents before saving.',
       parameters: {type: 'object', properties: {
-        ...(list ? {} : {filename: {type: 'string', description: 'Filename from file_list or new filename without any paths'}}),
+        ...(list ? {} : {filename: {type: 'string', description: 'Complete basename including supported text/code extension (e.g. test.txt or notes.md). Never modify an unrelated existing file if creation fails.'}}),
         ...(write ? {content: {type: 'string', description: 'Complete replacement UTF-8 contents (16 KiB maximum)'}} : {}),
       }, required: list ? [] : write ? ['filename', 'content'] : ['filename']},
     }};
