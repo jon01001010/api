@@ -177,6 +177,8 @@ export const ChatInput = observer(
     const [showImageUploadMenu, setShowImageUploadMenu] = React.useState(false);
     const [workspaceVisible, setWorkspaceVisible] = React.useState(false);
     const [workspaceLimits, setWorkspaceLimitsState] = React.useState(getWorkspaceLimits());
+    const [limitField, setLimitField] = React.useState<'maxFileBytes' | 'maxToolTextBytes' | null>(null);
+    const [customLimitKiB, setCustomLimitKiB] = React.useState('');
     const [workspaceFiles, setWorkspaceFiles] = React.useState<{name: string; size: number}[]>([]);
     // State for showing "model not loaded" helper text
     const [showModelWarning, setShowModelWarning] = React.useState(false);
@@ -440,20 +442,18 @@ export const ChatInput = observer(
     };
 
     const chooseWorkspaceLimit = (field: 'maxFileBytes' | 'maxToolTextBytes') => {
-      Alert.alert(field === 'maxFileBytes' ? 'Maximum text file size' : 'Maximum model tool text',
-        'Choose a limit. Larger model tool payloads use more context.',
-        [...WORKSPACE_LIMIT_PRESETS.map(bytes => ({
-          text: bytes >= 1048576 ? (bytes / 1048576) + ' MiB' : (bytes / 1024) + ' KiB',
-          onPress: async () => {
-            try {
-              const updated = {...getWorkspaceLimits(), [field]: bytes};
-              await setWorkspaceLimits(updated);
-              setWorkspaceLimitsState(updated);
-            } catch (error) {
-              Alert.alert('Settings failed', error instanceof Error ? error.message : String(error));
-            }
-          },
-        })), {text: 'Cancel', style: 'cancel' as const}]);
+      setLimitField(field);
+    };
+
+    const applyWorkspaceLimit = async (field: 'maxFileBytes' | 'maxToolTextBytes', bytes: number) => {
+      try {
+        const updated = {...getWorkspaceLimits(), [field]: bytes};
+        await setWorkspaceLimits(updated);
+        setWorkspaceLimitsState(updated);
+        setLimitField(null);
+      } catch (error) {
+        Alert.alert('Settings failed', error instanceof Error ? error.message : String(error));
+      }
     };
 
     const shareWorkspaceFile = async (name: string) => {
@@ -560,6 +560,36 @@ export const ChatInput = observer(
               <TouchableOpacity onPress={() => setWorkspaceVisible(false)} style={{alignSelf: 'flex-end', padding: 12}}>
                 <Text>Close</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+        <Modal visible={limitField !== null} transparent animationType="fade"
+          onRequestClose={() => setLimitField(null)}>
+          <View style={{flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.6)'}}>
+            <View style={{backgroundColor: theme.colors.surface, borderRadius: 16, padding: 20, maxHeight: '80%'}}>
+              <Text variant="titleMedium">{limitField === 'maxFileBytes' ? 'Maximum text file size' : 'Maximum model tool text'}</Text>
+              <Text variant="bodySmall" style={{marginVertical: 10}}>Choose a preset or enter a custom limit in KiB.</Text>
+              <ScrollView style={{flexGrow: 0}}>
+                {WORKSPACE_LIMIT_PRESETS.map(bytes => (
+                  <TouchableOpacity key={bytes} accessibilityRole="button"
+                    onPress={() => limitField && applyWorkspaceLimit(limitField, bytes)}
+                    style={{paddingVertical: 12, borderBottomWidth: 1, borderColor: theme.colors.outlineVariant}}>
+                    <Text>{bytes >= 1048576 ? (bytes / 1048576) + ' MiB' : (bytes / 1024) + ' KiB'}{limitField && workspaceLimits[limitField] === bytes ? '  ✓' : ''}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TextInput keyboardType="number-pad" placeholder="Custom KiB (16–32768)"
+                value={customLimitKiB} onChangeText={setCustomLimitKiB}
+                style={{borderWidth: 1, borderColor: theme.colors.outline, borderRadius: 8, padding: 10, marginTop: 12, color: theme.colors.onSurface}} />
+              <TouchableOpacity accessibilityRole="button" onPress={() => {
+                const kib = Number(customLimitKiB);
+                if (!Number.isSafeInteger(kib) || kib < 16 || kib > 32768) {
+                  Alert.alert('Invalid size', 'Enter a whole number between 16 and 32768 KiB.');
+                  return;
+                }
+                if (limitField) applyWorkspaceLimit(limitField, kib * 1024);
+              }} style={{paddingVertical: 12}}><Text>Apply custom limit</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setLimitField(null)} style={{alignSelf: 'flex-end', padding: 12}}><Text>Cancel</Text></TouchableOpacity>
             </View>
           </View>
         </Modal>
