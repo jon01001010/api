@@ -5,7 +5,7 @@ const MEMORY_PATH = RNFS.DocumentDirectoryPath + '/PocketAgentMemory.txt';
 const HISTORY_ROOT = RNFS.DocumentDirectoryPath + '/PocketAgentMemoryHistory';
 const MAX_MEMORY_BYTES = 256 * 1024;
 
-export const DEFAULT_MEMORY = '01 =MEM/1 | 02:@U=user | 03:@P=project | 04:@G=goal\\n';
+export const DEFAULT_MEMORY = '01 =MEM/1 | 02:@U=user | 03:@P=project | 04:@G=goal\n';
 
 function memoryBytes(value: string): number {
   return encodeURIComponent(value).replace(/%[a-fA-F0-9]{2}/g, 'x').length;
