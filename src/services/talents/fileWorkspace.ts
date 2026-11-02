@@ -1,8 +1,37 @@
 import * as RNFS from '@dr.pogodin/react-native-fs';
 
 export const FILE_ROOT = RNFS.DocumentDirectoryPath + '/PocketAgentFiles';
-/** Existing model text tools intentionally keep a small, bounded context. */
+/** Defaults preserve existing model context behavior on upgrade. */
 export const MAX_FILE_BYTES = 16 * 1024;
+export type WorkspaceLimits = {maxFileBytes: number; maxToolTextBytes: number};
+const LIMITS_PATH = RNFS.DocumentDirectoryPath + '/PocketAgentWorkspaceLimits.json';
+const PRESETS = [16, 64, 256, 1024, 8192, 32768].map(kib => kib * 1024);
+let activeLimits: WorkspaceLimits = {maxFileBytes: MAX_FILE_BYTES, maxToolTextBytes: MAX_FILE_BYTES};
+let loaded = false;
+export function getWorkspaceLimits(): WorkspaceLimits { return {...activeLimits}; }
+export async function loadWorkspaceLimits(): Promise<WorkspaceLimits> {
+  if (loaded) return getWorkspaceLimits();
+  try {
+    if (await RNFS.exists(LIMITS_PATH)) {
+      const saved = JSON.parse(await RNFS.readFile(LIMITS_PATH, 'utf8'));
+      if (PRESETS.includes(saved.maxFileBytes) && PRESETS.includes(saved.maxToolTextBytes)) {
+        activeLimits = {maxFileBytes: saved.maxFileBytes, maxToolTextBytes: saved.maxToolTextBytes};
+      }
+    }
+  } catch (_) { /* Keep safe defaults if settings are damaged. */ }
+  loaded = true;
+  return getWorkspaceLimits();
+}
+export async function setWorkspaceLimits(limits: WorkspaceLimits): Promise<void> {
+  if (!PRESETS.includes(limits.maxFileBytes) || !PRESETS.includes(limits.maxToolTextBytes)) {
+    throw new Error('Unsupported workspace limit');
+  }
+  const next = {...limits};
+  await RNFS.writeFile(LIMITS_PATH, JSON.stringify(next), 'utf8');
+  activeLimits = next;
+  loaded = true;
+}
+export const WORKSPACE_LIMIT_PRESETS = PRESETS;
 /** Binary documents may be stored but are never decoded as prompt text. */
 export const MAX_IMPORT_BYTES = 32 * 1024 * 1024;
 const TEXT_EXTENSIONS = new Set([
@@ -54,12 +83,13 @@ export function utf8Bytes(text: string): number {
 
 export function checkText(text: unknown): string {
   if (typeof text !== 'string') throw new Error('Content must be text');
-  if (utf8Bytes(text) > MAX_FILE_BYTES) throw new Error('Text exceeds 16 KiB limit');
+  if (utf8Bytes(text) > activeLimits.maxToolTextBytes) throw new Error('Text exceeds the configured tool text limit (' + activeLimits.maxToolTextBytes + ' bytes)');
   return text;
 }
 
 export async function ensureWorkspace(): Promise<void> {
   await RNFS.mkdir(FILE_ROOT);
+  await loadWorkspaceLimits();
 }
 
 export function workspacePath(name: string): string {
@@ -70,7 +100,7 @@ export async function readWorkspace(name: string): Promise<string> {
   assertEditableTextName(name);
   const path = workspacePath(name);
   const stat = await RNFS.stat(path);
-  if (!stat.isFile() || Number(stat.size) > MAX_FILE_BYTES) {
+  if (!stat.isFile() || Number(stat.size) > activeLimits.maxToolTextBytes) {
     throw new Error('Text file is too large or not a regular file');
   }
   return checkText(await RNFS.readFile(path, 'utf8'));
@@ -101,8 +131,8 @@ export async function importWorkspaceCopy(
   }
   await ensureWorkspace();
   const name = await availableImportName(originalName);
-  if (isEditableTextName(name) && size > MAX_FILE_BYTES) {
-    throw new Error('Text/code files currently have a 16 KiB limit');
+  if (isEditableTextName(name) && size > activeLimits.maxFileBytes) {
+    throw new Error('Text/code file exceeds configured file size limit');
   }
   const destination = workspacePath(name);
   try {
@@ -121,8 +151,8 @@ export async function importWorkspaceCopy(
 /** Used when a text-only import is already in memory. */
 export async function importWorkspace(name: string, text: string): Promise<string> {
   assertEditableTextName(normalizeImportName(name));
-  checkText(text);
   await ensureWorkspace();
+  if (utf8Bytes(text) > activeLimits.maxFileBytes) throw new Error('Text exceeds configured file size limit');
   const unique = await availableImportName(name);
   await RNFS.writeFile(workspacePath(unique), text, 'utf8');
   return unique;
