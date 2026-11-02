@@ -34,6 +34,9 @@ export class FileToolsEngine implements TalentEngine {
       // Never rewrite binary imports using a text-only edit tool.
       assertEditableTextName(name);
       const content = checkText(args.content);
+      if (encodeURIComponent(content).replace(/%[a-fA-F0-9]{2}/g, 'x').length > getWorkspaceLimits().maxFileBytes) {
+        throw new Error('Text exceeds configured workspace file size limit');
+      }
       const exists = await RNFS.exists(path);
       if (this.name === 'file_create' && exists) {
         throw new Error('File already exists. Use file_edit after reviewing existing content.');
