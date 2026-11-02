@@ -442,33 +442,20 @@ export const ChatInput = observer(
         const path = workspacePath(name);
         const info = await RNFS.stat(path);
         if (!info.isFile()) throw new Error('File is not available');
-        // Android's share provider can fail to resolve a private workspace file URI.
-        // For bounded text files, share bytes as a data URI with an explicit filename;
-        // react-native-share then creates its own shareable content URI.
+        // Share all workspace files using the same cached-file path as PNGs.
+        // The data: URI path fails on some Android share targets with a null URI.
         const mime = isEditableTextName(name) ? 'text/plain' :
           name.toLowerCase().endsWith('.png') ? 'image/png' : 'application/octet-stream';
-        if (isEditableTextName(name) && Number(info.size) <= MAX_FILE_BYTES) {
-          const base64 = await RNFS.readFile(path, 'base64');
-          await Share.open({
-            url: 'data:' + mime + ';base64,' + base64,
-            filename: name,
-            title: 'Save or share ' + name,
-            type: mime,
-            failOnCancel: false,
-          });
-        } else {
-          // Binary files stay on disk; share a separate cache copy rather than
-          // exposing the private workspace path or decoding large files in JS.
-          const cachePath = RNFS.CachesDirectoryPath + '/' + name;
-          await RNFS.copyFile(path, cachePath);
-          await Share.open({
-            url: 'file://' + cachePath,
-            filename: name,
-            title: 'Save or share ' + name,
-            type: mime,
-            failOnCancel: false,
-          });
-        }
+        const cachePath = RNFS.CachesDirectoryPath + '/' + name;
+        if (await RNFS.exists(cachePath)) await RNFS.unlink(cachePath);
+        await RNFS.copyFile(path, cachePath);
+        await Share.open({
+          url: 'file://' + cachePath,
+          filename: name,
+          title: 'Save or share ' + name,
+          type: mime,
+          failOnCancel: false,
+        });
       } catch (error) {
         Alert.alert('Export failed', error instanceof Error ? error.message : String(error));
       }
