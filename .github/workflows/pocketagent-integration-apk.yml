@@ -1,3 +1,4 @@
+# Rebuild after fixing settings-aware duplicate import test (2026-11-02).
 # Build TXT cached-file sharing and initial configurable workspace limits (2026-11-02).
 # Trigger Android APK build with workspace export URI fix (2026-11-01).
 # Build workspace browser and Android file sharing export (2026-11-01).
