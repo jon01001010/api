@@ -40,11 +40,11 @@ export async function memoryReplace(next: string, expectedPrevious: string): Pro
 export async function memoryHistory(): Promise<string[]> {
   if (!(await RNFS.exists(HISTORY_ROOT))) return [];
   const entries = await RNFS.readDir(HISTORY_ROOT);
-  return entries.filter(item => item.isFile() && /^memory-[0-9]+-[a-z0-9]+\\.txt$/.test(item.name))
+  return entries.filter(item => item.isFile() && /^memory-[0-9]+-[a-z0-9]+\.txt$/.test(item.name))
     .map(item => item.name).sort().reverse();
 }
 
 export async function memoryReadSnapshot(name: string): Promise<string> {
-  if (!/^memory-[0-9]+-[a-z0-9]+\\.txt$/.test(name)) throw new Error('Invalid memory snapshot');
+  if (!/^memory-[0-9]+-[a-z0-9]+\.txt$/.test(name)) throw new Error('Invalid memory snapshot');
   return RNFS.readFile(HISTORY_ROOT + '/' + name, 'utf8');
 }
