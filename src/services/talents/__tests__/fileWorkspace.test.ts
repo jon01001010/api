@@ -33,9 +33,9 @@ describe('Android SAF workspace imports', () => {
   });
 
   it('preserves a previous import with an incremented filename', async () => {
-    (fsMock.exists as jest.Mock)
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false);
+    (fsMock.exists as jest.Mock).mockImplementation(async (path: string) =>
+      path === '/private/documents/PocketAgentFiles/notes.txt',
+    );
     const name = await importWorkspaceCopy('notes.txt', '/cache/notes.txt', 12);
     expect(name).toBe('notes-2.txt');
     expect(fsMock.copyFile).toHaveBeenCalledWith(
