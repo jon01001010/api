@@ -1,3 +1,4 @@
+# Build workspace browser and Android file sharing export (2026-11-01).
 name: PocketAgent integration APK
 # Validate RNFS namespace runtime fix for Android file workspace (2026-11-01).
 on:
