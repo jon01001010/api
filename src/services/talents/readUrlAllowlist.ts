@@ -22,6 +22,7 @@ const canonicalize = (raw: string): URL | null => {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return null;
   }
+  if (parsed.username || parsed.password) return null;
   parsed.hash = '';
   if (/[A-Z]/.test(parsed.hostname)) {
     parsed.hostname = parsed.hostname.replace(/[A-Z]/g, c => c.toLowerCase());
@@ -32,7 +33,7 @@ const canonicalize = (raw: string): URL | null => {
 const siteKey = (hostname: string): string => hostname.replace(/^www\./, '');
 
 const matchKey = (url: URL): string =>
-  siteKey(url.hostname) +
+  url.protocol + '//' + siteKey(url.hostname) +
   (url.port ? ':' + url.port : '') +
   url.pathname.replace(/\/$/, '') +
   url.search;
