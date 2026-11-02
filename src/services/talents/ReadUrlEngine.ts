@@ -8,7 +8,7 @@ import type {SearchAccess} from './searchAccess';
 import type {PageContent} from '../search/types';
 import {budgetPage} from '../search/searchBudget';
 import {wrapUntrusted} from './untrustedContent';
-import {allowReadUrls, extractUrls, matchReadUrl} from './readUrlAllowlist';
+import {allowReadUrls, extractUrls, matchReadUrl, isReadUrlAllowed} from './readUrlAllowlist';
 
 /**
  * Reject non-http(s) schemes and embedded credentials so a malicious page
@@ -87,6 +87,13 @@ export class ReadUrlEngine implements TalentEngine {
         summary: `read_url: ${errMsg}`,
         errorMessage: errMsg,
       };
+    }
+
+    // Fail closed: a reader must attest the resolved destination, not merely echo
+    // the requested URL after following redirects.
+    if (!page?.url || !page.finalUrlVerified || !isReadUrlAllowed(page.url)) {
+      const summary = 'read_url: final destination is not allowed or could not be verified';
+      return {type: 'error', summary, errorMessage: summary};
     }
 
     const bounded = budgetPage(page, this.recommendedContextTokens);
