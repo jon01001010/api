@@ -442,15 +442,33 @@ export const ChatInput = observer(
         const path = workspacePath(name);
         const info = await RNFS.stat(path);
         if (!info.isFile()) throw new Error('File is not available');
-        // Share the original private file via Android's chooser / content provider.
-        // This does not move or overwrite the workspace copy.
-        await Share.open({
-          url: 'file://' + path,
-          title: 'Save or share ' + name,
-          type: isEditableTextName(name) ? 'text/plain' :
-            name.toLowerCase().endsWith('.png') ? 'image/png' : 'application/octet-stream',
-          failOnCancel: false,
-        });
+        // Android's share provider can fail to resolve a private workspace file URI.
+        // For bounded text files, share bytes as a data URI with an explicit filename;
+        // react-native-share then creates its own shareable content URI.
+        const mime = isEditableTextName(name) ? 'text/plain' :
+          name.toLowerCase().endsWith('.png') ? 'image/png' : 'application/octet-stream';
+        if (isEditableTextName(name) && Number(info.size) <= MAX_FILE_BYTES) {
+          const base64 = await RNFS.readFile(path, 'base64');
+          await Share.open({
+            url: 'data:' + mime + ';base64,' + base64,
+            filename: name,
+            title: 'Save or share ' + name,
+            type: mime,
+            failOnCancel: false,
+          });
+        } else {
+          // Binary files stay on disk; share a separate cache copy rather than
+          // exposing the private workspace path or decoding large files in JS.
+          const cachePath = RNFS.CachesDirectoryPath + '/' + name;
+          await RNFS.copyFile(path, cachePath);
+          await Share.open({
+            url: 'file://' + cachePath,
+            filename: name,
+            title: 'Save or share ' + name,
+            type: mime,
+            failOnCancel: false,
+          });
+        }
       } catch (error) {
         Alert.alert('Export failed', error instanceof Error ? error.message : String(error));
       }
