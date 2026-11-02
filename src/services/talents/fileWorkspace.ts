@@ -28,7 +28,7 @@ export function isEditableTextName(name: string): boolean {
 export function assertEditableTextName(name: string): string {
   safeWorkspaceName(name);
   if (!isEditableTextName(name)) {
-    throw new Error('This file is not text/code. Editing it needs a format-specific tool.');
+    throw new Error('Unsupported filename: ' + name + '. Use a full text/code filename such as test.txt or notes.md. Do not edit an unrelated existing file as a workaround.');
   }
   return name;
 }
