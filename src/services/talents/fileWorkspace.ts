@@ -6,6 +6,10 @@ export const MAX_FILE_BYTES = 16 * 1024;
 export type WorkspaceLimits = {maxFileBytes: number; maxToolTextBytes: number};
 const LIMITS_PATH = RNFS.DocumentDirectoryPath + '/PocketAgentWorkspaceLimits.json';
 const PRESETS = [16, 64, 256, 1024, 8192, 32768].map(kib => kib * 1024);
+function validLimit(bytes: unknown): bytes is number {
+  return typeof bytes === 'number' && Number.isSafeInteger(bytes) &&
+    bytes >= 16 * 1024 && bytes <= 32 * 1024 * 1024 && bytes % 1024 === 0;
+}
 let activeLimits: WorkspaceLimits = {maxFileBytes: MAX_FILE_BYTES, maxToolTextBytes: MAX_FILE_BYTES};
 let loaded = false;
 export function getWorkspaceLimits(): WorkspaceLimits { return {...activeLimits}; }
@@ -14,7 +18,7 @@ export async function loadWorkspaceLimits(): Promise<WorkspaceLimits> {
   try {
     if (await RNFS.exists(LIMITS_PATH)) {
       const saved = JSON.parse(await RNFS.readFile(LIMITS_PATH, 'utf8'));
-      if (PRESETS.includes(saved.maxFileBytes) && PRESETS.includes(saved.maxToolTextBytes)) {
+      if (validLimit(saved.maxFileBytes) && validLimit(saved.maxToolTextBytes)) {
         activeLimits = {maxFileBytes: saved.maxFileBytes, maxToolTextBytes: saved.maxToolTextBytes};
       }
     }
@@ -23,7 +27,7 @@ export async function loadWorkspaceLimits(): Promise<WorkspaceLimits> {
   return getWorkspaceLimits();
 }
 export async function setWorkspaceLimits(limits: WorkspaceLimits): Promise<void> {
-  if (!PRESETS.includes(limits.maxFileBytes) || !PRESETS.includes(limits.maxToolTextBytes)) {
+  if (!validLimit(limits.maxFileBytes) || !validLimit(limits.maxToolTextBytes)) {
     throw new Error('Unsupported workspace limit');
   }
   const next = {...limits};
