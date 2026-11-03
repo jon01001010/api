@@ -44,3 +44,26 @@ Research only until explicitly approved for implementation. Verify upstream lice
 
 - [ ] Offline voice, wake phrase, spoken responses, and smart-home routines.
 - [ ] Phosphor incorporation: define integration scope, inspect upstream license/dependencies, and plan a separate implementation batch.
+
+## Phosphor visual restyle (look only)
+
+Restyle PocketAgent to match the look of the PHOSPHOR v46 prompt inspector (`phosphor_v46_prompt_inspector-1.html`). **Visual change only:** keep every existing PocketAgent screen, feature, and flow as it is, and do not bring in any Phosphor functionality, code, or tools.
+
+Reference look (from the Phosphor stylesheet):
+
+- Green-phosphor CRT terminal palette: text `#85ff9b`, muted `#4eac65`, emphasis `#b3ffc1`, background `#010602`, panels `#031006`, inputs `#020b04`, hover/active `#10371b`, banners `#07140c`, log areas `#000`, borders `#285f36`.
+- Monospace type everywhere (`'Courier New', monospace`, 14px / 1.5), wide letter-spaced uppercase headings.
+- Soft text glow: `text-shadow: 0 0 2px #3bff65`; glowing status dots and progress fills.
+- Full-screen scanline overlay (faint horizontal lines, ~6.5% black every 4px), non-interactive.
+- Square corners (`border-radius: 0`), 1px thin green borders on panels, buttons, inputs, and cards; no drop shadows or rounded pills.
+- Buttons: dark fill with green border; hover/active brighten border to the text color and fill with the hover green.
+- Blinking block cursor for "thinking"/streaming states.
+
+Tasks:
+
+- [ ] Add a Phosphor theme to the app theme system (colors, fonts, borders, radius) rather than hard-coding styles per screen.
+- [ ] Apply it across chat, sidebar, model list, Pals, Toolbox, hardware diagnostics, settings, and onboarding.
+- [ ] Implement the scanline overlay and text glow in React Native (e.g. overlay view / image; check performance on the Razr).
+- [ ] Keep the current light/dark themes available; Phosphor as a selectable theme (decide whether it becomes the default).
+- [ ] Check readability and contrast (WCAG AA) of muted text, and that glow/scanlines don't hurt legibility.
+- [ ] Before/after screenshots on device; confirm no behavior changes.
