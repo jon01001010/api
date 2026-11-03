@@ -40,6 +40,14 @@ Research only until explicitly approved for implementation. Verify upstream lice
 3. ARTEMIS-inspired action controller with verification and recovery.
 4. Cross-app workflows and comprehensive safety/device tests.
 
+## Deferred — NPU acceleration (on hold)
+
+On hold until a better test phone is available. On the current test device (Motorola Razr 2023, SM7450 / Hexagon V69) NPU offload is effectively a no-op, so CPU inference stays the only supported backend for now. See issue #1 for the investigation notes and safe implementation sequence.
+
+- [ ] Get a test phone with a supported, verifiable NPU (e.g. newer Snapdragon with Hexagon HTP).
+- [ ] Resume issue #1: probe HTP library loading, test a small GGUF model, measure real offload and token speed.
+- [ ] Do not replace or disable the working CPU backend; no fake NPU toggle.
+
 ## Other future work
 
 - [ ] Offline voice, wake phrase, spoken responses, and smart-home routines.
