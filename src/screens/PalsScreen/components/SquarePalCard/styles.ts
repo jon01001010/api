@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../../../utils/types';
+import {themeRadius} from '../../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -14,7 +15,7 @@ export const createStyles = (theme: Theme) =>
       flex: 1,
       height: '100%',
       backgroundColor: theme.colors.background,
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
       borderWidth: 1,
       borderColor: theme.colors.outline,
       // Add subtle shadow for depth (only in light mode)
@@ -39,7 +40,7 @@ export const createStyles = (theme: Theme) =>
       width: '100%',
       height: 80, // Increased from 60px for better image display
       backgroundColor: theme.colors.primaryContainer,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: 8, // Reduced from 12px to save space
@@ -49,14 +50,14 @@ export const createStyles = (theme: Theme) =>
     thumbnailImage: {
       width: '100%',
       height: '100%',
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
     },
     thumbnailOverlay: {
       position: 'absolute',
       bottom: 4,
       right: 4,
       backgroundColor: theme.colors.backdrop,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       padding: 4,
       alignItems: 'center',
       justifyContent: 'center',
@@ -72,7 +73,7 @@ export const createStyles = (theme: Theme) =>
       bottom: 6,
       right: 6,
       backgroundColor: theme.colors.surface,
-      borderRadius: 14,
+      borderRadius: themeRadius(theme, 14),
       width: 28,
       height: 28,
       alignItems: 'center',
@@ -96,7 +97,7 @@ export const createStyles = (theme: Theme) =>
       top: 4,
       right: 4,
       backgroundColor: theme.colors.primary,
-      borderRadius: 10,
+      borderRadius: themeRadius(theme, 10),
       width: 20,
       height: 20,
       alignItems: 'center',
@@ -107,7 +108,7 @@ export const createStyles = (theme: Theme) =>
       top: 4,
       left: 4,
       backgroundColor: theme.colors.tertiary,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       width: 18,
       height: 18,
       alignItems: 'center',
@@ -118,7 +119,7 @@ export const createStyles = (theme: Theme) =>
       top: 16, // 12px card padding + 4px offset from thumbnail edge
       right: 16, // 12px card padding + 4px offset from thumbnail edge
       backgroundColor: theme.colors.secondary,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       paddingHorizontal: 6,
       paddingVertical: 2,
       minWidth: 40,
@@ -128,7 +129,7 @@ export const createStyles = (theme: Theme) =>
     },
     purchaseBadge: {
       backgroundColor: theme.colors.tertiaryContainer,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       paddingHorizontal: 6,
       paddingVertical: 2,
     },
@@ -173,7 +174,7 @@ export const createStyles = (theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: theme.colors.surfaceVariant,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       paddingHorizontal: 6,
       paddingVertical: 2,
       minWidth: 40,
@@ -241,7 +242,7 @@ export const createStyles = (theme: Theme) =>
     },
     tag: {
       borderColor: theme.colors.outline,
-      borderRadius: 4,
+      borderRadius: themeRadius(theme, 4),
       backgroundColor: theme.colors.surfaceContainerHigh,
     },
     tagText: {
@@ -277,7 +278,7 @@ export const createStyles = (theme: Theme) =>
       gap: 2,
       paddingHorizontal: 6,
       paddingVertical: 3,
-      borderRadius: 6,
+      borderRadius: themeRadius(theme, 6),
       backgroundColor: theme.colors.errorContainer + '20', // 20% opacity
       borderWidth: 0.5,
       borderColor: theme.colors.error + '40', // 40% opacity

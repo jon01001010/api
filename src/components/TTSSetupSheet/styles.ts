@@ -1,6 +1,7 @@
 import {Platform, StyleSheet} from 'react-native';
 
 import {Theme} from '../../utils/types';
+import {themeColor, themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -29,26 +30,32 @@ export const createStyles = (theme: Theme) =>
     engineLogoSystemBadge: {
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: Platform.OS === 'ios' ? '#F1F2F5' : '#E8F0E8',
+      backgroundColor:
+        Platform.OS === 'ios'
+          ? themeColor(theme, '#F1F2F5')
+          : themeColor(theme, '#E8F0E8'),
     },
     engineLogoSystemBadgeDot: {
       width: 10,
       height: 10,
-      borderRadius: 5,
-      backgroundColor: Platform.OS === 'ios' ? '#1A1A1A' : '#3DDC84',
+      borderRadius: themeRadius(theme, 5),
+      backgroundColor:
+        Platform.OS === 'ios'
+          ? themeColor(theme, '#1A1A1A')
+          : themeColor(theme, '#3DDC84'),
     },
 
     // Engine groups (used by VoicePickerView)
     engineGroup: {
       marginBottom: 16,
-      borderRadius: 18,
+      borderRadius: themeRadius(theme, 18),
       borderWidth: 1,
       borderColor: theme.colors.outlineVariant,
       backgroundColor: theme.colors.surface,
       overflow: 'hidden',
     },
     engineGroupGradientFill: {
-      borderRadius: 18,
+      borderRadius: themeRadius(theme, 18),
     },
     engineGroupHeader: {
       flexDirection: 'row',
@@ -100,7 +107,7 @@ export const createStyles = (theme: Theme) =>
       paddingTop: 4,
     },
     engineGroupCta: {
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
     },
     engineGroupCtaLabel: {
       fontSize: 14,
@@ -144,7 +151,7 @@ export const createStyles = (theme: Theme) =>
     heroRow: {
       padding: 14,
       marginBottom: 14,
-      borderRadius: 18,
+      borderRadius: themeRadius(theme, 18),
       borderWidth: 1,
       backgroundColor: theme.colors.surfaceContainerLow,
     },
@@ -198,7 +205,7 @@ export const createStyles = (theme: Theme) =>
       justifyContent: 'space-between',
       minHeight: 44,
       paddingHorizontal: 14,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       borderWidth: 1,
       borderColor: theme.colors.outlineVariant,
       backgroundColor: theme.colors.surface,

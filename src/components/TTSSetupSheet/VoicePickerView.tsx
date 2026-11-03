@@ -49,6 +49,7 @@ import {ENGINE_META} from './engineMeta';
 import {HeroRow} from './HeroRow';
 import {getEngineAccent} from './VoiceAvatar';
 import {l10n as locales, t} from '../../locales';
+import {themeColor} from '../../theme/phosphor';
 
 type L10n = (typeof locales)['en'];
 type DownloadState = 'not_installed' | 'downloading' | 'ready' | 'error';
@@ -303,7 +304,7 @@ export const VoicePickerView: React.FC = observer(() => {
     const key = `${voice.engine}:${voice.id}`;
     const isSelected = key === selectedKey;
     const isPreviewing = ttsStore.isPreviewingVoice(voice);
-    const accent = getEngineAccent(voice.engine);
+    const accent = themeColor(theme, getEngineAccent(voice.engine));
     return (
       <TouchableRipple
         key={key}
@@ -385,8 +386,8 @@ export const VoicePickerView: React.FC = observer(() => {
           <Button
             mode="contained"
             onPress={handleRetry}
-            buttonColor={meta.accent}
-            textColor="#FFFFFF"
+            buttonColor={themeColor(theme, meta.accent)}
+            textColor={themeColor(theme, '#FFFFFF')}
             style={styles.engineGroupCta}
             labelStyle={styles.engineGroupCtaLabel}
             testID={`tts-${engineId}-retry-button`}>
@@ -419,8 +420,8 @@ export const VoicePickerView: React.FC = observer(() => {
           mode="contained"
           onPress={handleInstall}
           disabled={lowDisk}
-          buttonColor={meta.accent}
-          textColor="#FFFFFF"
+          buttonColor={themeColor(theme, meta.accent)}
+          textColor={themeColor(theme, '#FFFFFF')}
           style={styles.engineGroupCta}
           labelStyle={styles.engineGroupCtaLabel}
           testID={`tts-${engineId}-install-button`}>
@@ -471,7 +472,10 @@ export const VoicePickerView: React.FC = observer(() => {
         style={styles.engineGroup}
         testID={`tts-engine-group-${engineId}`}>
         <LinearGradient
-          colors={[meta.gradientFrom, meta.gradientTo]}
+          colors={[
+            themeColor(theme, meta.gradientFrom),
+            themeColor(theme, meta.gradientTo),
+          ]}
           start={{x: 0, y: 0}}
           end={{x: 1, y: 1}}
           style={[StyleSheet.absoluteFill, styles.engineGroupGradientFill]}
@@ -485,15 +489,19 @@ export const VoicePickerView: React.FC = observer(() => {
               engineId={engineId}
               size={36}
               progress={ringProgress}
-              ringColor={meta.accent}
-              haloColor={isActive ? meta.accent : undefined}
+              ringColor={themeColor(theme, meta.accent)}
+              haloColor={isActive ? themeColor(theme, meta.accent) : undefined}
             />
             <View style={styles.engineGroupHeaderText}>
               <Text style={styles.engineGroupTitle}>
                 {engineTitle(engineId, l10n)}
               </Text>
               {tierLabel ? (
-                <Text style={[styles.engineGroupTier, {color: meta.accent}]}>
+                <Text
+                  style={[
+                    styles.engineGroupTier,
+                    {color: themeColor(theme, meta.accent)},
+                  ]}>
                   {tierLabel}
                 </Text>
               ) : null}

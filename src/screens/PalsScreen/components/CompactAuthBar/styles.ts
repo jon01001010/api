@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../../../utils/types';
+import {themeRadius} from '../../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -45,7 +46,7 @@ export const createStyles = (theme: Theme) =>
       gap: 4,
     },
     signInButton: {
-      borderRadius: 20,
+      borderRadius: themeRadius(theme, 20),
       minWidth: 80,
     },
     signInButtonLabel: {

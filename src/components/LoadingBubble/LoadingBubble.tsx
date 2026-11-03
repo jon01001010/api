@@ -2,6 +2,7 @@ import {View, Animated} from 'react-native';
 import React, {useEffect, useRef} from 'react';
 
 import {useTheme} from '../../hooks';
+import {themeRadius} from '../../theme/phosphor';
 
 import {styles} from './styles';
 
@@ -39,6 +40,7 @@ const LoadingDot: React.FC<LoadingDotProps> = ({delay, theme}) => {
         styles.dot,
         {
           backgroundColor: theme.colors.outline,
+          borderRadius: themeRadius(theme, 3),
           opacity,
         },
       ]}
@@ -53,7 +55,10 @@ export const LoadingBubble: React.FC = () => {
     <View
       style={[
         styles.container,
-        {backgroundColor: theme.colors.surfaceVariant},
+        {
+          backgroundColor: theme.colors.surfaceVariant,
+          borderRadius: themeRadius(theme, 16),
+        },
       ]}>
       <LoadingDot delay={0} theme={theme} />
       <LoadingDot delay={200} theme={theme} />

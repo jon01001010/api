@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import {Theme} from '../../../utils/types';
+import {themeRadius} from '../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -12,7 +13,7 @@ export const createStyles = (theme: Theme) =>
     content: {
       paddingVertical: 0,
       backgroundColor: theme.colors.menuBackground,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       //overflow: 'hidden', This removes shadow
     },
   });

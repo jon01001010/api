@@ -1,6 +1,5 @@
 import * as React from 'react';
 import {
-  TextInput,
   TextInputProps,
   View,
   Animated,
@@ -42,6 +41,9 @@ import {L10nContext, UserContext} from '../../utils';
 import {t} from '../../locales';
 
 import {SendButton, StopButton, Menu, VoiceChip} from '..';
+import {themeColor, themeRadius} from '../../theme/phosphor';
+import {TextInput} from '../ThemedText';
+import type {TextInput as RNTextInput} from 'react-native';
 
 export interface ChatInputTopLevelProps {
   /** Whether the AI is currently streaming tokens */
@@ -153,7 +155,7 @@ export const ChatInput = observer(
     const l10n = React.useContext(L10nContext);
     const theme = useTheme();
     const user = React.useContext(UserContext);
-    const inputRef = React.useRef<TextInput>(null);
+    const inputRef = React.useRef<RNTextInput>(null);
     const editBarHeight = React.useRef(new Animated.Value(0)).current;
     const iconRotation = React.useRef(new Animated.Value(0)).current;
     const activePalId = chatSessionStore.activePalId;
@@ -507,7 +509,8 @@ export const ChatInput = observer(
       outputRange: ['0deg', '180deg'],
     });
 
-    const onSurfaceColor = currentActivePal?.color?.[0] || theme.colors.text;
+    const onSurfaceColor =
+      themeColor(theme, currentActivePal?.color?.[0]) || theme.colors.text;
     const onSurfaceColorVariant = onSurfaceColor + '55'; // for disabled state or placeholder text
     // // Plus button state
     const isPlusButtonEnabled = !isStreaming && hasActiveModel;
@@ -530,8 +533,8 @@ export const ChatInput = observer(
           transparent
           animationType="slide"
           onRequestClose={() => setWorkspaceVisible(false)}>
-          <View style={{flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.55)'}}>
-            <View style={{backgroundColor: theme.colors.surface, borderRadius: 16, padding: 16, maxHeight: '75%'}}>
+          <View style={{flex: 1, justifyContent: 'center', padding: 20, backgroundColor: themeColor(theme, 'rgba(0,0,0,0.55)')}}>
+            <View style={{backgroundColor: theme.colors.surface, borderRadius: themeRadius(theme, 16), padding: 16, maxHeight: '75%'}}>
               <Text variant="titleMedium">PocketAgent workspace</Text>
               <Text variant="bodySmall" style={{marginVertical: 10}}>
                 Tap a file to share it or save a copy using Android's share sheet.
@@ -565,8 +568,8 @@ export const ChatInput = observer(
         </Modal>
         <Modal visible={limitField !== null} transparent animationType="fade"
           onRequestClose={() => setLimitField(null)}>
-          <View style={{flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.6)'}}>
-            <View style={{backgroundColor: theme.colors.surface, borderRadius: 16, padding: 20, maxHeight: '80%'}}>
+          <View style={{flex: 1, justifyContent: 'center', padding: 24, backgroundColor: themeColor(theme, 'rgba(0,0,0,0.6)')}}>
+            <View style={{backgroundColor: theme.colors.surface, borderRadius: themeRadius(theme, 16), padding: 20, maxHeight: '80%'}}>
               <Text variant="titleMedium">{limitField === 'maxFileBytes' ? 'Maximum text file size' : 'Maximum model tool text'}</Text>
               <Text variant="bodySmall" style={{marginVertical: 10}}>Choose a preset or enter a custom limit in KiB.</Text>
               <ScrollView style={{flexGrow: 0}}>
@@ -580,7 +583,7 @@ export const ChatInput = observer(
               </ScrollView>
               <TextInput keyboardType="number-pad" placeholder="Custom KiB (16–32768)"
                 value={customLimitKiB} onChangeText={setCustomLimitKiB}
-                style={{borderWidth: 1, borderColor: theme.colors.outline, borderRadius: 8, padding: 10, marginTop: 12, color: theme.colors.onSurface}} />
+                style={{borderWidth: 1, borderColor: theme.colors.outline, borderRadius: themeRadius(theme, 8), padding: 10, marginTop: 12, color: theme.colors.onSurface}} />
               <TouchableOpacity accessibilityRole="button" onPress={() => {
                 const kib = Number(customLimitKiB);
                 if (!Number.isSafeInteger(kib) || kib < 16 || kib > 32768) {
@@ -764,7 +767,10 @@ export const ChatInput = observer(
                           : theme.colors.inverseSurface,
                     },
                     currentActivePal?.color && {
-                      backgroundColor: currentActivePal?.color?.[0],
+                      backgroundColor: themeColor(
+                        theme,
+                        currentActivePal?.color?.[0],
+                      ),
                     },
                   ]}
                   onPress={onPalBtnPress}

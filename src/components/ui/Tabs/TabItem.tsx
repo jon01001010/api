@@ -1,10 +1,11 @@
 import React from 'react';
-import {Text, View} from 'react-native';
+import {View} from 'react-native';
 
 import {useTheme} from '../../../hooks';
 import {Pressable} from '../primitives/Pressable';
 
 import {createStyles, type TabsSize, type TabsVariant} from './styles';
+import {Text} from '../../ThemedText';
 
 export type TabItemProps = {
   value: string;

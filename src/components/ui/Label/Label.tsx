@@ -1,11 +1,12 @@
 import React from 'react';
-import {Text, View} from 'react-native';
+import {View} from 'react-native';
 
 import {useTheme} from '../../../hooks';
 
 import type {CommonDSProps} from '../types';
 
 import {createStyles, type LabelSize, type LabelVariant} from './styles';
+import {Text} from '../../ThemedText';
 
 export type LabelProps = Omit<CommonDSProps, 'disabled'> & {
   variant?: LabelVariant;

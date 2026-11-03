@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -12,7 +13,7 @@ export const createStyles = (theme: Theme) =>
       gap: 8,
       minHeight: 44,
       paddingHorizontal: 14,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       borderWidth: 1,
       borderColor: theme.colors.outlineVariant,
       backgroundColor: theme.colors.surface,

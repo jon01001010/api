@@ -29,6 +29,7 @@ import {
 import {
   GlobeIcon,
   MoonIcon,
+  CodeIcon,
   CpuChipIcon,
   ShareIcon,
   LinkExternalIcon,
@@ -1120,8 +1121,37 @@ export const SettingsScreen: React.FC = observer(() => {
                   <Switch
                     testID="dark-mode-switch"
                     value={uiStore.colorScheme === 'dark'}
+                    disabled={uiStore.themeStyle === 'phosphor'}
                     onValueChange={value =>
                       uiStore.setColorScheme(value ? 'dark' : 'light')
+                    }
+                  />
+                </View>
+                <Divider />
+
+                {/* Phosphor style (appearance only) */}
+                <View style={styles.switchContainer}>
+                  <View style={styles.textContainer}>
+                    <View style={styles.labelWithIconContainer}>
+                      <CodeIcon
+                        width={20}
+                        height={20}
+                        style={styles.settingIcon}
+                        stroke={theme.colors.onSurface}
+                      />
+                      <Text variant="titleMedium" style={styles.textLabel}>
+                        {l10n.settings.phosphorStyle}
+                      </Text>
+                    </View>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {l10n.settings.phosphorStyleDescription}
+                    </Text>
+                  </View>
+                  <Switch
+                    testID="phosphor-style-switch"
+                    value={uiStore.themeStyle === 'phosphor'}
+                    onValueChange={value =>
+                      uiStore.setThemeStyle(value ? 'phosphor' : 'default')
                     }
                   />
                 </View>

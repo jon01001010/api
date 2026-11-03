@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import {Theme} from '../../../../../utils/types';
+import {themeRadius} from '../../../../../theme/phosphor';
 
 export const createStyles = (theme: Theme, isProjectionModel) =>
   StyleSheet.create({
@@ -9,7 +10,7 @@ export const createStyles = (theme: Theme, isProjectionModel) =>
       backgroundColor: isProjectionModel
         ? theme.colors.tertiaryContainer
         : theme.colors.surfaceVariant,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       overflow: 'hidden', // Important for gradient containment
       position: 'relative', // For absolute positioning of gradient
     },
@@ -19,7 +20,7 @@ export const createStyles = (theme: Theme, isProjectionModel) =>
       top: 0,
       bottom: 0,
       height: '100%', // Ensures full height
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
     },
     fileContent: {
       padding: 12,
@@ -87,7 +88,7 @@ export const createStyles = (theme: Theme, isProjectionModel) =>
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: theme.colors.errorContainer,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       paddingVertical: 2,
       paddingHorizontal: 6,
       gap: 4,
@@ -109,7 +110,7 @@ export const createStyles = (theme: Theme, isProjectionModel) =>
       height: 2,
       backgroundColor: theme.colors.primary,
       opacity: 0.2,
-      borderRadius: 1,
+      borderRadius: themeRadius(theme, 1),
       overflow: 'hidden',
     },
     progressFill: {
@@ -118,7 +119,7 @@ export const createStyles = (theme: Theme, isProjectionModel) =>
       top: 0,
       bottom: 0,
       backgroundColor: theme.colors.primary,
-      borderRadius: 1,
+      borderRadius: themeRadius(theme, 1),
     },
     snackbarContent: {
       flexDirection: 'column',

@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -21,7 +22,7 @@ export const createStyles = (theme: Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: theme.colors.surface,
-      borderRadius: 20,
+      borderRadius: themeRadius(theme, 20),
       paddingHorizontal: 16,
       paddingVertical: 6,
       height: 40,
@@ -53,7 +54,7 @@ export const createStyles = (theme: Theme) =>
     filterToggleButton: {
       width: 40,
       height: 40,
-      borderRadius: 20,
+      borderRadius: themeRadius(theme, 20),
       backgroundColor: theme.colors.surfaceVariant,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: theme.colors.outline,
@@ -71,7 +72,7 @@ export const createStyles = (theme: Theme) =>
       right: 6,
       width: 8,
       height: 8,
-      borderRadius: 4,
+      borderRadius: themeRadius(theme, 4),
       backgroundColor: theme.colors.primary,
     },
     filterDropdownContainer: {
@@ -85,7 +86,7 @@ export const createStyles = (theme: Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       // backgroundColor: theme.colors.surfaceVariant,
-      borderRadius: 20,
+      borderRadius: themeRadius(theme, 20),
       paddingHorizontal: 12,
       paddingVertical: 6,
       marginRight: 8,
@@ -106,7 +107,7 @@ export const createStyles = (theme: Theme) =>
     },
     expandedFiltersContainer: {
       backgroundColor: theme.colors.surfaceVariant,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       padding: 16,
       marginTop: 8,
       borderWidth: StyleSheet.hairlineWidth,
@@ -121,7 +122,7 @@ export const createStyles = (theme: Theme) =>
     authorInput: {
       backgroundColor: theme.colors.surface,
       fontSize: 14,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       borderWidth: 1,
       borderColor: theme.colors.outline,
       paddingHorizontal: 12,
@@ -138,7 +139,7 @@ export const createStyles = (theme: Theme) =>
     },
     selectorButton: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       borderColor: theme.colors.outline,
     },
 
@@ -154,7 +155,7 @@ export const createStyles = (theme: Theme) =>
       justifyContent: 'space-between',
       paddingVertical: 16,
       paddingHorizontal: 16,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       backgroundColor: 'transparent',
       minHeight: 56,
     },

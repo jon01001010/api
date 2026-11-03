@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-import {Modal, ScrollView, Text, TouchableOpacity, View} from 'react-native';
+import {Modal, ScrollView, TouchableOpacity, View} from 'react-native';
 import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
 import {WebView} from 'react-native-webview';
 import {useIsFocused} from '@react-navigation/native';
@@ -25,6 +25,7 @@ import {useTheme} from '../../hooks';
 import {L10nContext} from '../../utils';
 
 import {codeHighlighterPreOverride, createStyles} from './styles';
+import {Text} from '../ThemedText';
 
 const hapticOptions = {
   enableVibrateFallback: true,
@@ -96,13 +97,16 @@ export const HtmlPreviewBubble: React.FC<HtmlPreviewBubbleProps> = ({
 
   const styles = useMemo(
     () =>
-      createStyles({
-        background: theme.colors.surface,
-        border: theme.colors.outline,
-        text: theme.colors.onSurface,
-        headerBg: theme.colors.surfaceVariant,
-        modalOverlay: theme.colors.background,
-      }),
+      createStyles(
+        {
+          background: theme.colors.surface,
+          border: theme.colors.outline,
+          text: theme.colors.onSurface,
+          headerBg: theme.colors.surfaceVariant,
+          modalOverlay: theme.colors.background,
+        },
+        theme,
+      ),
     [theme],
   );
 

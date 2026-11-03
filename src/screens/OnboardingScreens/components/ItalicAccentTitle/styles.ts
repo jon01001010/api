@@ -2,6 +2,7 @@ import {StyleSheet} from 'react-native';
 
 import type {Theme} from '../../../../utils/types';
 import {FONT_FAMILIES} from '../../../../theme/tokens/typography';
+import {PHOSPHOR_FONT} from '../../../../theme/phosphor';
 
 export const createStyles = (theme: Theme, align: 'left' | 'center') => {
   // headlineH1 binds to Fraunces-Medium on Latin locales; non-Latin
@@ -22,8 +23,11 @@ export const createStyles = (theme: Theme, align: 'left' | 'center') => {
       color: theme.colors.onBackground,
       textAlign: align,
     },
-    italic: isFraunces
-      ? {fontFamily: FONT_FAMILIES.FRAUNCES_ITALIC, fontStyle: 'italic'}
-      : {fontFamily: FONT_FAMILIES.INTER_MEDIUM, fontStyle: 'italic'},
+    italic: theme.isPhosphor
+      ? // Phosphor: mono has no italic cut; emphasise with the bright tone.
+        {fontFamily: PHOSPHOR_FONT.medium, color: theme.colors.secondary}
+      : isFraunces
+        ? {fontFamily: FONT_FAMILIES.FRAUNCES_ITALIC, fontStyle: 'italic'}
+        : {fontFamily: FONT_FAMILIES.INTER_MEDIUM, fontStyle: 'italic'},
   });
 };

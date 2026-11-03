@@ -7,7 +7,12 @@ import {ContextParams, TokenData} from 'llama.rn';
 import {CompletionParams} from './completionTypes';
 import {PreviewData} from '@flyerhq/react-native-link-preview';
 import {MD3Colors, MD3Typescale} from 'react-native-paper/lib/typescript/types';
-import type {TokenRadius, TokenStroke, TokenTypography} from '../theme/tokens';
+import type {
+  ThemeStyle,
+  TokenRadius,
+  TokenStroke,
+  TokenTypography,
+} from '../theme/tokens';
 import {SkillKey} from '.';
 import type {TalentResult} from '../services/talents/types';
 import type {ReasoningCapability} from './reasoningCapability';
@@ -425,6 +430,10 @@ export interface Theme extends MD3Theme {
   typography: TokenTypography;
   radius: TokenRadius;
   stroke: TokenStroke;
+  /** Active visual style. `phosphor` = green CRT terminal look. */
+  themeStyle: ThemeStyle;
+  /** Shorthand for `themeStyle === 'phosphor'`. */
+  isPhosphor: boolean;
 }
 
 export interface User {

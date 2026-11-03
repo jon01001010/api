@@ -1,8 +1,9 @@
 import React from 'react';
-import {Pressable, Text, View} from 'react-native';
+import {Pressable, View} from 'react-native';
 
 import {useTheme} from '../../../../hooks';
 import {createStyles} from './styles';
+import {Text} from '../../../../components/ThemedText';
 
 export type ModelOption = {
   id: string;

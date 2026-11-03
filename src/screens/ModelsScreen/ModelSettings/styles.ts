@@ -1,6 +1,7 @@
 import {Dimensions, StyleSheet} from 'react-native';
 
 import {Theme} from '../../../utils/types';
+import {themeRadius} from '../../../theme/phosphor';
 
 const screenHeight = Dimensions.get('window').height;
 
@@ -34,7 +35,7 @@ export const createStyles = (theme: Theme) =>
     textArea: {
       fontSize: 12,
       lineHeight: 16,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       maxHeight: screenHeight * 0.4,
     },
     completionSettingsContainer: {

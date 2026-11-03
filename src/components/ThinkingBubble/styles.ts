@@ -1,5 +1,6 @@
 import {StyleSheet, Platform} from 'react-native';
 import {Theme} from '../../utils/types';
+import {themeColor, themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) => {
   const bubbleBackground = theme.colors.thinkingBubbleBackground;
@@ -26,7 +27,7 @@ export const createStyles = (theme: Theme) => {
       // collapsed state, the expanded card is rare; the original 16
       // bloated the layout for the common collapsed case.
       marginVertical: 6,
-      borderRadius: 20,
+      borderRadius: themeRadius(theme, 20),
       overflow: 'hidden',
       backgroundColor: bubbleBackground,
       borderWidth: 1,
@@ -84,7 +85,7 @@ export const createStyles = (theme: Theme) => {
       height: 28,
       alignItems: 'center',
       justifyContent: 'center',
-      borderRadius: 14,
+      borderRadius: themeRadius(theme, 14),
       backgroundColor: theme.colors.thinkingBubbleChevronBackground,
       borderWidth: 1,
       borderColor: theme.colors.thinkingBubbleChevronBorder,
@@ -92,13 +93,13 @@ export const createStyles = (theme: Theme) => {
     collapsedChevronContainer: {
       width: 20,
       height: 20,
-      borderRadius: 10,
+      borderRadius: themeRadius(theme, 10),
     },
     contentContainer: {
       paddingHorizontal: 16,
       paddingBottom: 16,
       backgroundColor: 'transparent',
-      borderRadius: 0,
+      borderRadius: themeRadius(theme, 0),
     },
     // Absolute fill style for BlurView
     absoluteFill: {
@@ -112,7 +113,7 @@ export const createStyles = (theme: Theme) => {
       flex: 1,
       position: 'relative',
       overflow: 'hidden',
-      borderRadius: 0,
+      borderRadius: themeRadius(theme, 0),
     },
     maskElementContainer: {
       flex: 1,
@@ -123,7 +124,7 @@ export const createStyles = (theme: Theme) => {
     },
     maskSolid: {
       flex: 1,
-      backgroundColor: 'black',
+      backgroundColor: themeColor(theme, 'black'),
     },
     // Text-only collapsed state (Idea A): a single inline tappable
     // row, no card / no border / no shadow. Kept on the left edge so

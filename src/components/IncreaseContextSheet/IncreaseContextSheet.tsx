@@ -17,6 +17,7 @@ import {CONTEXT_LADDER} from '../../utils/bannerVariantResolver';
 
 import {makeFitStatusFor} from './fitStatus';
 import {createStyles} from './styles';
+import {themeColor} from '../../theme/phosphor';
 
 interface IncreaseContextSheetProps {
   isVisible: boolean;
@@ -157,8 +158,8 @@ export const IncreaseContextSheet: React.FC<IncreaseContextSheetProps> =
 
       // Semantic fit-zone tints. Warm hues read as a memory warning; the brand
       // tokens skew neutral and don't carry that meaning.
-      const fitsTint = '#5C8E73';
-      const tightTint = '#E08A5F';
+      const fitsTint = themeColor(theme, '#5C8E73');
+      const tightTint = themeColor(theme, '#E08A5F');
       const wontTint = theme.colors.error;
       const chipTint =
         chosenFit === 'fits'

@@ -116,6 +116,8 @@
     "languageSheetTitle": "Language",
     "languageSearchPlaceholder": "Search languages",
     "darkMode": "Dark Mode",
+    "phosphorStyle": "Phosphor Style",
+    "phosphorStyleDescription": "Green CRT terminal look. Appearance only.",
     "displayMemoryUsage": "Display Memory Usage",
     "displayMemoryUsageDescription": "Display memory usage in the chat page.",
     "exportOptions": "Export Options",

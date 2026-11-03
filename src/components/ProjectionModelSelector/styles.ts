@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../utils';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -50,7 +51,7 @@ export const createStyles = (theme: Theme) =>
       paddingVertical: 12,
       paddingHorizontal: 12,
       backgroundColor: theme.colors.surfaceVariant + '20', // Very subtle background
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       borderLeftWidth: 3,
       borderLeftColor: 'transparent',
     },
@@ -88,7 +89,7 @@ export const createStyles = (theme: Theme) =>
     },
     selectArea: {
       padding: 6, // More compact padding
-      borderRadius: 6,
+      borderRadius: themeRadius(theme, 6),
       alignItems: 'center',
       justifyContent: 'center',
       minWidth: 32, // Reduced from 70 to 32 for icon-only
@@ -105,7 +106,7 @@ export const createStyles = (theme: Theme) =>
     },
     deleteArea: {
       padding: 6,
-      borderRadius: 6,
+      borderRadius: themeRadius(theme, 6),
       backgroundColor: theme.colors.errorContainer + '20',
       alignItems: 'center',
       justifyContent: 'center',
@@ -114,7 +115,7 @@ export const createStyles = (theme: Theme) =>
     },
     downloadArea: {
       padding: 6, // More compact, icon-only
-      borderRadius: 6,
+      borderRadius: themeRadius(theme, 6),
       backgroundColor: theme.colors.primaryContainer + '20',
       alignItems: 'center',
       justifyContent: 'center',
@@ -133,7 +134,7 @@ export const createStyles = (theme: Theme) =>
       paddingVertical: 4,
       paddingHorizontal: 8,
       backgroundColor: theme.colors.primaryContainer + '30',
-      borderRadius: 6,
+      borderRadius: themeRadius(theme, 6),
     },
     progressText: {
       marginLeft: 6,

@@ -1,5 +1,5 @@
 import React, {useContext, useMemo, useState} from 'react';
-import {View, Text} from 'react-native';
+import {View} from 'react-native';
 import {BottomSheetFlatList} from '@gorhom/bottom-sheet';
 
 import {CheckMdIcon, SearchIcon} from '../../assets/icons';
@@ -9,6 +9,7 @@ import {Pressable} from '../ui/primitives/Pressable';
 import {Sheet} from '../Sheet';
 
 import {createStyles} from './styles';
+import {Text} from '../ThemedText';
 
 export type SearchableSelectOption = {
   value: string;

@@ -1,5 +1,6 @@
 import {Platform, StyleSheet} from 'react-native';
 import type {Theme} from '../../utils/types';
+import {themeFont, themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -99,7 +100,7 @@ export const createStyles = (theme: Theme) =>
     warningContainer: {
       backgroundColor: theme.colors.errorContainer,
       padding: 16,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       marginBottom: 16,
     },
     warningList: {
@@ -145,12 +146,15 @@ export const createStyles = (theme: Theme) =>
     },
     detailsContainer: {
       backgroundColor: theme.colors.surfaceVariant,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       padding: 12,
       marginTop: 8,
     },
     codeBlock: {
-      fontFamily: Platform.select({ios: 'Menlo', android: 'monospace'}),
+      fontFamily: themeFont(
+        theme,
+        Platform.select({ios: 'Menlo', android: 'monospace'}),
+      ),
       fontSize: 11,
     },
     checkboxContainer: {

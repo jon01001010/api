@@ -1,13 +1,16 @@
 import React, {useContext, useEffect, useRef, useState} from 'react';
-import {Animated, Text, View} from 'react-native';
+import {Animated, View} from 'react-native';
 
 import {useTheme} from '../../hooks';
+import {themeRadius} from '../../theme/phosphor';
+import {PhosphorCursor} from '../PhosphorCursor';
 import {L10nContext} from '../../utils';
 import {t} from '../../locales';
 
 import {styles, createCountStyle} from './styles';
 
 import {Theme} from '../../utils/types';
+import {Text} from '../ThemedText';
 
 // Suppress the count for trivial in-progress calls so simple talents
 // don't trade a dot-row for "1 tokens" the moment they start. The
@@ -60,6 +63,7 @@ const Dot: React.FC<DotProps> = ({delay, theme}) => {
         styles.dot,
         {
           backgroundColor: theme.colors.onSurfaceVariant,
+          borderRadius: themeRadius(theme, 2),
           opacity,
         },
       ]}
@@ -151,9 +155,15 @@ export const PendingIndicator: React.FC<PendingIndicatorProps> = ({
 
   return (
     <View style={styles.container} testID="pending-indicator">
-      <Dot delay={0} theme={theme} />
-      <Dot delay={200} theme={theme} />
-      <Dot delay={400} theme={theme} />
+      {theme.isPhosphor ? (
+        <PhosphorCursor inline />
+      ) : (
+        <>
+          <Dot delay={0} theme={theme} />
+          <Dot delay={200} theme={theme} />
+          <Dot delay={400} theme={theme} />
+        </>
+      )}
       {suffix !== null && (
         <Text style={countStyle} testID="pending-indicator-suffix">
           {suffix}

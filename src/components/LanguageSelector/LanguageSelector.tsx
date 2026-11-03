@@ -1,5 +1,5 @@
 import React, {useContext, useMemo, useState} from 'react';
-import {Text} from 'react-native';
+
 import {observer} from 'mobx-react';
 
 import {ChevronDownIcon} from '../../assets/icons';
@@ -11,6 +11,7 @@ import {SearchableSelectSheet} from '../SearchableSelectSheet';
 import {Pressable} from '../ui/primitives/Pressable';
 
 import {createStyles} from './styles';
+import {Text} from '../ThemedText';
 
 /**
  * App-language control: a content-sized trigger plus the shared searchable

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {Image, Text, View} from 'react-native';
+import {Image, View} from 'react-native';
 
 import {useTheme} from '../../hooks';
 
@@ -7,6 +7,7 @@ import {styles} from './styles';
 
 import {MessageType} from '../../utils/types';
 import {formatBytes, L10nContext, UserContext} from '../../utils';
+import {Text} from '../ThemedText';
 
 export interface FileMessageProps {
   message: MessageType.DerivedFile;

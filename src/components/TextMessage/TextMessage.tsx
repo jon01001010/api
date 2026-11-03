@@ -1,12 +1,5 @@
 import * as React from 'react';
-import {
-  Linking,
-  Text,
-  View,
-  Image,
-  TouchableOpacity,
-  Modal,
-} from 'react-native';
+import {Linking, View, Image, TouchableOpacity, Modal} from 'react-native';
 import {IconButton} from 'react-native-paper';
 
 import ParsedText from 'react-native-parsed-text';
@@ -28,6 +21,7 @@ import {
   UserContext,
 } from '../../utils';
 import {visibleStepContent} from '../../utils/chat';
+import {Text} from '../ThemedText';
 
 export interface TextMessageTopLevelProps {
   /** @see {@link LinkPreviewProps.onPreviewDataFetched} */

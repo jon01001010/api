@@ -1,11 +1,12 @@
 import React, {useCallback, useState} from 'react';
-import {View, TextInput, Text, StyleSheet} from 'react-native';
+import {View, StyleSheet} from 'react-native';
 
 import {
   takeMemorySnapshot,
   clearMemorySnapshots,
   readMemorySnapshots,
 } from '../../utils/memoryProfile';
+import {Text, TextInput} from '../../components/ThemedText';
 
 const SNAP_PREFIX = 'snap::';
 const CLEAR_CMD = 'clear::snapshots';

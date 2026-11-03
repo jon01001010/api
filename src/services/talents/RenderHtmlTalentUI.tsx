@@ -1,11 +1,12 @@
 import React from 'react';
-import {Text, View} from 'react-native';
+import {View} from 'react-native';
 
 import {HtmlPreviewBubble} from '../../components/HtmlPreviewBubble';
 import {styles as pendingStyles} from '../../components/TalentSurface/styles';
 
 import {TalentUI} from './TalentUIRegistry';
 import {TalentResult} from './types';
+import {Text} from '../../components/ThemedText';
 
 export class RenderHtmlTalentUI implements TalentUI {
   readonly name = 'render_html';

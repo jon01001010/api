@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -10,7 +11,7 @@ export const createStyles = (theme: Theme) =>
     tooltip: {
       position: 'absolute',
       padding: 8,
-      borderRadius: 4,
+      borderRadius: themeRadius(theme, 4),
       backgroundColor: theme.colors.surface,
       elevation: 4,
       width: 120,

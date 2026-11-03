@@ -16,6 +16,7 @@ import {L10nContext} from '../../utils';
 
 import {createStyles} from './styles';
 import {VoiceAvatar, getEngineAccent, getEngineTint} from './VoiceAvatar';
+import {themeColor} from '../../theme/phosphor';
 
 const engineChipKey = {
   kitten: 'engineChipKitten',
@@ -66,9 +67,9 @@ export const HeroRow: React.FC = observer(() => {
     return null;
   }
 
-  const accent = getEngineAccent(current.engine);
-  const tint = getEngineTint(current.engine, 0.1);
-  const border = getEngineTint(current.engine, 0.18);
+  const accent = themeColor(theme, getEngineAccent(current.engine));
+  const tint = themeColor(theme, getEngineTint(current.engine, 0.1));
+  const border = themeColor(theme, getEngineTint(current.engine, 0.18));
 
   const isPreviewing = ttsStore.isPreviewingVoice(current);
 
@@ -147,7 +148,7 @@ export const HeroRow: React.FC = observer(() => {
             theme={{
               colors: {
                 secondaryContainer: accent,
-                onSecondaryContainer: '#FFFFFF',
+                onSecondaryContainer: themeColor(theme, '#FFFFFF'),
               },
             }}
             buttons={STEPS_BUTTONS.map(b => ({

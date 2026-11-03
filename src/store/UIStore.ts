@@ -38,6 +38,10 @@ export class UIStore {
   colorScheme: 'light' | 'dark' =
     Appearance.getColorScheme() === 'dark' ? 'dark' : 'light';
 
+  // Visual style layered on top of colorScheme. 'phosphor' = green CRT
+  // terminal look (appearance only). Off by default.
+  themeStyle: 'default' | 'phosphor' = 'default';
+
   // Current selected language (default to English)
   _language: AvailableLanguage = 'en';
 
@@ -115,6 +119,7 @@ export class UIStore {
       properties: [
         'pageStates',
         'colorScheme',
+        'themeStyle',
         'autoNavigatetoChat',
         'displayMemUsage',
         'benchmarkShareDialog',
@@ -147,6 +152,12 @@ export class UIStore {
   setColorScheme(colorScheme: 'light' | 'dark') {
     runInAction(() => {
       this.colorScheme = colorScheme;
+    });
+  }
+
+  setThemeStyle(themeStyle: 'default' | 'phosphor') {
+    runInAction(() => {
+      this.themeStyle = themeStyle;
     });
   }
 

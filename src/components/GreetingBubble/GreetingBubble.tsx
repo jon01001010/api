@@ -1,9 +1,10 @@
 import React, {useMemo} from 'react';
-import {Text, View} from 'react-native';
+import {View} from 'react-native';
 
 import {useTheme} from '../../hooks';
 
 import {createStyles} from './styles';
+import {Text} from '../ThemedText';
 
 interface GreetingBubbleProps {
   text: string;
@@ -21,12 +22,15 @@ export const GreetingBubble: React.FC<GreetingBubbleProps> = ({text}) => {
 
   const styles = useMemo(
     () =>
-      createStyles({
-        background: theme.colors.surfaceVariant,
-        border: theme.colors.outline,
-        text: theme.colors.onSurfaceVariant,
-        accent: theme.colors.primary,
-      }),
+      createStyles(
+        {
+          background: theme.colors.surfaceVariant,
+          border: theme.colors.outline,
+          text: theme.colors.onSurfaceVariant,
+          accent: theme.colors.primary,
+        },
+        theme,
+      ),
     [theme],
   );
 

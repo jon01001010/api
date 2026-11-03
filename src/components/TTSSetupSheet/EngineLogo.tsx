@@ -6,6 +6,7 @@ import {useTheme} from '../../hooks';
 import type {EngineId} from '../../services/tts';
 
 import {createStyles} from './styles';
+import {themeColor} from '../../theme/phosphor';
 
 const LOGO_SOURCES: Record<Exclude<EngineId, 'system'>, number> = {
   kitten: require('../../assets/images/engines/kitten.png'),
@@ -56,7 +57,7 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
       ? null
       : Math.max(0, Math.min(1, progress));
 
-  const bg = BRAND_BG[engineId];
+  const bg = themeColor(theme, BRAND_BG[engineId]);
 
   const renderInner = () => {
     if (engineId === 'system') {
@@ -101,7 +102,7 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
               width: size + 8,
               height: size + 8,
               borderRadius: (size + 8) / 2,
-              backgroundColor: haloColor,
+              backgroundColor: themeColor(theme, haloColor),
             },
           ]}
         />
@@ -117,7 +118,7 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke={ringColor ?? RING_FALLBACK}
+            stroke={themeColor(theme, ringColor ?? RING_FALLBACK)}
             strokeOpacity={0.2}
             strokeWidth={ringStroke}
             fill="transparent"
@@ -126,7 +127,7 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke={ringColor ?? RING_FALLBACK}
+            stroke={themeColor(theme, ringColor ?? RING_FALLBACK)}
             strokeWidth={ringStroke}
             strokeLinecap="round"
             strokeDasharray={`${circumference} ${circumference}`}

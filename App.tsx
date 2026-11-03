@@ -54,6 +54,7 @@ import PalsScreen from './src/screens/PalsScreen';
 import {ToolboxScreen} from './src/screens/ToolboxScreen';
 import {PocketAgentHardwareScreen} from './src/screens/PocketAgentHardwareScreen';
 import {OnboardingStack} from './src/screens/OnboardingScreens';
+import {ScanlineOverlay} from './src/components/ScanlineOverlay';
 
 // Check if app is in debug mode
 const isDebugMode = __DEV__;
@@ -245,6 +246,7 @@ const App = observer(() => {
           </PaperProvider>
         </KeyboardProvider>
       </SafeAreaProvider>
+      <ScanlineOverlay />
     </GestureHandlerRootView>
   );
 });

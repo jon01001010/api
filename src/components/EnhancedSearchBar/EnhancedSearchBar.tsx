@@ -1,5 +1,5 @@
 import React, {useState, useContext, useCallback, useMemo} from 'react';
-import {View, TouchableOpacity, ScrollView, TextInput} from 'react-native';
+import {View, TouchableOpacity, ScrollView} from 'react-native';
 
 import {Text} from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -13,6 +13,7 @@ import {L10nContext} from '../../utils';
 import {XIcon} from '../../assets/icons';
 
 import {SortOption, SearchFilters} from '../../store/HFStore';
+import {TextInput} from '../ThemedText';
 
 interface EnhancedSearchBarProps {
   value: string;

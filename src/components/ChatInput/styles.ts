@@ -2,6 +2,7 @@ import {StyleSheet} from 'react-native';
 
 import {Theme} from '../../utils/types';
 import {fontStyles} from '../../utils/theme';
+import {themeColor, themeFont, themeRadius} from '../../theme/phosphor';
 
 export const createStyles = ({
   theme,
@@ -19,14 +20,14 @@ export const createStyles = ({
       width: 28,
       alignItems: 'center',
       justifyContent: 'center',
-      borderRadius: 100,
+      borderRadius: themeRadius(theme, 100),
     },
     plusButton: {
       height: 28,
       width: 28,
       alignItems: 'center',
       justifyContent: 'center',
-      borderRadius: 100,
+      borderRadius: themeRadius(theme, 100),
       opacity: 0.9,
     },
     thinkingToggle: {
@@ -34,7 +35,7 @@ export const createStyles = ({
       width: 28,
       alignItems: 'center',
       justifyContent: 'center',
-      borderRadius: 100,
+      borderRadius: themeRadius(theme, 100),
       borderWidth: 1,
       marginRight: 8,
     },
@@ -42,7 +43,7 @@ export const createStyles = ({
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
       borderWidth: 1,
       paddingHorizontal: 8,
       paddingVertical: 4,
@@ -83,7 +84,7 @@ export const createStyles = ({
     inputContainer: {
       flex: 1,
       flexDirection: 'column',
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       overflow: 'hidden',
     },
     textInputArea: {
@@ -121,8 +122,8 @@ export const createStyles = ({
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: 12,
-      borderTopLeftRadius: 12,
-      borderTopRightRadius: 12,
+      borderTopLeftRadius: themeRadius(theme, 12),
+      borderTopRightRadius: themeRadius(theme, 12),
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.outlineVariant,
       zIndex: 10, // Ensure edit bar stays above other elements
@@ -142,24 +143,24 @@ export const createStyles = ({
       marginTop: isEditMode ? 28 : 0,
     },
     palNameWrapper: {
-      ...fontStyles.regular,
+      fontFamily: themeFont(theme, fontStyles.regular.fontFamily),
       color: theme.colors.inverseOnSurface,
       fontSize: 12,
     },
     palName: {
       fontSize: 12,
       color: theme.colors.inverseOnSurface,
-      ...fontStyles.semibold,
+      fontFamily: themeFont(theme, fontStyles.semibold.fontFamily),
     },
     // New compact pal name styles for control bar
     palNameCompact: {
       fontSize: 10,
-      ...fontStyles.regular,
+      fontFamily: themeFont(theme, fontStyles.regular.fontFamily),
       color: theme.colors.inverseOnSurface,
     },
     palNameValueCompact: {
       fontSize: 10,
-      ...fontStyles.semibold,
+      fontFamily: themeFont(theme, fontStyles.semibold.fontFamily),
       color: theme.colors.inverseOnSurface,
     },
     // Image preview styles
@@ -180,7 +181,7 @@ export const createStyles = ({
     previewImage: {
       width: 80,
       height: 80,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       backgroundColor: theme.colors.surfaceVariant,
     },
     removeImageButton: {
@@ -190,7 +191,7 @@ export const createStyles = ({
       margin: 0,
       padding: 0,
       backgroundColor: theme.colors.surface,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       width: 25,
       height: 25,
     },
@@ -202,11 +203,11 @@ export const createStyles = ({
     cameraButton: {
       width: 40,
       height: 40,
-      borderRadius: 24,
+      borderRadius: themeRadius(theme, 24),
       justifyContent: 'center',
       alignItems: 'center',
       marginBottom: 8,
-      shadowColor: '#000',
+      shadowColor: themeColor(theme, '#000'),
       shadowOffset: {
         width: 0,
         height: 2,
@@ -219,7 +220,7 @@ export const createStyles = ({
     stopButton: {
       width: 48,
       height: 48,
-      borderRadius: 24,
+      borderRadius: themeRadius(theme, 24),
       justifyContent: 'center',
       alignItems: 'center',
       marginBottom: 8,
@@ -232,12 +233,12 @@ export const createStyles = ({
       justifyContent: 'center',
       paddingHorizontal: 14,
       paddingVertical: 8,
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
       gap: 6,
       minWidth: 85,
     },
     compactButtonText: {
-      color: 'white',
+      color: themeColor(theme, 'white'),
       fontSize: 12,
       fontWeight: '600',
     },
@@ -257,9 +258,9 @@ export const createStyles = ({
       backgroundColor: theme.colors.errorContainer,
       paddingHorizontal: 12,
       paddingVertical: 6,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       maxWidth: 250,
-      shadowColor: '#000',
+      shadowColor: themeColor(theme, '#000'),
       shadowOffset: {
         width: 0,
         height: 2,
