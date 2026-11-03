@@ -122,4 +122,36 @@ export const createStyles = (
       flex: 1,
       backgroundColor: colors.background,
     },
+    errorPanel: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 16,
+      gap: 12,
+    },
+    errorText: {
+      color: colors.text,
+      fontSize: 14,
+      textAlign: 'center',
+    },
+    errorButton: {
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      borderRadius: themeRadius(theme, 8),
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+    },
+    errorButtonText: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    remoteNote: {
+      color: colors.text,
+      opacity: 0.7,
+      fontSize: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
   });

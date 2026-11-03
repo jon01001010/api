@@ -67,7 +67,8 @@ Date: 16 October 2026. Status: source prototype; no installable APK yet.
 - Stateless text endpoints: `/v1/models` and `/v1/chat/completions`. Bounded input, deadlines, cancellation, and serialized model use.
 - API startup requires configured Qualcomm HTP acceleration. Actual NPU offload and 8B performance have not been verified on hardware.
 - Android Keystore encryption for persisted download credentials, clearing legacy plaintext tokens, required Hugging Face SHA-256 checks, restricted download destinations, and disabled backup.
-- Script-disabled HTML previews, stricter deep links, restricted cleartext traffic, and no release signing fallback to the public debug key.
+- Sandboxed HTML previews: model-written inline JavaScript runs (so clocks, timers and games work), but a CSP placed before any model markup closes every network path (`default-src 'none'`, `connect-src 'none'`, no external scripts/styles/images/fonts, frames, forms or workers); navigation is pinned to about:blank; no popups, file access or native bridge; incognito with no cache; the page is unmounted when the chat screen loses focus. Updated 3 November 2026 (previously script-disabled).
+- Stricter deep links, restricted cleartext traffic, and no release signing fallback to the public debug key.
 - Payments disabled, no ads added, bounded calculator parser, dependency upgrades and targeted dependency patches.
 
 ## Verification
