@@ -1,17 +1,26 @@
 # PocketAgent TODO and Future Roadmap
 
-Updated: 2026-11-02. This document tracks planned work, not completed implementation.
+Updated: 2026-11-03. This document tracks planned work. Items marked done are done in code (with tests) on the open PR stack (#3 → #4 → #5 → todo-batch); anything that still needs checking on the phone is listed under **Phone checks**.
 
 ## Current validation and fixes
 
-- [ ] Validate dual User Memory / Model Memory UI on a physical Android device, including saving, snapshots, restoration, and model-write approvals.
-- [ ] Confirm memory is loaded into Qwen context on every new run and user memory remains model-read-only.
-- [ ] Fix HTML preview stuck on **Loading…** in chat (reported with generated current-time clock).
-- [ ] Render generated HTML/CSS/JavaScript live inside chat, including updating clocks and timers.
-- [ ] Verify code view, copy, expand/fullscreen, and saving/exporting generated `.html` files.
-- [ ] Add sandbox restrictions, load/error timeouts, and regression tests for embedded HTML.
-- [ ] Harden `read_url` redirect handling: verify the final resolved URL against the allowlist, enforce strict host/port/path matching, and test redirect escapes and provider final-URL reporting.
-- [ ] Finish workspace file operations (append, patch, diff, undo/history) and fix newline/extension matching bugs.
+- [x] Memory editor easy to reach: **Toolbox → Memory**, above Global System Prompt; History lists every snapshot to preview and restore (PR #5).
+- [x] Memory is added to Qwen's context on every run, User Memory has no model write tool, Model Memory writes need approval (code + tests, PR #5).
+- [x] Fix HTML preview stuck on **Loading…** in chat: JavaScript was disabled (PR #4).
+- [x] Render generated HTML/CSS/JavaScript live inside chat, including updating clocks and timers (PR #4).
+- [x] Save generated pages as `.html`: to the workspace or via the share sheet.
+- [x] Add sandbox restrictions, load/error timeouts, and regression tests for embedded HTML (PR #4).
+- [x] `read_url`: strict port matching for user-named sites, no https→http downgrade, redirect-escape tests.
+- [ ] `read_url`: readers must report a **verified final URL** (Firecrawl / Exa / default reader). Until then every read fails closed. Needs each provider's final-URL field confirmed against its docs.
+- [ ] `read_url`: decide whether an http search hit and its https version count as the same page (4 existing scenario tests expect it; the allowlist does not).
+- [x] Workspace file operations: `file_append`, `file_patch`, `file_diff`, `file_history`, `file_undo`; per-file version history; diff shown in the approval dialog.
+- [x] Fix newline (`file_read_range`, `file_search`) and extension (`file_info`) matching bugs.
+
+### Phone checks
+
+- [ ] Memory: save both memories, History → pick a snapshot → restore, and a model memory edit asks for approval.
+- [ ] HTML preview: a generated clock ticks in chat and fullscreen; code view, copy, fullscreen, Save to workspace, and Share work.
+- [ ] Workspace tools: append / patch / undo through chat, with the diff in the approval dialog.
 
 ## Future batch — ARTEMIS-inspired Android automation (deferred)
 
@@ -51,7 +60,6 @@ On hold until a better test phone is available. On the current test device (Moto
 ## Other future work
 
 - [ ] Offline voice, wake phrase, spoken responses, and smart-home routines.
-- [ ] Phosphor incorporation: define integration scope, inspect upstream license/dependencies, and plan a separate implementation batch.
 
 ## Phosphor visual restyle (look only)
 
@@ -69,9 +77,15 @@ Reference look (from the Phosphor stylesheet):
 
 Tasks:
 
-- [ ] Add a Phosphor theme to the app theme system (colors, fonts, borders, radius) rather than hard-coding styles per screen.
-- [ ] Apply it across chat, sidebar, model list, Pals, Toolbox, hardware diagnostics, settings, and onboarding.
-- [ ] Implement the scanline overlay and text glow in React Native (e.g. overlay view / image; check performance on the Razr).
-- [ ] Keep the current light/dark themes available; Phosphor as a selectable theme (decide whether it becomes the default).
-- [ ] Check readability and contrast (WCAG AA) of muted text, and that glow/scanlines don't hurt legibility.
-- [ ] Before/after screenshots on device; confirm no behavior changes.
+- [x] Add a Phosphor theme to the app theme system (colors, fonts, borders, radius) rather than hard-coding styles per screen (PR #3).
+- [x] Apply it across every screen, including hard-coded colours, corners and fonts (PR #3).
+- [x] Scanline overlay, text glow and blinking block cursor (PR #3).
+- [x] Selectable in Settings → App Settings → Phosphor Style, off by default; light/dark stay available (PR #3).
+- [x] Readable Toolbox / Hardware screens in Phosphor and Dark Mode (navigator background) (PR #3).
+- [x] R/G/B sliders under the Phosphor switch to recolour it; palette always readable (text ≥ 7:1, muted ≥ 4.5:1, borders ≥ 3:1) (PR #3).
+
+Phone checks:
+
+- [ ] Scanlines and glow perform well on the Razr.
+- [ ] Glow and scanlines don't hurt legibility; try several slider colours.
+- [ ] Before/after screenshots on device; confirm no behavior changes with Phosphor off.
