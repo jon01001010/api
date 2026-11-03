@@ -5,7 +5,7 @@
 /*const mockEnv = {
   SUPABASE_URL: 'https://test-project.supabase.co',
   SUPABASE_ANON_KEY: 'test-anon-key',
-  APP_URL: 'pocketpal://app',
+  APP_URL: 'pocketagent://app',
   ENABLE_PALSHUB_INTEGRATION: 'true',
   ENABLE_AUTHENTICATION: 'true',
   ENABLE_OFFLINE_MODE: 'true',
@@ -30,7 +30,7 @@ Object.keys(mockEnv).forEach(key => {
 
 export const SUPABASE_URL = 'https://test-project.supabase.co';
 export const SUPABASE_ANON_KEY = 'test-anon-key';
-export const APP_URL = 'pocketpal://app';
+export const APP_URL = 'pocketagent://app';
 export const ENABLE_PALSHUB_INTEGRATION = 'true';
 export const ENABLE_AUTHENTICATION = 'true';
 export const ENABLE_OFFLINE_MODE = 'true';

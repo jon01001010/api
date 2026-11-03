@@ -129,7 +129,7 @@
     "importError": "تعذّر استيراد جلسات المحادثات. يُرجى التحقق من تنسيق الملف.",
     "internetSearch": {
       "title": "البحث على الإنترنت",
-      "description": "اسمح لـ Pals بالبحث على الإنترنت باستخدام أدواتها الخاصة. استخدم مفتاح API الخاص بك — لا يحتفظ PocketPal بمفاتيحك ولا يمرّر استعلاماتك عبر خوادمه.",
+      "description": "اسمح لـ Pals بالبحث على الإنترنت باستخدام أدواتها الخاصة. استخدم مفتاح API الخاص بك — لا يحتفظ PocketAgent بمفاتيحك ولا يمرّر استعلاماتك عبر خوادمه.",
       "providerLabel": "موفّر البحث",
       "providerGated": "قريبًا",
       "keyLabel": "مفتاح API",
@@ -145,7 +145,7 @@
       "resultCountLabel": "عدد النتائج لكل بحث",
       "resultCountDescription": "تقليل عدد النتائج يوفّر مساحة أكبر في سياق النموذج.",
       "consentTitle": "تغادر عمليات البحث جهازك",
-      "consentDescription": "عندما يبحث أحد Pals على الإنترنت، يُرسل استعلام البحث إلى الموفّر المحدد عبر الإنترنت. وعند قراءة صفحة، قد يُرسل عنوان URL ومحتوى الصفحة إلى خدمة القراءة الافتراضية (r.jina.ai) إذا لم يكن لدى الموفّر المحدد قارئ خاص به. لا تُرسل مفاتيح API أو استعلامات البحث إلى PocketPal.",
+      "consentDescription": "عندما يبحث أحد Pals على الإنترنت، يُرسل استعلام البحث إلى الموفّر المحدد عبر الإنترنت. وعند قراءة صفحة، قد يُرسل عنوان URL ومحتوى الصفحة إلى خدمة القراءة الافتراضية (r.jina.ai) إذا لم يكن لدى الموفّر المحدد قارئ خاص به. لا تُرسل مفاتيح API أو استعلامات البحث إلى PocketAgent.",
       "consentAccept": "أفهم ذلك",
       "consentRequired": "وافق على الإفصاح أعلاه لتعيين مفتاح الـ API و تفعيل البحث.",
       "consentGivenTitle": "تم تفعيل البحث على الإنترنت",
@@ -511,23 +511,23 @@
     "screenTitle": "معلومات التطبيق",
     "description": "تطبيق يتيح لك تشغيل نماذج اللغة مباشرة على هاتفك. يعتمد على llama.cpp وllama.rn.",
     "supportProject": "دعم المشروع",
-    "supportProjectDescription": "إذا أعجبك استخدام PocketPal AI، يُرجى دعم المشروع من خلال:",
+    "supportProjectDescription": "إذا أعجبك استخدام PocketAgent، يُرجى دعم المشروع من خلال:",
     "githubButton": "وضع نجمة على GitHub",
     "orBy": "أو من خلال",
     "versionCopiedTitle": "تم نسخ الإصدار",
     "versionCopiedDescription": "تم نسخ معلومات الإصدار إلى الحافظة",
     "tour": "جولة",
-    "tourDescription": "إعادة عرض شاشات الترحيب للتعرّف على ما يقدمه PocketPal AI.",
+    "tourDescription": "إعادة عرض شاشات الترحيب للتعرّف على ما يقدمه PocketAgent.",
     "showIntroButton": "عرض المقدمة مرة أخرى",
     "privacyPolicy": "سياسة الخصوصية",
     "termsOfService": "شروط الخدمة"
   },
   "feedback": {
     "title": "إرسال ملاحظات",
-    "description": "رأيك يهمنا! أخبرنا كيف يساعدك PocketPal AI وما الذي يمكننا تحسينه ليصبح أكثر فائدة لك.",
+    "description": "رأيك يهمنا! أخبرنا كيف يساعدك PocketAgent وما الذي يمكننا تحسينه ليصبح أكثر فائدة لك.",
     "shareThoughtsButton": "مشاركة أفكارك",
     "useCase": {
-      "label": "فيما تستخدم PocketPal AI؟",
+      "label": "فيما تستخدم PocketAgent؟",
       "placeholder": "مثل التلخيص، وتمثيل الأدوار، وغيرها."
     },
     "featureRequests": {
@@ -539,7 +539,7 @@
       "placeholder": "شاركنا أي أفكار أخرى لديك."
     },
     "usageFrequency": {
-      "label": "كم مرة تستخدم PocketPal AI؟ (اختياري)",
+      "label": "كم مرة تستخدم PocketAgent؟ (اختياري)",
       "options": {
         "daily": "يومياً",
         "weekly": "أسبوعياً",
@@ -610,7 +610,7 @@
     },
     "chatEmptyPlaceholder": {
       "noModelsTitle": "لا توجد نماذج متاحة",
-      "noModelsDescription": "نزّل نموذجًا لبدء الدردشة مع PocketPal",
+      "noModelsDescription": "نزّل نموذجًا لبدء الدردشة مع PocketAgent",
       "noModelsButton": "تنزيل النموذج",
       "activateModelTitle": "فعّل النموذج للبدء",
       "activateModelDescription": "اختر النموذج ونزّله. بعد التنزيل، اضغط على \"تحميل\" بجانب النموذج وابدأ الدردشة.",
@@ -663,7 +663,7 @@
     },
     "modelErrorReportSheet": {
       "title": "الإبلاغ عن مشكلة في تحميل النموذج",
-      "privacyNote": "ساعدنا في تحسين PocketPal من خلال مشاركة تفاصيل حول هذا الخطأ. راجع أدناه ما سيتم مشاركته - يمكنك إلغاء تحديد أي عناصر لا تفضّل تضمينها.",
+      "privacyNote": "ساعدنا في تحسين PocketAgent من خلال مشاركة تفاصيل حول هذا الخطأ. راجع أدناه ما سيتم مشاركته - يمكنك إلغاء تحديد أي عناصر لا تفضّل تضمينها.",
       "errorMessage": "رسالة الخطأ",
       "modelInfo": "‎معلومات النموذج",
       "modelName": "الاسم",
@@ -681,7 +681,7 @@
       "submit": "إرسال الإبلاغ",
       "success": {
         "title": "تم إرسال الإبلاغ",
-        "message": "شكرًا لمساعدتك في تحسين PocketPal. سيساعدنا إبلاغك في إصلاح هذه المشكلة."
+        "message": "شكرًا لمساعدتك في تحسين PocketAgent. سيساعدنا إبلاغك في إصلاح هذه المشكلة."
       },
       "error": {
         "title": "فشل الإبلاغ",
@@ -1181,7 +1181,7 @@
   },
   "camera": {
     "permissionTitle": "إذن الكاميرا مطلوب",
-    "permissionMessage": "يحتاج PocketPal إلى الوصول إلى الكاميرا لتحليل الصور",
+    "permissionMessage": "يحتاج PocketAgent إلى الوصول إلى الكاميرا لتحليل الصور",
     "requestingPermission": "جارٍ طلب إذن الكاميرا...",
     "noDevice": "لم يتم العثور على كاميرا",
     "errorTitle": "خطأ في الكاميرا",
@@ -1195,7 +1195,7 @@
   },
   "video": {
     "permissionTitle": "إذن الكاميرا مطلوب",
-    "permissionMessage": "يحتاج PocketPal إلى الوصول إلى الكاميرا لتحليل الفيديو",
+    "permissionMessage": "يحتاج PocketAgent إلى الوصول إلى الكاميرا لتحليل الفيديو",
     "requestingPermission": "جارٍ طلب إذن الكاميرا...",
     "noDevice": "لم يتم العثور على كاميرا",
     "errorTitle": "خطأ في الكاميرا",
@@ -1542,14 +1542,14 @@
     "skip": "تخطى",
     "skipForNow": "تخطٍى الآن",
     "splash": {
-      "brand": "PocketPal"
+      "brand": "PocketAgent"
     },
     "screen1": {
       "title": "تعرّف على رفاقك.",
       "titleAccent": "الرفاق.",
       "body": "أصدقاء أذكياء صغار يعيشون داخل هاتفك.\nلنُجهّزك — سيستغرق الأمر دقيقة.",
       "cta": "أرِني الجولة",
-      "eyebrow": "مرحبًا بك في PocketPal"
+      "eyebrow": "مرحبًا بك في PocketAgent"
     },
     "screen2": {
       "title": "في أي وقت،\nوفي أي مكان.",

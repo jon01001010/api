@@ -89,7 +89,7 @@ export class FirecrawlProvider implements SearchProvider {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${key}`,
       },
-      body: JSON.stringify({...body, origin: 'pocketpal'}),
+      body: JSON.stringify({...body, origin: 'pocketagent'}),
       signal,
     });
   }

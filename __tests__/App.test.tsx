@@ -42,9 +42,9 @@ it('renders hydration splash while UIStore is not hydrated', () => {
   expect(result.queryByText('Models')).toBeNull();
   expect(result.queryByText('Settings')).toBeNull();
   // The hold is neutral: it carries no branding text. Re-introducing the
-  // old PocketPal/LLM Ventures labels would fail these assertions.
+  // old PocketAgent/LLM Ventures labels would fail these assertions.
   expect(result.queryByText('LLM Ventures')).toBeNull();
-  expect(result.queryByText('PocketPal')).toBeNull();
+  expect(result.queryByText('PocketAgent')).toBeNull();
 });
 
 it('mounts the app once UIStore hydration completes', () => {

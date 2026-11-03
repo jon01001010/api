@@ -3,13 +3,13 @@
  * in src/hooks/useDeepLinking.ts, so this module is DCE-stripped in prod.
  *
  * Supported protocols in v1:
- *   pocketpal://memory?cmd=snap::<label>
- *   pocketpal://memory?cmd=clear::snapshots
- *   pocketpal://tts?cmd=download::<engine>
- *   pocketpal://tts?cmd=synthesize::<engine>
- *   pocketpal://tts?cmd=release
- *   pocketpal://iap?cmd=<verb>::<arg>   (FakeStore script, see fakeStore.ts)
- *   pocketpal://e2e/benchmark   (Android: cold-launch path lives in
+ *   pocketagent://memory?cmd=snap::<label>
+ *   pocketagent://memory?cmd=clear::snapshots
+ *   pocketagent://tts?cmd=download::<engine>
+ *   pocketagent://tts?cmd=synthesize::<engine>
+ *   pocketagent://tts?cmd=release
+ *   pocketagent://iap?cmd=<verb>::<arg>   (FakeStore script, see fakeStore.ts)
+ *   pocketagent://e2e/benchmark   (Android: cold-launch path lives in
  *                                useDeepLinking.ts since RN's Android side
  *                                doesn't deliver the URL via DeepLinkService)
  */
@@ -50,7 +50,7 @@ export async function dispatchAutomationDeepLink(
     await fakeStore.run(params.queryParams.cmd);
     return true;
   }
-  // pocketpal://e2e/benchmark — bench host. Match against the raw URL via
+  // pocketagent://e2e/benchmark — bench host. Match against the raw URL via
   // the shared helper so both deep-link sites (this dispatcher and the
   // useDeepLinking cold/warm-launch effect) accept the exact same shape.
   if (isBenchmarkRunnerUrl(params.url)) {

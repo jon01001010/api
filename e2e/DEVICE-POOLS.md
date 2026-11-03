@@ -29,7 +29,7 @@ Based on Play Vitals crash data, these devices have shown model loading issues:
 
 1. Go to https://console.aws.amazon.com/devicefarm/
 2. Select your region (typically us-west-2)
-3. Select your project (PocketPal)
+3. Select your project (PocketAgent)
 
 ### 2. Create the Device Pool
 

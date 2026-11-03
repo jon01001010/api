@@ -212,7 +212,7 @@ const migrations = {
 const adapter = {
   schema,
   migrations,
-  dbName: 'pocketpalai_test',
+  dbName: 'pocketagentai_test',
   jsi: false,
 };
 

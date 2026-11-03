@@ -14,7 +14,7 @@
  *    TOP-LEVEL field on the native completion result (sibling of `timings`).
  *  - Off-safety (negative control): a NON-MTP model with speculative on
  *    and no valid draft loads with NO native error, produces output, and
- *    `draft_tokens === 0` (PocketPal resolved to OFF and never sent spec_type).
+ *    `draft_tokens === 0` (PocketAgent resolved to OFF and never sent spec_type).
  *  - Crash-safety: a width-mismatched paired draft must NOT abort the
  *    process — a mismatched pair, had it reached init_mtp, would SIGABRT
  *    uncatchably. The gate is "process survives + target loads", not draft count.
@@ -30,7 +30,7 @@
  * The chat now surfaces speculative engagement in the assistant turn footer:
  * when `draft_tokens > 0`, a `message-draft-tokens` element renders
  * "draft: <accepted>/<total> (<pct>%)". The engagement test asserts that
- * element is present (draft_tokens > 0); off-safety asserts it is ABSENT (PocketPal resolved
+ * element is present (draft_tokens > 0); off-safety asserts it is ABSENT (PocketAgent resolved
  * to OFF, draft_tokens === 0). The MTP_MODEL fixture repo below must be
  * confirmed available at run time.
  *
@@ -247,7 +247,7 @@ describe('Speculative Decoding / MTP draft model', () => {
   });
 
   it('off-safety: non-MTP model + speculative on loads, outputs, no native error', async () => {
-    // PocketPal must resolve this to OFF (target is non-MTP, no valid draft) and
+    // PocketAgent must resolve this to OFF (target is non-MTP, no valid draft) and
     // emit NO spec_type -- proving the P0-2 dodge. Output produced + no crash is
     // the UI-observable proof. The draft-tokens footer element must be ABSENT
     // (draft_tokens === 0, so the footer renders nothing speculative).
@@ -263,12 +263,12 @@ describe('Speculative Decoding / MTP draft model', () => {
 
   it('crash-safety: a width-mismatched paired draft does not abort the process', async () => {
     // A mismatched pair, had it reached init_mtp, would SIGABRT uncatchably.
-    // PocketPal must decline paired (unknown/mismatched width => not paired) and
+    // PocketAgent must decline paired (unknown/mismatched width => not paired) and
     // fall through to embedded/off, so the process survives and the target loads.
     // The gate is "no SIGABRT + target loads", not a draft count.
     //
     // UI-observable proxy: the non-MTP model is ALREADY loaded with speculative
-    // on (from the off-safety test) -- PocketPal's width gate resolved it to off (no valid paired
+    // on (from the off-safety test) -- PocketAgent's width gate resolved it to off (no valid paired
     // MTP draft). A fresh completion that returns + a responsive app == no native
     // abort/SIGABRT. (No re-load: the model is loaded, so there is no load-button;
     // runs right after the off-safety test while that model is still the active context.)

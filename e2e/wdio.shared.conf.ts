@@ -1,5 +1,5 @@
 /**
- * Shared WebDriverIO configuration for PocketPal E2E tests
+ * Shared WebDriverIO configuration for PocketAgent E2E tests
  * TypeScript version with proper types
  */
 

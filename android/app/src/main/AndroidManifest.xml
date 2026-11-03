@@ -55,21 +55,21 @@
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
             <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="pocketpal" android:host="hub" />
+            <data android:scheme="pocketagent" android:host="hub" />
         </intent-filter>
       </activity>
 
         <service
-            android:name="com.pocketpal.download.DownloadJobService"
+            android:name="com.pocketagent.download.DownloadJobService"
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="false" />
 
-        <service android:name="com.pocketpal.localapi.LocalApiService"
+        <service android:name="com.pocketagent.localapi.LocalApiService"
             android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="User-started local AI inference for authenticated on-device client apps" />
         </service>
-        <service android:name="com.pocketpal.BackgroundInferenceService"
+        <service android:name="com.pocketagent.BackgroundInferenceService"
             android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="User-initiated on-device chat inference with a visible notification" />

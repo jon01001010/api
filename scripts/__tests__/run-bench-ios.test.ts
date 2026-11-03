@@ -426,7 +426,7 @@ describe('devicectl text output as captured from a real device', () => {
     expect(parseFileList('0 files:\n')).toEqual([]);
   });
 
-  it('finds PocketPal in a process listing and not other apps', () => {
+  it('finds the iOS app (still named PocketPal) in a process listing and not other apps', () => {
     const listing = [
       'PID     Executable',
       '1       /sbin/launchd',

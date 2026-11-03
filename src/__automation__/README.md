@@ -13,9 +13,9 @@ The folder is gated behind the `__E2E__` global, inlined at build time by
 - Everything else (default dev + prod) → `__E2E__ = false` → Metro/Hermes
   strips the entire gate body (and, transitively, the imports it reaches).
 
-The Android `e2e` flavor (`applicationId com.pocketpalai.e2e`,
+The Android `e2e` flavor (`applicationId org.apihelper.local.e2e`,
 buildType `releaseE2e`) is the production-like build that sets
-`E2E_BUILD=true`. The default prod flavor (`com.pocketpalai`) leaves
+`E2E_BUILD=true`. The default prod flavor (`org.apihelper.local`) leaves
 `E2E_BUILD` unset.
 
 Two independent guardrails enforce the contract:
@@ -89,7 +89,7 @@ by deep link only. See `BenchmarkRunnerScreen.tsx` as reference.
 
 | Screen | Purpose | Activation |
 |--------|---------|------------|
-| `BenchmarkRunnerScreen` | Drives the benchmark matrix in-app for the `benchmark-matrix` spec | Deep link `pocketpal://e2e/benchmark` (registered in `android/app/src/e2e/AndroidManifest.xml`); manual button tap to start |
+| `BenchmarkRunnerScreen` | Drives the benchmark matrix in-app for the `benchmark-matrix` spec | Deep link `pocketagent://e2e/benchmark` (registered in `android/app/src/e2e/AndroidManifest.xml`); manual button tap to start |
 
 ## Deep-link dispatcher
 
@@ -97,8 +97,8 @@ by deep link only. See `BenchmarkRunnerScreen.tsx` as reference.
 used by `src/hooks/useDeepLinking.ts` inside a `__E2E__` gate. Today it
 handles two hosts:
 
-- `memory` — `pocketpal://memory?cmd=snap::<label>` etc. (memory-profile spec)
-- `iap` — `pocketpal://iap?cmd=<verb>::<arg>` scripts the `FakeStore` on iOS
+- `memory` — `pocketagent://memory?cmd=snap::<label>` etc. (memory-profile spec)
+- `iap` — `pocketagent://iap?cmd=<verb>::<arg>` scripts the `FakeStore` on iOS
   (the Android specs use `IapAdapter`, since the Android Linking listener
   only routes the benchmark URL).
 - `e2e/benchmark` — navigates to `BenchmarkRunnerScreen` (benchmark-matrix spec).

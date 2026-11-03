@@ -14,7 +14,7 @@ node node_modules/jest/bin/jest.js --runInBand --coverage=false \
 security_tmp=$(mktemp -d)
 trap 'rm -rf "$security_tmp"' EXIT
 java com.sun.tools.javac.Main -d "$security_tmp" \
-  android/app/src/main/java/com/pocketpalai/localapi/LoopbackServer.java \
+  android/app/src/main/java/com/pocketagent/localapi/LoopbackServer.java \
   tests/security/LoopbackServerTest.java
 java -cp "$security_tmp" LoopbackServerTest
 node node_modules/typescript/bin/tsc src/services/localApi/protocol.ts \

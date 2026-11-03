@@ -3,7 +3,7 @@
  *
  * - Android: the hidden IapAdapter (`iap-command-input` / `iap-command-result`),
  *   because the Android Linking listener only routes the benchmark URL.
- * - iOS: the automation deep link pocketpal://iap?cmd=...
+ * - iOS: the automation deep link pocketagent://iap?cmd=...
  *
  * The verbs are listed in src/__automation__/README.md.
  */
@@ -16,7 +16,7 @@ import {IAP_MOCK_PORT} from './iapMockServer';
 declare const driver: WebdriverIO.Browser;
 
 export const IOS_BUNDLE_ID = 'ai.pocketpal';
-export const ANDROID_PACKAGE = 'com.pocketpalai.e2e';
+export const ANDROID_PACKAGE = 'org.apihelper.local.e2e';
 
 export const appId = (): string =>
   driver.isAndroid ? ANDROID_PACKAGE : IOS_BUNDLE_ID;
@@ -48,7 +48,7 @@ export async function iapCommand(command: string): Promise<string> {
     });
   }
   await driver.execute('mobile: deepLink', {
-    url: `pocketpal://iap?cmd=${encodeURIComponent(command)}`,
+    url: `pocketagent://iap?cmd=${encodeURIComponent(command)}`,
     bundleId: IOS_BUNDLE_ID,
   });
   await driver.pause(400);
