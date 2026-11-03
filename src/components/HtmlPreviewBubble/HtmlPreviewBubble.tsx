@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import {
+  Alert,
   Modal,
   ScrollView,
   StyleProp,
@@ -28,12 +29,14 @@ import {
   CloseIcon,
   CodeIcon,
   CopyIcon,
+  DownloadIcon,
   ExpandIcon,
 } from '../../assets/icons';
 import {useTheme} from '../../hooks';
 import {L10nContext} from '../../utils';
 
 import {codeHighlighterPreOverride, createStyles} from './styles';
+import {htmlFilename, saveHtmlToWorkspace, shareHtmlFile} from './saveHtml';
 import {Text} from '../ThemedText';
 
 const hapticOptions = {
@@ -255,6 +258,37 @@ export const HtmlPreviewBubble: React.FC<HtmlPreviewBubbleProps> = ({
   const displayTitle =
     title && title.length > 0 ? title : l10n.htmlPreview.defaultTitle;
 
+  const saveHtml = useCallback(() => {
+    const name = htmlFilename(title);
+    const fail = (error: unknown) =>
+      Alert.alert(
+        l10n.htmlPreview.saveFailed,
+        error instanceof Error ? error.message : String(error),
+      );
+    Alert.alert(l10n.htmlPreview.saveTitle, name, [
+      {
+        text: l10n.htmlPreview.saveToWorkspace,
+        onPress: () => {
+          saveHtmlToWorkspace(html, title)
+            .then(saved =>
+              Alert.alert(
+                l10n.htmlPreview.savedTitle,
+                l10n.htmlPreview.savedToWorkspace.replace('{{name}}', saved),
+              ),
+            )
+            .catch(fail);
+        },
+      },
+      {
+        text: l10n.htmlPreview.shareFile,
+        onPress: () => {
+          shareHtmlFile(html, title).catch(fail);
+        },
+      },
+      {text: l10n.common.cancel, style: 'cancel'},
+    ]);
+  }, [html, title, l10n]);
+
   const copyHtml = useCallback(() => {
     ReactNativeHapticFeedback.trigger('impactLight', hapticOptions);
     Clipboard.setString(html);
@@ -291,6 +325,19 @@ export const HtmlPreviewBubble: React.FC<HtmlPreviewBubbleProps> = ({
                 height={18}
               />
             )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={saveHtml}
+            accessibilityRole="button"
+            accessibilityLabel={l10n.htmlPreview.saveHtml}
+            testID="html-preview-save"
+            hitSlop={8}
+            style={styles.headerButton}>
+            <DownloadIcon
+              stroke={theme.colors.onSurfaceVariant}
+              width={18}
+              height={18}
+            />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={copyHtml}
@@ -414,6 +461,19 @@ export const HtmlPreviewBubble: React.FC<HtmlPreviewBubbleProps> = ({
                     height={22}
                   />
                 )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={saveHtml}
+                accessibilityRole="button"
+                accessibilityLabel={l10n.htmlPreview.saveHtml}
+                testID="html-preview-modal-save"
+                hitSlop={8}
+                style={styles.modalHeaderButton}>
+                <DownloadIcon
+                  stroke={theme.colors.onSurface}
+                  width={22}
+                  height={22}
+                />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={copyHtml}

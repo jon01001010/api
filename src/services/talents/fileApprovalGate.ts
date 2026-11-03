@@ -1,10 +1,17 @@
 import {AppState} from 'react-native';
 
 export type FileProposal = {
-  action: 'file_create' | 'file_edit';
+  action:
+    | 'file_create'
+    | 'file_edit'
+    | 'file_append'
+    | 'file_patch'
+    | 'file_undo';
   filename: string;
   content: string;
   previous?: string;
+  /** Line-by-line changes (existing files), shown above the full contents. */
+  diff?: string;
 };
 type Active = {proposal: FileProposal; resolve: (approved: boolean) => void};
 let active: Active | null = null;

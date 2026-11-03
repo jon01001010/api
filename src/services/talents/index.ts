@@ -3,7 +3,7 @@ import {CalculateEngine} from './CalculateEngine';
 import {DatetimeEngine} from './DatetimeEngine';
 import {WebSearchEngine} from './WebSearchEngine';
 import {ReadUrlEngine} from './ReadUrlEngine';
-import {FileToolsEngine} from './FileToolsEngine';
+import {FileToolsEngine, FILE_OPERATIONS} from './FileToolsEngine';
 import {MemoryToolsEngine} from './MemoryToolsEngine';
 import {talentRegistry} from './TalentRegistry';
 import type {SearchAccess} from './searchAccess';
@@ -61,7 +61,7 @@ export function registerDefaultTalents(): void {
   talentRegistry.register(new RenderHtmlEngine());
   talentRegistry.register(new CalculateEngine());
   talentRegistry.register(new DatetimeEngine());
-  for (const name of ['file_list', 'file_read', 'file_create', 'file_edit', 'file_info', 'file_search', 'file_read_range'] as const) {
+  for (const name of FILE_OPERATIONS) {
     talentRegistry.register(new FileToolsEngine(name));
   }
   for (const name of ['memory_get', 'memory_replace', 'memory_history', 'memory_restore'] as const) {

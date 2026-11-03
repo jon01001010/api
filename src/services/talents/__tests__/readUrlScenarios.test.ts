@@ -107,6 +107,8 @@ const runRow = async (row: Row) => {
   const read = jest.fn(
     async (url: string): Promise<PageContent> => ({
       url,
+      // Stands in for a reader that verified the final URL (no redirect).
+      finalUrlVerified: true,
       text: pageText ?? 'ok',
     }),
   );
