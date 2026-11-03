@@ -32,6 +32,18 @@ const isAllowedReadUrl = (raw: string): boolean => {
 
 const MAX_PAGE_LINKS = 100;
 
+/** A redirect must not downgrade an https request to plain http. */
+export const isDowngrade = (requested: string, final: string): boolean => {
+  try {
+    return (
+      new URL(requested).protocol === 'https:' &&
+      new URL(final).protocol === 'http:'
+    );
+  } catch {
+    return true;
+  }
+};
+
 export class ReadUrlEngine implements TalentEngine {
   readonly name = 'read_url';
   readonly recommendedContextTokens = 1200;
@@ -91,7 +103,13 @@ export class ReadUrlEngine implements TalentEngine {
 
     // Fail closed: a reader must attest the resolved destination, not merely echo
     // the requested URL after following redirects.
-    if (!page?.url || !page.finalUrlVerified || !isReadUrlAllowed(page.url)) {
+    if (
+      !page?.url ||
+      !page.finalUrlVerified ||
+      !isAllowedReadUrl(page.url) ||
+      isDowngrade(targetUrl, page.url) ||
+      !isReadUrlAllowed(page.url)
+    ) {
       const summary = 'read_url: final destination is not allowed or could not be verified';
       return {type: 'error', summary, errorMessage: summary};
     }

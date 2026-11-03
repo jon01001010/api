@@ -32,6 +32,12 @@ const canonicalize = (raw: string): URL | null => {
 
 const siteKey = (hostname: string): string => hostname.replace(/^www\./, '');
 
+// A user-named site matches only on the default http(s) port, plus any port
+// the user wrote themselves ("example.com:8080" also allows :8080).
+// URL parsing drops default ports (:80/:443), so `port` is '' for them.
+const userSiteKey = (url: URL): string =>
+  siteKey(url.hostname) + (url.port ? ':' + url.port : '');
+
 const matchKey = (url: URL): string =>
   url.protocol + '//' + siteKey(url.hostname) +
   (url.port ? ':' + url.port : '') +
@@ -59,7 +65,7 @@ export function matchReadUrl(url: string): string | null {
   }
   return (
     allowed.get(matchKey(canonical)) ??
-    (userSites.has(siteKey(canonical.hostname)) ? canonical.toString() : null)
+    (userSites.has(userSiteKey(canonical)) ? canonical.toString() : null)
   );
 }
 
@@ -113,6 +119,25 @@ function addUserSites(text: string): void {
     const head = bare.split(/[/?#]/)[0];
     if (head.includes('@')) {
       continue;
+    }
+    // Explicit port written by the user: allow exactly that host:port.
+    const withPort = /^(.+):(\d{1,5})\.*$/.exec(head.toLowerCase());
+    if (withPort) {
+      const host =
+        USER_HOST.exec(withPort[1])?.[1] ??
+        (bare !== word ? USER_IP.exec(withPort[1])?.[1] : undefined);
+      const port = Number(withPort[2]);
+      if (host && port > 0 && port <= 65535) {
+        const defaultPort =
+          (/^https:/i.test(word) && port === 443) ||
+          (/^http:/i.test(word) && port === 80);
+        // The site itself (default port) plus exactly the port written.
+        userSites.add(siteKey(host));
+        if (!defaultPort) {
+          userSites.add(siteKey(host) + ':' + port);
+        }
+        continue;
+      }
     }
     for (const part of head.split(/[!$&*+,;=:|]/)) {
       const lower = part.toLowerCase();
