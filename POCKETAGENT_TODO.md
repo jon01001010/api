@@ -12,7 +12,7 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [x] Add sandbox restrictions, load/error timeouts, and regression tests for embedded HTML (PR #4).
 - [x] `read_url`: strict port matching for user-named sites, no https→http downgrade, redirect-escape tests.
 - [ ] `read_url`: readers must report a **verified final URL** (Firecrawl / Exa / default reader). Until then every read fails closed. Needs each provider's final-URL field confirmed against its docs.
-- [ ] `read_url`: decide whether an http search hit and its https version count as the same page (4 existing scenario tests expect it; the allowlist does not).
+- [x] `read_url`: an http page and its https version count as the same page (https preferred when both are allowed).
 - [x] Workspace file operations: `file_append`, `file_patch`, `file_diff`, `file_history`, `file_undo`; per-file version history; diff shown in the approval dialog.
 - [x] Fix newline (`file_read_range`, `file_search`) and extension (`file_info`) matching bugs.
 

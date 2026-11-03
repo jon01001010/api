@@ -38,8 +38,10 @@ const siteKey = (hostname: string): string => hostname.replace(/^www\./, '');
 const userSiteKey = (url: URL): string =>
   siteKey(url.hostname) + (url.port ? ':' + url.port : '');
 
+// http and https count as the same page (scheme left out of the key); the
+// stored entry decides which one is fetched.
 const matchKey = (url: URL): string =>
-  url.protocol + '//' + siteKey(url.hostname) +
+  siteKey(url.hostname) +
   (url.port ? ':' + url.port : '') +
   url.pathname.replace(/\/$/, '') +
   url.search;
@@ -53,7 +55,11 @@ export function allowReadUrls(urls: Iterable<string>): void {
   for (const url of urls) {
     const canonical = canonicalize(url);
     if (canonical && !canonical.username && !canonical.password) {
-      allowed.set(matchKey(canonical), canonical.toString());
+      const key = matchKey(canonical);
+      // When both versions are allowed, keep the https one.
+      if (canonical.protocol === 'https:' || !allowed.has(key)) {
+        allowed.set(key, canonical.toString());
+      }
     }
   }
 }

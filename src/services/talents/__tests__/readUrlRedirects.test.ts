@@ -7,6 +7,7 @@ import type {SearchAccess} from '../searchAccess';
 import type {PageContent, SearchProvider} from '../../search/types';
 import {
   allowReadUrls,
+  matchReadUrl,
   isReadUrlAllowed,
   resetReadUrlAllowlist,
   seedReadUrlAllowlist,
@@ -105,5 +106,21 @@ describe('isDowngrade', () => {
     expect(isDowngrade('http://a.test/', 'https://a.test/')).toBe(false);
     expect(isDowngrade('https://a.test/', 'https://a.test/x')).toBe(false);
     expect(isDowngrade('not a url', 'https://a.test/')).toBe(true);
+  });
+});
+
+describe('http and https are the same page', () => {
+  it('matches either scheme and fetches the allowed entry', () => {
+    allowReadUrls(['http://plain.test/a']);
+    expect(matchReadUrl('https://plain.test/a')).toBe('http://plain.test/a');
+    allowReadUrls(['https://secure.test/a']);
+    expect(matchReadUrl('http://secure.test/a')).toBe('https://secure.test/a');
+  });
+
+  it('prefers https when both versions are allowed, in either order', () => {
+    allowReadUrls(['https://both.test/a', 'http://both.test/a']);
+    expect(matchReadUrl('http://both.test/a')).toBe('https://both.test/a');
+    allowReadUrls(['http://other.test/a', 'https://other.test/a']);
+    expect(matchReadUrl('http://other.test/a')).toBe('https://other.test/a');
   });
 });
