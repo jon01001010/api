@@ -10,6 +10,7 @@ export class UIStore {
 export const mockUiStore = {
   colorScheme: 'light',
   themeStyle: 'default',
+  phosphorTint: [133, 255, 155],
   autoNavigatetoChat: false,
   benchmarkShareDialog: {
     shouldShow: true,
@@ -29,6 +30,7 @@ export const mockUiStore = {
   displayMemUsage: false,
   setAutoNavigateToChat: jest.fn(),
   setThemeStyle: jest.fn(),
+  setPhosphorTint: jest.fn(),
   setColorScheme: jest.fn(),
   setDisplayMemUsage: jest.fn(),
   setBenchmarkShareDialogPreference: jest.fn(),

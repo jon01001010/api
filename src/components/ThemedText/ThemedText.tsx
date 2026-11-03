@@ -20,12 +20,16 @@ import {
 
 import {useTheme} from '../../hooks';
 import {
-  PHOSPHOR_GLOW,
+  phosphorGlow,
   toPhosphorColor,
+  type PhosphorPalette,
   toPhosphorFont,
 } from '../../theme/phosphor';
 
-const phosphorTextOverride = (style: TextProps['style']): TextStyle => {
+const phosphorTextOverride = (
+  style: TextProps['style'],
+  palette: PhosphorPalette | undefined,
+): TextStyle => {
   const flat = (StyleSheet.flatten(style) ?? {}) as TextStyle;
   const override: TextStyle = {
     fontFamily: toPhosphorFont(
@@ -33,12 +37,12 @@ const phosphorTextOverride = (style: TextProps['style']): TextStyle => {
       flat.fontWeight,
     ),
     fontStyle: 'normal',
-    ...PHOSPHOR_GLOW,
+    ...phosphorGlow(palette),
   };
   // Only remap an explicit colour; leave unset colours to inherit from a
   // parent Text as before.
   if (typeof flat.color === 'string') {
-    override.color = toPhosphorColor(flat.color);
+    override.color = toPhosphorColor(flat.color, palette);
   }
   return override;
 };
@@ -53,7 +57,10 @@ export const Text = (props: TextComponentProps) => {
   return (
     <RNText
       {...props}
-      style={[props.style, phosphorTextOverride(props.style)]}
+      style={[
+        props.style,
+        phosphorTextOverride(props.style, theme.phosphorPalette),
+      ]}
     />
   );
 };
@@ -68,11 +75,16 @@ export const TextInput = (props: TextInputComponentProps) => {
     return <RNTextInput {...props} />;
   }
   const map = (c: TextInputProps['placeholderTextColor'] | null) =>
-    typeof c === 'string' ? toPhosphorColor(c) : (c ?? undefined);
+    typeof c === 'string'
+      ? toPhosphorColor(c, theme.phosphorPalette)
+      : (c ?? undefined);
   return (
     <RNTextInput
       {...props}
-      style={[props.style, phosphorTextOverride(props.style)]}
+      style={[
+        props.style,
+        phosphorTextOverride(props.style, theme.phosphorPalette),
+      ]}
       placeholderTextColor={
         map(props.placeholderTextColor) ?? theme.colors.placeholder
       }
