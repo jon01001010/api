@@ -22,32 +22,82 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [ ] HTML preview: a generated clock ticks in chat and fullscreen; code view, copy, fullscreen, Save to workspace, and Share work.
 - [ ] Workspace tools: append / patch / undo through chat, with the diff in the approval dialog.
 
-## Future batch — ARTEMIS-inspired Android automation (deferred)
+## Phone actions via built-in Android intents (planned, not implemented)
 
-Reference: https://github.com/google/artemis
+Replaces the earlier "ARTEMIS-inspired automation" batch. Research done 2026-11-03; **write-up only, nothing implemented yet.**
 
-Research only until explicitly approved for implementation. Verify upstream license and third-party notices before copying code.
+### ARTEMIS research findings
 
-- [ ] Study ARTEMIS Flash/Pro execution modes and observe → act → verify → recover architecture.
-- [ ] Implement native Android **timers**: create, pause, resume, cancel, and check remaining time; support spoken requests such as “Set a timer for 15 minutes.”
-- [ ] Support **alarms and reminders** via Android Clock and appropriate system APIs.
-- [ ] **Open installed phone apps** by voice or chat using Android intents and package discovery (e.g. camera, maps, music).
-- [ ] **Use and navigate other apps** with permission-controlled Android Accessibility: inspect screen hierarchy, tap, scroll, type, and verify outcomes.
-- [ ] Build cross-app workflows, such as opening navigation or playing a requested playlist, with confirmation where appropriate.
-- [ ] Prefer semantic accessibility nodes and Android intents over fragile screen-coordinate taps.
-- [ ] Investigate screenshots and local vision fallback compatible with offline Qwen 3.5 2B.
-- [ ] Implement action safety: explicit permissions, confirmation for sensitive actions, cancellation, bounded retries, and failure recovery.
-- [ ] Compress action history to reduce model context use.
-- [ ] Evaluate ARTEMIS MCP integration for external development and testing.
-- [ ] Add Android emulator/device regression tests, screenshots, Logcat, and replay traces.
-- [ ] Keep execution offline-first where Android capabilities allow; clearly identify features needing external services.
+Reference: https://github.com/google/artemis (Apache-2.0; bundles part of minitap-ai/mobile-use, also Apache-2.0).
 
-### Suggested future implementation order
+- ARTEMIS is mainly a **Python program on a computer** that drives a phone over USB (adb) and uses cloud vision models. It is built for automated app testing, which is why it is heavy. It does not fit an offline app running on the phone.
+- Its on-phone part is a small Java accessibility helper (about 2,300 lines): it reads the screen hierarchy, does gestures and screenshots, and serves commands on a loopback server only after adb hands it a token.
+- It launches apps from the computer with `monkey -p <package> -c android.intent.category.LAUNCHER`. It does not use AlarmClock or other intents.
+- **Ideas worth reusing (not code):**
+  - observe → act → verify → recover;
+  - prefer element indexes (accessibility nodes) over screen coordinates;
+  - compress old history (keep step numbers, drop old screenshots);
+  - a separate read-only "checker" that verifies the result before reporting success;
+  - stop when the same action fails to change anything twice in a row.
 
-1. Native timers, alarms, and app launching.
-2. Accessibility service and semantic UI observation.
-3. ARTEMIS-inspired action controller with verification and recovery.
-4. Cross-app workflows and comprehensive safety/device tests.
+### Easier approach: Android's built-in intents
+
+Standard requests any app can send (the same ones voice assistants use). They run on the phone, offline, with no computer and no Python.
+
+| Todo item | Android built-in | Permission |
+|---|---|---|
+| Timers ("15 minute timer"): create, show | `AlarmClock.ACTION_SET_TIMER` (`EXTRA_LENGTH` seconds, `EXTRA_MESSAGE`, `EXTRA_SKIP_UI`), `ACTION_SHOW_TIMERS` | `com.android.alarm.permission.SET_ALARM` (normal, granted at install) |
+| Alarms | `ACTION_SET_ALARM` (`EXTRA_HOUR`, `EXTRA_MINUTES`, `EXTRA_DAYS`, `EXTRA_MESSAGE`), `ACTION_SHOW_ALARMS`, `ACTION_DISMISS_ALARM` | same |
+| Reminders | `Intent.ACTION_INSERT` on `CalendarContract.Events` (pre-filled title/time; the user saves) | none |
+| Open installed apps | `PackageManager.getLaunchIntentForPackage`; list launchable apps with `queryIntentActivities(MAIN/LAUNCHER)` | none: a `<queries>` entry for MAIN/LAUNCHER (avoid `QUERY_ALL_PACKAGES`) |
+| Navigation | `google.navigation:q=…` / `geo:0,0?q=…` URIs | none |
+| Play a song / playlist | `MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH` | none |
+| Camera | `MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA` | none |
+| Call / text / email | `ACTION_DIAL`, `ACTION_SENDTO` (`smsto:` / `mailto:`): opens pre-filled, **the user presses call/send** | none (never `CALL_PHONE` / `SEND_SMS`) |
+| Settings pages | `Settings.ACTION_WIFI_SETTINGS`, `ACTION_BLUETOOTH_SETTINGS`, battery, etc. | none |
+| Flashlight | `CameraManager.setTorchMode` | none |
+
+**Why a small native module is needed:** React Native's `Linking.sendIntent` sends every number as a Double (`putExtra(name, double)`), but the Clock app reads `EXTRA_LENGTH`, `EXTRA_HOUR` and `EXTRA_MINUTES` as ints, so timers and alarms would be ignored. A small Kotlin module (about 150 lines, like the existing `HardwareInfoModule` / `KeepAwakeModule`) sends correctly typed extras and lists launchable apps.
+
+Not every phone has an app for every intent (e.g. no Clock app that handles `SET_TIMER`). The module checks with `resolveActivity` first and reports "no app on this phone can do that" instead of failing silently.
+
+### Plan
+
+**Phase 1: intent actions (no accessibility).**
+
+- [ ] Kotlin `PhoneActions` module: send an allow-listed set of intents with typed extras; list launchable apps (label + package); `resolveActivity` check; nothing else.
+- [ ] Manifest: `SET_ALARM` permission; `<queries>` for MAIN/LAUNCHER and the intents above.
+- [ ] Model tools, all **off by default** in Toolbox like other tools:
+  - `set_timer`, `show_timers`
+  - `set_alarm`, `show_alarms`
+  - `add_reminder` (opens the Calendar screen pre-filled)
+  - `open_app` (match by app name; ask when more than one matches)
+  - `navigate_to`, `play_music`, `open_camera`, `open_settings`
+  - `compose_message` (dial / SMS / email screens, user sends)
+- [ ] Safety:
+  - Every action shows an approval prompt in chat first (like file writes), naming exactly what will happen ("Set a 15-minute timer named Tea?").
+  - Nothing places calls, sends messages, pays, or changes settings by itself.
+  - No `CALL_PHONE`, `SEND_SMS` or `QUERY_ALL_PACKAGES`.
+- [ ] Voice: spoken requests ("Set a timer for 15 minutes") go through the existing chat and voice input to the same tools. Time parsing is in the tool arguments, which are validated (timer 1 s–24 h; alarm hour 0–23 / minute 0–59).
+- [ ] Tests: JS tool tests (argument validation, approval required, denied → nothing sent, unknown app → clear message). The Kotlin side can only be verified on the phone APK.
+- [ ] Phone checks on the Razr: timer, alarm, reminder, open app, navigation, music, camera, settings, and a "no app can handle this" case.
+
+**Phase 2: cross-app workflows (still intents only).**
+
+- [ ] Chain phase 1 actions with a confirmation per step (e.g. "navigate home, then play my playlist"). Bounded steps; cancel at any time.
+
+**Phase 3: using other apps by tapping and scrolling (optional; decide later).**
+
+- [ ] Only if phases 1–2 aren't enough. It needs an in-app Kotlin Accessibility service, which means:
+  - a strong user-granted permission;
+  - Google Play policy review;
+  - careful safety design: explicit per-task consent, sensitive-screen blocklist (banking, passwords, payments), bounded retries, a stop button, and no free-form coordinate tapping without a visible target.
+- [ ] Reuse the ARTEMIS ideas listed above; learn from its Java helper (Apache-2.0, keep notices if any code is adapted).
+- [ ] Screenshots / local vision with offline Qwen 3.5 2B: investigate feasibility before committing.
+
+**Dropped from the old list:**
+
+- "Evaluate ARTEMIS MCP integration": that is for driving a phone from a computer IDE, not for PocketAgent on the phone.
 
 ## Deferred — NPU acceleration (on hold)
 
