@@ -307,11 +307,11 @@ describe('input', () => {
       </UserContext.Provider>,
     );
 
-    const plusButton = getByLabelText('Add image');
+    const plusButton = getByLabelText('Add attachment');
     expect(plusButton).toBeDefined();
   });
 
-  it('does not show plus button when showImageUpload is false', () => {
+  it('still shows the plus button for files when showImageUpload is false', () => {
     expect.assertions(1);
     const onSendPress = jest.fn();
     const {queryByLabelText} = render(
@@ -326,8 +326,9 @@ describe('input', () => {
       </UserContext.Provider>,
     );
 
-    const plusButton = queryByLabelText('Add image');
-    expect(plusButton).toBeNull();
+    // A loaded model can always take file attachments, so the + button
+    // shows even without image upload; it is hidden only with no model.
+    expect(queryByLabelText('Add attachment')).not.toBeNull();
   });
 
   it('renders plus button correctly when vision is enabled', () => {
@@ -346,7 +347,7 @@ describe('input', () => {
       </UserContext.Provider>,
     );
 
-    const plusButton = getByLabelText('Add image');
+    const plusButton = getByLabelText('Add attachment');
     expect(plusButton).toBeTruthy();
     expect(plusButton.props.accessibilityState.disabled).toBe(false);
   });
@@ -499,10 +500,10 @@ describe('input', () => {
     }
   });
 
-  it('disables plus button when vision is not enabled', () => {
-    expect.assertions(1);
+  it('keeps plus button enabled without vision, offering only file options', () => {
+    expect.assertions(3);
     const onSendPress = jest.fn();
-    const {getByLabelText} = render(
+    const {getByLabelText, getByText, queryByText} = render(
       <UserContext.Provider value={user}>
         <ChatInput
           {...{
@@ -515,8 +516,12 @@ describe('input', () => {
       </UserContext.Provider>,
     );
 
-    const plusButton = getByLabelText('Add image');
-    expect(plusButton.props.accessibilityState.disabled).toBe(true);
+    // Files can be attached without vision; only Camera/Gallery need it.
+    const plusButton = getByLabelText('Add attachment');
+    expect(plusButton.props.accessibilityState.disabled).toBe(false);
+    fireEvent.press(plusButton);
+    expect(queryByText('Gallery')).toBeNull();
+    expect(getByText('Files')).toBeTruthy();
   });
 
   it('enables plus button when vision is enabled', () => {
@@ -535,7 +540,7 @@ describe('input', () => {
       </UserContext.Provider>,
     );
 
-    const plusButton = getByLabelText('Add image');
+    const plusButton = getByLabelText('Add attachment');
     expect(plusButton.props.accessibilityState.disabled).toBe(false);
   });
 
@@ -613,7 +618,7 @@ describe('input', () => {
         </UserContext.Provider>,
       );
 
-      const plusButton = getByLabelText('Add image');
+      const plusButton = getByLabelText('Add attachment');
       fireEvent.press(plusButton);
 
       // Menu should be visible after pressing plus button
@@ -640,7 +645,7 @@ describe('input', () => {
         </UserContext.Provider>,
       );
 
-      const plusButton = getByLabelText('Add image');
+      const plusButton = getByLabelText('Add attachment');
       fireEvent.press(plusButton);
 
       // Since testing the menu interaction is complex, let's test that the camera function works
@@ -670,7 +675,7 @@ describe('input', () => {
         </UserContext.Provider>,
       );
 
-      const plusButton = getByLabelText('Add image');
+      const plusButton = getByLabelText('Add attachment');
       fireEvent.press(plusButton);
 
       // Test that the component renders correctly even when camera errors are configured
@@ -695,7 +700,7 @@ describe('input', () => {
     const pressCameraMenuItem = async (
       screen: ReturnType<typeof renderWithImageUpload>,
     ) => {
-      fireEvent.press(screen.getByLabelText('Add image'));
+      fireEvent.press(screen.getByLabelText('Add attachment'));
       fireEvent.press(await screen.findByText(l10n.en.camera.takePhoto));
     };
 
@@ -799,7 +804,7 @@ describe('input', () => {
         </UserContext.Provider>,
       );
 
-      const plusButton = getByLabelText('Add image');
+      const plusButton = getByLabelText('Add attachment');
       fireEvent.press(plusButton);
 
       // Test that the component renders correctly with image library functionality

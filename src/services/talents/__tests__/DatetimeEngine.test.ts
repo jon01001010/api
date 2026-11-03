@@ -29,11 +29,13 @@ describe('DatetimeEngine', () => {
     expect(result.summary).toMatch(/\([^)]+\)$/);
   });
 
-  it('returns an error for an invalid IANA timezone', async () => {
+  // Models sometimes pass city names; the engine falls back to the phone's
+  // zone (and names it) instead of failing the whole agent turn.
+  it('falls back to the device timezone for an invalid IANA timezone', async () => {
+    const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     const result = await engine.execute({timezone: 'Europe/Nuremberg'});
-    expect(result.type).toBe('error');
-    if (result.type === 'error') {
-      expect(result.errorMessage).toBeDefined();
-    }
+    expect(result.type).toBe('text');
+    expect(result.summary).toContain(`(${deviceTz})`);
+    expect(result.summary).not.toContain('Nuremberg');
   });
 });

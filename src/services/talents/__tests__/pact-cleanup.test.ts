@@ -142,16 +142,28 @@ describe('PACT cleanup: deriveToolSchemas()', () => {
     expect(talentRegistry.getAll()).toHaveLength(0);
 
     const schemas = deriveToolSchemas();
-    expect(schemas).toHaveLength(5);
+    expect(schemas).toHaveLength(talentRegistry.getAll().length);
 
     const names = schemas.map(s => s.function.name).sort();
-    expect(names).toEqual([
-      'calculate',
-      'datetime',
-      'read_url',
-      'render_html',
-      'web_search',
-    ]);
+    // Every registered engine gets a schema, including PocketAgent's
+    // workspace and memory tools, and the original five are still there.
+    expect(names).toEqual(
+      talentRegistry
+        .getAll()
+        .map(e => e.name)
+        .sort(),
+    );
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'calculate',
+        'datetime',
+        'read_url',
+        'render_html',
+        'web_search',
+        'memory_get',
+        'file_read',
+      ]),
+    );
   });
 
   it('each schema has the OpenAI function-calling shape', () => {
@@ -175,7 +187,9 @@ describe('PACT cleanup: deriveToolSchemas()', () => {
       tool_choice: 'auto' as const,
       jinja: true,
     };
-    expect(completionSettings.tools).toHaveLength(5);
+    expect(completionSettings.tools).toHaveLength(
+      talentRegistry.getAll().length,
+    );
     expect(completionSettings.tools[0].type).toBe('function');
   });
 });

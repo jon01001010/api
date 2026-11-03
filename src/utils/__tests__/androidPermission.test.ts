@@ -85,8 +85,9 @@ describe('ensureNotificationPermission', () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it('does not ask below Android 14', async () => {
-    platform.Version = 33;
+  // POST_NOTIFICATIONS only exists from Android 13 (API 33).
+  it('does not ask below Android 13', async () => {
+    platform.Version = 32;
 
     await ensureNotificationPermission();
 

@@ -13,6 +13,12 @@ import {
   mockOwnedPremiumPal,
 } from '../../../../../jest/fixtures/pals';
 
+// These upstream tests cover the purchase flow, which this free build
+// switches off (src/config/freeBuild.ts). Run them with purchases on so
+// the code stays tested; src/services/iap/__tests__/freeBuild.test.ts checks the real build is off.
+jest.mock('../../../../config/freeBuild', () => ({NO_PURCHASES: false}));
+
+
 // Mock Sheet component
 jest.mock('../../../Sheet/Sheet', () => {
   const {View, ScrollView, Button} = require('react-native');
