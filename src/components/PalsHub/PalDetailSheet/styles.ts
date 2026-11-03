@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../../utils';
+import {themeFont, themeRadius} from '../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -19,7 +20,7 @@ export const createStyles = (theme: Theme) =>
     thumbnailContainer: {
       width: 80,
       height: 80,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       backgroundColor: theme.colors.surfaceVariant,
       marginRight: 16,
       overflow: 'hidden',
@@ -121,7 +122,7 @@ export const createStyles = (theme: Theme) =>
     },
     tag: {
       backgroundColor: theme.colors.surfaceVariant,
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
       paddingHorizontal: 12,
       paddingVertical: 6,
     },
@@ -136,7 +137,7 @@ export const createStyles = (theme: Theme) =>
     },
     category: {
       backgroundColor: theme.colors.primaryContainer,
-      borderRadius: 20,
+      borderRadius: themeRadius(theme, 20),
       paddingHorizontal: 16,
       paddingVertical: 8,
     },
@@ -147,7 +148,7 @@ export const createStyles = (theme: Theme) =>
     },
     systemPromptContainer: {
       backgroundColor: theme.colors.surfaceVariant,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       padding: 16,
       marginTop: 8,
     },
@@ -155,7 +156,7 @@ export const createStyles = (theme: Theme) =>
       fontSize: 14,
       lineHeight: 20,
       color: theme.colors.onSurfaceVariant,
-      fontFamily: 'monospace',
+      fontFamily: themeFont(theme, 'monospace'),
     },
     primaryButton: {
       flex: 1,
@@ -175,7 +176,7 @@ export const createStyles = (theme: Theme) =>
     },
     errorContainer: {
       backgroundColor: theme.colors.errorContainer,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       padding: 12,
       marginTop: 16,
     },

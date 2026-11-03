@@ -3,8 +3,8 @@ import {
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  TextInput,
   View,
+  TextInput,
 } from 'react-native';
 import {
   BottomSheetScrollView,

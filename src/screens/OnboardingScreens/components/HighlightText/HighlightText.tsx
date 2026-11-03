@@ -1,8 +1,9 @@
 import React from 'react';
-import {Text, View} from 'react-native';
+import {View} from 'react-native';
 
 import {useTheme} from '../../../../hooks';
 import {createStyles} from './styles';
+import {Text} from '../../../../components/ThemedText';
 
 export type HighlightTextProps = {
   /** Body copy to render; may contain one or more highlighted phrases. */

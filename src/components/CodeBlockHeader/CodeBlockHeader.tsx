@@ -1,5 +1,5 @@
 import React from 'react';
-import {View, Text, TouchableOpacity} from 'react-native';
+import {View, TouchableOpacity} from 'react-native';
 
 import Clipboard from '@react-native-clipboard/clipboard';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
@@ -9,6 +9,7 @@ import {CopyIcon} from '../../assets/icons';
 import {useTheme} from '../../hooks';
 
 import {createStyles} from './styles';
+import {Text} from '../ThemedText';
 
 interface CodeBlockHeaderProps {
   language: string;

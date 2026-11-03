@@ -1,9 +1,10 @@
 import React, {useMemo} from 'react';
-import {Pressable, ScrollView, Text, View} from 'react-native';
+import {Pressable, ScrollView, View} from 'react-native';
 
 import {useTheme} from '../../hooks';
 
 import {createStyles} from './styles';
+import {Text} from '../ThemedText';
 
 interface SuggestedPromptsRowProps {
   prompts: string[];

@@ -299,3 +299,142 @@ export const darkColors: TokenColors = {
     greenStrong: '#7c8e8a',
   },
 };
+
+// Phosphor binding — green-phosphor CRT terminal look. Visual only; this is
+// a dark binding (Paper's MD3 dark base is used underneath) so every
+// existing `theme.dark` branch keeps working.
+//
+// Palette source: PHOSPHOR v46 stylesheet (`--fg`, `--muted`, `--bg`,
+// `--edge`, `--shadow-color`, `--input-bg`, `--hover-bg`, `--panel-bg`,
+// `--banner-bg`, `--log-bg`, `--emphasis`).
+export const PHOSPHOR = {
+  fg: '#85ff9b',
+  muted: '#4eac65',
+  bg: '#010602',
+  edge: '#285f36',
+  glow: '#3bff65',
+  inputBg: '#020b04',
+  hoverBg: '#10371b',
+  panelBg: '#031006',
+  bannerBg: '#07140c',
+  logBg: '#000000',
+  emphasis: '#b3ffc1',
+  // Not in the source palette: an error hue that still reads on the green
+  // CRT. Amber keeps error states distinguishable from normal text.
+  warn: '#ffb347',
+  // Background tint for error containers (dark amber).
+  errorBg: '#2a1a05',
+} as const;
+
+/** A full Phosphor palette (same keys as PHOSPHOR, any colours). */
+export type PhosphorPalette = {-readonly [K in keyof typeof PHOSPHOR]: string};
+
+/** Token colours for a Phosphor palette (default or user-tinted). */
+export function buildPhosphorColors(P: PhosphorPalette): TokenColors {
+  return {
+    primary: P.fg,
+    onPrimary: P.bg,
+    primaryContainer: P.hoverBg,
+    onPrimaryContainer: P.emphasis,
+    secondary: P.emphasis,
+    onSecondary: P.bg,
+    secondaryContainer: P.hoverBg,
+    onSecondaryContainer: P.fg,
+    tertiary: P.muted,
+    onTertiary: P.bg,
+    tertiaryContainer: P.bannerBg,
+    onTertiaryContainer: P.fg,
+    error: P.warn,
+    onError: P.bg,
+    errorContainer: P.errorBg,
+    onErrorContainer: P.warn,
+    background: P.bg,
+    onBackground: P.fg,
+    surface: P.panelBg,
+    onSurface: P.fg,
+    surfaceVariant: P.bannerBg,
+    onSurfaceVariant: P.muted,
+    outline: P.edge,
+    outlineVariant: P.edge,
+    mutedLight: P.edge,
+    secondaryDefault: P.inputBg,
+    surfaceDisabled: withOpacity(P.edge, 0.12),
+    onSurfaceDisabled: withOpacity(P.fg, 0.4),
+    inverseSurface: P.fg,
+    inverseOnSurface: P.bg,
+    inversePrimary: P.hoverBg,
+    inverseSecondary: P.muted,
+    shadow: P.glow,
+    scrim: 'rgba(0, 0, 0, 0.5)',
+    backdrop: 'rgba(1, 6, 2, 0.85)',
+
+    surfaceContainerHighest: P.hoverBg,
+    surfaceContainerHigh: P.bannerBg,
+    surfaceContainer: P.panelBg,
+    surfaceContainerLow: P.inputBg,
+    surfaceContainerLowest: P.bg,
+    surfaceDim: P.inputBg,
+    surfaceBright: P.bannerBg,
+
+    text: P.fg,
+    textSecondary: P.muted,
+    inverseText: P.bg,
+    inverseTextSecondary: withOpacity(P.bg, 0.6),
+
+    border: P.edge,
+    placeholder: P.muted,
+
+    stateLayerOpacity: 0.12,
+    hoverStateOpacity: stateLayerOpacity.hover,
+    pressedStateOpacity: stateLayerOpacity.pressed,
+    draggedStateOpacity: stateLayerOpacity.dragged,
+    focusStateOpacity: stateLayerOpacity.focus,
+
+    menuBackground: P.panelBg,
+    menuBackgroundDimmed: withOpacity(P.panelBg, 0.95),
+    menuBackgroundActive: P.hoverBg,
+    menuSeparator: P.edge,
+    menuGroupSeparator: P.edge,
+    menuText: P.fg,
+    menuDangerText: P.warn,
+
+    authorBubbleBackground: P.panelBg,
+    receivedMessageDocumentIcon: P.fg,
+    sentMessageDocumentIcon: P.fg,
+    userAvatarImageBackground: 'transparent',
+    userAvatarNameColors: [P.fg, P.emphasis, P.muted, P.warn],
+    searchBarBackground: P.inputBg,
+
+    thinkingBubbleBackground: P.logBg,
+    thinkingBubbleText: P.muted,
+    thinkingBubbleBorder: P.edge,
+    thinkingBubbleShadow: P.glow,
+    thinkingBubbleChevronBackground: P.hoverBg,
+    thinkingBubbleChevronBorder: P.edge,
+
+    bgStatusActive: P.fg,
+    bgStatusIdle: P.edge,
+    statusLoaded: P.fg,
+
+    btnPrimaryBg: P.inputBg,
+    btnPrimaryBorder: P.edge,
+    btnPrimaryText: P.fg,
+    btnReadyBg: P.hoverBg,
+    btnReadyBorder: P.fg,
+    btnReadyText: P.emphasis,
+    btnDownloadBg: P.inputBg,
+    btnDownloadBorder: P.edge,
+    btnDownloadText: P.fg,
+
+    iconModelTypeText: P.fg,
+    iconModelTypeVision: P.emphasis,
+    iconModelTypeAudio: P.muted,
+
+    accent: {
+      peach: P.hoverBg,
+      greenStrong: P.fg,
+    },
+  };
+}
+
+export const phosphorColors: TokenColors = buildPhosphorColors(PHOSPHOR);

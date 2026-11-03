@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import {MessageType, Theme, User} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 const styles = ({
   aspectRatio,
@@ -22,7 +23,7 @@ const styles = ({
       width: messageWidth,
     },
     minimizedImage: {
-      borderRadius: 15,
+      borderRadius: themeRadius(theme, 15),
       height: 64,
       marginLeft: theme.insets.messageInsetsVertical,
       marginRight: 16,

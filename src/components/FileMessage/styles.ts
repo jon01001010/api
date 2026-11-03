@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import {MessageType, Theme, User} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const styles = ({
   message,
@@ -30,7 +31,7 @@ export const styles = ({
         user?.id === message.author.id
           ? `${String(theme.colors.sentMessageDocumentIcon)}33`
           : `${String(theme.colors.receivedMessageDocumentIcon)}33`,
-      borderRadius: 21,
+      borderRadius: themeRadius(theme, 21),
       height: 42,
       justifyContent: 'center',
       width: 42,

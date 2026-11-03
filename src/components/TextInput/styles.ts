@@ -1,15 +1,16 @@
 import {StyleSheet} from 'react-native';
 
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
     container: {
       borderWidth: 1,
       borderColor: theme.colors.border,
-      borderRadius: 10,
-      borderTopStartRadius: 10,
-      borderTopEndRadius: 10,
+      borderRadius: themeRadius(theme, 10),
+      borderTopStartRadius: themeRadius(theme, 10),
+      borderTopEndRadius: themeRadius(theme, 10),
       alignSelf: 'stretch',
       backgroundColor: 'transparent',
     },

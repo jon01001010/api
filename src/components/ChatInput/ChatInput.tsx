@@ -1,6 +1,5 @@
 import * as React from 'react';
 import {
-  TextInput,
   TextInputProps,
   View,
   Animated,
@@ -8,8 +7,14 @@ import {
   Alert,
   ScrollView,
   Image,
+  Modal,
+  FlatList,
 } from 'react-native';
 import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
+import {pick, keepLocalCopy, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
+import * as RNFS from '@dr.pogodin/react-native-fs';
+import Share from 'react-native-share';
+import {importWorkspaceCopy, normalizeImportName, isEditableTextName, getWorkspaceLimits, setWorkspaceLimits, WORKSPACE_LIMIT_PRESETS, MAX_IMPORT_BYTES, checkText, ensureWorkspace, FILE_ROOT, safeWorkspaceName, workspacePath} from '../../services/talents/fileWorkspace';
 import {useCameraPermission} from 'react-native-vision-camera';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 
@@ -36,6 +41,9 @@ import {L10nContext, UserContext} from '../../utils';
 import {t} from '../../locales';
 
 import {SendButton, StopButton, Menu, VoiceChip} from '..';
+import {themeColor, themeRadius} from '../../theme/phosphor';
+import {TextInput} from '../ThemedText';
+import type {TextInput as RNTextInput} from 'react-native';
 
 export interface ChatInputTopLevelProps {
   /** Whether the AI is currently streaming tokens */
@@ -147,7 +155,7 @@ export const ChatInput = observer(
     const l10n = React.useContext(L10nContext);
     const theme = useTheme();
     const user = React.useContext(UserContext);
-    const inputRef = React.useRef<TextInput>(null);
+    const inputRef = React.useRef<RNTextInput>(null);
     const editBarHeight = React.useRef(new Animated.Value(0)).current;
     const iconRotation = React.useRef(new Animated.Value(0)).current;
     const activePalId = chatSessionStore.activePalId;
@@ -169,6 +177,11 @@ export const ChatInput = observer(
       onDefaultImagesChange ?? setInternalSelectedImages;
     // State for image upload menu
     const [showImageUploadMenu, setShowImageUploadMenu] = React.useState(false);
+    const [workspaceVisible, setWorkspaceVisible] = React.useState(false);
+    const [workspaceLimits, setWorkspaceLimitsState] = React.useState(getWorkspaceLimits());
+    const [limitField, setLimitField] = React.useState<'maxFileBytes' | 'maxToolTextBytes' | null>(null);
+    const [customLimitKiB, setCustomLimitKiB] = React.useState('');
+    const [workspaceFiles, setWorkspaceFiles] = React.useState<{name: string; size: number}[]>([]);
     // State for showing "model not loaded" helper text
     const [showModelWarning, setShowModelWarning] = React.useState(false);
     const isEditMode = chatSessionStore.isEditMode;
@@ -345,6 +358,130 @@ export const ChatInput = observer(
       }
     };
 
+    // SAF picker: no blanket storage permission and no tool execution.
+    // This text-only import is intentionally bounded until format-aware
+    // editors and the full user-approved file-write flow are integrated.
+    const handleSelectFile = async () => {
+      setShowImageUploadMenu(false);
+      let tempPath: string | undefined;
+      try {
+        const selection = await pick({
+          type: [types.allFiles],
+          allowMultiSelection: false,
+        });
+        const file = selection[0];
+        if (!file?.uri) return;
+        const requestedName = normalizeImportName(file.name || 'document.bin');
+        if (file.size != null && Number(file.size) > MAX_IMPORT_BYTES) {
+          throw new Error('This file exceeds the 32 MiB import limit.');
+        }
+        const [copy] = await keepLocalCopy({
+          files: [{uri: file.uri, fileName: requestedName}],
+          destination: 'cachesDirectory',
+        });
+        if (!copy || copy.status !== 'success') {
+          throw new Error(copy?.status === 'error'
+            ? 'Android could not copy this document: ' + copy.copyError
+            : 'Android did not return a local copy');
+        }
+        // keepLocalCopy returns a file:// URI, whereas RNFS expects a path.
+        tempPath = decodeURIComponent(copy.localUri.replace(/^file:\/\//, ''));
+        const info = await RNFS.stat(tempPath);
+        const fileSize = Number(info.size);
+        if (!info.isFile() || !Number.isFinite(fileSize) || fileSize > MAX_IMPORT_BYTES) {
+          throw new Error('Not a regular file, or exceeds the 32 MiB import limit.');
+        }
+
+        const isText = isEditableTextName(requestedName);
+        let content: string | undefined;
+        if (isText) {
+          if (fileSize > getWorkspaceLimits().maxFileBytes) {
+            throw new Error('Text/code file exceeds configured workspace file limit.');
+          }
+          content = await RNFS.readFile(tempPath, 'utf8');
+          if (content.includes('\0')) {
+            throw new Error('The selected file contains binary data rather than text.');
+          }
+        }
+        // Save an independent workspace copy, never replace the Android original.
+        // A duplicate filename gets an incremented suffix.
+        const storedName = await importWorkspaceCopy(requestedName, tempPath, fileSize);
+        const imported = isText
+          ? `[User-selected text file saved in PocketAgentFiles: ${storedName}]\n${content}\n[End of file]\nTo edit and save this copy, enable file_read and file_edit in Toolbox.`
+          : `[User-selected binary file saved in PocketAgentFiles: ${storedName}; ${fileSize} bytes]\nThis file is stored, but the model needs format-specific tools to inspect or edit its binary contents.`;
+        handleChangeText(`${value}${value ? '\n\n' : ''}${imported}`);
+        if (!isText) {
+          Alert.alert('File imported',
+            `${storedName} was saved in the PocketAgent workspace. Binary editing is not supported yet. For image analysis with a vision model, use Gallery.`);
+        }
+      } catch (error) {
+        if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) return;
+        const detail = error instanceof Error ? error.message : String(error);
+        console.warn('Document selection failed', error);
+        Alert.alert('File import failed', detail.slice(0, 320) || 'Unable to import the selected file.');
+      } finally {
+        if (tempPath) await RNFS.unlink(tempPath).catch(() => undefined);
+      }
+    };
+
+    const openWorkspace = async () => {
+      setShowImageUploadMenu(false);
+      try {
+        await ensureWorkspace();
+        setWorkspaceLimitsState(getWorkspaceLimits());
+        const entries = await RNFS.readDir(FILE_ROOT);
+        const files = entries.filter(entry => entry.isFile()).map(entry => ({
+          name: entry.name,
+          size: Number(entry.size),
+        })).filter(entry => {
+          try { safeWorkspaceName(entry.name); return true; } catch { return false; }
+        });
+        setWorkspaceFiles(files.sort((a, b) => a.name.localeCompare(b.name)));
+        setWorkspaceVisible(true);
+      } catch (error) {
+        Alert.alert('Workspace unavailable', error instanceof Error ? error.message : String(error));
+      }
+    };
+
+    const chooseWorkspaceLimit = (field: 'maxFileBytes' | 'maxToolTextBytes') => {
+      setLimitField(field);
+    };
+
+    const applyWorkspaceLimit = async (field: 'maxFileBytes' | 'maxToolTextBytes', bytes: number) => {
+      try {
+        const updated = {...getWorkspaceLimits(), [field]: bytes};
+        await setWorkspaceLimits(updated);
+        setWorkspaceLimitsState(updated);
+        setLimitField(null);
+      } catch (error) {
+        Alert.alert('Settings failed', error instanceof Error ? error.message : String(error));
+      }
+    };
+
+    const shareWorkspaceFile = async (name: string) => {
+      try {
+        const path = workspacePath(name);
+        const info = await RNFS.stat(path);
+        if (!info.isFile()) throw new Error('File is not available');
+        // Share all workspace files using the same cached-file path as PNGs.
+        // The data: URI path fails on some Android share targets with a null URI.
+        const mime = isEditableTextName(name) ? 'text/plain' :
+          name.toLowerCase().endsWith('.png') ? 'image/png' : 'application/octet-stream';
+        const cachePath = RNFS.CachesDirectoryPath + '/' + name;
+        if (await RNFS.exists(cachePath)) await RNFS.unlink(cachePath);
+        await RNFS.copyFile(path, cachePath);
+        await Share.open({
+          url: 'file://' + cachePath,
+          filename: name,
+          title: 'Save or share ' + name,
+          type: mime,
+          failOnCancel: false,
+        });
+      } catch (error) {
+        Alert.alert('Export failed', error instanceof Error ? error.message : String(error));
+      }
+    };
+
     // Remove an image from the selection
     const handleRemoveImage = (index: number) => {
       const newImages = [...selectedImages];
@@ -372,10 +509,11 @@ export const ChatInput = observer(
       outputRange: ['0deg', '180deg'],
     });
 
-    const onSurfaceColor = currentActivePal?.color?.[0] || theme.colors.text;
+    const onSurfaceColor =
+      themeColor(theme, currentActivePal?.color?.[0]) || theme.colors.text;
     const onSurfaceColorVariant = onSurfaceColor + '55'; // for disabled state or placeholder text
     // // Plus button state
-    const isPlusButtonEnabled = !isStreaming && isVisionEnabled;
+    const isPlusButtonEnabled = !isStreaming && hasActiveModel;
     const plusColor = isPlusButtonEnabled
       ? onSurfaceColor
       : onSurfaceColorVariant;
@@ -390,6 +528,74 @@ export const ChatInput = observer(
 
     return (
       <View style={styles.container}>
+        <Modal
+          visible={workspaceVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setWorkspaceVisible(false)}>
+          <View style={{flex: 1, justifyContent: 'center', padding: 20, backgroundColor: themeColor(theme, 'rgba(0,0,0,0.55)')}}>
+            <View style={{backgroundColor: theme.colors.surface, borderRadius: themeRadius(theme, 16), padding: 16, maxHeight: '75%'}}>
+              <Text variant="titleMedium">PocketAgent workspace</Text>
+              <Text variant="bodySmall" style={{marginVertical: 10}}>
+                Tap a file to share it or save a copy using Android's share sheet.
+              </Text>
+              <TouchableOpacity onPress={() => chooseWorkspaceLimit('maxFileBytes')} style={{paddingVertical: 8}}>
+                <Text>Max text file: {Math.round(workspaceLimits.maxFileBytes / 1024)} KiB · Change</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => chooseWorkspaceLimit('maxToolTextBytes')} style={{paddingVertical: 8}}>
+                <Text>Model tool text: {Math.round(workspaceLimits.maxToolTextBytes / 1024)} KiB · Change</Text>
+              </TouchableOpacity>
+              <FlatList
+                data={workspaceFiles}
+                keyExtractor={item => item.name}
+                ListEmptyComponent={<Text>No workspace files yet.</Text>}
+                renderItem={({item}) => (
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={'Share ' + item.name}
+                    onPress={() => shareWorkspaceFile(item.name)}
+                    style={{paddingVertical: 12, borderBottomWidth: 1, borderColor: theme.colors.outlineVariant}}>
+                    <Text>{item.name}</Text>
+                    <Text variant="bodySmall">{item.size} bytes · Share / Save</Text>
+                  </TouchableOpacity>
+                )}
+              />
+              <TouchableOpacity onPress={() => setWorkspaceVisible(false)} style={{alignSelf: 'flex-end', padding: 12}}>
+                <Text>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+        <Modal visible={limitField !== null} transparent animationType="fade"
+          onRequestClose={() => setLimitField(null)}>
+          <View style={{flex: 1, justifyContent: 'center', padding: 24, backgroundColor: themeColor(theme, 'rgba(0,0,0,0.6)')}}>
+            <View style={{backgroundColor: theme.colors.surface, borderRadius: themeRadius(theme, 16), padding: 20, maxHeight: '80%'}}>
+              <Text variant="titleMedium">{limitField === 'maxFileBytes' ? 'Maximum text file size' : 'Maximum model tool text'}</Text>
+              <Text variant="bodySmall" style={{marginVertical: 10}}>Choose a preset or enter a custom limit in KiB.</Text>
+              <ScrollView style={{flexGrow: 0}}>
+                {WORKSPACE_LIMIT_PRESETS.map(bytes => (
+                  <TouchableOpacity key={bytes} accessibilityRole="button"
+                    onPress={() => limitField && applyWorkspaceLimit(limitField, bytes)}
+                    style={{paddingVertical: 12, borderBottomWidth: 1, borderColor: theme.colors.outlineVariant}}>
+                    <Text>{bytes >= 1048576 ? (bytes / 1048576) + ' MiB' : (bytes / 1024) + ' KiB'}{limitField && workspaceLimits[limitField] === bytes ? '  ✓' : ''}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TextInput keyboardType="number-pad" placeholder="Custom KiB (16–32768)"
+                value={customLimitKiB} onChangeText={setCustomLimitKiB}
+                style={{borderWidth: 1, borderColor: theme.colors.outline, borderRadius: themeRadius(theme, 8), padding: 10, marginTop: 12, color: theme.colors.onSurface}} />
+              <TouchableOpacity accessibilityRole="button" onPress={() => {
+                const kib = Number(customLimitKiB);
+                if (!Number.isSafeInteger(kib) || kib < 16 || kib > 32768) {
+                  Alert.alert('Invalid size', 'Enter a whole number between 16 and 32768 KiB.');
+                  return;
+                }
+                if (limitField) applyWorkspaceLimit(limitField, kib * 1024);
+              }} style={{paddingVertical: 12}}><Text>Apply custom limit</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setLimitField(null)} style={{alignSelf: 'flex-end', padding: 12}}><Text>Cancel</Text></TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
         <View style={styles.inputContainer}>
           {/* Edit Bar (when in edit mode) */}
           {isEditMode && (
@@ -505,7 +711,7 @@ export const ChatInput = observer(
             {/* Left Controls */}
             <View style={styles.leftControls}>
               {/* Plus Button for Image Upload (only for regular chat) */}
-              {showImageUpload && !isVideoCapable && (
+              {(showImageUpload || hasActiveModel) && !isVideoCapable && (
                 <Menu
                   visible={showImageUploadMenu}
                   onDismiss={() => setShowImageUploadMenu(false)}
@@ -517,20 +723,34 @@ export const ChatInput = observer(
                       onPress={
                         isPlusButtonEnabled ? handlePlusButtonPress : () => {}
                       }
-                      accessibilityLabel="Add image"
+                      accessibilityLabel="Add attachment"
                       accessibilityRole="button">
                       <PlusIcon width={20} height={20} stroke={plusColor} />
                     </TouchableOpacity>
                   }>
+                  {isVisionEnabled && (
+                    <Menu.Item
+                      label={l10n.camera?.takePhoto || 'Camera'}
+                      icon="camera"
+                      onPress={handleTakePhoto}
+                    />
+                  )}
+                  {isVisionEnabled && (
+                    <Menu.Item
+                      label={l10n.common?.gallery || 'Gallery'}
+                      icon="image"
+                      onPress={handleSelectImages}
+                    />
+                  )}
                   <Menu.Item
-                    label={l10n.camera?.takePhoto || 'Camera'}
-                    icon="camera"
-                    onPress={handleTakePhoto}
+                    label="Workspace files / Share"
+                    icon="folder-outline"
+                    onPress={openWorkspace}
                   />
                   <Menu.Item
-                    label={l10n.common?.gallery || 'Gallery'}
-                    icon="image"
-                    onPress={handleSelectImages}
+                    label="Files"
+                    icon="file-document-outline"
+                    onPress={handleSelectFile}
                   />
                 </Menu>
               )}
@@ -547,7 +767,10 @@ export const ChatInput = observer(
                           : theme.colors.inverseSurface,
                     },
                     currentActivePal?.color && {
-                      backgroundColor: currentActivePal?.color?.[0],
+                      backgroundColor: themeColor(
+                        theme,
+                        currentActivePal?.color?.[0],
+                      ),
                     },
                   ]}
                   onPress={onPalBtnPress}

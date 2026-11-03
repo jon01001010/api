@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -18,7 +19,7 @@ export const createStyles = (theme: Theme) =>
       marginBottom: 24,
     },
     optionCard: {
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       borderWidth: 1,
       borderColor: theme.colors.outline + '30',
       backgroundColor: theme.colors.surface,
@@ -56,7 +57,7 @@ export const createStyles = (theme: Theme) =>
     radioButton: {
       width: 20,
       height: 20,
-      borderRadius: 10,
+      borderRadius: themeRadius(theme, 10),
       borderWidth: 2,
       borderColor: theme.colors.outline,
       justifyContent: 'center',
@@ -68,7 +69,7 @@ export const createStyles = (theme: Theme) =>
     radioButtonInner: {
       width: 10,
       height: 10,
-      borderRadius: 5,
+      borderRadius: themeRadius(theme, 5),
       backgroundColor: theme.colors.primary,
     },
     sizeChip: {
@@ -86,7 +87,7 @@ export const createStyles = (theme: Theme) =>
       paddingVertical: 12,
       paddingHorizontal: 12,
       backgroundColor: theme.colors.surfaceVariant + '20',
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       borderLeftWidth: 3,
       borderLeftColor: 'transparent',
     },
@@ -130,7 +131,7 @@ export const createStyles = (theme: Theme) =>
       alignItems: 'center',
       paddingVertical: 6,
       paddingHorizontal: 8,
-      borderRadius: 6,
+      borderRadius: themeRadius(theme, 6),
       minWidth: 70,
       justifyContent: 'center',
     },
@@ -181,7 +182,7 @@ export const createStyles = (theme: Theme) =>
       paddingVertical: 8,
       paddingHorizontal: 12,
       backgroundColor: theme.colors.surfaceVariant + '20',
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       marginBottom: 8,
     },
     projectionModelInfo: {
@@ -213,7 +214,7 @@ export const createStyles = (theme: Theme) =>
       alignItems: 'center',
       gap: 8,
       padding: 12,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       backgroundColor: theme.colors.errorContainer + '30',
       borderWidth: 1,
       borderColor: theme.colors.error + '50',

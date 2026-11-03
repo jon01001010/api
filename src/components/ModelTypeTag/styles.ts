@@ -3,6 +3,7 @@ import {StyleSheet} from 'react-native';
 import {ModelType} from './ModelTypeTag';
 
 import {Theme} from '../../utils';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (
   theme: Theme,
@@ -13,7 +14,7 @@ export const createStyles = (
     container: {
       flexDirection: 'row',
       alignItems: 'center',
-      borderRadius: 10,
+      borderRadius: themeRadius(theme, 10),
       borderWidth: 1,
       paddingHorizontal: size === 'small' ? 4 : 6,
       marginRight: 4,

@@ -19,6 +19,8 @@ export interface SearchHit {
 
 export interface PageContent {
   url: string;
+  /** True only when the reader obtained the actual final destination from transport/provider metadata. */
+  finalUrlVerified?: boolean;
   title?: string;
   /** Plain-text page body, pre-budget. */
   text: string;

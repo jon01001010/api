@@ -21,7 +21,10 @@ jobs:
           mkdir -p report
           COMPILER="$HEXAGON_TOOLS_ROOT/Tools/bin/hexagon-clang"
           {
-            test -x "$COMPILER"
+            if [[ ! -x "$COMPILER" ]]; then
+              echo "::error::Hexagon compiler missing or not executable: $COMPILER" >&2
+              exit 1
+            fi
             echo "Compiler: $COMPILER"
             "$COMPILER" --version
             printf '%s\n' 'int v69_smoke(int a, int b) { return a * 7 + b; }' > report/v69-smoke.c

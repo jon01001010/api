@@ -18,7 +18,6 @@
 
 import {v4 as uuidv4} from 'uuid';
 import {makeAutoObservable, runInAction} from 'mobx';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {HF_DOMAIN} from '../config/urls';
 
@@ -28,7 +27,7 @@ import {hfAsModel} from '../utils';
 import {resolveHFModelForDownload} from '../utils/hfResolve';
 import {palsHubService} from '../services';
 import {registerDefaultTalents} from '../services/talents';
-import {LOOKIE_DEFAULT_MODEL} from './builtinPalModels';
+import {isStockSeededPal} from './stockSeededPals';
 import {chatTemplates} from '../utils/chat';
 import {defaultCompletionParams} from '../utils/completionSettingsVersions';
 import {parsePalsHubTemplate} from '../utils/palshub-template-parser';
@@ -46,12 +45,6 @@ import type {
 import {ModelOrigin} from '../utils/types';
 import type {Model} from '../utils/types';
 import {downloadPalThumbnail, deletePalThumbnail} from '../utils/imageUtils';
-
-// Track each built-in separately so future defaults can still be introduced.
-// TODO: when adding another built-in pal, extract a shared seed-once helper
-// (check key, find existing, create, set key) instead of a third copy.
-const LOOKIE_SEEDED_KEY = 'PalStore.builtin.Lookie.seeded';
-const PIP_SEEDED_KEY = 'PalStore.builtin.Pip.seeded';
 
 interface CreatorUpdateContext {
   fresh: Pal;
@@ -156,11 +149,8 @@ class PalStore {
       // Load pals from database
       await this.loadPalsFromDatabase();
 
-      // Initialize Lookie pal after database is loaded
-      await this.initializeLookiePal();
-
-      // Initialize Pip pal (idempotent — see initializePipPal).
-      await this.initializePipPal();
+      // Stock Lookie/Pip are no longer created at startup. Previously
+      // persisted untouched defaults are hidden when loading the store.
 
       // Register talent engines (idempotent)
       registerDefaultTalents();
@@ -187,7 +177,7 @@ class PalStore {
     try {
       const pals = await palRepository.getAllPals();
       runInAction(() => {
-        this.pals = pals;
+        this.pals = pals.filter(pal => !isStockSeededPal(pal));
       });
     } catch (error) {
       console.error('Error loading pals from database:', error);
@@ -801,111 +791,7 @@ class PalStore {
     }
   };
 
-  /**
-   * Seed the default "Lookie" VideoPal once. After the first launch that
-   * records the seed, deletions and renames are preserved; on that launch a
-   * missing Lookie is created (installs that predate the key included).
-   */
-  private async initializeLookiePal(): Promise<void> {
-    try {
-      if ((await AsyncStorage.getItem(LOOKIE_SEEDED_KEY)) === 'true') {
-        return;
-      }
 
-      // Check if Lookie already exists
-      const lookiePal = this.pals.find(
-        p => p.capabilities?.video === true && p.name === 'Lookie',
-      );
-
-      if (!lookiePal) {
-        console.log('Creating default Lookie pal...');
-
-        // Offline constant — no network resolve at pal init.
-        const defaultModel = LOOKIE_DEFAULT_MODEL;
-
-        // Create the Lookie pal with all the original properties
-        const palData: Omit<Pal, 'id' | 'created_at' | 'updated_at'> = {
-          type: 'local',
-          name: 'Lookie',
-          description:
-            'Real-time video analysis assistant that provides concise descriptions of your camera feed.',
-          systemPrompt:
-            'You are Lookie, an AI assistant giving real-time, concise descriptions of a video feed. Use few words. If unsure, say so clearly.',
-          isSystemPromptChanged: false,
-          useAIPrompt: false,
-          defaultModel: defaultModel, // Set the default model so users know what to download
-          parameters: {
-            captureInterval: '3000', // 3 seconds (original value) - stored as string for text input
-          },
-          parameterSchema: [
-            {
-              key: 'captureInterval',
-              type: 'text',
-              label: 'Capture Interval (ms)',
-              required: false,
-            },
-          ],
-          capabilities: {video: true},
-          color: ['#9E204F', '#F6E1EA'], // Original Lookie colors
-          source: 'local',
-        };
-
-        await this.addPal(palData);
-      } else {
-        console.log('Lookie pal already exists, skipping creation');
-      }
-      await AsyncStorage.setItem(LOOKIE_SEEDED_KEY, 'true');
-    } catch (error) {
-      console.error('Error initializing Lookie pal:', error);
-    }
-  }
-
-  /**
-   * Seed the default "Pip" recommended pal once. After the first launch that
-   * records the seed, deletions and renames are preserved; on that launch a
-   * missing Pip is created (installs that predate the key included).
-   *
-   * Idempotent: a re-entry never overwrites an existing Pip record, so a
-   * `defaultModel` bound from a prior session (e.g. by the onboarding
-   * recommended-pal picker) survives subsequent app starts.
-   */
-  private async initializePipPal(): Promise<void> {
-    try {
-      if ((await AsyncStorage.getItem(PIP_SEEDED_KEY)) === 'true') {
-        return;
-      }
-
-      const existing = this.pals.find(
-        p => p.name === 'Pip' && p.source === 'local',
-      );
-      if (existing) {
-        await AsyncStorage.setItem(PIP_SEEDED_KEY, 'true');
-        return;
-      }
-
-      const palData: Omit<Pal, 'id' | 'created_at' | 'updated_at'> = {
-        type: 'local',
-        name: 'Pip',
-        description:
-          'A friendly general-purpose pal that runs entirely on your phone.',
-        systemPrompt:
-          'You are Pip, a friendly and helpful assistant who runs locally on the user’s phone. Keep replies concise and warm.',
-        isSystemPromptChanged: false,
-        useAIPrompt: false,
-        defaultModel: undefined,
-        parameters: {},
-        parameterSchema: [],
-        capabilities: {},
-        color: ['#0E0D0C', '#FAFAFA'],
-        source: 'local',
-      };
-
-      await this.addPal(palData);
-      await AsyncStorage.setItem(PIP_SEEDED_KEY, 'true');
-    } catch (error) {
-      console.error('Error initializing Pip pal:', error);
-    }
-  }
 }
 
 export const palStore = new PalStore();

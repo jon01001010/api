@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -27,6 +28,6 @@ export const createStyles = (theme: Theme) =>
     },
     bar: {
       height: 3,
-      borderRadius: 2,
+      borderRadius: themeRadius(theme, 2),
     },
   });

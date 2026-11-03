@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) => {
   return StyleSheet.create({
@@ -13,7 +14,7 @@ export const createStyles = (theme: Theme) => {
       marginBottom: 16,
       backgroundColor: theme.colors.tertiaryContainer,
       padding: 12,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
     },
     privacyText: {
       flex: 1,
@@ -68,7 +69,7 @@ export const createStyles = (theme: Theme) => {
       marginBottom: 12,
       backgroundColor: theme.colors.errorContainer,
       padding: 12,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
     },
     warningText: {
       color: theme.colors.onErrorContainer,
@@ -199,7 +200,7 @@ export const createStyles = (theme: Theme) => {
     routerDot: {
       width: 10,
       height: 10,
-      borderRadius: 5,
+      borderRadius: themeRadius(theme, 5),
       marginHorizontal: 7,
       backgroundColor: theme.colors.statusLoaded,
     },

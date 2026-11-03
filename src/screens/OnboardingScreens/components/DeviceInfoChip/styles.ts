@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import type {Theme} from '../../../../utils/types';
+import {themeRadius} from '../../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -25,7 +26,7 @@ export const createStyles = (theme: Theme) =>
     bullet: {
       width: 1.5,
       height: 1.5,
-      borderRadius: 1,
+      borderRadius: themeRadius(theme, 1),
       backgroundColor: theme.colors.text,
       opacity: 0.7,
     },

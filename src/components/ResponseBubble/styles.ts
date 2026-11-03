@@ -1,10 +1,16 @@
 import {StyleSheet, Platform} from 'react-native';
 
-export const createStyles = () => {
+import {
+  type PhosphorAware,
+  themeColor,
+  themeRadius,
+} from '../../theme/phosphor';
+
+export const createStyles = (theme?: PhosphorAware) => {
   // Colors
-  const bubbleBackground = 'rgba(0, 0, 0, 0.7)';
-  const bubbleBorderColor = 'rgba(255, 255, 255, 0.2)';
-  const shadowColor = '#000';
+  const bubbleBackground = themeColor(theme, 'rgba(0, 0, 0, 0.7)');
+  const bubbleBorderColor = themeColor(theme, 'rgba(255, 255, 255, 0.2)');
+  const shadowColor = themeColor(theme, '#000');
 
   return StyleSheet.create({
     shadowContainer: {
@@ -21,7 +27,7 @@ export const createStyles = () => {
       }),
     },
     container: {
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
       overflow: 'hidden',
       backgroundColor: bubbleBackground,
       borderWidth: 1,
@@ -64,7 +70,7 @@ export const createStyles = () => {
     },
     maskSolid: {
       flex: 1,
-      backgroundColor: 'black',
+      backgroundColor: themeColor(theme, 'black'),
       marginTop: 40, // Match the maskGradient height
     },
     indicatorContainer: {
@@ -85,8 +91,8 @@ export const createStyles = () => {
     chevronIndicator: {
       width: 36,
       height: 4,
-      borderRadius: 2,
-      backgroundColor: 'rgba(255, 255, 255, 0.5)',
+      borderRadius: themeRadius(theme, 2),
+      backgroundColor: themeColor(theme, 'rgba(255, 255, 255, 0.5)'),
     },
   });
 };

@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../../../utils/types';
+import {themeRadius} from '../../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -15,7 +16,7 @@ export const createStyles = (theme: Theme) =>
     avatarContainer: {
       width: 64,
       height: 64,
-      borderRadius: 32,
+      borderRadius: themeRadius(theme, 32),
       backgroundColor: theme.colors.primaryContainer,
       alignItems: 'center',
       justifyContent: 'center',
@@ -47,7 +48,7 @@ export const createStyles = (theme: Theme) =>
     },
     actionButton: {
       borderColor: theme.colors.outline,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
     },
     signInPrompt: {
       alignItems: 'center',

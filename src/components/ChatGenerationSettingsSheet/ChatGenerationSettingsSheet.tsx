@@ -9,6 +9,8 @@ import {
   palStore,
 } from '../../store';
 import {styles} from './styles';
+import {useTheme} from '../../hooks';
+import {themeRadius} from '../../theme/phosphor';
 import {
   COMPLETION_PARAMS_METADATA,
   validateCompletionSettings,
@@ -92,6 +94,7 @@ const ChatGenerationSettingsSheetImpl = ({
   onClose: () => void;
 }) => {
   const l10n = useContext(L10nContext);
+  const theme = useTheme();
   const session = chatSessionStore.sessions.find(
     item => item.id === chatSessionStore.activeSessionId,
   );
@@ -299,7 +302,11 @@ const ChatGenerationSettingsSheetImpl = ({
       <Sheet.ScrollView contentContainerStyle={styles.scrollviewContainer}>
         {/* Settings Source Toggle */}
         {showSettingsToggle && (
-          <View style={styles.settingsSourceContainer}>
+          <View
+            style={[
+              styles.settingsSourceContainer,
+              {borderRadius: themeRadius(theme, 8)},
+            ]}>
             <Text variant="labelMedium" style={styles.settingsSourceTitle}>
               {l10n.components.chatGenerationSettingsSheet.settingsSource}
             </Text>

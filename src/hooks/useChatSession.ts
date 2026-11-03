@@ -1,3 +1,4 @@
+import {buildMemoryContext} from '../services/talents/agentMemory';
 import React, {useRef} from 'react';
 import {AccessibilityInfo, DeviceEventEmitter, Platform} from 'react-native';
 
@@ -790,9 +791,16 @@ export const useChatSession = (
     const palTalents = [...new Set([
       ...(pal?.pact?.talents ?? []).map(t => t.name),
       ...globalNames,
+      'memory_get', 'memory_replace', 'memory_history', 'memory_restore',
     ])];
     cleanCompletionParams.tools = deriveToolSchemas(palTalents);
-    const globalText = [globalInstructions.trim(), generatedToolPrompt(palTalents)]
+    let memoryContext = '';
+    try {
+      memoryContext = await buildMemoryContext();
+    } catch (error) {
+      console.warn('[chat] memory unavailable', error);
+    }
+    const globalText = [globalInstructions.trim(), memoryContext, generatedToolPrompt(palTalents)]
       .filter(Boolean).join('\n\n');
     if (globalText) {
       const messages = cleanCompletionParams.messages ?? [];

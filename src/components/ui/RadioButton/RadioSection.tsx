@@ -1,5 +1,5 @@
 import React from 'react';
-import {Text, View} from 'react-native';
+import {View} from 'react-native';
 
 import {useTheme} from '../../../hooks';
 
@@ -7,6 +7,7 @@ import type {CommonDSProps} from '../types';
 
 import {RadioButton} from './RadioButton';
 import {createStyles} from './styles';
+import {Text} from '../../ThemedText';
 
 export type RadioSectionOption = {
   value: string;

@@ -1,8 +1,9 @@
 import React from 'react';
-import {Pressable, Text, View} from 'react-native';
+import {Pressable, View} from 'react-native';
 
 import {useTheme} from '../../hooks';
 import {createStyles} from './styles';
+import {Text} from '../ThemedText';
 
 export type DownloadProgressCardProps = {
   /** Visible model identifier (e.g., `Llama-3.2-1B-Instruct (Q4_K_M)`). */

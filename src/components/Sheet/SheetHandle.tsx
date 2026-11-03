@@ -2,6 +2,7 @@ import React from 'react';
 import {View, StyleSheet} from 'react-native';
 import {BottomSheetHandleProps} from '@gorhom/bottom-sheet';
 import {useTheme} from '../../hooks';
+import {themeRadius} from '../../theme/phosphor';
 
 export const SheetHandle: React.FC<BottomSheetHandleProps> = () => {
   const theme = useTheme();
@@ -9,7 +10,13 @@ export const SheetHandle: React.FC<BottomSheetHandleProps> = () => {
   return (
     <View style={styles.container} testID="sheet-handle">
       <View
-        style={[styles.indicator, {backgroundColor: theme.colors.primary}]}
+        style={[
+          styles.indicator,
+          {
+            backgroundColor: theme.colors.primary,
+            borderRadius: themeRadius(theme, 2),
+          },
+        ]}
       />
     </View>
   );

@@ -3,6 +3,8 @@ import {CalculateEngine} from './CalculateEngine';
 import {DatetimeEngine} from './DatetimeEngine';
 import {WebSearchEngine} from './WebSearchEngine';
 import {ReadUrlEngine} from './ReadUrlEngine';
+import {FileToolsEngine, FILE_OPERATIONS} from './FileToolsEngine';
+import {MemoryToolsEngine} from './MemoryToolsEngine';
 import {talentRegistry} from './TalentRegistry';
 import type {SearchAccess} from './searchAccess';
 import type {ToolDefinition, SystemPromptContext} from './types';
@@ -59,6 +61,12 @@ export function registerDefaultTalents(): void {
   talentRegistry.register(new RenderHtmlEngine());
   talentRegistry.register(new CalculateEngine());
   talentRegistry.register(new DatetimeEngine());
+  for (const name of FILE_OPERATIONS) {
+    talentRegistry.register(new FileToolsEngine(name));
+  }
+  for (const name of ['memory_get', 'memory_replace', 'memory_history', 'memory_restore'] as const) {
+    talentRegistry.register(new MemoryToolsEngine(name));
+  }
   const searchAccess = createSearchAccess();
   talentRegistry.register(new WebSearchEngine(searchAccess));
   talentRegistry.register(new ReadUrlEngine(searchAccess));

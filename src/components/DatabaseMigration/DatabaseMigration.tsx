@@ -1,8 +1,9 @@
 import React from 'react';
-import {View, ActivityIndicator, Text, StyleSheet} from 'react-native';
+import {View, ActivityIndicator, StyleSheet} from 'react-native';
 import {observer} from 'mobx-react-lite';
 import {chatSessionStore} from '../../store/ChatSessionStore';
 import {useTheme} from '../../hooks';
+import {Text} from '../ThemedText';
 
 export const DatabaseMigration = observer(() => {
   const theme = useTheme();

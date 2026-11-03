@@ -1,4 +1,4 @@
-import {View, TouchableWithoutFeedback, Text} from 'react-native';
+import {View, TouchableWithoutFeedback} from 'react-native';
 import React, {
   useState,
   useEffect,
@@ -16,6 +16,7 @@ import {useTheme} from '../../hooks';
 import {L10nContext} from '../../utils';
 
 import {createStyles} from './styles';
+import {Text} from '../ThemedText';
 
 interface MemoryStats {
   totalMemory: number;

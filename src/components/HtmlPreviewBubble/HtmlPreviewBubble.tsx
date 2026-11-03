@@ -3,9 +3,19 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
-import {Modal, ScrollView, Text, TouchableOpacity, View} from 'react-native';
+import {
+  Alert,
+  Modal,
+  ScrollView,
+  StyleProp,
+  TextStyle,
+  TouchableOpacity,
+  View,
+  ViewStyle,
+} from 'react-native';
 import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
 import {WebView} from 'react-native-webview';
 import {useIsFocused} from '@react-navigation/native';
@@ -19,12 +29,15 @@ import {
   CloseIcon,
   CodeIcon,
   CopyIcon,
+  DownloadIcon,
   ExpandIcon,
 } from '../../assets/icons';
 import {useTheme} from '../../hooks';
 import {L10nContext} from '../../utils';
 
 import {codeHighlighterPreOverride, createStyles} from './styles';
+import {htmlFilename, saveHtmlToWorkspace, shareHtmlFile} from './saveHtml';
+import {Text} from '../ThemedText';
 
 const hapticOptions = {
   enableVibrateFallback: true,
@@ -36,9 +49,39 @@ interface HtmlPreviewBubbleProps {
   title?: string;
 }
 
-// Generated HTML is untrusted. Both previews are static; no model-authored JS.
-const CSP =
-  "default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'";
+/**
+ * Generated HTML is untrusted, but it is allowed to run its own inline
+ * JavaScript so clocks, timers, games and buttons work. The sandbox:
+ *   - CSP: only inline scripts/styles and data:/blob: media. Every network
+ *     path is closed (`default-src 'none'`, `connect-src 'none'`, no
+ *     external script/style/img/font/media), plus no frames, forms,
+ *     workers, plugins or <base> rewriting. The policy is the first thing
+ *     in the document, before any model markup, so a page cannot loosen it.
+ *   - Navigation pinned to about:blank; no popups; no file access.
+ *   - No native bridge: `onMessage` is never set, so the page has no
+ *     `window.ReactNativeWebView` and cannot call into the app.
+ *   - Incognito + no cache, so nothing persists between previews.
+ *   - The WebView is unmounted when the chat screen loses focus, so scripts
+ *     never keep running off-screen.
+ */
+export const CSP =
+  "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; child-src 'none'; object-src 'none'";
+
+/** If the page has not finished loading by then, show the error state. */
+export const LOAD_TIMEOUT_MS = 10000;
+
+/**
+ * True when the markup references remote resources (e.g. a CDN script).
+ * Those are blocked by the CSP; the preview shows a short note so the user
+ * knows why part of the page may not work. Heuristic only — enforcement is
+ * the CSP, not this check.
+ */
+export function referencesRemoteResources(html: string): boolean {
+  return (
+    /\b(?:src|href)\s*=\s*["']?\s*(?:https?:)?\/\//i.test(html) ||
+    /@import\s+(?:url\()?\s*["']?\s*(?:https?:)?\/\//i.test(html)
+  );
+}
 
 const HEAD_INJECTION = `<meta http-equiv="Content-Security-Policy" content="${CSP}" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -75,6 +118,100 @@ export function wrapDocument(html: string): string {
 ${HEAD_INJECTION}${FRAGMENT_STYLES}</head><body>${html}</body></html>`;
 }
 
+interface SandboxedHtmlViewProps {
+  document: string;
+  style: StyleProp<ViewStyle>;
+  testID: string;
+  errorStyle: StyleProp<ViewStyle>;
+  errorTextStyle: StyleProp<TextStyle>;
+  errorButtonStyle: StyleProp<ViewStyle>;
+  errorButtonTextStyle: StyleProp<TextStyle>;
+  onViewCode: () => void;
+}
+
+/**
+ * The locked-down WebView shared by the in-chat preview and fullscreen.
+ * Shows an error panel (with a "View code" escape hatch) if the page fails
+ * to load, its renderer crashes, or it does not finish within
+ * LOAD_TIMEOUT_MS.
+ */
+const SandboxedHtmlView: React.FC<SandboxedHtmlViewProps> = ({
+  document,
+  style,
+  testID,
+  errorStyle,
+  errorTextStyle,
+  errorButtonStyle,
+  errorButtonTextStyle,
+  onViewCode,
+}) => {
+  const l10n = useContext(L10nContext);
+  const [failed, setFailed] = useState(false);
+  const loaded = useRef(false);
+
+  useEffect(() => {
+    loaded.current = false;
+    setFailed(false);
+    const timer = setTimeout(() => {
+      if (!loaded.current) {
+        setFailed(true);
+      }
+    }, LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [document]);
+
+  const fail = useCallback(() => setFailed(true), []);
+
+  if (failed) {
+    return (
+      <View style={[style, errorStyle]} testID={`${testID}-error`}>
+        <Text style={errorTextStyle}>{l10n.htmlPreview.loadFailed}</Text>
+        <TouchableOpacity
+          onPress={onViewCode}
+          accessibilityRole="button"
+          testID={`${testID}-error-view-code`}
+          style={errorButtonStyle}>
+          <Text style={errorButtonTextStyle}>{l10n.htmlPreview.viewCode}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <WebView
+      source={{html: document, baseUrl: 'about:blank'}}
+      // Model-authored inline JS runs so live pages work; the CSP in the
+      // document blocks all network access. See the CSP doc above.
+      javaScriptEnabled={true}
+      javaScriptCanOpenWindowsAutomatically={false}
+      // No onMessage => no window.ReactNativeWebView bridge.
+      // Navigation is enforced by onShouldStartLoadWithRequest below.
+      originWhitelist={['*']}
+      allowFileAccess={false}
+      allowFileAccessFromFileURLs={false}
+      allowUniversalAccessFromFileURLs={false}
+      allowsLinkPreview={false}
+      geolocationEnabled={false}
+      mediaPlaybackRequiresUserAction={true}
+      mixedContentMode="never"
+      incognito={true}
+      cacheEnabled={false}
+      onShouldStartLoadWithRequest={req => req.url === 'about:blank'}
+      onOpenWindow={() => {}}
+      setSupportMultipleWindows={false}
+      onLoadEnd={() => {
+        loaded.current = true;
+      }}
+      onError={fail}
+      onRenderProcessGone={fail}
+      onContentProcessDidTerminate={fail}
+      scrollEnabled={true}
+      style={style}
+      testID={testID}
+    />
+  );
+};
+
 export const HtmlPreviewBubble: React.FC<HtmlPreviewBubbleProps> = ({
   html,
   title,
@@ -85,9 +222,9 @@ export const HtmlPreviewBubble: React.FC<HtmlPreviewBubbleProps> = ({
   const [fullscreen, setFullscreen] = useState(false);
   const [showCode, setShowCode] = useState(false);
 
-  // Auto-dismiss the JS-enabled fullscreen modal when the user navigates
-  // away from the chat screen so model-generated JS cannot keep running
-  // off-screen. The collapsed in-row preview is already JS-disabled.
+  // Auto-dismiss the fullscreen modal when the user navigates away from the
+  // chat screen so model-generated JS cannot keep running off-screen. The
+  // in-row preview is unmounted while unfocused (see `renderLive`).
   useEffect(() => {
     if (!isFocused && fullscreen) {
       setFullscreen(false);
@@ -96,19 +233,61 @@ export const HtmlPreviewBubble: React.FC<HtmlPreviewBubbleProps> = ({
 
   const styles = useMemo(
     () =>
-      createStyles({
-        background: theme.colors.surface,
-        border: theme.colors.outline,
-        text: theme.colors.onSurface,
-        headerBg: theme.colors.surfaceVariant,
-        modalOverlay: theme.colors.background,
-      }),
+      createStyles(
+        {
+          background: theme.colors.surface,
+          border: theme.colors.outline,
+          text: theme.colors.onSurface,
+          headerBg: theme.colors.surfaceVariant,
+          modalOverlay: theme.colors.background,
+        },
+        theme,
+      ),
     [theme],
   );
 
   const wrappedHtml = useMemo(() => wrapDocument(html), [html]);
+  const hasRemoteResources = useMemo(
+    () => referencesRemoteResources(html),
+    [html],
+  );
+  const showCodeView = useCallback(() => setShowCode(true), []);
+  // Only one live copy of the page at a time, and none while the chat
+  // screen is not focused: scripts never run off-screen.
+  const renderLive = isFocused && !fullscreen;
   const displayTitle =
     title && title.length > 0 ? title : l10n.htmlPreview.defaultTitle;
+
+  const saveHtml = useCallback(() => {
+    const name = htmlFilename(title);
+    const fail = (error: unknown) =>
+      Alert.alert(
+        l10n.htmlPreview.saveFailed,
+        error instanceof Error ? error.message : String(error),
+      );
+    Alert.alert(l10n.htmlPreview.saveTitle, name, [
+      {
+        text: l10n.htmlPreview.saveToWorkspace,
+        onPress: () => {
+          saveHtmlToWorkspace(html, title)
+            .then(saved =>
+              Alert.alert(
+                l10n.htmlPreview.savedTitle,
+                l10n.htmlPreview.savedToWorkspace.replace('{{name}}', saved),
+              ),
+            )
+            .catch(fail);
+        },
+      },
+      {
+        text: l10n.htmlPreview.shareFile,
+        onPress: () => {
+          shareHtmlFile(html, title).catch(fail);
+        },
+      },
+      {text: l10n.common.cancel, style: 'cancel'},
+    ]);
+  }, [html, title, l10n]);
 
   const copyHtml = useCallback(() => {
     ReactNativeHapticFeedback.trigger('impactLight', hapticOptions);
@@ -146,6 +325,19 @@ export const HtmlPreviewBubble: React.FC<HtmlPreviewBubbleProps> = ({
                 height={18}
               />
             )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={saveHtml}
+            accessibilityRole="button"
+            accessibilityLabel={l10n.htmlPreview.saveHtml}
+            testID="html-preview-save"
+            hitSlop={8}
+            style={styles.headerButton}>
+            <DownloadIcon
+              stroke={theme.colors.onSurfaceVariant}
+              width={18}
+              height={18}
+            />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={copyHtml}
@@ -194,23 +386,28 @@ export const HtmlPreviewBubble: React.FC<HtmlPreviewBubbleProps> = ({
             </CodeHighlighter>
           </ScrollView>
         ) : (
-          <WebView
-            source={{html: wrappedHtml, baseUrl: 'about:blank'}}
-            // JS off in the in-row preview — see file-level doc. Layout +
-            // CSS still render. Generated scripts never execute.
-            javaScriptEnabled={false}
-            originWhitelist={['*']}
-            allowFileAccess={false}
-            allowFileAccessFromFileURLs={false}
-            allowUniversalAccessFromFileURLs={false}
-            mixedContentMode="never"
-            onShouldStartLoadWithRequest={req => req.url === 'about:blank'}
-            onOpenWindow={() => {}}
-            setSupportMultipleWindows={false}
-            scrollEnabled={true}
-            style={styles.collapsedWebView}
-            testID="html-preview-webview"
-          />
+          renderLive && (
+            <SandboxedHtmlView
+              document={wrappedHtml}
+              style={styles.collapsedWebView}
+              testID="html-preview-webview"
+              errorStyle={styles.errorPanel}
+              errorTextStyle={styles.errorText}
+              errorButtonStyle={styles.errorButton}
+              errorButtonTextStyle={styles.errorButtonText}
+              onViewCode={showCodeView}
+            />
+          )
+        )}
+        {!renderLive && !showCode && (
+          // Chat screen not focused (or fullscreen open): keep the row's
+          // height but stop the page and its scripts.
+          <View style={styles.collapsedWebView} testID="html-preview-paused" />
+        )}
+        {hasRemoteResources && (
+          <Text style={styles.remoteNote} testID="html-preview-remote-note">
+            {l10n.htmlPreview.remoteBlocked}
+          </Text>
         )}
       </View>
 
@@ -266,6 +463,19 @@ export const HtmlPreviewBubble: React.FC<HtmlPreviewBubbleProps> = ({
                 )}
               </TouchableOpacity>
               <TouchableOpacity
+                onPress={saveHtml}
+                accessibilityRole="button"
+                accessibilityLabel={l10n.htmlPreview.saveHtml}
+                testID="html-preview-modal-save"
+                hitSlop={8}
+                style={styles.modalHeaderButton}>
+                <DownloadIcon
+                  stroke={theme.colors.onSurface}
+                  width={22}
+                  height={22}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={copyHtml}
                 accessibilityRole="button"
                 accessibilityLabel={l10n.htmlPreview.copyHtml}
@@ -309,20 +519,15 @@ export const HtmlPreviewBubble: React.FC<HtmlPreviewBubbleProps> = ({
                 </CodeHighlighter>
               </ScrollView>
             ) : (
-              <WebView
-                source={{html: wrappedHtml, baseUrl: 'about:blank'}}
-                javaScriptEnabled={false}
-                originWhitelist={['*']}
-                allowFileAccess={false}
-                allowFileAccessFromFileURLs={false}
-                allowUniversalAccessFromFileURLs={false}
-                mixedContentMode="never"
-                onShouldStartLoadWithRequest={req => req.url === 'about:blank'}
-                onOpenWindow={() => {}}
-                setSupportMultipleWindows={false}
-                scrollEnabled={true}
+              <SandboxedHtmlView
+                document={wrappedHtml}
                 style={styles.modalWebView}
                 testID="html-preview-modal-webview"
+                errorStyle={styles.errorPanel}
+                errorTextStyle={styles.errorText}
+                errorButtonStyle={styles.errorButton}
+                errorButtonTextStyle={styles.errorButtonText}
+                onViewCode={showCodeView}
               />
             )}
           </SafeAreaView>

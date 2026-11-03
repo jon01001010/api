@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) => {
   return StyleSheet.create({
@@ -50,7 +51,7 @@ export const createStyles = (theme: Theme) => {
     modelDot: {
       width: 6,
       height: 6,
-      borderRadius: 3,
+      borderRadius: themeRadius(theme, 3),
       backgroundColor: theme.colors.onSurfaceVariant,
       marginRight: 8,
     },

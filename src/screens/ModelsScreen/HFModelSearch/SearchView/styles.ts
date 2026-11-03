@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../../../utils/types';
+import {themeRadius} from '../../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -67,7 +68,7 @@ export const createStyles = (theme: Theme) =>
       padding: 16,
       borderWidth: 1,
       borderColor: theme.colors.outline,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       backgroundColor: theme.colors.surfaceVariant,
       width: '90%',
       alignSelf: 'center',

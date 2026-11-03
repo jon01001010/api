@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import type {Theme} from '../../../../utils/types';
+import {themeColor, themeRadius} from '../../../../theme/phosphor';
 
 // Figma palette for the recommended (Balanced) card — sourced from
 // the canonical file's `Color/Yellow/*` band.
@@ -22,8 +23,12 @@ export const createStyles = (
       paddingVertical: theme.spacing.ml,
       borderRadius: theme.radius.l,
       borderWidth: recommended ? theme.stroke.sm : 0,
-      borderColor: recommended ? RECOMMENDED_BORDER : 'transparent',
-      backgroundColor: recommended ? RECOMMENDED_BG : theme.colors.background,
+      borderColor: recommended
+        ? themeColor(theme, RECOMMENDED_BORDER)
+        : 'transparent',
+      backgroundColor: recommended
+        ? themeColor(theme, RECOMMENDED_BG)
+        : theme.colors.background,
       marginBottom: theme.spacing.s,
       // Card drop shadow — Figma "Subtle Shadow" 0/2/4 8% black.
       shadowColor: theme.colors.shadow,
@@ -37,9 +42,11 @@ export const createStyles = (
       // border + 8px inner dot. Default: 1px light-grey border.
       width: 16,
       height: 16,
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
       borderWidth: selected ? 1.5 : 1,
-      borderColor: selected ? RECOMMENDED_BORDER : theme.colors.outlineVariant,
+      borderColor: selected
+        ? themeColor(theme, RECOMMENDED_BORDER)
+        : theme.colors.outlineVariant,
       backgroundColor: theme.colors.background,
       alignItems: 'center',
       justifyContent: 'center',
@@ -47,8 +54,8 @@ export const createStyles = (
     radioDot: {
       width: 8,
       height: 8,
-      borderRadius: 8,
-      backgroundColor: RECOMMENDED_BORDER,
+      borderRadius: themeRadius(theme, 8),
+      backgroundColor: themeColor(theme, RECOMMENDED_BORDER),
     },
     body: {
       flex: 1,
@@ -77,11 +84,11 @@ export const createStyles = (
       paddingHorizontal: theme.spacing.s,
       paddingVertical: theme.spacing.xxs,
       borderRadius: theme.radius.xs,
-      backgroundColor: RECOMMENDED_BORDER,
+      backgroundColor: themeColor(theme, RECOMMENDED_BORDER),
     },
     badgeText: {
       ...theme.typography.captionM,
       fontWeight: '500',
-      color: RECOMMENDED_BADGE_TEXT,
+      color: themeColor(theme, RECOMMENDED_BADGE_TEXT),
     },
   });

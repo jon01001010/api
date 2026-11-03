@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -32,7 +33,7 @@ export const createStyles = (theme: Theme) =>
     fitChip: {
       paddingHorizontal: 10,
       paddingVertical: 4,
-      borderRadius: 999,
+      borderRadius: themeRadius(theme, 999),
     },
     fitChipText: {
       fontSize: 11,
@@ -58,7 +59,7 @@ export const createStyles = (theme: Theme) =>
     statusLine: {
       paddingHorizontal: 12,
       paddingVertical: 10,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       minHeight: 40,
       justifyContent: 'center',
     },

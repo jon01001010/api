@@ -2,6 +2,7 @@ import React from 'react';
 import Svg, {Circle, G, Path, Rect} from 'react-native-svg';
 
 import {useTheme} from '../../../hooks';
+import {themeColor} from '../../../theme/phosphor';
 
 export type PhoneWithPalsProps = {
   /** Outer width in RN points; height scales to keep aspect 85:143. */
@@ -54,7 +55,9 @@ export const PhoneWithPals: React.FC<PhoneWithPalsProps> = ({width = 170}) => {
   //   [2] mid-right  = pink-peach
   //   [3] lower-left = pale blue
   //   [4] bottom     = coral / salmon
-  const palFills = ['#EAB06C', '#94A3A0', '#ECBFB6', '#D0DBE1', '#F1A184'];
+  const palFills = ['#EAB06C', '#94A3A0', '#ECBFB6', '#D0DBE1', '#F1A184'].map(
+    c => themeColor(theme, c),
+  );
   // Geometric centers in viewBox space. Shifted ~5 units right vs the
   // earlier port so the cluster centers in the phone interior (phone
   // mid-x ≈ 42.5) instead of skewing left.

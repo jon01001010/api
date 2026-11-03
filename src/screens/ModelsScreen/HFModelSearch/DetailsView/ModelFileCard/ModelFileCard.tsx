@@ -33,6 +33,7 @@ import {
 } from '../../../../../utils/types';
 import {VisionDownloadSheet} from '../../../../../components';
 import {ChevronRightIcon} from '../../../../../assets/icons';
+import {themeColor} from '../../../../../theme/phosphor';
 
 interface ModelFileCardProps {
   modelFile: ModelFile;
@@ -276,7 +277,10 @@ export const ModelFileCard: FC<ModelFileCardProps> = observer(
         style={styles.fileCardContainer}
         testID={`model-file-card-${modelFile.rfilename}`}>
         <LinearGradient
-          colors={[theme.dark ? HF_YELLOW + '90' : HF_YELLOW, 'transparent']}
+          colors={[
+            themeColor(theme, theme.dark ? HF_YELLOW + '90' : HF_YELLOW),
+            'transparent',
+          ]}
           locations={[1, 1]}
           start={{x: 0, y: 0}}
           end={{x: 1, y: 0}}

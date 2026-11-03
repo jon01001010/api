@@ -26,6 +26,7 @@ import {GreetingSection} from './GreetingSection';
 import {SectionDivider} from './SectionDivider';
 import {ModelNotAvailable} from './ModelNotAvailable';
 import {SystemPromptSection} from './SystemPromptSection';
+import {MemorySection} from './MemorySection';
 import {DynamicParameterForm} from '../DynamicParameters';
 import {PalGenerationSettingsSheet} from '../PalGenerationSettingsSheet';
 
@@ -413,6 +414,8 @@ export const PalSheet: React.FC<PalSheetProps> = observer(
                     <DynamicParameterForm schema={activeSchema} />
                   </>
                 )}
+
+                <MemorySection isVisible={isVisible} />
 
                 <SystemPromptSection
                   isVisible={isVisible}

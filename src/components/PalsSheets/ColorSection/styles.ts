@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../../utils/types';
+import {themeColor, themeRadius} from '../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -11,18 +12,18 @@ export const createStyles = (theme: Theme) =>
     colorButtonContainer: {
       width: 28,
       height: 28,
-      borderRadius: 100,
+      borderRadius: themeRadius(theme, 100),
       borderWidth: 1,
-      borderColor: '#222222',
+      borderColor: themeColor(theme, '#222222'),
       padding: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: 'white',
+      backgroundColor: themeColor(theme, 'white'),
     },
     colorButton: {
       width: 24,
       height: 24,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       overflow: 'hidden',
       flexDirection: 'row',
       transform: [{rotate: '45deg'}],
@@ -33,7 +34,7 @@ export const createStyles = (theme: Theme) =>
     },
     rightHalf: {
       borderLeftWidth: 0.5,
-      borderLeftColor: '#E0E0E0',
+      borderLeftColor: themeColor(theme, '#E0E0E0'),
     },
     selectedColorButtonContainer: {
       width: 30,

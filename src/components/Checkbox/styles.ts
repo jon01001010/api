@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import type {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -11,7 +12,7 @@ export const createStyles = (theme: Theme) =>
     },
     checkbox: {
       borderWidth: 2,
-      borderRadius: 4,
+      borderRadius: themeRadius(theme, 4),
       justifyContent: 'center',
       alignItems: 'center',
     },

@@ -4,11 +4,12 @@ import {uiStore} from '../store';
 
 import {Theme} from '../utils/types';
 import {buildTheme} from '../utils/theme';
+import {normalizeTint} from '../theme/phosphor';
 
 /**
  * Consumes the active design-system Theme.
  *
- * Reads `uiStore.colorScheme` and `uiStore.language` (reactive inside an
+ * Reads `uiStore.colorScheme`, `uiStore.themeStyle` and `uiStore.language` (reactive inside an
  * `observer`) and `usePaperTheme()`. The `usePaperTheme()` call is load-
  * bearing: it subscribes the consumer to Paper's ThemeContext, which is
  * the React-context path that re-renders NON-`observer` consumers (and
@@ -31,7 +32,9 @@ export const useTheme = (): Theme => {
   const paperTheme = usePaperTheme<MD3Theme>();
   const mode = uiStore.colorScheme;
   const language = uiStore.language;
-  const key = `${mode}:${language}`;
+  const style = uiStore.themeStyle ?? 'default';
+  const tint = normalizeTint(uiStore.phosphorTint);
+  const key = `${mode}:${language}:${style}:${tint.join(',')}`;
 
   let byKey = themeCache.get(paperTheme);
   if (byKey === undefined) {
@@ -43,7 +46,7 @@ export const useTheme = (): Theme => {
   if (cached === undefined) {
     cached = {
       ...paperTheme,
-      ...buildTheme({mode, language}),
+      ...buildTheme({mode, language, style, tint}),
     } as Theme;
     byKey.set(key, cached);
   }

@@ -1,5 +1,4 @@
 import {runInAction} from 'mobx';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {palStore} from '../PalStore';
 import {palsHubService} from '../../services';
 import {palRepository} from '../../repositories/PalRepository';
@@ -7,18 +6,6 @@ import type {Pal} from '../../types/pal';
 import type {PalsHubPal} from '../../types/palshub';
 import * as imageUtils from '../../utils/imageUtils';
 import {resolveHFModelForDownload} from '../../utils/hfResolve';
-import {LOOKIE_DEFAULT_MODEL} from '../builtinPalModels';
-
-jest.mock('@react-native-async-storage/async-storage', () => {
-  const values = new Map<string, string>();
-  return {
-    getItem: jest.fn(async (key: string) => values.get(key) ?? null),
-    setItem: jest.fn(async (key: string, value: string) => {
-      values.set(key, value);
-    }),
-    clear: jest.fn(async () => values.clear()),
-  };
-});
 
 // Mock dependencies
 jest.mock('../../utils/hfResolve', () => ({
@@ -95,7 +82,6 @@ describe('PalStore', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    await AsyncStorage.clear();
 
     // Reset store state
     runInAction(() => {
@@ -153,210 +139,76 @@ describe('PalStore', () => {
       consoleSpy.mockRestore();
     });
 
-    it('creates the Lookie pal from the offline constant without a network resolve', async () => {
+    it('does not seed Lookie or Pip on a fresh install', async () => {
       (palRepository.getAllPals as jest.Mock).mockResolvedValue([]);
-      (palRepository.createPal as jest.Mock).mockImplementation(
-        async (palData: any) => ({
-          ...palData,
-          id: 'lookie-id',
-          created_at: 'now',
-          updated_at: 'now',
-        }),
-      );
+      const store = new (palStore.constructor as any)();
+      await store.ready;
 
-      // eslint-disable-next-line no-new
-      new (palStore.constructor as any)();
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const lookieCall = (palRepository.createPal as jest.Mock).mock.calls.find(
-        call => call[0]?.name === 'Lookie',
-      );
-
-      expect(lookieCall).toBeDefined();
-      expect(lookieCall![0].defaultModel).toBe(LOOKIE_DEFAULT_MODEL);
-      // No HF resolve / network call at pal init.
+      expect(store.pals).toHaveLength(0);
+      expect(palRepository.createPal).not.toHaveBeenCalled();
       expect(resolveHFModelForDownload).not.toHaveBeenCalled();
     });
 
-    it('does not recreate the Lookie pal if one already exists', async () => {
-      const existingLookie: Pal = {
-        ...mockPal,
-        id: 'existing-lookie',
-        name: 'Lookie',
-        capabilities: {video: true},
-      } as Pal;
-      (palRepository.getAllPals as jest.Mock).mockResolvedValue([
-        existingLookie,
-      ]);
-
-      // eslint-disable-next-line no-new
-      new (palStore.constructor as any)();
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const lookieCreate = (
-        palRepository.createPal as jest.Mock
-      ).mock.calls.find(call => call[0]?.name === 'Lookie');
-      expect(lookieCreate).toBeUndefined();
-      expect(resolveHFModelForDownload).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Pip seeding', () => {
-    const callInitializePipPal = async () =>
-      (palStore as any).initializePipPal();
-
-    beforeEach(() => {
-      runInAction(() => {
-        palStore.pals = [];
-      });
-      (palRepository.createPal as jest.Mock).mockImplementation(
-        async (palData: any) => ({
-          ...palData,
-          id: `pip-${Math.random().toString(36).slice(2, 8)}`,
-          created_at: '2026-05-26T00:00:00Z',
-          updated_at: '2026-05-26T00:00:00Z',
-        }),
-      );
-    });
-
-    it('seeds Pip when absent', async () => {
-      await callInitializePipPal();
-      const pip = palStore.pals.find(
-        p => p.name === 'Pip' && p.source === 'local',
-      );
-      expect(pip).toBeDefined();
-      expect(pip?.type).toBe('local');
-      expect(pip?.defaultModel).toBeUndefined();
-      expect(palRepository.createPal).toHaveBeenCalledTimes(1);
-    });
-
-    it('is a no-op when Pip is already present', async () => {
-      await callInitializePipPal();
-      (palRepository.createPal as jest.Mock).mockClear();
-      await callInitializePipPal();
-      const pipCount = palStore.pals.filter(
-        p => p.name === 'Pip' && p.source === 'local',
-      ).length;
-      expect(pipCount).toBe(1);
-      expect(palRepository.createPal).not.toHaveBeenCalled();
-    });
-
-    it('preserves an existing Pip record (including defaultModel) on re-init', async () => {
-      const boundModel = {
-        id: 'some-bound-model',
-        name: 'Some Bound Model',
-      } as any;
-      const existingPip: Pal = {
-        ...mockPal,
-        id: 'pip-existing',
-        name: 'Pip',
-        source: 'local',
-        type: 'local',
-        defaultModel: boundModel,
-      } as any;
-      runInAction(() => {
-        palStore.pals = [existingPip];
-      });
-
-      await callInitializePipPal();
-
-      const pip = palStore.pals.find(
-        p => p.name === 'Pip' && p.source === 'local',
-      );
-      expect(pip).toBeDefined();
-      expect(pip?.id).toBe('pip-existing');
-      // defaultModel content is preserved across re-init (MobX wraps
-      // observed objects in Proxies, so Object.is equality is brittle;
-      // value equality verifies the field wasn't cleared or rewritten).
-      expect(pip?.defaultModel).toEqual(boundModel);
-      expect(palRepository.createPal).not.toHaveBeenCalled();
-    });
-
-    it('coexists with Lookie regardless of order (idempotent)', async () => {
+    it('hides only untouched persisted defaults without deleting data', async () => {
       const lookie: Pal = {
         ...mockPal,
-        id: 'lookie-1',
+        id: 'stock-lookie',
         name: 'Lookie',
-        source: 'local',
-        type: 'local',
+        description:
+          'Real-time video analysis assistant that provides concise descriptions of your camera feed.',
+        systemPrompt:
+          'You are Lookie, an AI assistant giving real-time, concise descriptions of a video feed. Use few words. If unsure, say so clearly.',
+        originalSystemPrompt: undefined,
+        defaultModel: {id: 'ggml-org/SmolVLM-500M-Instruct-GGUF/SmolVLM-500M-Instruct-Q8_0.gguf'} as any,
+        color: ['#9E204F', '#F6E1EA'],
         capabilities: {video: true},
-      } as any;
-      runInAction(() => {
-        palStore.pals = [lookie];
-      });
+        parameters: {captureInterval: '3000'},
+        parameterSchema: [{
+          key: 'captureInterval',
+          type: 'text',
+          label: 'Capture Interval (ms)',
+          required: false,
+        }],
+      };
+      const pip: Pal = {
+        ...mockPal,
+        id: 'stock-pip',
+        name: 'Pip',
+        description:
+          'A friendly general-purpose pal that runs entirely on your phone.',
+        systemPrompt:
+          'You are Pip, a friendly and helpful assistant who runs locally on the user’s phone. Keep replies concise and warm.',
+        originalSystemPrompt: undefined,
+        defaultModel: undefined,
+        color: ['#0E0D0C', '#FAFAFA'],
+        capabilities: {},
+        parameters: {},
+        parameterSchema: [],
+      };
+      const userNamedPip = {...pip, id: 'custom-pip', systemPrompt: 'My custom prompt'};
+      const modelBoundPip = {...pip, id: 'onboarding-pip', defaultModel: {id: 'user-picked-model'} as any};
+      const userVideo = {...lookie, id: 'user-video', name: 'My camera assistant'};
+      (palRepository.getAllPals as jest.Mock).mockResolvedValue([
+        lookie,
+        pip,
+        userNamedPip,
+        modelBoundPip,
+        userVideo,
+        mockPal,
+      ]);
 
-      await callInitializePipPal();
-      await callInitializePipPal();
+      const store = new (palStore.constructor as any)();
+      await store.ready;
 
-      const names = palStore.pals.map(p => p.name).sort();
-      expect(names).toEqual(['Lookie', 'Pip']);
-    });
-  });
-
-  describe.each([
-    ['Lookie', 'initializeLookiePal'],
-    ['Pip', 'initializePipPal'],
-  ])('%s seed persistence', (name, initializer) => {
-    const seed = () => (palStore as any)[initializer]();
-
-    beforeEach(() => {
-      (palRepository.createPal as jest.Mock).mockImplementation(
-        async (data: Partial<Pal>) => ({...mockPal, ...data}),
-      );
-      (palRepository.deletePal as jest.Mock).mockResolvedValue(true);
-    });
-
-    it('does not recreate a deleted default pal on the next initialization', async () => {
-      await seed();
-      await palStore.deletePal(palStore.pals[0].id);
-      expect(palStore.pals).toHaveLength(0);
-      (palRepository.createPal as jest.Mock).mockClear();
-
-      await seed();
-
+      expect(store.pals.map((p: Pal) => p.id)).toEqual([
+        'custom-pip',
+        'onboarding-pip',
+        'user-video',
+        'test-pal-1',
+      ]);
+      expect(store.getVideoPals().map((p: Pal) => p.id)).toEqual(['user-video']);
+      expect(palRepository.deletePal).not.toHaveBeenCalled();
       expect(palRepository.createPal).not.toHaveBeenCalled();
-      expect(palStore.pals).toHaveLength(0);
-    });
-
-    it('does not recreate a default pal after it is renamed', async () => {
-      await seed();
-      runInAction(() => {
-        palStore.pals[0].name = 'My renamed pal';
-      });
-      (palRepository.createPal as jest.Mock).mockClear();
-
-      await seed();
-
-      expect(palRepository.createPal).not.toHaveBeenCalled();
-      expect(palStore.pals).toHaveLength(1);
-      expect(palStore.pals[0].name).toBe('My renamed pal');
-    });
-
-    it('records existing default pals before they are deleted', async () => {
-      runInAction(() => {
-        palStore.pals = [{...mockPal, name, capabilities: {video: true}}];
-      });
-      await seed();
-      expect(palRepository.createPal).not.toHaveBeenCalled();
-      await palStore.deletePal(mockPal.id);
-
-      await seed();
-
-      expect(palRepository.createPal).not.toHaveBeenCalled();
-      expect(palStore.pals).toHaveLength(0);
-    });
-
-    it('retries seeding after creation fails', async () => {
-      (palRepository.createPal as jest.Mock).mockRejectedValueOnce(
-        new Error('Database unavailable'),
-      );
-      await seed();
-      expect(palStore.pals).toHaveLength(0);
-
-      await seed();
-
-      expect(palRepository.createPal).toHaveBeenCalledTimes(2);
-      expect(palStore.pals[0].name).toBe(name);
     });
   });
 

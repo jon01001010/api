@@ -2,6 +2,8 @@ import React from 'react';
 import Svg, {Defs, RadialGradient, Stop, Circle} from 'react-native-svg';
 
 import type {EngineId, Voice} from '../../services/tts';
+import {useTheme} from '../../hooks';
+import {themeColor} from '../../theme/phosphor';
 
 const ENGINE_STOPS: Record<EngineId, [string, string, string]> = {
   kitten: ['#FFD5B3', '#F29547', '#B8531A'],
@@ -30,7 +32,10 @@ interface VoiceAvatarProps {
  * voices inside the same engine still look distinct.
  */
 export const VoiceAvatar: React.FC<VoiceAvatarProps> = ({voice, size = 40}) => {
-  const [stopA, stopB, stopC] = ENGINE_STOPS[voice.engine];
+  const theme = useTheme();
+  const [stopA, stopB, stopC] = ENGINE_STOPS[voice.engine].map(c =>
+    themeColor(theme, c),
+  );
 
   const seed = hash(voice.id);
   const cx = 30 + (seed % 40);

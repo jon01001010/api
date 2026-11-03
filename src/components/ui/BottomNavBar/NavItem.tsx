@@ -1,10 +1,10 @@
 import React from 'react';
-import {Text} from 'react-native';
 
 import {useTheme} from '../../../hooks';
 import {Pressable} from '../primitives/Pressable';
 
 import {createStyles} from './styles';
+import {Text} from '../../ThemedText';
 
 export type NavItemProps = {
   value: string;
