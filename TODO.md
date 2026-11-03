@@ -24,6 +24,66 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [ ] HTML preview: a generated clock ticks in chat and fullscreen; code view, copy, fullscreen, Save to workspace, and Share work.
 - [ ] Workspace tools: append / patch / undo through chat, with the diff in the approval dialog.
 
+## Auto-switch to a vision model for pictures (planned, not implemented)
+
+Goal: when you attach a picture while a text-only model is loaded, the app switches to a vision model automatically instead of ignoring the picture. Research done 2026-11-03; **plan only, nothing implemented yet.**
+
+### What happens today (research findings)
+
+- **Pictures are silently dropped for text models.** `useChatSession` sends images only when `activeModelCaps.visionActive` is true; otherwise the message goes out as text only and a "multimodal not enabled" warning appears. Older pictures in the conversation are also dropped for text models (`convertToChatMessages(…, isMultimodalEnabled)`).
+- **You can't easily attach a picture to a text model:** the attach menu only shows Camera / Gallery when the loaded model can see (`isVisionEnabled`); Files and Workspace stay.
+- **Vision = model + projector.** A local model can see only if it has `supportsMultimodal`, vision is switched on for it (`setModelVisionEnabled`), and its projector (mmproj) file is downloaded (`hasRequiredProjectionModel` / `getProjectionModelStatus`). Remote server models report vision through `serverStore.remoteCaps`.
+- **Loading already does the hard parts.** `modelStore.initContext(model)` releases the previous model, loads the projector, checks memory and **asks you** if it might not fit (`checkMemoryAndConfirm`), and handles "last request wins" when loads race. `selectModel` also covers remote models.
+- **A small vision model already ships as a preset:** SmolVLM2-500M-Instruct (Q8_0, ~437 MB + ~109 MB projector), used by the built-in "Lookie" pal (`LOOKIE_DEFAULT_MODEL` in `builtinPalModels.ts`). Good default suggestion for a first vision model.
+- Pals can name a default model (`pal.defaultModel`); a switch must not silently change a pal's saved model.
+
+### Design
+
+**Trigger:** you attach (or take) a picture and press send, the loaded model can't see, and a usable vision model exists.
+
+**Choosing the vision model** (new setting: *Settings → Vision model*):
+1. the model you picked there, if downloaded and its projector is ready;
+2. otherwise the last vision model you used;
+3. otherwise the only downloaded vision model;
+4. none downloaded → offer to download the recommended small one (SmolVLM2-500M) or cancel; nothing downloads without your OK.
+
+**What happens on send** (two modes, setting chooses; default proposed below):
+- **Mode A — Switch and stay:** load the vision model and continue the chat on it. Simple; one load. The rest of the chat uses the vision model until you switch back.
+- **Mode B — Look, then hand back:** load the vision model, let it answer about the picture (your question + the picture → a text answer), then reload your main model, which continues with that answer in front of it. Keeps your main model in charge; two loads per picture.
+
+**Never lose the picture's content:** whatever the vision model says about a picture is saved on that message as a short text note (e.g. "Picture: café receipt, total €12.40, 3 Nov"), so later turns with a text model still know what was in it.
+
+**Keep both loaded when there's room:** on phones with enough free memory (the existing memory estimate), keep the main model loaded too and skip the reload; otherwise swap.
+
+**UI:**
+- Camera / Gallery always offered when a vision model is available (or can be downloaded), not only when the loaded model can see.
+- A clear status in the chat: "Switching to SmolVLM2 to look at the picture…", then "Back to Qwen…" (Mode B).
+- A one-tap undo / "switch back" after Mode A.
+- Pals: a temporary switch doesn't change a pal's saved default model.
+
+**Safety and limits:**
+- The memory check still asks before loading something that may not fit; cancel = picture not sent, nothing changed.
+- Remote (server) models: switch only to another model on the same server that reports vision, or ask.
+- No network involved for local models; pictures stay on the phone.
+
+### Steps
+
+- [ ] `pickVisionModel()` in ModelStore: the choice order above, using `capsFor` + `getProjectionModelStatus`.
+- [ ] Settings: *Vision model* picker and *When a picture is sent to a text model:* Mode A / Mode B / Ask each time.
+- [ ] Attach menu: show Camera / Gallery when a vision model is available.
+- [ ] Send path (`useChatSession`): before building the message, if pictures + no vision → run the switch (A or B) through `initContext`; on cancel, keep the draft and pictures.
+- [ ] Mode B hand-back: vision model answers about the picture, answer stored as the image note, reload the main model, continue.
+- [ ] Image notes on messages, used for text-only models in later turns.
+- [ ] Keep-both-loaded when memory allows.
+- [ ] Tests: model choice order; each mode's sequence of loads; cancel paths; notes reaching text models; pal default untouched.
+- [ ] Phone checks: attach a photo with a text model → switch happens, answer uses the picture; memory prompt; Mode B returns to the main model.
+
+### Open questions for approval
+
+1. Default mode: **A (switch and stay)** or **B (look, then hand back)**?
+2. Should it ask every time before switching, or just do it (with the status message and undo)?
+3. Default suggestion when no vision model is downloaded: SmolVLM2-500M (small, ~550 MB total), or something larger for better reading of text in photos?
+
 ## Phone actions via built-in Android intents (planned, not implemented)
 
 Replaces the earlier "ARTEMIS-inspired automation" batch. Research done 2026-11-03; **write-up only, nothing implemented yet.**
