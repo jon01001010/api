@@ -118,6 +118,8 @@
     "darkMode": "Dark Mode",
     "phosphorStyle": "Phosphor Style",
     "phosphorStyleDescription": "Green CRT terminal look. Appearance only.",
+    "phosphorColor": "Phosphor colour",
+    "phosphorColorReset": "Reset to green",
     "displayMemoryUsage": "Display Memory Usage",
     "displayMemoryUsageDescription": "Display memory usage in the chat page.",
     "exportOptions": "Export Options",

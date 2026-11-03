@@ -7,6 +7,7 @@ import {ContextParams, TokenData} from 'llama.rn';
 import {CompletionParams} from './completionTypes';
 import {PreviewData} from '@flyerhq/react-native-link-preview';
 import {MD3Colors, MD3Typescale} from 'react-native-paper/lib/typescript/types';
+import type {PhosphorPalette} from '../theme/tokens/colors';
 import type {
   ThemeStyle,
   TokenRadius,
@@ -434,6 +435,8 @@ export interface Theme extends MD3Theme {
   themeStyle: ThemeStyle;
   /** Shorthand for `themeStyle === 'phosphor'`. */
   isPhosphor: boolean;
+  /** Active Phosphor palette (from the colour sliders); Phosphor only. */
+  phosphorPalette?: PhosphorPalette;
 }
 
 export interface User {

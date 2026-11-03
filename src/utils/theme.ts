@@ -11,7 +11,14 @@ import {
   resolveTokens,
   resolveTypographyForLocale,
 } from '../theme/tokens';
-import {toPhosphorTextStyle, toPhosphorTypography} from '../theme/phosphor';
+import {
+  type RGB,
+  DEFAULT_PHOSPHOR_TINT,
+  buildPhosphorColors,
+  buildPhosphorPalette,
+  toPhosphorTextStyle,
+  toPhosphorTypography,
+} from '../theme/phosphor';
 import {type AvailableLanguage} from '../locales';
 
 // Note: the previous `AppTheme` enum ({Light, Dark, X1}) is gone. x1 was
@@ -103,13 +110,24 @@ export const buildTheme = ({
   mode,
   language,
   style = 'default',
+  tint = DEFAULT_PHOSPHOR_TINT,
 }: {
   mode: Mode;
   language: AvailableLanguage;
   style?: ThemeStyle;
+  /** Phosphor colour (Settings sliders); ignored in the default style. */
+  tint?: RGB;
 }): Theme => {
   const theme = buildBaseTheme({mode, language, style});
-  return style === 'phosphor' ? applyPhosphor(theme) : theme;
+  if (style === 'phosphor') {
+    const palette = buildPhosphorPalette(tint);
+    return applyPhosphor({
+      ...theme,
+      colors: {...theme.colors, ...buildPhosphorColors(palette)},
+      phosphorPalette: palette,
+    });
+  }
+  return theme;
 };
 
 /**
@@ -122,7 +140,7 @@ const applyPhosphor = (theme: Theme): Theme => {
     Object.entries(theme.fonts).map(([key, value]) => [
       key,
       value && typeof value === 'object'
-        ? toPhosphorTextStyle(value as object)
+        ? toPhosphorTextStyle(value as object, theme.phosphorPalette)
         : value,
     ]),
   ) as unknown as Theme['fonts'];

@@ -80,6 +80,7 @@ import {
   getAllowedCacheTypeKOptions,
   getAllowedCacheTypeVOptions,
 } from '../../utils/flashAttnCompatibility';
+import {PhosphorTintControls} from '../../components/PhosphorTintControls';
 
 // OpenCL documentation URL (not localized)
 const OPENCL_DOCS_URL =
@@ -1155,6 +1156,7 @@ export const SettingsScreen: React.FC = observer(() => {
                     }
                   />
                 </View>
+                {uiStore.themeStyle === 'phosphor' && <PhosphorTintControls />}
                 <Divider />
 
                 {/* Text-to-speech availability toggle */}

@@ -42,6 +42,10 @@ export class UIStore {
   // terminal look (appearance only). Off by default.
   themeStyle: 'default' | 'phosphor' = 'default';
 
+  // Phosphor colour chosen with the Settings R/G/B sliders. Default is the
+  // original Phosphor green (#85ff9b).
+  phosphorTint: [number, number, number] = [133, 255, 155];
+
   // Current selected language (default to English)
   _language: AvailableLanguage = 'en';
 
@@ -120,6 +124,7 @@ export class UIStore {
         'pageStates',
         'colorScheme',
         'themeStyle',
+        'phosphorTint',
         'autoNavigatetoChat',
         'displayMemUsage',
         'benchmarkShareDialog',
@@ -158,6 +163,12 @@ export class UIStore {
   setThemeStyle(themeStyle: 'default' | 'phosphor') {
     runInAction(() => {
       this.themeStyle = themeStyle;
+    });
+  }
+
+  setPhosphorTint(tint: [number, number, number]) {
+    runInAction(() => {
+      this.phosphorTint = tint;
     });
   }
 

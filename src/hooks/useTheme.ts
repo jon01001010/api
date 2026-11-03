@@ -4,6 +4,7 @@ import {uiStore} from '../store';
 
 import {Theme} from '../utils/types';
 import {buildTheme} from '../utils/theme';
+import {normalizeTint} from '../theme/phosphor';
 
 /**
  * Consumes the active design-system Theme.
@@ -32,7 +33,8 @@ export const useTheme = (): Theme => {
   const mode = uiStore.colorScheme;
   const language = uiStore.language;
   const style = uiStore.themeStyle ?? 'default';
-  const key = `${mode}:${language}:${style}`;
+  const tint = normalizeTint(uiStore.phosphorTint);
+  const key = `${mode}:${language}:${style}:${tint.join(',')}`;
 
   let byKey = themeCache.get(paperTheme);
   if (byKey === undefined) {
@@ -44,7 +46,7 @@ export const useTheme = (): Theme => {
   if (cached === undefined) {
     cached = {
       ...paperTheme,
-      ...buildTheme({mode, language, style}),
+      ...buildTheme({mode, language, style, tint}),
     } as Theme;
     byKey.set(key, cached);
   }
