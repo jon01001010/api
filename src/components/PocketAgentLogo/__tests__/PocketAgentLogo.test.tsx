@@ -50,4 +50,25 @@ describe('PocketAgentLogo', () => {
     );
     expect(glowColor(getByTestId)).toBe(buildPhosphorPalette([0, 0, 255]).fg);
   });
+
+  it('keeps both layers inside the logo box (explicit size, clipped)', () => {
+    setTheme('phosphor');
+    const {getByTestId} = render(
+      <PocketAgentLogo
+        source={{uri: 'pocketagent_logo'}}
+        style={{width: 112, height: 112}}
+      />,
+    );
+    const frame = StyleSheet.flatten(
+      getByTestId('pocketagent-logo-phosphor').props.style,
+    );
+    expect(frame).toMatchObject({width: 112, height: 112, overflow: 'hidden'});
+    for (const id of ['pocketagent-logo-base', 'pocketagent-logo-glow']) {
+      expect(StyleSheet.flatten(getByTestId(id).props.style)).toMatchObject({
+        position: 'absolute',
+        width: '100%',
+        height: '100%',
+      });
+    }
+  });
 });
