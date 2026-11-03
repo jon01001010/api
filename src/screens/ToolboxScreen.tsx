@@ -8,6 +8,8 @@ import {safeMath} from '../services/talents/safeMath';
 import {isBackgroundInferenceEnabled, setBackgroundInferenceEnabled} from '../utils/backgroundInference';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
 import {useTheme} from '../hooks';
+import {useIsFocused} from '@react-navigation/native';
+import {MemorySection} from '../components/PalsSheets/MemorySection';
 import {themeColor} from '../theme/phosphor';
 
 type Draft = {id: string; name: string; description: string; parameters: string; kind?: 'text_uppercase' | 'text_lowercase' | 'text_trim' | 'calculator' | 'http_get'};
@@ -32,6 +34,7 @@ export const ToolboxScreen: React.FC = () => {
   // Success messages are shown as normal text, not in the error style.
   const [notice, setNotice] = useState('');
   const theme = useTheme();
+  const isFocused = useIsFocused();
   const errorColor = themeColor(theme, 'red');
   const [agentMaxTurns, setAgentMaxTurns] = useState(20);
   const [backgroundEnabled, setBackgroundEnabled] = useState(false);
@@ -152,6 +155,8 @@ export const ToolboxScreen: React.FC = () => {
         <Text variant="bodySmall">Enabled tools are available in ordinary model chats. All new tools start off.</Text>
         {toggleError ? <Text style={{color: errorColor}}>{toggleError}</Text> : null}
         {notice ? <Text variant="bodySmall">{notice}</Text> : null}
+        <Text variant="titleLarge">Memory</Text>
+        <MemorySection isVisible={isFocused} />
         <Text variant="titleMedium">Global System Prompt</Text>
         <Text variant="bodySmall">Your instructions are editable. Tool instructions below are generated automatically from enabled tools.</Text>
         <TextInput mode="outlined" label="Your global instructions" multiline value={globalPrompt} onChangeText={setGlobalPrompt} />
