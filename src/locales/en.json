@@ -1334,7 +1334,10 @@
     "showCode": "Show HTML code",
     "copyHtml": "Copy HTML",
     "closePreview": "Close preview",
-    "openFullscreen": "Open fullscreen: {{title}}"
+    "openFullscreen": "Open fullscreen: {{title}}",
+    "loadFailed": "This preview could not be shown.",
+    "viewCode": "View code",
+    "remoteBlocked": "This page tries to load files from the internet. Previews work offline, so those parts are blocked."
   },
   "benchmark": {
     "title": "Benchmark",
