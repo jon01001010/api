@@ -92,7 +92,7 @@ Date: 16 October 2026. Status: source prototype; no installable APK yet.
 
 ## Contents and next small chunks
 
-The ZIP contains the modified source, tests, dependency lockfile, patches and original license. Start with `API_HELPER.md`. It excludes dependencies, build output, private release keys and the Orca APK.
+The ZIP contains the modified source, tests, dependency lockfile, patches and original license. Start with `extras/api-helper-history/API_HELPER.md`. It excludes dependencies, build output, private release keys and the Orca APK.
 
 1. Compile Android with SDK/NDK available and fix concrete native errors.
 2. Test authenticated API and accelerated inference on the intended phone.

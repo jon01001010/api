@@ -15,9 +15,12 @@ import {
   type DriverOptions,
   type PollInput,
   type PollVerdict,
-} from '../../e2e/scripts/run-bench-ios';
-import {buildConfig, expectedCellCount} from '../../e2e/helpers/bench-runner';
-import {getBenchmarkMatrix} from '../../e2e/fixtures/benchmark-models';
+} from '../../extras/e2e-tests/scripts/run-bench-ios';
+import {
+  buildConfig,
+  expectedCellCount,
+} from '../../extras/e2e-tests/helpers/bench-runner';
+import {getBenchmarkMatrix} from '../../extras/e2e-tests/fixtures/benchmark-models';
 
 function recordingDeps(throwOn?: string) {
   const calls: string[][] = [];

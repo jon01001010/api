@@ -25,7 +25,7 @@ PocketAgent is an on-device AI agent for Android, forked from [PocketPal AI](htt
 - **Local text API** (experimental) for other apps on the phone.
 - **Hardware diagnostics** for the phone and the inference backends it finds.
 
-Not yet verified: NPU offload (on hold until a newer test phone). `read_url` currently refuses every page until the readers report a verified final URL (see `POCKETAGENT_TODO.md`). Purchases and PalsHub from upstream are switched off.
+Not yet verified: NPU offload (on hold until a newer test phone). `read_url` currently refuses every page until the readers report a verified final URL (see `TODO.md`). Purchases and PalsHub from upstream are switched off.
 
 This repository is a development fork, not an official PocketAgent release. Do not rely on it for critical data or unattended device actions.
 
@@ -141,7 +141,7 @@ A **Talent** is a tool the model can call mid-conversation. Engines are register
 Good first contributions:
 - A new **Talent** — implement a `TalentEngine` and register it in `src/services/talents/`.
 - A new **TTS engine** — add it under `src/services/tts/engines/`.
-- A new **locale** — add a JSON file in `src/locales/` (or translate on [Weblate](https://hosted.weblate.org/projects/pocketpal-ai/)).
+- A new **locale** — add a JSON file in `src/locales/`.
 
 </details>
 
@@ -155,7 +155,7 @@ Contributions are welcome — bug reports, fixes, features, translations, and do
 4. Commit with [Conventional Commits](https://www.conventionalcommits.org/): `git commit -m "feat: add new talent"`
 5. Push and open a pull request.
 
-Please read the [Contributing Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) first.
+Upstream's [contributing guidelines](extras/upstream-community/CONTRIBUTING.md) and [code of conduct](extras/upstream-community/CODE_OF_CONDUCT.md) are kept in `extras/`.
 
 ## Roadmap
 

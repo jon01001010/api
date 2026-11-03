@@ -25,7 +25,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import {deriveLogSignals} from '../../src/__automation__/logSignals';
+import {deriveLogSignals} from '../../../src/__automation__/logSignals';
 
 /**
  * Tiny glob shim — supports `<dir>/<prefix>*<suffix>` of one segment, which

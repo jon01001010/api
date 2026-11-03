@@ -70,7 +70,7 @@ yarn ios:build:ipa
 BENCH_TIER=smoke yarn bench:ios --device <udid> --dry-run
 
 # 3. Install and run (udid from `xcrun devicectl list devices`)
-BENCH_TIER=smoke yarn bench:ios --device <udid> --app ../ios/build/PocketPal.ipa
+BENCH_TIER=smoke yarn bench:ios --device <udid> --app ../../ios/build/PocketPal.ipa
 ```
 
 Keep the iPhone unlocked and on power, and do not lock it or switch apps during a run: a suspended app stops writing rows and the run ends `failed:timeout`. The runner holds the screen awake itself, so Auto-Lock need not be changed. Reports land in `e2e/debug-output/benchmarks/` (`--out` to change). Extra env: `BENCH_MAX_WAIT_MIN` (default 60, enough for `smoke` and `focused` at the tier-table runtimes; `full` takes ~3 h on Android and is not yet timed on iOS, so run it with `BENCH_MAX_WAIT_MIN=240`), `BENCH_IOS_SETTLE_S` (15), `BENCH_IOS_START_TIMEOUT_S` (120), and `E2E_DEVICE_NAME` / `E2E_PLATFORM_VERSION` / `E2E_DEVICE_SOC` to override the stamped metadata. See `yarn bench:ios --help`. A timeout names its cause: with no new row for 15 min it blames a lock or backgrounding, and with rows still arriving it reports rows seen against expected and asks for a larger `BENCH_MAX_WAIT_MIN`.
@@ -197,7 +197,7 @@ Both `wdio.ios.local.conf.ts` and `wdio.android.local.conf.ts` accept these env 
 | `E2E_DEVICE_NAME` | `iPhone 17 Pro` | `emulator-5554` | Device/simulator name |
 | `E2E_PLATFORM_VERSION` | `26.0` | `16` | OS version |
 | `E2E_DEVICE_UDID` | _(none)_ | _(none)_ | Device UDID (required for real devices) |
-| `E2E_APP_PATH` | `../ios/build/.../PocketPal.app` | `../android/.../app-e2e-releaseE2e.apk` | Path to built app |
+| `E2E_APP_PATH` | `../../ios/build/.../PocketPal.app` | `../../android/.../app-e2e-releaseE2e.apk` | Path to built app |
 | `E2E_APPIUM_PORT` | `4723` | `4723` | Appium server port |
 | `E2E_XCODE_ORG_ID` | _(none)_ | N/A | Apple Team ID (required for real iOS devices) |
 | `E2E_XCODE_SIGNING_ID` | `Apple Development` | N/A | Code signing identity for WDA |
