@@ -18,12 +18,12 @@ import {
   buildConfig as buildSharedConfig,
   expectedCellCount,
   type BenchReportRow,
-} from '../../e2e/helpers/bench-runner';
-import {buildScreenConfig} from '../../e2e/scripts/build-bench-config';
+} from '../../extras/e2e-tests/helpers/bench-runner';
+import {buildScreenConfig} from '../../extras/e2e-tests/scripts/build-bench-config';
 import {
   getBenchmarkMatrix,
   parseSettingsAxes,
-} from '../../e2e/fixtures/benchmark-models';
+} from '../../extras/e2e-tests/fixtures/benchmark-models';
 
 describe('shared BenchConfig builder', () => {
   // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@
  * `logcat.test.ts` co-location).
  */
 
-import {mergeReports} from '../../e2e/scripts/merge-bench-reports';
+import {mergeReports} from '../../extras/e2e-tests/scripts/merge-bench-reports';
 
 function makeRow(
   over: Partial<{

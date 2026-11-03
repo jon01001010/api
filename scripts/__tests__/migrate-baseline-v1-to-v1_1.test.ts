@@ -8,7 +8,7 @@
  * config.
  */
 
-import {migrateReport} from '../../e2e/scripts/migrate-baseline-v1-to-v1_1';
+import {migrateReport} from '../../extras/e2e-tests/scripts/migrate-baseline-v1-to-v1_1';
 
 function makeV1Row(over: Partial<Record<string, unknown>> = {}) {
   return {

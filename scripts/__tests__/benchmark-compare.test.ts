@@ -1,6 +1,6 @@
 /**
  * Unit tests for the pure `compareReports` function in
- * `e2e/scripts/benchmark-compare.ts`. Mirrors the pattern of
+ * `extras/e2e-tests/scripts/benchmark-compare.ts`. Mirrors the pattern of
  * `scripts/__tests__/memory-compare.test.ts` — the script lives under `e2e/`
  * but its regression-diffing core is plain TypeScript with no Appium deps.
  *
@@ -17,7 +17,7 @@ import {
   BenchmarkRunReport,
   checkPlatforms,
   compareReports,
-} from '../../e2e/scripts/benchmark-compare';
+} from '../../extras/e2e-tests/scripts/benchmark-compare';
 
 function makeRun(
   overrides: Partial<BenchmarkRunReport> = {},

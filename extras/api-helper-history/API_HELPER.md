@@ -66,7 +66,7 @@ The upstream postinstall script also prepares OpenCL headers for a native source
 
 The debug build is for development and uses Metro. It is not a standalone release APK. For a distributable build, configure a private release keystore and build the release variant after the native/device checks pass.
 
-See `SECURITY_VALIDATION.md` for actual results and outstanding gates. No claim of “all security fixed” or phone compatibility is made.
+See `docs/security-notes.md` for actual results and outstanding gates. No claim of “all security fixed” or phone compatibility is made.
 
 ### Metro dictionary compatibility
 

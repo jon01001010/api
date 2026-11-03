@@ -1,4 +1,7 @@
-import {compareReports, MemoryReport} from '../../e2e/scripts/memory-compare';
+import {
+  compareReports,
+  MemoryReport,
+} from '../../extras/e2e-tests/scripts/memory-compare';
 
 function makeReport(memoryMap: Record<string, number> = {}): MemoryReport {
   const defaults: Record<string, number> = {

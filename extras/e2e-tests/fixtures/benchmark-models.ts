@@ -22,7 +22,7 @@
  * deciding which tiers (if any) it joins.
  */
 
-import {CacheType} from '../../src/utils/types';
+import {CacheType} from '../../../src/utils/types';
 
 import {ModelTestConfig} from './models';
 

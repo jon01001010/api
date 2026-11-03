@@ -7,7 +7,8 @@ const ROOT = path.join(__dirname, '..', '..');
 const INDEX_PATH = path.join(ROOT, 'src', 'locales', 'index.ts');
 const SPEC_PATH = path.join(
   ROOT,
-  'e2e',
+  'extras',
+  'e2e-tests',
   'specs',
   'features',
   'language.spec.ts',

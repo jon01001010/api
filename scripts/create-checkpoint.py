@@ -41,6 +41,6 @@ sha = hashlib.sha256(archive.read_bytes()).hexdigest()
 with report.open('x') as f:
     f.write(f'# Checkpoint {stem}\n\nCreated: {now.isoformat()} (America/Vancouver).\n\n')
     f.write(f'Source: `{archive.name}`\n\nSHA-256: `{sha}`\n\n')
-    f.write((repo / 'SECURITY_VALIDATION.md').read_text())
+    f.write((repo / 'docs' / 'security-notes.md').read_text())
 print(archive)
 print(report)

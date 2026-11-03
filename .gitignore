@@ -86,20 +86,20 @@ ios/Config/Env.xcconfig
 **/libggml-htp*.so
 
 # E2E debug output
-e2e/debug-output/
-e2e/device-farm-artifacts/
-e2e/test-package.zip
-e2e/testspec-*-allmodels.yml
+extras/e2e-tests/debug-output/
+extras/e2e-tests/device-farm-artifacts/
+extras/e2e-tests/test-package.zip
+extras/e2e-tests/testspec-*-allmodels.yml
 
 # E2E pipeline
-e2e/devices.json
-e2e/reports/
-e2e/dist/
+extras/e2e-tests/devices.json
+extras/e2e-tests/reports/
+extras/e2e-tests/dist/
 
 # Per-task one-shot visual-capture specs. Authored in the worktree for a
 # single PR review (pre/post diff against main), never committed. They die
 # with the worktree.
-e2e/specs/visual-capture/TASK-*.spec.ts
+extras/e2e-tests/specs/visual-capture/TASK-*.spec.ts
 
 # Android build log and payload-check report, written by both the CI and
 # release workflows and reproducible locally. The build log can contain the

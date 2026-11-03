@@ -25,7 +25,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import type {EffectiveBackend} from '../../src/__automation__/logSignals';
+import type {EffectiveBackend} from '../../../src/__automation__/logSignals';
 
 export interface BenchmarkRunReport {
   model_id: string;
