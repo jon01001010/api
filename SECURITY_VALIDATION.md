@@ -88,7 +88,7 @@ Date: 16 October 2026. Status: source prototype; no installable APK yet.
 - No complete audit of inference engines or binary supply chains. Historical backups and forensic database remnants are not scrubbed by these changes.
 - An app holding the local API key can send prompts while the service runs. Keys rotate on restart; keep the key private. This prototype has no per-app consent registry.
 - Existing optional cloud features and IAP dependencies remain in the source; purchase paths are disabled.
-- No PocketOrca APK or native binaries were merged. The shared API is independently implemented in PocketPal.
+- No PocketOrca APK or native binaries were merged. The shared API is independently implemented in PocketAgent.
 
 ## Contents and next small chunks
 
@@ -98,7 +98,7 @@ The ZIP contains the modified source, tests, dependency lockfile, patches and or
 2. Test authenticated API and accelerated inference on the intended phone.
 3. Add per-app authorization and finish the UI redesign.
 
-Base: PocketPal commit `07ef06ffbfc5be79330aaa38b5e38020aaf2a2fe`; branch `api-helper/security-and-service`. This is an uncommitted working-tree checkpoint.
+Base: PocketAgent commit `07ef06ffbfc5be79330aaa38b5e38020aaf2a2fe`; branch `api-helper/security-and-service`. This is an uncommitted working-tree checkpoint.
 
 ## Completed chunk: Metro production bundle
 

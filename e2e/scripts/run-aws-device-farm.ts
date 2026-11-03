@@ -568,7 +568,7 @@ async function main(): Promise<void> {
         projectArn: PROJECT_ARN,
         appArn,
         devicePoolArn,
-        name: `PocketPal E2E - ${platform}${allModels ? ' (all models)' : ''} - ${new Date().toISOString()}`,
+        name: `PocketAgent E2E - ${platform}${allModels ? ' (all models)' : ''} - ${new Date().toISOString()}`,
         test: {
           type: 'APPIUM_NODE',
           testPackageArn,

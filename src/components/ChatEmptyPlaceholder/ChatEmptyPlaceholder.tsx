@@ -85,7 +85,7 @@ export const ChatEmptyPlaceholder = observer(
       <View
         style={[styles.container, {marginBottom: bottomComponentHeight + 100}]}>
         <Image
-          source={Platform.OS === 'android' ? {uri: 'pocketagent_logo'} : require('../../assets/pocketpal-dark-v2.png')}
+          source={Platform.OS === 'android' ? {uri: 'pocketagent_logo'} : require('../../assets/pocketagent-dark-v2.png')}
           style={styles.logo}
           resizeMode="contain"
         />

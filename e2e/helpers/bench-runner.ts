@@ -22,7 +22,7 @@ import {getBenchmarkMatrix} from '../fixtures/benchmark-models';
 // WebdriverIO's own globals at runtime.
 declare const driver: any;
 
-export const PACKAGE = 'com.pocketpalai.e2e';
+export const PACKAGE = 'org.apihelper.local.e2e';
 export const REMOTE_DIR = `/sdcard/Android/data/${PACKAGE}/files`;
 
 // argv-style adb invocation. The udid flows in from process.env (E2E_DEVICE_UDID)
@@ -129,7 +129,7 @@ export function pushConfig(
   matrix: ReturnType<typeof getBenchmarkMatrix>,
   udid?: string,
 ): string {
-  const cfgFile = path.join(os.tmpdir(), 'pocketpal-bench-config.json');
+  const cfgFile = path.join(os.tmpdir(), 'pocketagent-bench-config.json');
   fs.writeFileSync(cfgFile, JSON.stringify(buildConfig(matrix), null, 2));
   adb(udid, 'shell', 'mkdir', '-p', REMOTE_DIR);
   adb(udid, 'push', cfgFile, `${REMOTE_DIR}/bench-config.json`);
@@ -143,7 +143,7 @@ export async function deepLinkLaunch(): Promise<void> {
   // so a tap-driven start never fired onPress. The screen now invokes the
   // exact same start handler the button does.
   await driver.execute('mobile: deepLink', {
-    url: 'pocketpal://e2e/benchmark?autostart=1',
+    url: 'pocketagent://e2e/benchmark?autostart=1',
     package: PACKAGE,
   });
 }

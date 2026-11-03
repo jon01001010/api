@@ -71,8 +71,8 @@ export function parsePalsHubTemplate(template: string): ParsedMustacheTemplate {
   const schema = extractJsonSchema(template);
   const cleanSystemPrompt = cleanTemplate(template);
 
-  // Convert schema to PocketPal format
-  const parameterSchema = schema ? convertJsonSchemaToPocketPal(schema) : [];
+  // Convert schema to PocketAgent format
+  const parameterSchema = schema ? convertJsonSchemaToPocketAgent(schema) : [];
   const defaultParameters = schema
     ? extractDefaultParametersFromSchema(schema)
     : {};
@@ -85,9 +85,9 @@ export function parsePalsHubTemplate(template: string): ParsedMustacheTemplate {
 }
 
 /**
- * Converts JSON schema to PocketPal ParameterDefinition format
+ * Converts JSON schema to PocketAgent ParameterDefinition format
  */
-function convertJsonSchemaToPocketPal(
+function convertJsonSchemaToPocketAgent(
   schema: Record<string, MustacheSchemaDefinition>,
 ): ParameterDefinition[] {
   const parameterSchema: ParameterDefinition[] = [];
@@ -97,24 +97,24 @@ function convertJsonSchemaToPocketPal(
       continue;
     }
 
-    // Map schema types to PocketPal types
-    let pocketPalType: ParameterDefinition['type'];
+    // Map schema types to PocketAgent types
+    let pocketAgentType: ParameterDefinition['type'];
     switch (definition.type) {
       case 'select':
-        pocketPalType = 'select';
+        pocketAgentType = 'select';
         break;
       case 'combobox':
-        pocketPalType = 'combobox';
+        pocketAgentType = 'combobox';
         break;
       case 'text':
       default:
-        pocketPalType = 'text';
+        pocketAgentType = 'text';
         break;
     }
 
     const paramDef: ParameterDefinition = {
       key,
-      type: pocketPalType,
+      type: pocketAgentType,
       label: definition.label || key,
       required: definition.required || false,
       placeholder: definition.placeholder,
@@ -123,7 +123,7 @@ function convertJsonSchemaToPocketPal(
 
     // Add options for select and combobox fields
     if (
-      (pocketPalType === 'select' || pocketPalType === 'combobox') &&
+      (pocketAgentType === 'select' || pocketAgentType === 'combobox') &&
       Array.isArray(definition.options)
     ) {
       paramDef.options = definition.options;

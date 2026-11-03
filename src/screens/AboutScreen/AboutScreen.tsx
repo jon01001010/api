@@ -162,22 +162,6 @@ export const AboutScreen: React.FC = () => {
               {l10n.about.showIntroButton}
             </Button>
           </View>
-
-          <View style={styles.legalRow}>
-            <Text
-              style={styles.legalLink}
-              onPress={() =>
-                Linking.openURL('https://pocketpal.dev/privacy-policy')
-              }>
-              {l10n.about.privacyPolicy}
-            </Text>
-            <Text style={styles.legalSeparator}>·</Text>
-            <Text
-              style={styles.legalLink}
-              onPress={() => Linking.openURL('https://pocketpal.dev/terms')}>
-              {l10n.about.termsOfService}
-            </Text>
-          </View>
         </View>
       </ScrollView>
 

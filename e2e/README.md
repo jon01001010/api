@@ -1,4 +1,4 @@
-# PocketPal E2E Tests
+# PocketAgent E2E Tests
 
 End-to-end tests using Appium + WebDriverIO for local devices and AWS Device Farm.
 
@@ -21,7 +21,7 @@ yarn install
 
 ## Benchmark Matrix Runner
 
-Drives the in-app **BenchmarkRunnerScreen** via deep link (`pocketpal://e2e/benchmark`) — no WDIO required for ad-hoc runs. Three tiers gated by `BENCH_TIER`:
+Drives the in-app **BenchmarkRunnerScreen** via deep link (`pocketagent://e2e/benchmark`) — no WDIO required for ad-hoc runs. Three tiers gated by `BENCH_TIER`:
 
 | Tier | Models × quants × backends | Cells | Runtime | When |
 |------|----------------------------|------:|---------|------|
@@ -40,12 +40,12 @@ BENCH_TIER=full  yarn build:bench-config --push <udid>    # specific device
 
 # 2. Cold-launch the runner via deep link
 adb shell am start -a android.intent.action.VIEW \
-  -d 'pocketpal://e2e/benchmark' -p com.pocketpalai.e2e
+  -d 'pocketagent://e2e/benchmark' -p org.apihelper.local.e2e
 
 # 3. Tap "Run benchmark matrix" on the screen (or via adb input tap)
 # 4. Wait for `bench-runner-screen-status` content-desc == "complete"
 # 5. Pull the report
-adb pull /sdcard/Android/data/com.pocketpalai.e2e/files/benchmark-report-*.json
+adb pull /sdcard/Android/data/org.apihelper.local.e2e/files/benchmark-report-*.json
 ```
 
 Filters narrow the chosen tier (cannot widen it):
@@ -60,7 +60,7 @@ Heavy models (Phi-3.5, Phi-4-mini, Gemma-4-E2B) are last in the `full` tier; if 
 
 `yarn bench:ios` drives the same matrix with `xcrun devicectl` only (no Appium). It pushes `bench-config.json` into the app's `Documents`, sends the deep link to the already-running app (a link on cold launch is dropped), polls `Documents` for the new `benchmark-report-*.json` until the runner writes its terminal `outcome`, then pulls, stamps and pass-gates the report.
 
-> **`--app` replaces the App Store PocketPal.** iOS has no separate E2E bundle id, so installing the E2E build over `ai.pocketpal` wipes that app's data. Without `--app` the driver uses whatever is installed, which must be an E2E build.
+> **`--app` replaces the App Store PocketAgent.** iOS has no separate E2E bundle id, so installing the E2E build over `ai.pocketpal` wipes that app's data. Without `--app` the driver uses whatever is installed, which must be an E2E build.
 
 ```bash
 # 1. Build the E2E IPA (development signing) -> ios/build/PocketPal.ipa
@@ -112,17 +112,17 @@ yarn ios:build:ipa
 
 # Android E2E APK (required — prod APK has no automation bridge)
 yarn android:build:e2e
-# Installs as com.pocketpalai.e2e and coexists side-by-side with the
-# prod install (com.pocketpalai). E2E_BUILD=true is set automatically
+# Installs as org.apihelper.local.e2e and coexists side-by-side with the
+# prod install (org.apihelper.local). E2E_BUILD=true is set automatically
 # so the automation bridge (src/__automation__/) ships in this APK.
 ```
 
-**Flavor.** E2E targets the `e2e` flavor (`com.pocketpalai.e2e`, debuggable),
+**Flavor.** E2E targets the `e2e` flavor (`org.apihelper.local.e2e`, debuggable),
 which ships the automation bridge. The `prod` flavor has no bridge — specs
 will silently fail there.
 
 **Firebase.** `android/app/google-services.json` (gitignored) must contain
-client entries for both `com.pocketpalai` and `com.pocketpalai.e2e`. If the
+client entries for both `org.apihelper.local` and `org.apihelper.local.e2e`. If the
 build fails with a google-services plugin error, the `.e2e` client entry is
 missing from your local copy.
 
@@ -437,8 +437,8 @@ A row where `requested_backend=gpu` but `effective_backend=cpu` is the canonical
 Preseeded mode skips all HuggingFace downloads and loads GGUFs that have already been pushed to the device's app-private storage. This is the fast path once you've downloaded each rung once.
 
 **Precondition: the app must be the E2E flavor.** The prod `release`
-APK is non-debuggable, so `adb shell run-as com.pocketpalai` and
-`adb push` into `/data/data/com.pocketpalai/files/…` will not work.
+APK is non-debuggable, so `adb shell run-as org.apihelper.local` and
+`adb push` into `/data/data/org.apihelper.local/files/…` will not work.
 The `e2e` flavor + `releaseE2e` buildType is debuggable by design
 (same Hermes/release optimizer as prod, just with `debuggable=true`
 flipped on). Build and install it:
@@ -452,18 +452,18 @@ On-device path (matches `ModelStore.getModelFullPath`, with the E2E
 flavor's applicationId):
 
 ```
-/data/data/com.pocketpalai.e2e/files/models/hf/<author>/<repo>/<filename>.gguf
+/data/data/org.apihelper.local.e2e/files/models/hf/<author>/<repo>/<filename>.gguf
 ```
 
 Push each GGUF once:
 
 ```bash
-adb shell run-as com.pocketpalai.e2e mkdir -p \
+adb shell run-as org.apihelper.local.e2e mkdir -p \
   files/models/hf/bartowski/Qwen_Qwen3-1.7B-GGUF
 
 # copy via /data/local/tmp to avoid run-as's stdin limitations:
 adb push Qwen_Qwen3-1.7B-Q4_0.gguf /data/local/tmp/
-adb shell run-as com.pocketpalai.e2e sh -c \
+adb shell run-as org.apihelper.local.e2e sh -c \
   'cat /data/local/tmp/Qwen_Qwen3-1.7B-Q4_0.gguf > \
    files/models/hf/bartowski/Qwen_Qwen3-1.7B-GGUF/Qwen_Qwen3-1.7B-Q4_0.gguf'
 ```

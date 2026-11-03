@@ -13,7 +13,7 @@ const VENDORED_GGML = path.join(
 const HEXAGON_HEADER = path.join(VENDORED_GGML, 'include', 'ggml-hexagon.h');
 const MAIN_APPLICATION = path.join(
   ROOT,
-  'android/app/src/main/java/com/pocketpalai/MainApplication.kt',
+  'android/app/src/main/java/com/pocketagent/MainApplication.kt',
 );
 const MANIFEST = JSON.parse(
   fs.readFileSync(

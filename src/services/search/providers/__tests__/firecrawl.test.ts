@@ -116,7 +116,7 @@ describe('FirecrawlProvider', () => {
       expect(JSON.parse(init.body)).toEqual({
         query: 'mars rover',
         limit: 4,
-        origin: 'pocketpal',
+        origin: 'pocketagent',
       });
     });
   });
@@ -288,7 +288,7 @@ describe('FirecrawlProvider', () => {
         formats: ['markdown'],
         onlyMainContent: true,
         timeout: 10000,
-        origin: 'pocketpal',
+        origin: 'pocketagent',
       });
     });
   });

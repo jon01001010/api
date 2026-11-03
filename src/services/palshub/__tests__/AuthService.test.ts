@@ -30,7 +30,7 @@ describe('AuthService.loadUserProfile', () => {
     const row = {
       id: 'u1',
       username: 'pocket',
-      full_name: 'Pocket Pal',
+      full_name: 'Pocket Agent',
       avatar_url: 'https://example.com/a.png',
     };
     const {authService, select} = setup({data: row, error: null});

@@ -138,13 +138,13 @@ async function saveShot(name: string): Promise<void> {
   }
 }
 
-/** Fresh PocketPal crash reports written since `sinceMs` (iOS-sim host). */
+/** Fresh PocketAgent crash reports written since `sinceMs` (iOS-sim host). */
 function freshCrashReports(sinceMs: number): string[] {
   const dir = path.join(os.homedir(), 'Library/Logs/DiagnosticReports');
   try {
     return fs
       .readdirSync(dir)
-      .filter(f => /^PocketPal.*\.ips$/i.test(f))
+      .filter(f => /^PocketAgent.*\.ips$/i.test(f))
       .map(f => path.join(dir, f))
       .filter(p => {
         try {

@@ -27,7 +27,7 @@ PocketAgent is an on-device AI agent for Android, forked from [PocketPal AI](htt
 
 Not yet verified: NPU offload (on hold until a newer test phone). `read_url` currently refuses every page until the readers report a verified final URL (see `POCKETAGENT_TODO.md`). Purchases and PalsHub from upstream are switched off.
 
-This repository is a development fork, not an official PocketPal AI release. Do not rely on it for critical data or unattended device actions.
+This repository is a development fork, not an official PocketAgent release. Do not rely on it for critical data or unattended device actions.
 
 ## Android test builds
 
@@ -126,7 +126,7 @@ Versions are pinned in [`package.json`](package.json); the highlights:
 </details>
 
 <details>
-<summary><strong>Extending PocketPal</strong></summary>
+<summary><strong>Extending PocketAgent</strong></summary>
 
 <br/>
 
@@ -155,20 +155,18 @@ Contributions are welcome — bug reports, fixes, features, translations, and do
 4. Commit with [Conventional Commits](https://www.conventionalcommits.org/): `git commit -m "feat: add new talent"`
 5. Push and open a pull request.
 
-Please read the [Contributing Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) first. Want to translate PocketPal into your language? Join us on [Weblate](https://hosted.weblate.org/projects/pocketpal-ai/).
+Please read the [Contributing Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) first.
 
 ## Roadmap
 
 - **Tool use expansion** — grow the Talents catalog and deepen the agentic loop so Pals can do more, fully on-device.
 
-Have an idea or found a bug? [Open an issue](https://github.com/a-ghorbani/pocketpal-ai/issues/new/choose) or start a [discussion](https://github.com/a-ghorbani/pocketpal-ai/discussions).
+Have an idea or found a bug? [Open an issue](https://github.com/jon01001010/api/issues/new).
 
 ## Community & support
 
-- 💬 **Questions & ideas** — [GitHub Discussions](https://github.com/a-ghorbani/pocketpal-ai/discussions)
-- 🐛 **Bugs & requests** — [GitHub Issues](https://github.com/a-ghorbani/pocketpal-ai/issues/new/choose)
-- 🌐 **Website** — [pocketpal.dev](https://pocketpal.dev/)
-- ❤️ **Support development** — PocketPal is free and ad-free; [sponsoring](https://github.com/sponsors/a-ghorbani) helps keep it that way.
+- 🐛 **Bugs & requests** — [GitHub Issues](https://github.com/jon01001010/api/issues)
+- ❤️ **Upstream** — PocketAgent builds on PocketPal AI; you can [sponsor its original author](https://github.com/sponsors/a-ghorbani).
 
 ## License
 
@@ -176,7 +174,7 @@ Licensed under the [MIT License](LICENSE).
 
 ## Acknowledgements
 
-PocketPal AI stands on the shoulders of the open-source community, including:
+PocketAgent stands on the shoulders of the open-source community, including:
 
 - **[llama.cpp](https://github.com/ggerganov/llama.cpp)** — efficient on-device LLM inference.
 - **[llama.rn](https://github.com/mybigday/llama.rn)** — llama.cpp bindings for React Native.
@@ -191,6 +189,6 @@ Made with ❤️ for people who want AI that stays on their phone.
 
 <br/>
 
-<sub>If PocketPal is useful to you, consider giving it a ⭐ — it helps others find the project.</sub>
+<sub>If PocketAgent is useful to you, consider giving it a ⭐ — it helps others find the project.</sub>
 
 </div>

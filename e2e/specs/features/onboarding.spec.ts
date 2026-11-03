@@ -39,7 +39,7 @@ const CODIE_BALANCED_MODEL_ID =
   'lmstudio-community/Qwen3.5-2B-GGUF/Qwen3.5-2B-Q4_K_M.gguf';
 
 const getAppId = (): string =>
-  (driver as any).isAndroid ? 'com.pocketpalai.e2e' : 'ai.pocketpal';
+  (driver as any).isAndroid ? 'org.apihelper.local.e2e' : 'ai.pocketpal';
 
 const reinstallApp = async (): Promise<void> => {
   const appId = getAppId();

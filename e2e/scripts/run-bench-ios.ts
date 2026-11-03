@@ -27,7 +27,7 @@ import {
 } from '../helpers/bench-runner';
 
 export const BUNDLE_ID = 'ai.pocketpal';
-export const DEEP_LINK = 'pocketpal://e2e/benchmark?autostart=1';
+export const DEEP_LINK = 'pocketagent://e2e/benchmark?autostart=1';
 const APP_CONTAINER = [
   '--domain-type',
   'appDataContainer',
@@ -325,7 +325,7 @@ function resolveAppBundle(
   if (dryRun) {
     return UNZIPPED_APP_PLACEHOLDER;
   }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pocketpal-ipa-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pocketagent-ipa-'));
   deps.exec('unzip', ['-q', '-o', app, '-d', dir]);
   const payload = path.join(dir, 'Payload');
   const bundle = fs.readdirSync(payload).find(f => f.endsWith('.app'));
@@ -342,7 +342,7 @@ function readDeviceDetails(
   let name = 'unknown';
   let osVersion = 'unknown';
   const jsonPath = path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'pocketpal-devicectl-')),
+    fs.mkdtempSync(path.join(os.tmpdir(), 'pocketagent-devicectl-')),
     'details.json',
   );
   try {
@@ -560,7 +560,7 @@ Usage: yarn bench:ios --device <udid> [--app <.ipa|.app>] [--out <dir>] [--dry-r
   --device <udid>  target iPhone (or E2E_DEVICE_UDID); list with
                    \`xcrun devicectl list devices\`
   --app <path>     install this build first. Replaces any App Store
-                   PocketPal (same bundle id ${BUNDLE_ID}) and wipes its data.
+                   PocketAgent (same bundle id ${BUNDLE_ID}) and wipes its data.
                    Omit to use the installed E2E build.
   --out <dir>      where the config and report land (default ${DEFAULT_OUT})
   --dry-run        write the config, print the cell count and the devicectl

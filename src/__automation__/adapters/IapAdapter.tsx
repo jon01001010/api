@@ -7,7 +7,7 @@ import {Text, TextInput} from '../../components/ThemedText';
 /**
  * Hidden component that scripts the e2e FakeStore on Android, where the
  * automation deep-link host is not delivered. iOS sends the same commands
- * as `pocketpal://iap?cmd=...`.
+ * as `pocketagent://iap?cmd=...`.
  *
  * Protocol: setValue('<verb>::<arg>') runs one command; the result shows
  * the FakeStore state as JSON. The verbs are listed in src/__automation__/README.md.

@@ -6,7 +6,7 @@ import {useTheme} from '../../../../hooks';
 import {createStyles} from './styles';
 
 export type OnboardingContentProps = {
-  /** Small top eyebrow ("Welcome to Pocket Pal" / "The idea" / …). */
+  /** Small top eyebrow ("Welcome to PocketAgent" / "The idea" / …). */
   eyebrow?: string;
   /** Main title — typically wrapped in `ItalicAccentTitle`. */
   title: React.ReactNode;

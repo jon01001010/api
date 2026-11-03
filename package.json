@@ -142,7 +142,7 @@
     "type": "all",
     "jsSrcsDir": "src/specs",
     "android": {
-      "javaPackageName": "com.pocketpal.specs"
+      "javaPackageName": "com.pocketagent.specs"
     }
   },
   "resolutions": {
