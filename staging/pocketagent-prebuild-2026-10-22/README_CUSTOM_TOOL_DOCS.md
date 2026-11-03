@@ -1,1 +1,0 @@
-Custom Toolbox documentation checkpoint. Apply at repository root: python3 patches/apply-custom-tool-docs.py. Requires purpose and precise descriptions for each argument; shows model-readable parameter guide on custom draft cards. Custom tools remain non-executable and OFF. Not APK-tested; no commits.

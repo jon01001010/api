@@ -341,19 +341,29 @@ describe('useChatSession — auto-speak across agent steps', () => {
     expect(spokenText().trim()).toBe(persistedDerivedText().trim());
   });
 
-  it('streams a fence-first reply per token when the run offers no tools', async () => {
+  // PocketAgent always offers the memory tools, so "no tools" now means
+  // "no tools beyond the always-on memory ones".
+  it('streams a fence-first reply per token when the run offers only the memory tools', async () => {
     scriptCompletion([
       {tokens: ['```', '```py\nprint(1)', '```py\nprint(1)\n```']},
     ]);
 
     await runTurn();
 
-    expect(completionParams[0].tools ?? []).toEqual([]);
-    expect(chunkCalls().map(call => call[1])).toEqual([
-      '```',
-      'py\nprint(1)',
-      '\n```',
+    expect(
+      (completionParams[0].tools ?? []).map(
+        (t: {function: {name: string}}) => t.function.name,
+      ),
+    ).toEqual([
+      'memory_get',
+      'memory_replace',
+      'memory_history',
+      'memory_restore',
     ]);
+    // With tools offered, a reply that opens with a fence could still be a
+    // tool call, so it is held until that is ruled out and then spoken as a
+    // whole instead of token by token.
+    expect(chunkCalls().map(call => call[1])).toEqual(['```py\nprint(1)\n```']);
   });
 
   it('decides on the first visible character when a step starts with whitespace', async () => {

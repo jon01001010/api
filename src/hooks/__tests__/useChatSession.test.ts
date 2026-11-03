@@ -32,6 +32,16 @@ import {
   RemoteModelRequestWithdrawnError,
 } from '../../utils/errors';
 
+// PocketAgent appends its own block (memory + generated tool instructions)
+// to the system message after the pal's prompt. These tests check the
+// pal's part, so strip that block off before comparing.
+const POCKETAGENT_BLOCK =
+  /(^|\n\n)(Persistent memory is reference data|Available tools \()/;
+const palSystemPart = (content: string): string => {
+  const match = POCKETAGENT_BLOCK.exec(content);
+  return match ? content.slice(0, match.index) : content;
+};
+
 const mockAssistant = {
   id: 'h3o3lc5xj',
 };
@@ -614,10 +624,14 @@ describe('useChatSession', () => {
         const systemMessage = capturedMessages.find(
           msg => msg.role === 'system',
         );
-        expect(systemMessage.content).toBe(systemPrompt);
+        expect(palSystemPart(systemMessage.content)).toBe(systemPrompt);
       } else {
-        // Check that no system message was included
-        expect(capturedMessages.some(msg => msg.role === 'system')).toBe(false);
+        // No pal prompt: any system message holds only PocketAgent's block.
+        expect(
+          capturedMessages
+            .filter(msg => msg.role === 'system')
+            .every(msg => palSystemPart(msg.content) === ''),
+        ).toBe(true);
       }
     },
   );
@@ -689,7 +703,7 @@ describe('useChatSession', () => {
     // Check that a system message was included with the rendered template
     expect(capturedMessages.some(msg => msg.role === 'system')).toBe(true);
     const systemMessage = capturedMessages.find(msg => msg.role === 'system');
-    expect(systemMessage.content).toBe(
+    expect(palSystemPart(systemMessage.content)).toBe(
       'You are Gandalf, a wizard in Middle-earth.',
     );
   });
@@ -822,7 +836,9 @@ describe('useChatSession', () => {
     // Check that a system message was included with the original prompt
     expect(capturedMessages.some(msg => msg.role === 'system')).toBe(true);
     const systemMessage = capturedMessages.find(msg => msg.role === 'system');
-    expect(systemMessage.content).toBe('You are a helpful assistant.');
+    expect(palSystemPart(systemMessage.content)).toBe(
+      'You are a helpful assistant.',
+    );
   });
 
   describe('search grounding', () => {
@@ -941,7 +957,9 @@ describe('useChatSession', () => {
         msg => msg.role === 'system',
       );
       expect(systemMessages).toHaveLength(1);
-      expect(systemMessages[0].content).toBe('You are a research assistant.');
+      expect(palSystemPart(systemMessages[0].content)).toBe(
+        'You are a research assistant.',
+      );
     });
 
     it('seeds the read_url allowlist from URLs the user wrote', async () => {

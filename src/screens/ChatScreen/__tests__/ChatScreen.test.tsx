@@ -916,12 +916,14 @@ describe('ChatScreen remote vision reactivity', () => {
     });
   });
 
-  it('enables attach when capabilities land, with no further user action', () => {
-    const {getByLabelText} = render(<ChatScreen />, {withNavigation: true});
+  it('offers Gallery when vision capabilities land, with no further user action', () => {
+    const {getByLabelText, getByText, queryByText} = render(<ChatScreen />, {
+      withNavigation: true,
+    });
 
-    expect(getByLabelText('Add image').props.accessibilityState.disabled).toBe(
-      true,
-    );
+    // Files can always be attached; vision only adds Camera/Gallery options.
+    fireEvent.press(getByLabelText('Add attachment'));
+    expect(queryByText('Gallery')).toBeNull();
 
     act(() => {
       runInAction(() => {
@@ -929,12 +931,10 @@ describe('ChatScreen remote vision reactivity', () => {
       });
     });
 
-    expect(getByLabelText('Add image').props.accessibilityState.disabled).toBe(
-      false,
-    );
+    expect(getByText('Gallery')).toBeTruthy();
   });
 
-  it('enables attach when a local model finishes loading its projection', () => {
+  it('offers Gallery when a local model finishes loading its projection', () => {
     const localId = 'local-mm-1';
     runInAction(() => {
       modelStore.models = [
@@ -950,11 +950,13 @@ describe('ChatScreen remote vision reactivity', () => {
       modelStore.isMultimodalActive = false;
     });
 
-    const {getByLabelText} = render(<ChatScreen />, {withNavigation: true});
+    const {getByLabelText, getByText, queryByText} = render(<ChatScreen />, {
+      withNavigation: true,
+    });
 
-    expect(getByLabelText('Add image').props.accessibilityState.disabled).toBe(
-      true,
-    );
+    // Files can always be attached; vision only adds Camera/Gallery options.
+    fireEvent.press(getByLabelText('Add attachment'));
+    expect(queryByText('Gallery')).toBeNull();
 
     // What `proceedWithInitialization` writes once the native init verifies.
     act(() => {
@@ -963,9 +965,7 @@ describe('ChatScreen remote vision reactivity', () => {
       });
     });
 
-    expect(getByLabelText('Add image').props.accessibilityState.disabled).toBe(
-      false,
-    );
+    expect(getByText('Gallery')).toBeTruthy();
 
     runInAction(() => {
       modelStore.isMultimodalActive = false;
@@ -979,10 +979,12 @@ describe('ChatScreen remote vision reactivity', () => {
       });
     });
 
-    const {getByLabelText} = render(<ChatScreen />, {withNavigation: true});
+    const {getByLabelText, getByText, queryByText} = render(<ChatScreen />, {
+      withNavigation: true,
+    });
 
-    expect(getByLabelText('Add image').props.accessibilityState.disabled).toBe(
-      true,
-    );
+    // Files can always be attached; vision only adds Camera/Gallery options.
+    fireEvent.press(getByLabelText('Add attachment'));
+    expect(queryByText('Gallery')).toBeNull();
   });
 });

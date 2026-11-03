@@ -4437,7 +4437,10 @@ describe('ModelStore', () => {
 
       await modelStore.fetchAndUpdateModelFileDetails(model as any);
 
-      expect(fetchModelFilesDetails).toHaveBeenCalledWith('test/model');
+      expect(fetchModelFilesDetails).toHaveBeenCalledWith(
+        'test/model',
+        'mockPass', // saved Hugging Face token, for gated/private repos
+      );
       expect(model.hfModelFile.lfs).toEqual({oid: 'test-oid', size: 1000});
     });
 
@@ -4480,7 +4483,10 @@ describe('ModelStore', () => {
 
       await modelStore.fetchAndUpdateModelFileDetails(model as any);
 
-      expect(fetchModelFilesDetails).toHaveBeenCalledWith('test/model');
+      expect(fetchModelFilesDetails).toHaveBeenCalledWith(
+        'test/model',
+        'mockPass', // saved Hugging Face token, for gated/private repos
+      );
       expect(model.hfModelFile.lfs).toBeUndefined();
     });
 
@@ -4502,7 +4508,10 @@ describe('ModelStore', () => {
 
       await modelStore.fetchAndUpdateModelFileDetails(model as any);
 
-      expect(fetchModelFilesDetails).toHaveBeenCalledWith('test/model');
+      expect(fetchModelFilesDetails).toHaveBeenCalledWith(
+        'test/model',
+        'mockPass', // saved Hugging Face token, for gated/private repos
+      );
       expect(model.hfModelFile.lfs).toBeUndefined();
     });
   });

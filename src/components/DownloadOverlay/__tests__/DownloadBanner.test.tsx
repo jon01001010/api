@@ -176,7 +176,7 @@ describe('DownloadBanner', () => {
       withNavigation: true,
     });
 
-    expect(getByTestId('download-banner-stop')).toBeTruthy();
+    expect(getByTestId('download-banner')).toBeTruthy();
     expect(queryByTestId('download-banner-failed')).toBeNull();
   });
 
@@ -189,24 +189,19 @@ describe('DownloadBanner', () => {
     expect(mockNavigate).toHaveBeenCalledWith(ROUTES.MODELS);
   });
 
-  it('cancels the visible download from the progress row Stop pill', () => {
+  // The progress row is a compact percentage + bar (PocketAgent). Stopping
+  // or hiding a download is done from the Models screen it opens.
+  it('shows a compact percentage with no Stop or Dismiss controls', () => {
     withActiveDownloads(1);
 
-    const {getByTestId} = render(<DownloadBanner />, {withNavigation: true});
-    fireEvent.press(getByTestId('download-banner-stop'));
+    const {getByText, queryByTestId} = render(<DownloadBanner />, {
+      withNavigation: true,
+    });
 
-    expect(modelStore.cancelDownload).toHaveBeenCalledWith(runningModel.id);
-    expect(modelStore.clearDownloadError).not.toHaveBeenCalled();
-  });
-
-  it('dismisses only the banner from the progress row', () => {
-    withActiveDownloads(1);
-
-    const {getByTestId} = render(<DownloadBanner />, {withNavigation: true});
-    fireEvent.press(getByTestId('download-banner-dismiss'));
-
-    expect(uiStore.dismissDownloadBanner).toHaveBeenCalledWith(runningModel.id);
-    expect(modelStore.clearDownloadError).not.toHaveBeenCalled();
+    expect(getByText('30%')).toBeTruthy();
+    expect(queryByTestId('download-banner-stop')).toBeNull();
+    expect(queryByTestId('download-banner-dismiss')).toBeNull();
+    expect(modelStore.cancelDownload).not.toHaveBeenCalled();
   });
 
   it('opens the Models screen from the progress row body', () => {
@@ -221,11 +216,14 @@ describe('DownloadBanner', () => {
   it.each([
     [90 * 1024 * 1024, '90 MB'],
     [3 * 1024 * 1024 * 1024, '3.0 GB'],
-  ])('labels a %d-byte download as %s', (bytes, label) => {
+  ])('announces a %d-byte download as %s', (bytes, label) => {
     withActiveDownloads(1, bytes);
 
-    const {getByText} = render(<DownloadBanner />, {withNavigation: true});
+    const {getByTestId} = render(<DownloadBanner />, {withNavigation: true});
 
-    expect(getByText(label)).toBeTruthy();
+    // The size is no longer printed in the compact row; it is read out.
+    expect(getByTestId('download-banner').props.accessibilityLabel).toContain(
+      label,
+    );
   });
 });

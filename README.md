@@ -8,22 +8,32 @@
 
 **Private experimental Android app — work in progress. Not ready for public release.**
 
-PocketAgent is a fork of [PocketPal AI](https://github.com/a-ghorbani/pocketpal-ai), focused on local GGUF inference, device hardware diagnostics, and a local text-only API.
+PocketAgent is an on-device AI agent for Android, forked from [PocketPal AI](https://github.com/a-ghorbani/pocketpal-ai): local GGUF models, tools with your approval, persistent memory, and a private file workspace.
 
-## Current status
+**Built for future phones and models.** Today's test phone and small models are only a development stand-in; the app is not tuned for them. Expect it to make full use of newer phones (more memory, faster NPUs) and larger local models as they arrive.
 
-- Android APK builds are being tested on a physical phone.
-- CPU inference is available through the upstream llama.cpp / llama.rn stack.
-- Qualcomm Hexagon NPU offload is **not yet verified**. Detecting a chipset or GPU does not establish NPU execution.
-- Hardware diagnostics report physical hardware and discovered inference backends.
-- The local text API is experimental and subject to model/runtime requirements.
-- Pals and other inherited PocketPal features remain part of the app.
+## What it does today
+
+- **Local models** through llama.cpp / llama.rn (CPU). No account, works offline.
+- **Agent tools**, each switched on in Toolbox, with approval before anything is written:
+  - workspace files: read, create, edit, append, patch, diff, history, undo;
+  - memory: User Memory (yours, read-only to the model) and Model Memory (model edits need approval), with snapshot history;
+  - live HTML previews in a network-free sandbox, with Save as `.html`;
+  - calculator, date/time;
+  - web search and page reading (bring your own key).
+- **Phosphor style**: an optional green-CRT terminal look, recolourable with R/G/B sliders (Settings → App Settings).
+- **Local text API** (experimental) for other apps on the phone.
+- **Hardware diagnostics** for the phone and the inference backends it finds.
+
+Not yet verified: NPU offload (on hold until a newer test phone). `read_url` currently refuses every page until the readers report a verified final URL (see `POCKETAGENT_TODO.md`). Purchases and PalsHub from upstream are switched off.
 
 This repository is a development fork, not an official PocketPal AI release. Do not rely on it for critical data or unattended device actions.
 
 ## Android test builds
 
-See [GitHub Actions](https://github.com/jon01001010/api/actions) for experimental APK workflow runs and their artifacts. Build success does not guarantee hardware acceleration.
+Every successful APK build is published as a **pre-release** with a direct `.apk` download on the [Releases](https://github.com/jon01001010/api/releases) page: open it on the phone and tap the file to install. Builds run on pushes to `main` and on demand from [Actions](https://github.com/jon01001010/api/actions) ("PocketAgent integration APK", stage `apk`).
+
+The **Tests** workflow runs the type check and the full Jest suite on every pull request and push to `main`.
 
 ## Upstream acknowledgements
 
