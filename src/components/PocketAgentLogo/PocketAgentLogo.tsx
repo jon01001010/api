@@ -41,19 +41,27 @@ export const PocketAgentLogo: React.FC<PocketAgentLogoProps> = ({
   }
   const glowColor = (theme.phosphorPalette ?? PHOSPHOR).fg;
   return (
-    <View style={style} testID="pocketagent-logo-phosphor">
+    <View style={[style, styles.frame]} testID="pocketagent-logo-phosphor">
       <Image
         source={BASE}
-        style={StyleSheet.absoluteFill}
+        style={styles.layer}
         resizeMode="contain"
         testID="pocketagent-logo-base"
       />
       <Image
         source={GLOW}
-        style={[StyleSheet.absoluteFill, {tintColor: glowColor}]}
+        style={[styles.layer, {tintColor: glowColor}]}
         resizeMode="contain"
         testID="pocketagent-logo-glow"
       />
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  // Clip to the logo's box: on Android an image positioned only by insets
+  // can otherwise draw at its own pixel size and spill over the screen.
+  frame: {overflow: 'hidden'},
+  // Explicit size so both layers fit the box exactly, one on top of the other.
+  layer: {position: 'absolute', top: 0, left: 0, width: '100%', height: '100%'},
+});
