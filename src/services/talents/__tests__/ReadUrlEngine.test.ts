@@ -26,9 +26,11 @@ const makeAccess = (overrides: Partial<SearchAccess> = {}): SearchAccess => {
     getActiveProvider: () => provider,
     canSearch: () => true,
     getResultCount: () => 3,
-    readWithDefaultReader: jest
-      .fn()
-      .mockResolvedValue({url: 'https://e.com', text: 'fallback body'}),
+    readWithDefaultReader: jest.fn().mockResolvedValue({
+      url: 'https://e.com',
+      finalUrlVerified: true,
+      text: 'fallback body',
+    }),
     ...overrides,
   };
 };
@@ -49,6 +51,7 @@ describe('ReadUrlEngine', () => {
   it('reads via the provider native read() when available', async () => {
     const read = jest.fn().mockResolvedValue({
       url: 'https://e.com/p',
+      finalUrlVerified: true,
       title: 'Page',
       text: 'full page body',
     } as PageContent);
@@ -66,9 +69,11 @@ describe('ReadUrlEngine', () => {
   });
 
   it('falls back to the default reader when the provider lacks read()', async () => {
-    const readWithDefaultReader = jest
-      .fn()
-      .mockResolvedValue({url: 'https://e.com/x', text: 'jina body'});
+    const readWithDefaultReader = jest.fn().mockResolvedValue({
+      url: 'https://e.com/x',
+      finalUrlVerified: true,
+      text: 'jina body',
+    });
     const provider: SearchProvider = {id: 'brave', search: jest.fn()};
     const access = makeAccess({
       getActiveProvider: () => provider,
@@ -87,9 +92,11 @@ describe('ReadUrlEngine', () => {
   it('bounds the page by its own recommendedContextTokens ceiling', async () => {
     const spy = jest.spyOn(budget, 'budgetPage');
     const longBody = 'word '.repeat(4000).trim(); // far past the 1200-tok ceiling
-    const read = jest
-      .fn()
-      .mockResolvedValue({url: 'https://e.com/p', text: longBody});
+    const read = jest.fn().mockResolvedValue({
+      url: 'https://e.com/p',
+      finalUrlVerified: true,
+      text: longBody,
+    });
     const provider: SearchProvider = {id: 'exa', search: jest.fn(), read};
     const engine = new ReadUrlEngine(
       makeAccess({getActiveProvider: () => provider}),
@@ -158,6 +165,7 @@ describe('ReadUrlEngine', () => {
   it('wraps the page result in untrusted-data markers', async () => {
     const read = jest.fn().mockResolvedValue({
       url: 'https://e.com/p',
+      finalUrlVerified: true,
       title: 'Page',
       text: 'full page body',
     } as PageContent);
@@ -223,6 +231,7 @@ describe('ReadUrlEngine', () => {
       // verbatim in a JSON body).
       const read = jest.fn().mockResolvedValue({
         url: 'https://e.com/p',
+        finalUrlVerified: true,
         text: 'body',
       } as PageContent);
       const provider: SearchProvider = {id: 'exa', search: jest.fn(), read};
@@ -238,6 +247,7 @@ describe('ReadUrlEngine', () => {
     it('accepts the same URL once allowlisted', async () => {
       const read = jest.fn().mockResolvedValue({
         url: 'https://fresh.example.org/a',
+        finalUrlVerified: true,
         text: 'body',
       } as PageContent);
       const provider: SearchProvider = {id: 'exa', search: jest.fn(), read};
@@ -253,7 +263,13 @@ describe('ReadUrlEngine', () => {
     });
 
     const engineReading = (text: string) => {
-      const read = jest.fn().mockResolvedValue({url: 'https://e.com/p', text});
+      const read = jest
+        .fn()
+        .mockResolvedValue({
+          url: 'https://e.com/p',
+          finalUrlVerified: true,
+          text,
+        });
       const provider: SearchProvider = {id: 'exa', search: jest.fn(), read};
       return new ReadUrlEngine(makeAccess({getActiveProvider: () => provider}));
     };
@@ -326,6 +342,7 @@ describe('ReadUrlEngine', () => {
         allowReadUrls([allowedUrl]);
         const read = jest.fn().mockResolvedValue({
           url: allowedUrl,
+          finalUrlVerified: true,
           text: 'body',
         } as PageContent);
         const provider: SearchProvider = {id: 'exa', search: jest.fn(), read};
@@ -376,9 +393,11 @@ describe('ReadUrlEngine', () => {
       it('sends the stored www entry without the fragment to the default reader', async () => {
         resetReadUrlAllowlist();
         allowReadUrls(['https://www.foo.com/']);
-        const readWithDefaultReader = jest
-          .fn()
-          .mockResolvedValue({url: 'https://www.foo.com/', text: 'body'});
+        const readWithDefaultReader = jest.fn().mockResolvedValue({
+          url: 'https://www.foo.com/',
+          finalUrlVerified: true,
+          text: 'body',
+        });
         const engine = new ReadUrlEngine(
           makeAccess({
             getActiveProvider: () => ({id: 'brave', search: jest.fn()}),

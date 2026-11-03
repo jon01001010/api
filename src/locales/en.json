@@ -1339,7 +1339,14 @@
     "openFullscreen": "Open fullscreen: {{title}}",
     "loadFailed": "This preview could not be shown.",
     "viewCode": "View code",
-    "remoteBlocked": "This page tries to load files from the internet. Previews work offline, so those parts are blocked."
+    "remoteBlocked": "This page tries to load files from the internet. Previews work offline, so those parts are blocked.",
+    "saveHtml": "Save HTML file",
+    "saveTitle": "Save as .html",
+    "saveToWorkspace": "Save to workspace",
+    "shareFile": "Share / save to phone",
+    "savedTitle": "Saved",
+    "savedToWorkspace": "Saved to your workspace as {{name}}.",
+    "saveFailed": "Could not save"
   },
   "benchmark": {
     "title": "Benchmark",

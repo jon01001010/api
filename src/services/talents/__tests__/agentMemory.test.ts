@@ -1,0 +1,180 @@
+/**
+ * Memory end to end (storage, model tools, prompt context), on an in-memory
+ * file system.
+ */
+const mockFiles = new Map<string, string>();
+const mockDirs = new Set<string>();
+
+jest.mock('@dr.pogodin/react-native-fs', () => ({
+  DocumentDirectoryPath: '/docs',
+  exists: jest.fn(async (p: string) => mockFiles.has(p) || mockDirs.has(p)),
+  stat: jest.fn(async (p: string) => ({
+    isFile: () => mockFiles.has(p),
+    size: (mockFiles.get(p) ?? '').length,
+  })),
+  readFile: jest.fn(async (p: string) => {
+    if (!mockFiles.has(p)) {
+      throw new Error('ENOENT ' + p);
+    }
+    return mockFiles.get(p);
+  }),
+  writeFile: jest.fn(async (p: string, c: string) => {
+    mockFiles.set(p, c);
+  }),
+  moveFile: jest.fn(async (from: string, to: string) => {
+    mockFiles.set(to, mockFiles.get(from) as string);
+    mockFiles.delete(from);
+  }),
+  unlink: jest.fn(async (p: string) => {
+    mockFiles.delete(p);
+  }),
+  mkdir: jest.fn(async (p: string) => {
+    mockDirs.add(p);
+  }),
+  readDir: jest.fn(async (dir: string) =>
+    [...mockFiles.keys()]
+      .filter(p => p.startsWith(dir + '/'))
+      .map(p => ({name: p.slice(dir.length + 1), isFile: () => true})),
+  ),
+}));
+
+const mockApproval = jest.fn();
+jest.mock('../fileApprovalGate', () => ({
+  requestFileApproval: (...args: unknown[]) => mockApproval(...args),
+}));
+
+import {
+  DEFAULT_MEMORY,
+  buildMemoryContext,
+  memoryGet,
+  memoryHistory,
+  memoryReplace,
+  snapshotDate,
+  userMemoryGet,
+  userMemoryHistory,
+  userMemoryReadSnapshot,
+  userMemoryReplace,
+} from '../agentMemory';
+import {MemoryToolsEngine} from '../MemoryToolsEngine';
+import {registerDefaultTalents, talentRegistry} from '..';
+
+const USER_PATH = '/docs/PocketAgentUserMemory.txt';
+
+beforeEach(() => {
+  mockFiles.clear();
+  mockDirs.clear();
+  mockApproval.mockReset();
+});
+
+describe('memory storage', () => {
+  it('starts with the default model memory and empty user memory', async () => {
+    expect(await memoryGet()).toBe(DEFAULT_MEMORY);
+    expect(await userMemoryGet()).toBe('');
+  });
+
+  it('saves with a snapshot of the previous version', async () => {
+    await userMemoryReplace('likes tea', '');
+    await userMemoryReplace('likes coffee', 'likes tea');
+    expect(await userMemoryGet()).toBe('likes coffee');
+    const snaps = await userMemoryHistory();
+    expect(snaps).toHaveLength(2);
+    const contents = await Promise.all(snaps.map(userMemoryReadSnapshot));
+    expect(contents.sort()).toEqual(['', 'likes tea']);
+    expect(snapshotDate(snaps[0])).toBeInstanceOf(Date);
+  });
+
+  it('refuses a save when the memory changed since it was read', async () => {
+    await userMemoryReplace('v1', '');
+    await expect(userMemoryReplace('v2', 'stale')).rejects.toThrow(/changed/);
+    await expect(memoryReplace('x', 'stale')).rejects.toThrow(/changed/);
+    expect(await userMemoryGet()).toBe('v1');
+  });
+
+  it('refuses memory over 256 KiB', async () => {
+    const big = 'x'.repeat(256 * 1024 + 1);
+    await expect(userMemoryReplace(big, '')).rejects.toThrow(/256 KiB/);
+    await expect(memoryReplace(big, DEFAULT_MEMORY)).rejects.toThrow(/256 KiB/);
+  });
+
+  it('rejects snapshot names that try to escape the history folder', async () => {
+    await expect(
+      userMemoryReadSnapshot('../PocketAgentMemory.txt'),
+    ).rejects.toThrow(/Invalid/);
+  });
+});
+
+describe('memory in the prompt', () => {
+  it('includes both memories, with User Memory marked read-only', async () => {
+    await userMemoryReplace('my name is Jon', '');
+    await memoryReplace('project: PocketAgent', DEFAULT_MEMORY);
+    const ctx = await buildMemoryContext();
+    expect(ctx).toContain(
+      'User Memory (read-only to assistant):\nmy name is Jon',
+    );
+    expect(ctx).toContain(
+      'Model Memory (writes require approval):\nproject: PocketAgent',
+    );
+    expect(ctx).toContain('Never modify User Memory via tools');
+  });
+});
+
+describe('model memory tools', () => {
+  it('registers only model-memory tools; none can write user memory', () => {
+    registerDefaultTalents();
+    const names = talentRegistry.getAll().map(e => e.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'memory_get',
+        'memory_replace',
+        'memory_history',
+        'memory_restore',
+      ]),
+    );
+    expect(names.filter(n => /user.?memory/i.test(n))).toEqual([]);
+  });
+
+  it('memory_replace needs approval and never touches user memory', async () => {
+    await userMemoryReplace('private', '');
+    const engine = new MemoryToolsEngine('memory_replace');
+
+    mockApproval.mockResolvedValueOnce(false);
+    const denied = await engine.execute({
+      content: 'new',
+      expected_previous: DEFAULT_MEMORY,
+    });
+    expect(denied.type).toBe('error');
+    expect(await memoryGet()).toBe(DEFAULT_MEMORY);
+
+    mockApproval.mockResolvedValueOnce(true);
+    const ok = await engine.execute({
+      content: 'new',
+      expected_previous: DEFAULT_MEMORY,
+    });
+    expect(ok.type).toBe('text');
+    expect(await memoryGet()).toBe('new');
+    expect(mockFiles.get(USER_PATH)).toBe('private');
+  });
+
+  it('memory_replace refuses a stale or unreviewed edit', async () => {
+    const engine = new MemoryToolsEngine('memory_replace');
+    const result = await engine.execute({
+      content: 'x',
+      expected_previous: 'old',
+    });
+    expect(result.type).toBe('error');
+    expect(mockApproval).not.toHaveBeenCalled();
+  });
+
+  it('memory_get returns model memory only', async () => {
+    await userMemoryReplace('private', '');
+    const result = await new MemoryToolsEngine('memory_get').execute({});
+    expect(result.summary).toBe(DEFAULT_MEMORY);
+    expect(result.summary).not.toContain('private');
+  });
+
+  it('memory_history lists model snapshots', async () => {
+    await memoryReplace('a', DEFAULT_MEMORY);
+    const result = await new MemoryToolsEngine('memory_history').execute({});
+    expect(result.summary).toBe((await memoryHistory())[0]);
+  });
+});

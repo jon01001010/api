@@ -215,3 +215,42 @@ jobs:
           path: android/app/build/outputs/apk/prod/debug/app-prod-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+  # Publishes the verified APK as a pre-release so it can be downloaded and
+  # installed directly on the phone (artifacts need a signed-in browser and
+  # arrive zipped). Only this job can write to the repository: it runs no
+  # third-party actions, just GitHub's artifact download and the gh CLI.
+  release:
+    needs: diagnostic
+    if: success() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified APK
+        uses: actions/download-artifact@v4
+        with:
+          name: pocketagent-integration-apk-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apk
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          safe_branch=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')
+          tag="apk-${safe_branch}-${RUN_ID}-${RUN_ATTEMPT}"
+          asset="PocketAgent-${safe_branch}-${RUN_ID}.apk"
+          test -s apk/app-prod-debug.apk
+          mv apk/app-prod-debug.apk "apk/${asset}"
+          gh release create "$tag" "apk/${asset}" \
+            --target "$SHA" \
+            --prerelease \
+            --title "PocketAgent test APK: ${BRANCH} (${SHA:0:7})" \
+            --notes "Debug test build from branch \`${BRANCH}\`, commit ${SHA}, workflow run ${RUN_ID}. Not a release. Tap the .apk below on the phone to download and install."
+          echo "Release: https://github.com/${GH_REPO}/releases/tag/${tag}" >> "$GITHUB_STEP_SUMMARY"
