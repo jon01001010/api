@@ -8,6 +8,12 @@ import {TextStyle} from 'react-native';
 export type Mode = 'light' | 'dark';
 
 /**
+ * Visual style layered on top of `Mode`. `phosphor` is a dark-based
+ * green CRT terminal look; it changes appearance only.
+ */
+export type ThemeStyle = 'default' | 'phosphor';
+
+/**
  * Color tokens — every key has a light and dark binding (encoded in the
  * `lightColors` / `darkColors` exports). Names mirror MD3 conventions for
  * the migration layer; semantic / PocketPal-specific extras are appended.
@@ -187,15 +193,15 @@ export interface TokenSpacing {
 // so a Figma spec saying `Radius/L` maps directly to `theme.radius.l`.
 // Note: there is no `sm` step — Figma jumps S(8) → M(12).
 export interface TokenRadius {
-  none: 0;
-  xxs: 2;
-  xs: 4;
-  s: 8;
-  m: 12;
-  ml: 16;
-  l: 20;
-  xl: 32;
-  xxl: 40;
+  none: number;
+  xxs: number;
+  xs: number;
+  s: number;
+  m: number;
+  ml: number;
+  l: number;
+  xl: number;
+  xxl: number;
 }
 
 // Key names mirror canonical Figma `Stroke/*` (xs/sm/md/lg).

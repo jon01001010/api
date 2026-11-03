@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import {useTheme} from '../../hooks';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: ReturnType<typeof useTheme>) =>
   StyleSheet.create({
@@ -13,7 +14,7 @@ export const createStyles = (theme: ReturnType<typeof useTheme>) =>
       maxWidth: 260,
       paddingHorizontal: 12,
       paddingVertical: 6,
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: theme.colors.outline,
       // Opaque so chips read cleanly over content scrolling beneath them.

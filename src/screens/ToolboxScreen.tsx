@@ -7,6 +7,10 @@ import {readGlobalTools, writeGlobalTools, readGlobalPrompt, writeGlobalPrompt, 
 import {safeMath} from '../services/talents/safeMath';
 import {isBackgroundInferenceEnabled, setBackgroundInferenceEnabled} from '../utils/backgroundInference';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
+import {useTheme} from '../hooks';
+import {useIsFocused} from '@react-navigation/native';
+import {MemorySection} from '../components/PalsSheets/MemorySection';
+import {themeColor} from '../theme/phosphor';
 
 type Draft = {id: string; name: string; description: string; parameters: string; kind?: 'text_uppercase' | 'text_lowercase' | 'text_trim' | 'calculator' | 'http_get'};
 const STORAGE_KEY = '@pocketagent/toolbox/drafts/v1';
@@ -27,6 +31,11 @@ export const ToolboxScreen: React.FC = () => {
   }, []);
   const [enabledTools, setEnabledTools] = useState<string[]>([]);
   const [globalPrompt, setGlobalPrompt] = useState('');
+  // Success messages are shown as normal text, not in the error style.
+  const [notice, setNotice] = useState('');
+  const theme = useTheme();
+  const isFocused = useIsFocused();
+  const errorColor = themeColor(theme, 'red');
   const [agentMaxTurns, setAgentMaxTurns] = useState(20);
   const [backgroundEnabled, setBackgroundEnabled] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -144,16 +153,19 @@ export const ToolboxScreen: React.FC = () => {
         <Text variant="bodySmall">The agent can stop earlier when its task is complete. Maximum 500 steps.</Text>
         <Text variant="titleMedium">Global tools (off by default)</Text>
         <Text variant="bodySmall">Enabled tools are available in ordinary model chats. All new tools start off.</Text>
-        {toggleError ? <Text style={{color: 'red'}}>{toggleError}</Text> : null}
+        {toggleError ? <Text style={{color: errorColor}}>{toggleError}</Text> : null}
+        {notice ? <Text variant="bodySmall">{notice}</Text> : null}
+        <Text variant="titleLarge">Memory</Text>
+        <MemorySection isVisible={isFocused} />
         <Text variant="titleMedium">Global System Prompt</Text>
         <Text variant="bodySmall">Your instructions are editable. Tool instructions below are generated automatically from enabled tools.</Text>
         <TextInput mode="outlined" label="Your global instructions" multiline value={globalPrompt} onChangeText={setGlobalPrompt} />
-        <Button disabled={!settingsLoaded} onPress={async () => {try {await writeGlobalPrompt(globalPrompt); setToggleError('Global prompt saved');} catch (e) {setToggleError('Could not save prompt: ' + String(e));}}}>Save global prompt</Button>
+        <Button disabled={!settingsLoaded} onPress={async () => {try {await writeGlobalPrompt(globalPrompt); setToggleError(''); setNotice('Global prompt saved');} catch (e) {setNotice(''); setToggleError('Could not save prompt: ' + String(e));}}}>Save global prompt</Button>
         <Text variant="titleSmall">Generated tool instructions (read only)</Text>
         <Text selectable variant="bodySmall">{generatedToolPrompt(enabledTools) || 'No tools enabled.'}</Text>
         <Button mode="contained" disabled={!loaded} onPress={() => newDraft()}>Create tool draft</Button>
         {!loaded ? <Text>Loading saved drafts…</Text> : null}
-        {storageError ? <Text style={{color: 'red'}}>{storageError}</Text> : null}
+        {storageError ? <Text style={{color: errorColor}}>{storageError}</Text> : null}
         {tools.map(tool => (
           <Card key={tool.name} mode="outlined">
             <Card.Content>
@@ -200,7 +212,7 @@ export const ToolboxScreen: React.FC = () => {
                 <Button onPress={() => setEditing(d => d ? {...d, kind: 'http_get'} : d)}>HTTP GET</Button>
               </View>
               <TextInput label="Parameters (JSON schema)" mode="outlined" multiline value={editing?.parameters ?? ''} onChangeText={parameters => setEditing(d => d ? {...d, parameters} : d)} style={{marginVertical: 6}} />
-              {error ? <Text style={{color: 'red'}}>{error}</Text> : null}
+              {error ? <Text style={{color: errorColor}}>{error}</Text> : null}
             </ScrollView>
           </Dialog.ScrollArea>
           <Dialog.Actions>

@@ -1,11 +1,12 @@
 import {StyleSheet} from 'react-native';
 
 import {Theme} from '../../../utils/types';
+import {themeRadius} from '../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
     card: {
-      borderRadius: 24, // Updated to match rounded-3xl (24px)
+      borderRadius: themeRadius(theme, 24), // Updated to match rounded-3xl (24px)
       margin: 6,
       //overflow: 'hidden',
       backgroundColor: theme.colors.background,
@@ -24,7 +25,7 @@ export const createStyles = (theme: Theme) =>
     },
     progressBar: {
       height: 8,
-      borderRadius: 5,
+      borderRadius: themeRadius(theme, 5),
     },
     downloadSpeed: {
       textAlign: 'right',
@@ -53,7 +54,7 @@ export const createStyles = (theme: Theme) =>
     },
     visionToggleContainer: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
       padding: 12,
       gap: 8,
     },
@@ -111,7 +112,7 @@ export const createStyles = (theme: Theme) =>
     statusDot: {
       width: 8,
       height: 8,
-      borderRadius: 4,
+      borderRadius: themeRadius(theme, 4),
     },
     detailsContent: {
       paddingHorizontal: 18,
@@ -120,7 +121,7 @@ export const createStyles = (theme: Theme) =>
     },
     descriptionContainer: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 16, // rounded-2xl
+      borderRadius: themeRadius(theme, 16), // rounded-2xl
       padding: 12,
     },
     descriptionText: {
@@ -135,7 +136,7 @@ export const createStyles = (theme: Theme) =>
     },
     technicalDetailCard: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 16, // rounded-2xl
+      borderRadius: themeRadius(theme, 16), // rounded-2xl
       padding: 10,
       flex: 1,
       minWidth: '45%', // Approximate 2-column grid
@@ -157,7 +158,7 @@ export const createStyles = (theme: Theme) =>
       paddingVertical: 12,
       paddingHorizontal: 12,
       backgroundColor: theme.colors.surface,
-      borderRadius: 16, // rounded-2xl
+      borderRadius: themeRadius(theme, 16), // rounded-2xl
       borderWidth: 2,
       borderColor: theme.colors.primaryContainer,
     },
@@ -182,7 +183,7 @@ export const createStyles = (theme: Theme) =>
     },
     primaryActionButton: {
       flex: 1,
-      borderRadius: 16, // rounded-2xl
+      borderRadius: themeRadius(theme, 16), // rounded-2xl
       borderWidth: 1,
       height: 40,
     },
@@ -193,7 +194,7 @@ export const createStyles = (theme: Theme) =>
     },
     iconButton: {
       padding: 10, // p-2.5 equivalent
-      borderRadius: 16, // rounded-2xl
+      borderRadius: themeRadius(theme, 16), // rounded-2xl
       backgroundColor: 'transparent',
       alignItems: 'center',
       justifyContent: 'center',
@@ -223,14 +224,14 @@ export const createStyles = (theme: Theme) =>
     },
     projectionModelsContainer: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
       padding: 12,
     },
     warningButton: {
       paddingVertical: 6,
       paddingHorizontal: 8,
       backgroundColor: theme.colors.errorContainer,
-      borderRadius: 6,
+      borderRadius: themeRadius(theme, 6),
       marginTop: 8,
     },
     warningButtonText: {
@@ -243,7 +244,7 @@ export const createStyles = (theme: Theme) =>
     },
     fullModelNameContainer: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
       padding: 12,
     },
     fullModelNameLabel: {

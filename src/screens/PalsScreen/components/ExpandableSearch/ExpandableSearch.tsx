@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useCallback, useContext} from 'react';
-import {View, Animated, TextInput, TouchableOpacity} from 'react-native';
+import {View, Animated, TouchableOpacity} from 'react-native';
 
 import {observer} from 'mobx-react-lite';
 
@@ -13,6 +13,7 @@ import {createStyles} from './styles';
 import {palStore} from '../../../../store/PalStore';
 
 import type {PalsHubPal} from '../../../../types/palshub';
+import {TextInput} from '../../../../components/ThemedText';
 
 interface ExpandableSearchProps {
   isExpanded: boolean;

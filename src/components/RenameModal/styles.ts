@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {MD3Theme} from 'react-native-paper';
+import {themeColor, themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: MD3Theme) =>
   StyleSheet.create({
@@ -7,12 +8,12 @@ export const createStyles = (theme: MD3Theme) =>
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      backgroundColor: themeColor(theme, 'rgba(0, 0, 0, 0.5)'),
     },
     modalContent: {
       width: '80%',
       backgroundColor: theme.colors.surface,
-      borderRadius: 14,
+      borderRadius: themeRadius(theme, 14),
       overflow: 'hidden',
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: theme.dark
@@ -42,7 +43,7 @@ export const createStyles = (theme: MD3Theme) =>
       borderColor: theme.dark
         ? theme.colors.outline + '50'
         : theme.colors.outline + '30',
-      borderRadius: 10,
+      borderRadius: themeRadius(theme, 10),
     },
     buttonContainer: {
       flexDirection: 'row',

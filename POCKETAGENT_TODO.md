@@ -1,44 +1,103 @@
 # PocketAgent TODO and Future Roadmap
 
-Updated: 2026-11-02. This document tracks planned work, not completed implementation.
+Updated: 2026-11-03. This document tracks planned work. Items marked done are done in code (with tests) on the open PR stack (#3 → #4 → #5 → todo-batch); anything that still needs checking on the phone is listed under **Phone checks**.
 
 ## Current validation and fixes
 
-- [ ] Validate dual User Memory / Model Memory UI on a physical Android device, including saving, snapshots, restoration, and model-write approvals.
-- [ ] Confirm memory is loaded into Qwen context on every new run and user memory remains model-read-only.
-- [ ] Fix HTML preview stuck on **Loading…** in chat (reported with generated current-time clock).
-- [ ] Render generated HTML/CSS/JavaScript live inside chat, including updating clocks and timers.
-- [ ] Verify code view, copy, expand/fullscreen, and saving/exporting generated `.html` files.
-- [ ] Add sandbox restrictions, load/error timeouts, and regression tests for embedded HTML.
-- [ ] Harden `read_url` redirect handling: verify the final resolved URL against the allowlist, enforce strict host/port/path matching, and test redirect escapes and provider final-URL reporting.
-- [ ] Finish workspace file operations (append, patch, diff, undo/history) and fix newline/extension matching bugs.
+- [x] Memory editor easy to reach: **Toolbox → Memory**, above Global System Prompt; History lists every snapshot to preview and restore (PR #5).
+- [x] Memory is added to Qwen's context on every run, User Memory has no model write tool, Model Memory writes need approval (code + tests, PR #5).
+- [x] Fix HTML preview stuck on **Loading…** in chat: JavaScript was disabled (PR #4).
+- [x] Render generated HTML/CSS/JavaScript live inside chat, including updating clocks and timers (PR #4).
+- [x] Save generated pages as `.html`: to the workspace or via the share sheet.
+- [x] Add sandbox restrictions, load/error timeouts, and regression tests for embedded HTML (PR #4).
+- [x] `read_url`: strict port matching for user-named sites, no https→http downgrade, redirect-escape tests.
+- [ ] `read_url`: readers must report a **verified final URL** (Firecrawl / Exa / default reader). Until then every read fails closed. Needs each provider's final-URL field confirmed against its docs.
+- [x] `read_url`: an http page and its https version count as the same page (https preferred when both are allowed).
+- [x] Workspace file operations: `file_append`, `file_patch`, `file_diff`, `file_history`, `file_undo`; per-file version history; diff shown in the approval dialog.
+- [x] Fix newline (`file_read_range`, `file_search`) and extension (`file_info`) matching bugs.
 
-## Future batch — ARTEMIS-inspired Android automation (deferred)
+### Phone checks
 
-Reference: https://github.com/google/artemis
+- [ ] Memory: save both memories, History → pick a snapshot → restore, and a model memory edit asks for approval.
+- [ ] HTML preview: a generated clock ticks in chat and fullscreen; code view, copy, fullscreen, Save to workspace, and Share work.
+- [ ] Workspace tools: append / patch / undo through chat, with the diff in the approval dialog.
 
-Research only until explicitly approved for implementation. Verify upstream license and third-party notices before copying code.
+## Phone actions via built-in Android intents (planned, not implemented)
 
-- [ ] Study ARTEMIS Flash/Pro execution modes and observe → act → verify → recover architecture.
-- [ ] Implement native Android **timers**: create, pause, resume, cancel, and check remaining time; support spoken requests such as “Set a timer for 15 minutes.”
-- [ ] Support **alarms and reminders** via Android Clock and appropriate system APIs.
-- [ ] **Open installed phone apps** by voice or chat using Android intents and package discovery (e.g. camera, maps, music).
-- [ ] **Use and navigate other apps** with permission-controlled Android Accessibility: inspect screen hierarchy, tap, scroll, type, and verify outcomes.
-- [ ] Build cross-app workflows, such as opening navigation or playing a requested playlist, with confirmation where appropriate.
-- [ ] Prefer semantic accessibility nodes and Android intents over fragile screen-coordinate taps.
-- [ ] Investigate screenshots and local vision fallback compatible with offline Qwen 3.5 2B.
-- [ ] Implement action safety: explicit permissions, confirmation for sensitive actions, cancellation, bounded retries, and failure recovery.
-- [ ] Compress action history to reduce model context use.
-- [ ] Evaluate ARTEMIS MCP integration for external development and testing.
-- [ ] Add Android emulator/device regression tests, screenshots, Logcat, and replay traces.
-- [ ] Keep execution offline-first where Android capabilities allow; clearly identify features needing external services.
+Replaces the earlier "ARTEMIS-inspired automation" batch. Research done 2026-11-03; **write-up only, nothing implemented yet.**
 
-### Suggested future implementation order
+### ARTEMIS research findings
 
-1. Native timers, alarms, and app launching.
-2. Accessibility service and semantic UI observation.
-3. ARTEMIS-inspired action controller with verification and recovery.
-4. Cross-app workflows and comprehensive safety/device tests.
+Reference: https://github.com/google/artemis (Apache-2.0; bundles part of minitap-ai/mobile-use, also Apache-2.0).
+
+- ARTEMIS is mainly a **Python program on a computer** that drives a phone over USB (adb) and uses cloud vision models. It is built for automated app testing, which is why it is heavy. It does not fit an offline app running on the phone.
+- Its on-phone part is a small Java accessibility helper (about 2,300 lines): it reads the screen hierarchy, does gestures and screenshots, and serves commands on a loopback server only after adb hands it a token.
+- It launches apps from the computer with `monkey -p <package> -c android.intent.category.LAUNCHER`. It does not use AlarmClock or other intents.
+- **Ideas worth reusing (not code):**
+  - observe → act → verify → recover;
+  - prefer element indexes (accessibility nodes) over screen coordinates;
+  - compress old history (keep step numbers, drop old screenshots);
+  - a separate read-only "checker" that verifies the result before reporting success;
+  - stop when the same action fails to change anything twice in a row.
+
+### Easier approach: Android's built-in intents
+
+Standard requests any app can send (the same ones voice assistants use). They run on the phone, offline, with no computer and no Python.
+
+| Todo item | Android built-in | Permission |
+|---|---|---|
+| Timers ("15 minute timer"): create, show | `AlarmClock.ACTION_SET_TIMER` (`EXTRA_LENGTH` seconds, `EXTRA_MESSAGE`, `EXTRA_SKIP_UI`), `ACTION_SHOW_TIMERS` | `com.android.alarm.permission.SET_ALARM` (normal, granted at install) |
+| Alarms | `ACTION_SET_ALARM` (`EXTRA_HOUR`, `EXTRA_MINUTES`, `EXTRA_DAYS`, `EXTRA_MESSAGE`), `ACTION_SHOW_ALARMS`, `ACTION_DISMISS_ALARM` | same |
+| Reminders | `Intent.ACTION_INSERT` on `CalendarContract.Events` (pre-filled title/time; the user saves) | none |
+| Open installed apps | `PackageManager.getLaunchIntentForPackage`; list launchable apps with `queryIntentActivities(MAIN/LAUNCHER)` | none: a `<queries>` entry for MAIN/LAUNCHER (avoid `QUERY_ALL_PACKAGES`) |
+| Navigation | `google.navigation:q=…` / `geo:0,0?q=…` URIs | none |
+| Play a song / playlist | `MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH` | none |
+| Camera | `MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA` | none |
+| Call / text / email | `ACTION_DIAL`, `ACTION_SENDTO` (`smsto:` / `mailto:`): opens pre-filled, **the user presses call/send** | none (never `CALL_PHONE` / `SEND_SMS`) |
+| Settings pages | `Settings.ACTION_WIFI_SETTINGS`, `ACTION_BLUETOOTH_SETTINGS`, battery, etc. | none |
+| Flashlight | `CameraManager.setTorchMode` | none |
+
+**Why a small native module is needed:** React Native's `Linking.sendIntent` sends every number as a Double (`putExtra(name, double)`), but the Clock app reads `EXTRA_LENGTH`, `EXTRA_HOUR` and `EXTRA_MINUTES` as ints, so timers and alarms would be ignored. A small Kotlin module (about 150 lines, like the existing `HardwareInfoModule` / `KeepAwakeModule`) sends correctly typed extras and lists launchable apps.
+
+Not every phone has an app for every intent (e.g. no Clock app that handles `SET_TIMER`). The module checks with `resolveActivity` first and reports "no app on this phone can do that" instead of failing silently.
+
+### Plan
+
+**Phase 1: intent actions (no accessibility).**
+
+- [ ] Kotlin `PhoneActions` module: send an allow-listed set of intents with typed extras; list launchable apps (label + package); `resolveActivity` check; nothing else.
+- [ ] Manifest: `SET_ALARM` permission; `<queries>` for MAIN/LAUNCHER and the intents above.
+- [ ] Model tools, all **off by default** in Toolbox like other tools:
+  - `set_timer`, `show_timers`
+  - `set_alarm`, `show_alarms`
+  - `add_reminder` (opens the Calendar screen pre-filled)
+  - `open_app` (match by app name; ask when more than one matches)
+  - `navigate_to`, `play_music`, `open_camera`, `open_settings`
+  - `compose_message` (dial / SMS / email screens, user sends)
+- [ ] Safety:
+  - Every action shows an approval prompt in chat first (like file writes), naming exactly what will happen ("Set a 15-minute timer named Tea?").
+  - Nothing places calls, sends messages, pays, or changes settings by itself.
+  - No `CALL_PHONE`, `SEND_SMS` or `QUERY_ALL_PACKAGES`.
+- [ ] Voice: spoken requests ("Set a timer for 15 minutes") go through the existing chat and voice input to the same tools. Time parsing is in the tool arguments, which are validated (timer 1 s–24 h; alarm hour 0–23 / minute 0–59).
+- [ ] Tests: JS tool tests (argument validation, approval required, denied → nothing sent, unknown app → clear message). The Kotlin side can only be verified on the phone APK.
+- [ ] Phone checks on the Razr: timer, alarm, reminder, open app, navigation, music, camera, settings, and a "no app can handle this" case.
+
+**Phase 2: cross-app workflows (still intents only).**
+
+- [ ] Chain phase 1 actions with a confirmation per step (e.g. "navigate home, then play my playlist"). Bounded steps; cancel at any time.
+
+**Phase 3: using other apps by tapping and scrolling (optional; decide later).**
+
+- [ ] Only if phases 1–2 aren't enough. It needs an in-app Kotlin Accessibility service, which means:
+  - a strong user-granted permission;
+  - Google Play policy review;
+  - careful safety design: explicit per-task consent, sensitive-screen blocklist (banking, passwords, payments), bounded retries, a stop button, and no free-form coordinate tapping without a visible target.
+- [ ] Reuse the ARTEMIS ideas listed above; learn from its Java helper (Apache-2.0, keep notices if any code is adapted).
+- [ ] Screenshots / local vision with offline Qwen 3.5 2B: investigate feasibility before committing.
+
+**Dropped from the old list:**
+
+- "Evaluate ARTEMIS MCP integration": that is for driving a phone from a computer IDE, not for PocketAgent on the phone.
 
 ## Deferred — NPU acceleration (on hold)
 
@@ -51,7 +110,6 @@ On hold until a better test phone is available. On the current test device (Moto
 ## Other future work
 
 - [ ] Offline voice, wake phrase, spoken responses, and smart-home routines.
-- [ ] Phosphor incorporation: define integration scope, inspect upstream license/dependencies, and plan a separate implementation batch.
 
 ## Phosphor visual restyle (look only)
 
@@ -69,9 +127,15 @@ Reference look (from the Phosphor stylesheet):
 
 Tasks:
 
-- [ ] Add a Phosphor theme to the app theme system (colors, fonts, borders, radius) rather than hard-coding styles per screen.
-- [ ] Apply it across chat, sidebar, model list, Pals, Toolbox, hardware diagnostics, settings, and onboarding.
-- [ ] Implement the scanline overlay and text glow in React Native (e.g. overlay view / image; check performance on the Razr).
-- [ ] Keep the current light/dark themes available; Phosphor as a selectable theme (decide whether it becomes the default).
-- [ ] Check readability and contrast (WCAG AA) of muted text, and that glow/scanlines don't hurt legibility.
-- [ ] Before/after screenshots on device; confirm no behavior changes.
+- [x] Add a Phosphor theme to the app theme system (colors, fonts, borders, radius) rather than hard-coding styles per screen (PR #3).
+- [x] Apply it across every screen, including hard-coded colours, corners and fonts (PR #3).
+- [x] Scanline overlay, text glow and blinking block cursor (PR #3).
+- [x] Selectable in Settings → App Settings → Phosphor Style, off by default; light/dark stay available (PR #3).
+- [x] Readable Toolbox / Hardware screens in Phosphor and Dark Mode (navigator background) (PR #3).
+- [x] R/G/B sliders under the Phosphor switch to recolour it; palette always readable (text ≥ 7:1, muted ≥ 4.5:1, borders ≥ 3:1) (PR #3).
+
+Phone checks:
+
+- [ ] Scanlines and glow perform well on the Razr.
+- [ ] Glow and scanlines don't hurt legibility; try several slider colours.
+- [ ] Before/after screenshots on device; confirm no behavior changes with Phosphor off.

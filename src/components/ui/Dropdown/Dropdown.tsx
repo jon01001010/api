@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {Text} from 'react-native';
+
 import {Menu} from 'react-native-paper';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
@@ -10,6 +10,7 @@ import {Pressable} from '../primitives/Pressable';
 import type {CommonDSProps} from '../types';
 
 import {createStyles, type DropdownSize} from './styles';
+import {Text} from '../../ThemedText';
 
 export type DropdownOption = {
   value: string;

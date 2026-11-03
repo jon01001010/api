@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = ({theme}: {theme: Theme}) =>
   StyleSheet.create({
@@ -27,6 +28,6 @@ export const createStyles = ({theme}: {theme: Theme}) =>
     logo: {
       width: 112,
       height: 112,
-      borderRadius: 30,
+      borderRadius: themeRadius(theme, 30),
     },
   });

@@ -2,7 +2,6 @@ import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   View,
   TouchableOpacity,
-  Text,
   ActivityIndicator,
   Platform,
   Alert,
@@ -27,6 +26,7 @@ import {createStyles} from './styles';
 import {ResponseBubble} from '../ResponseBubble';
 
 import {L10nContext} from '../../utils';
+import {Text} from '../ThemedText';
 
 interface EmbeddedVideoViewProps {
   onCapture: (imageBase64: string) => void;

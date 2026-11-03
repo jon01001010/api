@@ -1,11 +1,12 @@
 import React, {useState} from 'react';
-import {Text, TextInput, View, type TextInputProps} from 'react-native';
+import {View, type TextInputProps} from 'react-native';
 
 import {useTheme} from '../../../hooks';
 
 import type {CommonDSProps} from '../types';
 
 import {createStyles, type InputSize, type InputVariant} from './styles';
+import {Text, TextInput} from '../../ThemedText';
 
 export type InputProps = Omit<CommonDSProps, 'accessibilityRole'> & {
   variant?: InputVariant;

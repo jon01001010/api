@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {Image, ImageBackground, Text, View} from 'react-native';
+import {Image, ImageBackground, View} from 'react-native';
 
 import {useTheme} from '../../hooks';
 
@@ -7,6 +7,7 @@ import styles from './styles';
 
 import {MessageType, Size} from '../../utils/types';
 import {formatBytes, UserContext} from '../../utils';
+import {Text} from '../ThemedText';
 
 export interface ImageMessageProps {
   message: MessageType.DerivedImage;

@@ -1,10 +1,11 @@
 import React from 'react';
-import {Pressable, Text, View} from 'react-native';
+import {Pressable, View} from 'react-native';
 
 import {useTheme} from '../../../../hooks';
 import {TOPIC_KEYS, type TopicKey} from '../../../../store/onboarding/types';
 import {topicChipGlyphs} from '../../../../assets/onboarding/illustrations';
 import {createStyles} from './styles';
+import {Text} from '../../../../components/ThemedText';
 
 export type TopicChipGridProps = {
   selected: TopicKey | null;

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {Pressable, Text, View, Animated} from 'react-native';
+import {Pressable, View, Animated} from 'react-native';
 
 import {oneOf} from '@flyerhq/react-native-link-preview';
 import {observer} from 'mobx-react';
@@ -23,6 +23,7 @@ import {
 import {MessageType} from '../../utils/types';
 import {excludeDerivedMessageProps, UserContext} from '../../utils';
 import {visibleStepContent} from '../../utils/chat';
+import {Text} from '../ThemedText';
 
 const hapticOptions = {
   enableVibrateFallback: true,

@@ -1,18 +1,23 @@
 import {StyleSheet} from 'react-native';
 
-export const createStyles = (colors: {
-  background: string;
-  border: string;
-  text: string;
-  accent: string;
-}) =>
+import {type PhosphorAware, themeRadius} from '../../theme/phosphor';
+
+export const createStyles = (
+  colors: {
+    background: string;
+    border: string;
+    text: string;
+    accent: string;
+  },
+  theme?: PhosphorAware,
+) =>
   StyleSheet.create({
     container: {
       marginVertical: 8,
       marginHorizontal: 12,
       paddingVertical: 12,
       paddingHorizontal: 14,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
       borderLeftWidth: 3,

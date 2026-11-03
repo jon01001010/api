@@ -1,9 +1,10 @@
 import React, {useEffect, useState} from 'react';
-import {Text, View} from 'react-native';
+import {View} from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 
 import {useTheme} from '../../../../hooks';
 import {createStyles} from './styles';
+import {Text} from '../../../../components/ThemedText';
 
 export type DeviceInfoChipProps = {
   /** Visible language for the "GB RAM" / "GB free" suffixes. */

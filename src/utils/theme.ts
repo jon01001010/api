@@ -7,9 +7,18 @@ import {
 import {Theme} from './types';
 import {
   type Mode,
+  type ThemeStyle,
   resolveTokens,
   resolveTypographyForLocale,
 } from '../theme/tokens';
+import {
+  type RGB,
+  DEFAULT_PHOSPHOR_TINT,
+  buildPhosphorColors,
+  buildPhosphorPalette,
+  toPhosphorTextStyle,
+  toPhosphorTypography,
+} from '../theme/phosphor';
 import {type AvailableLanguage} from '../locales';
 
 // Note: the previous `AppTheme` enum ({Light, Dark, X1}) is gone. x1 was
@@ -100,12 +109,64 @@ const configuredFonts = configureFonts({
 export const buildTheme = ({
   mode,
   language,
+  style = 'default',
+  tint = DEFAULT_PHOSPHOR_TINT,
 }: {
   mode: Mode;
   language: AvailableLanguage;
+  style?: ThemeStyle;
+  /** Phosphor colour (Settings sliders); ignored in the default style. */
+  tint?: RGB;
 }): Theme => {
-  const baseTheme = mode === 'dark' ? MD3DarkTheme : PaperLightTheme;
-  const tokens = resolveTokens(mode);
+  const theme = buildBaseTheme({mode, language, style});
+  if (style === 'phosphor') {
+    const palette = buildPhosphorPalette(tint);
+    return applyPhosphor({
+      ...theme,
+      colors: {...theme.colors, ...buildPhosphorColors(palette)},
+      phosphorPalette: palette,
+    });
+  }
+  return theme;
+};
+
+/**
+ * Phosphor post-pass: monospace + glow on every legacy font style, mono
+ * typography tokens, square corners (Paper `roundness` and legacy
+ * `borders`). Colours already come from the Phosphor token binding.
+ */
+const applyPhosphor = (theme: Theme): Theme => {
+  const fonts = Object.fromEntries(
+    Object.entries(theme.fonts).map(([key, value]) => [
+      key,
+      value && typeof value === 'object'
+        ? toPhosphorTextStyle(value as object, theme.phosphorPalette)
+        : value,
+    ]),
+  ) as unknown as Theme['fonts'];
+  return {
+    ...theme,
+    roundness: 0,
+    fonts,
+    typography: toPhosphorTypography(theme.typography),
+    borders: {inputBorderRadius: 0, messageBorderRadius: 0, default: 0},
+  };
+};
+
+const buildBaseTheme = ({
+  mode,
+  language,
+  style,
+}: {
+  mode: Mode;
+  language: AvailableLanguage;
+  style: ThemeStyle;
+}): Theme => {
+  const isPhosphor = style === 'phosphor';
+  // Phosphor is always a dark binding so `theme.dark` branches hold.
+  const baseTheme =
+    mode === 'dark' || isPhosphor ? MD3DarkTheme : PaperLightTheme;
+  const tokens = resolveTokens(mode, style);
   const localeTypography = resolveTypographyForLocale(language);
 
   return {
@@ -227,6 +288,8 @@ export const buildTheme = ({
     stroke: tokens.stroke,
     typography: localeTypography,
     icons: {},
+    themeStyle: style,
+    isPhosphor,
   };
 };
 

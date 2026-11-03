@@ -1,5 +1,5 @@
 import React, {useContext} from 'react';
-import {Linking, Text} from 'react-native';
+import {Linking} from 'react-native';
 
 import {useTheme} from '../../../hooks';
 import {L10nContext} from '../../../utils';
@@ -7,6 +7,7 @@ import {undeliverableText} from '../../../utils/undeliverableCopy';
 import type {LedgerRecord} from '../../../store/PurchaseStore';
 
 import {createStyles} from './styles';
+import {Text} from '../../ThemedText';
 
 const APPLE_REFUND_URL = 'https://reportaproblem.apple.com';
 const REFUND_LINK = '{{refundLink}}';

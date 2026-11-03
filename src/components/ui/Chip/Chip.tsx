@@ -1,5 +1,5 @@
 import React from 'react';
-import {Text, View} from 'react-native';
+import {View} from 'react-native';
 
 import {useTheme} from '../../../hooks';
 import {Pressable} from '../primitives/Pressable';
@@ -8,6 +8,7 @@ import type {CommonDSProps, WithRequiredA11yLabel} from '../types';
 import {warnIfNoA11yLabel} from '../types';
 
 import {createStyles, type ChipSize, type ChipVariant} from './styles';
+import {Text} from '../../ThemedText';
 
 type ChipBase = CommonDSProps & {
   variant?: ChipVariant;

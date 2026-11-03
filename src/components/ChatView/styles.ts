@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../utils/types';
+import {themeColor, themeRadius} from '../../theme/phosphor';
 
 export const createStyles = ({theme}: {theme: Theme}) =>
   StyleSheet.create({
@@ -34,10 +35,10 @@ export const createStyles = ({theme}: {theme: Theme}) =>
       backgroundColor: theme.colors.primary,
       width: 35,
       height: 35,
-      borderRadius: 20,
+      borderRadius: themeRadius(theme, 20),
       justifyContent: 'center',
       alignItems: 'center',
-      shadowColor: '#000',
+      shadowColor: themeColor(theme, '#000'),
       shadowOffset: {
         width: 0,
         height: 2,
@@ -122,7 +123,7 @@ export const createStyles = ({theme}: {theme: Theme}) =>
     },
     bannerMeter: {
       height: 4,
-      borderRadius: 2,
+      borderRadius: themeRadius(theme, 2),
       backgroundColor: theme.colors.surfaceDisabled,
       overflow: 'hidden' as const,
       marginTop: 8,
@@ -131,7 +132,7 @@ export const createStyles = ({theme}: {theme: Theme}) =>
     },
     bannerMeterFill: {
       height: 4,
-      borderRadius: 2,
+      borderRadius: themeRadius(theme, 2),
     },
     bannerActions: {
       flexDirection: 'row' as const,

@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import {Theme} from '../../../../utils/types';
+import {themeFont, themeRadius} from '../../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -58,7 +59,7 @@ export const createStyles = (theme: Theme) =>
       marginVertical: 12,
       padding: 12,
       backgroundColor: theme.colors.surfaceVariant,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
     },
     optionBlock: {
       marginBottom: 12,
@@ -83,19 +84,19 @@ export const createStyles = (theme: Theme) =>
       marginBottom: 16,
     },
     resultText: {
-      fontFamily: 'monospace',
+      fontFamily: themeFont(theme, 'monospace'),
       fontSize: 14,
       lineHeight: 20,
     },
     streamingText: {
-      fontFamily: 'monospace',
+      fontFamily: themeFont(theme, 'monospace'),
       fontSize: 14,
       lineHeight: 20,
       marginTop: 10,
     },
     errorText: {
       color: theme.colors.error,
-      fontFamily: 'monospace',
+      fontFamily: themeFont(theme, 'monospace'),
       fontSize: 14,
     },
     divider: {
@@ -106,17 +107,17 @@ export const createStyles = (theme: Theme) =>
       marginBottom: 8,
     },
     codeBlock: {
-      fontFamily: 'monospace',
+      fontFamily: themeFont(theme, 'monospace'),
       fontSize: 12,
       backgroundColor: theme.colors.surfaceVariant,
       padding: 8,
-      borderRadius: 4,
+      borderRadius: themeRadius(theme, 4),
     },
     testOptionsContainer: {
       marginVertical: 12,
       padding: 8,
       backgroundColor: theme.colors.surfaceVariant,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
     },
     optionLabel: {
       marginBottom: 8,

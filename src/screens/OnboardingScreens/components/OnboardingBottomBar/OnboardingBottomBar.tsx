@@ -1,10 +1,11 @@
 import React from 'react';
-import {Pressable, Text, View} from 'react-native';
+import {Pressable, View} from 'react-native';
 
 import {ArrowRightGlyph} from '../../../../assets/onboarding/illustrations';
 import {ChevronLeftLgIcon, DownloadIcon} from '../../../../assets/icons';
 import {useTheme} from '../../../../hooks';
 import {createStyles} from './styles';
+import {Text} from '../../../../components/ThemedText';
 
 export type OnboardingBottomBarProps = {
   /** Visible label on the primary button. Omit for back-only bars. */

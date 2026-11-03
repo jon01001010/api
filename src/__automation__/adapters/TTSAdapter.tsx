@@ -1,7 +1,8 @@
 import React, {useCallback, useState} from 'react';
-import {View, TextInput, Text, StyleSheet} from 'react-native';
+import {View, StyleSheet} from 'react-native';
 
 import {runTtsCommand, readTtsStatus} from '../ttsAutomation';
+import {Text, TextInput} from '../../components/ThemedText';
 
 const READ_CMD = 'read::status';
 

@@ -1,6 +1,7 @@
 import {I18nManager, StyleSheet} from 'react-native';
 
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -14,7 +15,7 @@ export const createStyles = (theme: Theme) =>
       marginHorizontal: 16,
       marginBottom: 8,
       paddingHorizontal: 12,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       borderWidth: 1,
       borderColor: theme.colors.outlineVariant,
       backgroundColor: theme.colors.surfaceContainerLow,

@@ -39,6 +39,7 @@ import {getFullThumbnailUri} from '../../../../utils/imageUtils';
 import {getPalDisplayLabel} from '../../../../utils/palshub-display';
 import {hasVideoCapability} from '../../../../utils/pal-capabilities';
 import {isLocalPal, isPalsHubPal} from '../../../../utils/pal-type-guards';
+import {themeColor} from '../../../../theme/phosphor';
 
 interface SquarePalCardProps {
   pal: PalsHubPal | Pal;
@@ -148,10 +149,12 @@ const PalThumbnail: React.FC<{
 
   // Get pal colors for gradient background (local pals only)
   const palColors = isLocalPal(pal) ? pal.color : null;
-  const gradientColors =
+  const gradientColors = (
     Array.isArray(palColors) && palColors.length >= 2
       ? palColors
-      : ['#333333', '#e5e5e6']; // Default colors
+      : ['#333333', '#e5e5e6']
+  ) // Default colors
+    .map(c => themeColor(theme, c));
 
   // Get chat navigation icon (combines type + chat functionality)
   const getChatNavigationIcon = () => {

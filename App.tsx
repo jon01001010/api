@@ -54,6 +54,8 @@ import PalsScreen from './src/screens/PalsScreen';
 import {ToolboxScreen} from './src/screens/ToolboxScreen';
 import {PocketAgentHardwareScreen} from './src/screens/PocketAgentHardwareScreen';
 import {OnboardingStack} from './src/screens/OnboardingScreens';
+import {ScanlineOverlay} from './src/components/ScanlineOverlay';
+import {buildNavigationTheme} from './src/theme/navigationTheme';
 
 // Check if app is in debug mode
 const isDebugMode = __DEV__;
@@ -93,6 +95,10 @@ const SwitchPoint: React.FC<SwitchPointProps> = observer(({drawer}) => {
 
 const App = observer(() => {
   const theme = useTheme();
+  const navigationTheme = React.useMemo(
+    () => buildNavigationTheme(theme),
+    [theme],
+  );
   const styles = createStyles(theme);
   const currentL10n = l10n[uiStore.language];
 
@@ -118,7 +124,7 @@ const App = observer(() => {
             <L10nContext.Provider value={currentL10n}>
               <FileApprovalHost />
               <MarkdownProvider>
-                <NavigationContainer>
+                <NavigationContainer theme={navigationTheme}>
                   <DeepLinkHandler />
                   <BottomSheetModalProvider>
                     <SwitchPoint
@@ -245,6 +251,7 @@ const App = observer(() => {
           </PaperProvider>
         </KeyboardProvider>
       </SafeAreaProvider>
+      <ScanlineOverlay />
     </GestureHandlerRootView>
   );
 });

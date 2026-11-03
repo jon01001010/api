@@ -1,5 +1,5 @@
 import React from 'react';
-import {Text, View} from 'react-native';
+import {View} from 'react-native';
 
 import {useTheme} from '../../../hooks';
 
@@ -10,6 +10,7 @@ import {
   type CategoryBadgeSize,
   type CategoryBadgeVariant,
 } from './styles';
+import {Text} from '../../ThemedText';
 
 export type CategoryBadgeProps = Omit<CommonDSProps, 'disabled'> & {
   variant?: CategoryBadgeVariant;

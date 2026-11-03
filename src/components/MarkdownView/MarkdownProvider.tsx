@@ -11,6 +11,7 @@ import {useTheme} from '../../hooks';
 import {CodeRenderer} from './CodeRenderer';
 import {createTagsStyles} from './styles';
 import {tableHTMLElementModels, tableRenderers} from './TableRenderers';
+import {PHOSPHOR_FONT} from '../../theme/phosphor';
 
 /**
  * Hosts the heavy parts of react-native-render-html once for the app:
@@ -32,7 +33,14 @@ import {tableHTMLElementModels, tableRenderers} from './TableRenderers';
  */
 
 // Module-level constants — never change → never invalidate the engine.
-const SYSTEM_FONTS = defaultSystemFonts;
+// Bundled JetBrains Mono cuts are registered so the Phosphor style's
+// monospace body font is accepted by the renderer (unknown families are
+// dropped). Harmless in the default style, which never references them.
+const SYSTEM_FONTS = [
+  ...defaultSystemFonts,
+  PHOSPHOR_FONT.regular,
+  PHOSPHOR_FONT.medium,
+];
 const DEFAULT_TEXT_PROPS = {
   selectable: false,
   userSelect: 'none' as const,

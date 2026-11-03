@@ -1,5 +1,6 @@
 import {StyleSheet, Platform} from 'react-native';
 import {Theme} from '../../utils/types';
+import {themeFont, themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -13,12 +14,12 @@ export const createStyles = (theme: Theme) =>
       lineHeight: 18,
       backgroundColor: theme.colors.surfaceVariant,
       padding: 10,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
     },
     errorSection: {
       backgroundColor: theme.colors.errorContainer,
       padding: 10,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
     },
     errorLabel: {
       color: theme.colors.onErrorContainer,
@@ -29,7 +30,7 @@ export const createStyles = (theme: Theme) =>
     },
     groupContainer: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       overflow: 'hidden',
     },
     groupDisabled: {
@@ -67,10 +68,13 @@ export const createStyles = (theme: Theme) =>
     jsonText: {
       color: theme.colors.onSurface,
       fontSize: 11,
-      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      fontFamily: themeFont(
+        theme,
+        Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      ),
       backgroundColor: theme.colors.surfaceVariant,
       padding: 8,
-      borderRadius: 4,
+      borderRadius: themeRadius(theme, 4),
     },
     additionalSection: {
       gap: 6,

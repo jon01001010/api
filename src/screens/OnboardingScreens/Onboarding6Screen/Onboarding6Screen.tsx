@@ -1,5 +1,5 @@
 import React, {useEffect} from 'react';
-import {Text, View} from 'react-native';
+import {View} from 'react-native';
 import {observer} from 'mobx-react';
 
 import {modelStore, uiStore} from '../../../store';
@@ -16,6 +16,7 @@ import {ModelRadioGroup, type ModelOption} from '../components/ModelRadioGroup';
 import {PipMascot} from '../illustrations/PipMascot';
 import {useOnboardingHandlers} from '../useOnboardingHandlers';
 import {createStyles} from './styles';
+import {Text} from '../../../components/ThemedText';
 
 const formatSize = (bytes: number | undefined): string => {
   if (!bytes || bytes <= 0) {

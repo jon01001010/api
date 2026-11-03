@@ -2,6 +2,7 @@ import React from 'react';
 import Svg, {Circle, G, Path, Rect} from 'react-native-svg';
 
 import {useTheme} from '../../../hooks';
+import {themeColor} from '../../../theme/phosphor';
 
 export type PipMascotProps = {
   /** Outer width in RN points; height scales to keep aspect 66:62. */
@@ -35,8 +36,8 @@ export const PipMascot: React.FC<PipMascotProps> = ({width = 66}) => {
         height={viewBoxH - 3}
         rx={18}
         ry={18}
-        fill={MASCOT_BG}
-        stroke={MASCOT_BORDER}
+        fill={themeColor(theme, MASCOT_BG)}
+        stroke={themeColor(theme, MASCOT_BORDER)}
         strokeWidth={3}
       />
       <G>

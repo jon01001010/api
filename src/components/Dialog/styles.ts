@@ -1,6 +1,7 @@
 import {Dimensions, StyleSheet} from 'react-native';
 
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 const dialogHeight = Dimensions.get('window').height * 0.65;
 
@@ -9,7 +10,7 @@ export const createStyles = (theme: Theme, scrollableBorderShown?: boolean) =>
     dialog: {
       //maxHeight: '90%',
       backgroundColor: theme.colors.background,
-      borderRadius: 15,
+      borderRadius: themeRadius(theme, 15),
       margin: 0,
       padding: 0,
       width: '92%',

@@ -1,12 +1,5 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
-import {
-  Button,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import {Button, Platform, ScrollView, StyleSheet, View} from 'react-native';
 import {useRoute} from '@react-navigation/native';
 import RNDeviceInfo from 'react-native-device-info';
 import {
@@ -37,6 +30,7 @@ import {
   composeCellParams,
   type BenchBaseParams,
 } from '../benchParams';
+import {Text} from '../../components/ThemedText';
 
 // Top-level require keeps RNFS access DCE-friendly (matches the
 // MemoryAdapter pattern). The whole module is gated behind __E2E__ at

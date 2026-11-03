@@ -1,7 +1,8 @@
 import React, {useCallback, useState} from 'react';
-import {View, TextInput, Text, StyleSheet} from 'react-native';
+import {View, StyleSheet} from 'react-native';
 
 import {fakeStore} from '../fakeStore';
+import {Text, TextInput} from '../../components/ThemedText';
 
 /**
  * Hidden component that scripts the e2e FakeStore on Android, where the

@@ -1,15 +1,16 @@
 import {StyleSheet} from 'react-native';
 
 import {Theme} from '../../utils/types';
+import {themeColor, themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
     menu: {
-      shadowColor: 'rgba(0, 0, 0, 0.05)',
+      shadowColor: themeColor(theme, 'rgba(0, 0, 0, 0.05)'),
       shadowRadius: 70,
       shadowOffset: {width: 0, height: 0},
       elevation: 5,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       maxWidth: '90%',
     },
     menuWithSubmenu: {
@@ -19,7 +20,7 @@ export const createStyles = (theme: Theme) =>
     content: {
       paddingVertical: 0,
       backgroundColor: theme.colors.menuBackground,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       // overflow: 'hidden', This removes shadow
       marginRight: 10,
     },

@@ -1,11 +1,12 @@
 import {StyleSheet} from 'react-native';
 import type {Theme} from '../../../utils/types';
+import {themeColor, themeRadius} from '../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
     resultCard: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
       borderWidth: 1,
       borderColor: theme.colors.surfaceVariant,
     },
@@ -54,7 +55,7 @@ export const createStyles = (theme: Theme) =>
     resultsContainer: {
       marginBottom: 16,
       backgroundColor: theme.colors.surfaceVariant,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
       padding: 16,
     },
     resultRow: {
@@ -106,7 +107,7 @@ export const createStyles = (theme: Theme) =>
     },
     submitButton: {
       borderColor: theme.colors.primary,
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
     },
     errorText: {
       color: theme.colors.error,
@@ -160,14 +161,15 @@ export const createStyles = (theme: Theme) =>
     errorContainer: {
       marginTop: 10,
       padding: 10,
-      borderRadius: 6,
+      borderRadius: themeRadius(theme, 6),
       borderWidth: 1,
       backgroundColor: theme.colors.errorContainer,
       borderColor: theme.colors.error,
     },
     errorNetwork: {
-      backgroundColor: theme.colors.errorContainer || '#FFF9C4',
-      borderColor: theme.colors.error || '#FBC02D',
+      backgroundColor:
+        theme.colors.errorContainer || themeColor(theme, '#FFF9C4'),
+      borderColor: theme.colors.error || themeColor(theme, '#FBC02D'),
     },
     errorAppCheck: {
       backgroundColor: theme.colors.errorContainer,

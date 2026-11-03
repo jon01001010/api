@@ -2,6 +2,7 @@ import {StyleSheet} from 'react-native';
 
 import {getUserAvatarNameColor} from '../../utils';
 import {MessageType, Theme, User} from '../../utils/types';
+import {themeColor, themeRadius} from '../../theme/phosphor';
 
 export const styles = ({
   message,
@@ -53,7 +54,7 @@ export const styles = ({
     imageThumbnail: {
       width: 80,
       height: 80,
-      borderRadius: 8,
+      borderRadius: themeRadius(theme, 8),
       overflow: 'hidden',
       backgroundColor: theme.colors.surfaceVariant,
     },
@@ -63,7 +64,7 @@ export const styles = ({
     },
     imagePreviewModal: {
       flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      backgroundColor: themeColor(theme, 'rgba(0, 0, 0, 0.9)'),
       justifyContent: 'center',
       alignItems: 'center',
     },

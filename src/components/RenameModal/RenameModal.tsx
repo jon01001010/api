@@ -1,10 +1,11 @@
 import React, {useContext, useEffect} from 'react';
-import {Modal, TextInput, TouchableOpacity, View} from 'react-native';
+import {Modal, TouchableOpacity, View} from 'react-native';
 import {Text, useTheme} from 'react-native-paper';
 
 import {createStyles} from './styles';
 import {L10nContext} from '../../utils';
 import {chatSessionStore, SessionMetaData} from '../../store';
+import {TextInput} from '../ThemedText';
 
 interface RenameModalProps {
   visible: boolean;

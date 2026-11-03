@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../../../utils/types';
+import {themeRadius} from '../../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -21,7 +22,7 @@ export const createStyles = (theme: Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: theme.colors.surfaceContainerHigh,
-      borderRadius: 24,
+      borderRadius: themeRadius(theme, 24),
       paddingHorizontal: 16,
       paddingVertical: 8,
       gap: 8,
@@ -39,7 +40,7 @@ export const createStyles = (theme: Theme) =>
     },
     clearButton: {
       padding: 4,
-      borderRadius: 12,
+      borderRadius: themeRadius(theme, 12),
     },
     searchActions: {
       flexDirection: 'row',
@@ -48,7 +49,7 @@ export const createStyles = (theme: Theme) =>
 
     closeButton: {
       padding: 8,
-      borderRadius: 20,
+      borderRadius: themeRadius(theme, 20),
       backgroundColor: theme.colors.surfaceContainerHigh,
     },
   });

@@ -1,5 +1,6 @@
 import {StyleSheet} from 'react-native';
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -23,7 +24,7 @@ export const createStyles = (theme: Theme) =>
       marginTop: 10,
       padding: 8,
       backgroundColor: theme.colors.errorContainer,
-      borderRadius: 4,
+      borderRadius: themeRadius(theme, 4),
     },
     errorText: {
       color: theme.colors.error,

@@ -1,10 +1,11 @@
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 export const createTableStyles = (theme: Theme) => ({
   tableOuter: {
     borderWidth: 1,
     borderColor: theme.colors.outline,
-    borderRadius: 4,
+    borderRadius: themeRadius(theme, 4),
     marginVertical: 8,
     overflow: 'hidden' as const,
   },

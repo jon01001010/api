@@ -1,5 +1,5 @@
 import React, {useContext} from 'react';
-import {Pressable, Text, View} from 'react-native';
+import {Pressable, View} from 'react-native';
 import {observer} from 'mobx-react';
 import {useNavigation, NavigationProp} from '@react-navigation/native';
 
@@ -9,6 +9,8 @@ import {modelStore, palStore, uiStore} from '../../store';
 import {L10nContext} from '../../utils';
 import {ROUTES} from '../../utils/navigationConstants';
 import {bannerStyles as createStyles} from './styles';
+import {themeColor} from '../../theme/phosphor';
+import {Text} from '../ThemedText';
 
 const formatSize = (bytes: number): string => {
   if (!bytes || bytes <= 0) {
@@ -85,7 +87,7 @@ export const DownloadBanner: React.FC = observer(() => {
             style={[
               styles.avatar,
               failedPal?.color?.[0]
-                ? {backgroundColor: failedPal.color[0]}
+                ? {backgroundColor: themeColor(theme, failedPal.color[0])}
                 : null,
             ]}
           />

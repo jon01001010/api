@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import {Theme} from '../../utils/types';
+import {themeRadius} from '../../theme/phosphor';
 
 // Split-pill: speaker half (toggle auto-speak / stop playback) + hairline
 // divider + chevron half (open setup sheet). Collapses to a dimmed icon-only
@@ -11,7 +12,7 @@ export const createStyles = (theme: Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       height: 32,
-      borderRadius: 16,
+      borderRadius: themeRadius(theme, 16),
       overflow: 'hidden',
     },
     pillSpeakerHalf: {

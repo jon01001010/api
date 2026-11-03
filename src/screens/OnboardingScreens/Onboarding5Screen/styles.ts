@@ -2,6 +2,7 @@ import {StyleSheet} from 'react-native';
 
 import type {Theme} from '../../../utils/types';
 import {FONT_FAMILIES} from '../../../theme/tokens/typography';
+import {themeFont} from '../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) => {
   const isFraunces =
@@ -14,9 +15,10 @@ export const createStyles = (theme: Theme) => {
     },
     title: {
       // Figma `Headline/H2` — Fraunces Medium 24/28, centered.
-      fontFamily: isFraunces
-        ? FONT_FAMILIES.FRAUNCES_MEDIUM
-        : FONT_FAMILIES.INTER_MEDIUM,
+      fontFamily: themeFont(
+        theme,
+        isFraunces ? FONT_FAMILIES.FRAUNCES_MEDIUM : FONT_FAMILIES.INTER_MEDIUM,
+      ),
       fontSize: 24,
       lineHeight: 28,
       color: theme.colors.onBackground,

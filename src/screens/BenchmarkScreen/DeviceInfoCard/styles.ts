@@ -1,6 +1,7 @@
 import {StyleSheet} from 'react-native';
 
 import type {Theme} from '../../../utils/types';
+import {themeRadius} from '../../../theme/phosphor';
 
 export const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -9,7 +10,7 @@ export const createStyles = (theme: Theme) =>
       backgroundColor: theme.colors.surface,
       borderWidth: 1,
       borderColor: theme.colors.outline,
-      borderRadius: 15,
+      borderRadius: themeRadius(theme, 15),
     },
     deviceInfoRow: {
       flexDirection: 'row',

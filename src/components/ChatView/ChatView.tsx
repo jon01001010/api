@@ -91,6 +91,8 @@ import {
   PencilLineIcon,
   RefreshIcon,
 } from '../../assets/icons';
+import {themeColor} from '../../theme/phosphor';
+import {PhosphorCursor} from '../PhosphorCursor';
 
 type MenuItem = {
   label: string;
@@ -873,6 +875,10 @@ export const ChatView = observer(
     const activeRunPendingTalentNames =
       chatSessionStore.agentUiState.pendingTalentNames;
     const isGeneratingToolCall = agentStatus === 'generating_tool_call';
+    // Phosphor-only blinking cursor under the reply while tokens stream
+    // (PhosphorCursor renders nothing in the default style).
+    const isStreamingText =
+      agentStatus === 'streaming_text' && !chatSessionStore.isStopping;
 
     // Render individual message
     const renderMessage = React.useCallback(
@@ -1013,10 +1019,11 @@ export const ChatView = observer(
       () => (
         <>
           {isPending && <PendingIndicatorView />}
+          {isStreamingText && <PhosphorCursor />}
           {chatMessages.length > 0 && <Reanimated.View style={headerStyle} />}
         </>
       ),
-      [isPending, chatMessages.length, headerStyle],
+      [isPending, isStreamingText, chatMessages.length, headerStyle],
     );
 
     // Render complete chat list with scroll-to-bottom button
@@ -1133,7 +1140,7 @@ export const ChatView = observer(
 
     // ============ COMPUTED VALUES ============
     const inputBackgroundColor = activePal?.color?.[1]
-      ? activePal.color?.[1]
+      ? themeColor(theme, activePal.color?.[1])
       : theme.colors.surface;
 
     // Soft cap: warn the user before the 5th HTML preview in this session.
