@@ -295,3 +295,31 @@ describe('referencesRemoteResources', () => {
     '<script>const u = "https://not-a-src";</script>',
   ])('ignores %s', h => expect(referencesRemoteResources(h)).toBe(false));
 });
+
+describe('preview page colours', () => {
+  it('starts every page white with dark text, like a browser', () => {
+    const doc = wrapDocument('<p>hi</p>');
+    expect(doc).toMatch(
+      /html, body \{[^}]*background: #ffffff;[^}]*color: #111111;/,
+    );
+    expect(doc).toContain('color-scheme: light');
+    expect(doc).not.toContain('prefers-color-scheme: dark');
+  });
+
+  it("lets the page's own CSS win (it comes after the defaults)", () => {
+    const page = '<style>body{background:#000;color:#0f0}</style>';
+    const doc = wrapDocument(page);
+    expect(doc.indexOf('background: #ffffff')).toBeLessThan(doc.indexOf(page));
+  });
+
+  it('paints the WebView white too, so there is no dark flash', () => {
+    const {getByTestId} = render(<HtmlPreviewBubble html="<p>x</p>" />, {
+      withNavigation: true,
+    });
+    const style = getByTestId('html-preview-webview').props.style;
+    const flat = [style]
+      .flat(Infinity)
+      .reduce((a: object, b: object) => ({...a, ...b}), {});
+    expect(flat).toMatchObject({backgroundColor: '#ffffff'});
+  });
+});

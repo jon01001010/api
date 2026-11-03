@@ -102,12 +102,14 @@ const HEAD_INJECTION = `<meta http-equiv="Content-Security-Policy" content="${CS
   table, pre, code { max-width: 100%; overflow-x: auto; }
 </style>`;
 
+// Generated pages are written for a normal white browser page, so the
+// preview always starts from one (white background, dark text), whatever
+// the app theme. The page's own CSS comes later and still wins.
+export const PAGE_BACKGROUND = '#ffffff';
 const FRAGMENT_STYLES = `<style>
-  html, body { margin: 0; padding: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-  @media (prefers-color-scheme: dark) {
-    html, body { background: #1c1c1e; color: #f5f5f7; }
-    a { color: #4ea3ff; }
-  }
+  :root { color-scheme: light; }
+  html, body { margin: 0; padding: 12px; background: ${PAGE_BACKGROUND}; color: #111111; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  a { color: #0b57d0; }
 </style>`;
 
 /** Policy-first envelope: untrusted markup can never precede the CSP. */
@@ -206,7 +208,8 @@ const SandboxedHtmlView: React.FC<SandboxedHtmlViewProps> = ({
       onRenderProcessGone={fail}
       onContentProcessDidTerminate={fail}
       scrollEnabled={true}
-      style={style}
+      // White behind the page too, so there is no dark flash while it loads.
+      style={[style, {backgroundColor: PAGE_BACKGROUND}]}
       testID={testID}
     />
   );

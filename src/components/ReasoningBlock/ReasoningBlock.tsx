@@ -7,6 +7,7 @@ import {useTheme} from '../../hooks';
 import {ThinkingBubble} from '../ThinkingBubble';
 
 import {createTagsStyles} from '../MarkdownView/styles';
+import {PHOSPHOR_FONT} from '../../theme/phosphor';
 import {
   tableRenderers,
   tableHTMLElementModels,
@@ -53,7 +54,16 @@ export const ReasoningBlock: React.FC<ReasoningBlockProps> = React.memo(
       [],
     );
 
-    const systemFonts = useMemo(() => defaultSystemFonts, []);
+    // Register the bundled mono cuts, as the chat renderer does, so the
+    // Phosphor style's font isn't dropped (unknown families are ignored).
+    const systemFonts = useMemo(
+      () => [
+        ...defaultSystemFonts,
+        PHOSPHOR_FONT.regular,
+        PHOSPHOR_FONT.medium,
+      ],
+      [],
+    );
 
     const htmlContent = useMemo(() => marked(text) as string, [text]);
     const source = useMemo(() => ({html: htmlContent}), [htmlContent]);
