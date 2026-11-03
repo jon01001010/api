@@ -168,6 +168,13 @@ const NAMED: Record<string, RGBA> = {
   grey: {r: 128, g: 128, b: 128, a: 1},
   yellow: {r: 255, g: 255, b: 0, a: 1},
   orange: {r: 255, g: 165, b: 0, a: 1},
+  purple: {r: 128, g: 0, b: 128, a: 1},
+  pink: {r: 255, g: 192, b: 203, a: 1},
+  silver: {r: 192, g: 192, b: 192, a: 1},
+  lightgray: {r: 211, g: 211, b: 211, a: 1},
+  lightgrey: {r: 211, g: 211, b: 211, a: 1},
+  darkgray: {r: 169, g: 169, b: 169, a: 1},
+  darkgrey: {r: 169, g: 169, b: 169, a: 1},
 };
 
 export function parseColor(input: string): RGBA | null {
