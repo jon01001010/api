@@ -10,7 +10,7 @@ name: PocketAgent integration APK
 # Validate RNFS namespace runtime fix for Android file workspace (2026-11-01).
 on:
   push:
-    branches: [pocketagent-step1-integration]
+    branches: [main]
     paths:
       - '.github/workflows/pocketagent-integration-apk.yml'
   workflow_dispatch:
@@ -23,7 +23,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: api-helper-diagnostic-${{ github.ref }}
+  group: pocketagent-apk-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   diagnostic:

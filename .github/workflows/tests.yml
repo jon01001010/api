@@ -1,0 +1,36 @@
+name: Tests
+# Type check + the full Jest suite on every pull request and push to main,
+# so the suite stays at zero failures.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+      - name: Install locked dependencies and patches
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          chmod +x scripts/postinstall.sh
+          npm install --global yarn@1.22.22
+          yarn install --frozen-lockfile --non-interactive
+          node node_modules/patch-package/index.js --error-on-fail
+      - name: TypeScript
+        run: yarn typecheck
+      - name: Jest (full suite)
+        run: yarn jest --ci --silent --coverage=false

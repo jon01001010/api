@@ -1,11 +1,13 @@
 # PocketAgent TODO and Future Roadmap
 
+**Target: future phones and models.** The current test phone (Motorola Razr 2023) and small models (e.g. Qwen 3.5 2B) are a development stand-in; don't tune features or prompts for them.
+
 Updated: 2026-11-03. This document tracks planned work. Items marked done are done in code (with tests) on the open PR stack (#3 → #4 → #5 → todo-batch); anything that still needs checking on the phone is listed under **Phone checks**.
 
 ## Current validation and fixes
 
 - [x] Memory editor easy to reach: **Toolbox → Memory**, above Global System Prompt; History lists every snapshot to preview and restore (PR #5).
-- [x] Memory is added to Qwen's context on every run, User Memory has no model write tool, Model Memory writes need approval (code + tests, PR #5).
+- [x] Memory is added to the model's context on every run, User Memory has no model write tool, Model Memory writes need approval (code + tests, PR #5).
 - [x] Fix HTML preview stuck on **Loading…** in chat: JavaScript was disabled (PR #4).
 - [x] Render generated HTML/CSS/JavaScript live inside chat, including updating clocks and timers (PR #4).
 - [x] Save generated pages as `.html`: to the workspace or via the share sheet.
@@ -80,7 +82,7 @@ Not every phone has an app for every intent (e.g. no Clock app that handles `SET
   - No `CALL_PHONE`, `SEND_SMS` or `QUERY_ALL_PACKAGES`.
 - [ ] Voice: spoken requests ("Set a timer for 15 minutes") go through the existing chat and voice input to the same tools. Time parsing is in the tool arguments, which are validated (timer 1 s–24 h; alarm hour 0–23 / minute 0–59).
 - [ ] Tests: JS tool tests (argument validation, approval required, denied → nothing sent, unknown app → clear message). The Kotlin side can only be verified on the phone APK.
-- [ ] Phone checks on the Razr: timer, alarm, reminder, open app, navigation, music, camera, settings, and a "no app can handle this" case.
+- [ ] Phone checks on the test phone: timer, alarm, reminder, open app, navigation, music, camera, settings, and a "no app can handle this" case.
 
 **Phase 2: cross-app workflows (still intents only).**
 
@@ -93,7 +95,7 @@ Not every phone has an app for every intent (e.g. no Clock app that handles `SET
   - Google Play policy review;
   - careful safety design: explicit per-task consent, sensitive-screen blocklist (banking, passwords, payments), bounded retries, a stop button, and no free-form coordinate tapping without a visible target.
 - [ ] Reuse the ARTEMIS ideas listed above; learn from its Java helper (Apache-2.0, keep notices if any code is adapted).
-- [ ] Screenshots / local vision with offline Qwen 3.5 2B: investigate feasibility before committing.
+- [ ] Screenshots / local vision with an offline vision model on newer phones: investigate feasibility before committing.
 
 **Dropped from the old list:**
 
@@ -108,6 +110,8 @@ On hold until a better test phone is available. On the current test device (Moto
 - [ ] Do not replace or disable the working CPU backend; no fake NPU toggle.
 
 ## Other future work
+
+- [ ] Draft PR #2 (tool permissions dialog, tool diagnostics, guarded fetch / network policy) was closed as superseded; its branch `checkpoint/pocketagent-2026-10-21-integration` is kept. Port the useful parts onto `main` if wanted.
 
 - [ ] Offline voice, wake phrase, spoken responses, and smart-home routines.
 
@@ -136,6 +140,6 @@ Tasks:
 
 Phone checks:
 
-- [ ] Scanlines and glow perform well on the Razr.
+- [ ] Scanlines and glow perform well on the test phone.
 - [ ] Glow and scanlines don't hurt legibility; try several slider colours.
 - [ ] Before/after screenshots on device; confirm no behavior changes with Phosphor off.
