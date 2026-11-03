@@ -90,7 +90,9 @@ describe('tinted theme', () => {
     expect(theme.phosphorPalette).toEqual(p);
     expect(theme.colors.primary).toBe(p.fg);
     expect(theme.colors.background).toBe(p.bg);
-    expect(theme.fonts.bodyMedium.textShadowColor).toBe(p.glow);
+    expect(
+      (theme.fonts.bodyMedium as {textShadowColor?: string}).textShadowColor,
+    ).toBe(p.glow);
     // Literal colours map onto the tinted ramp.
     expect(themeColor(theme, '#ffffff')).toBe(p.emphasis);
   });
