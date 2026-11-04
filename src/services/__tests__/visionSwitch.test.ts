@@ -33,7 +33,11 @@ jest.mock('../../store', () => {
 });
 
 import {modelStore, uiStore} from '../../store';
-import {ensureVisionForPictures, undoVisionSwitch} from '../visionSwitch';
+import {
+  ensureVisionForPictures,
+  returnFromVision,
+  undoVisionSwitch,
+} from '../visionSwitch';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -96,5 +100,43 @@ describe('ensureVisionForPictures', () => {
     await undoVisionSwitch();
     expect(modelStore.selectModel).toHaveBeenCalledWith(textModel);
     expect(uiStore.visionSwitchNotice).toBeNull();
+  });
+});
+
+describe('returnFromVision (after the picture is answered)', () => {
+  it('loads the previous model again', async () => {
+    await ensureVisionForPictures();
+    await returnFromVision();
+    expect(modelStore.selectModel).toHaveBeenCalledWith(textModel);
+    expect(uiStore.visionSwitchNotice).toBeNull();
+  });
+
+  it('runs only once per switch', async () => {
+    await ensureVisionForPictures();
+    await returnFromVision();
+    await returnFromVision();
+    expect(modelStore.selectModel).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing after Undo', async () => {
+    await ensureVisionForPictures();
+    await undoVisionSwitch();
+    (modelStore.selectModel as jest.Mock).mockClear();
+    await returnFromVision();
+    expect(modelStore.selectModel).not.toHaveBeenCalled();
+  });
+
+  it('leaves a model the user picked meanwhile', async () => {
+    await ensureVisionForPictures();
+    (modelStore as any).activeModelId = 'other-model';
+    await returnFromVision();
+    expect(modelStore.selectModel).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when no switch happened', async () => {
+    mockState.canSee = true;
+    await ensureVisionForPictures();
+    await returnFromVision();
+    expect(modelStore.selectModel).not.toHaveBeenCalled();
   });
 });

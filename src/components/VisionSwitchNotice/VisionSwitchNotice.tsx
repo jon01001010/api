@@ -23,6 +23,9 @@ export const VisionSwitchNotice: React.FC = observer(() => {
         notice?.previousModelId
           ? {
               label: l10n.chat.undo,
+              // Outlined so it reads as a button, not part of the text.
+              mode: 'outlined',
+              testID: 'vision-switch-undo',
               onPress: () => {
                 undoVisionSwitch().catch(() => {});
               },

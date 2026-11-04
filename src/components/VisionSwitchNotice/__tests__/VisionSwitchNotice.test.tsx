@@ -20,7 +20,11 @@ describe('VisionSwitchNotice', () => {
       modelName: 'SmolVLM2',
     });
     const {getByText} = render(<VisionSwitchNotice />);
-    expect(getByText('Switched to SmolVLM2 to see your picture.')).toBeTruthy();
+    expect(
+      getByText(
+        'Switched to SmolVLM2 to see your picture. Your model comes back after the answer.',
+      ),
+    ).toBeTruthy();
     fireEvent.press(getByText('Undo'));
     expect(undoVisionSwitch).toHaveBeenCalled();
   });

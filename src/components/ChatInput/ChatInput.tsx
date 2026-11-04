@@ -35,7 +35,10 @@ import {useTheme} from '../../hooks';
 import {createStyles} from './styles';
 
 import {chatSessionStore, modelStore, palStore, uiStore} from '../../store';
-import {ensureVisionForPictures} from '../../services/visionSwitch';
+import {
+  ensureVisionForPictures,
+  returnFromVision,
+} from '../../services/visionSwitch';
 
 import {MessageType, ModelOrigin} from '../../utils/types';
 import {L10nContext, UserContext} from '../../utils';
@@ -51,7 +54,8 @@ export interface ChatInputTopLevelProps {
   isStreaming?: boolean;
   /** Will be called on {@link SendButton} tap. Has {@link MessageType.PartialText} which can
    * be transformed to {@link MessageType.Text} and added to the messages list. */
-  onSendPress: (message: MessageType.PartialText) => void;
+  /** May return a promise that settles when the reply has finished. */
+  onSendPress: (message: MessageType.PartialText) => unknown;
   onStopPress?: () => void;
   onCancelEdit?: () => void;
   onPalBtnPress?: () => void;
@@ -249,10 +253,12 @@ export const ChatInput = observer(
       if (isSwitchingToVision) {
         return;
       }
+      let switchedToVision = false;
       if (trimmedValue && selectedImages.length > 0 && !isVisionEnabled) {
         setIsSwitchingToVision(true);
         try {
           const result = await ensureVisionForPictures();
+          switchedToVision = result === 'switched';
           if (result === 'none') {
             uiStore.setChatWarning({
               code: 'multimodal',
@@ -286,11 +292,18 @@ export const ChatInput = observer(
         }
 
         // Include imageUris in the message object
-        onSendPress({
+        const sent = onSendPress({
           text: trimmedValue,
           type: 'text',
           imageUris: selectedImages.length > 0 ? selectedImages : undefined,
         });
+        if (switchedToVision) {
+          // Once the picture is answered, go back to the model the user had.
+          Promise.resolve(sent)
+            .catch(() => {})
+            .then(() => returnFromVision())
+            .catch(() => {});
+        }
         setText('');
         // Clear selected images after sending
         setSelectedImages([]);

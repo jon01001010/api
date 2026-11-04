@@ -50,11 +50,42 @@ export async function ensureVisionForPictures(): Promise<VisionSwitchResult> {
     modelId: target.id,
     modelName: target.name,
   });
+  pendingReturn = previousModelId
+    ? {previousModelId, visionModelId: target.id}
+    : null;
   return 'switched';
+}
+
+/**
+ * The model to go back to once the picture has been answered. Kept here,
+ * not in the notice, because the notice can time out before the reply ends.
+ */
+let pendingReturn: {previousModelId: string; visionModelId: string} | null =
+  null;
+
+/**
+ * After the reply to a picture: load the model that was active before the
+ * switch. Does nothing if the user already changed model (or tapped Undo).
+ */
+export async function returnFromVision(): Promise<void> {
+  const pending = pendingReturn;
+  pendingReturn = null;
+  if (!pending || modelStore.activeModelId !== pending.visionModelId) {
+    return;
+  }
+  const previous = modelStore.models.find(
+    m => m.id === pending.previousModelId,
+  );
+  if (!previous) {
+    return;
+  }
+  uiStore.setVisionSwitchNotice(null);
+  await modelStore.selectModel(previous);
 }
 
 /** Undo: load the model that was active before the switch. */
 export async function undoVisionSwitch(): Promise<void> {
+  pendingReturn = null;
   const notice = uiStore.visionSwitchNotice;
   uiStore.setVisionSwitchNotice(null);
   const previous = notice?.previousModelId

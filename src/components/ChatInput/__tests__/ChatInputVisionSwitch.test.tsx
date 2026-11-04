@@ -8,7 +8,10 @@ import {UserContext} from '../../../utils';
 import {ChatInput} from '../ChatInput';
 import {render} from '../../../../jest/test-utils';
 import {modelStore, uiStore} from '../../../store';
-import {ensureVisionForPictures} from '../../../services/visionSwitch';
+import {
+  ensureVisionForPictures,
+  returnFromVision,
+} from '../../../services/visionSwitch';
 
 jest.mock('react-native-image-picker', () => ({
   launchCamera: jest.fn(),
@@ -16,6 +19,7 @@ jest.mock('react-native-image-picker', () => ({
 }));
 jest.mock('../../../services/visionSwitch', () => ({
   ensureVisionForPictures: jest.fn(),
+  returnFromVision: jest.fn().mockResolvedValue(undefined),
 }));
 
 const visionModel = {
@@ -80,6 +84,34 @@ describe('ChatInput: picture sent to a text model', () => {
     expect(onSendPress).toHaveBeenCalledWith(
       expect.objectContaining({imageUris: ['file:///photo.jpg']}),
     );
+  });
+
+  it('goes back to the original model once the reply has finished', async () => {
+    (ensureVisionForPictures as jest.Mock).mockResolvedValue('switched');
+    let finishReply: () => void = () => {};
+    const reply = new Promise<void>(resolve => {
+      finishReply = resolve;
+    });
+    const {getByLabelText, onSendPress} = renderInput({
+      defaultImages: ['file:///photo.jpg'],
+    });
+    onSendPress.mockReturnValue(reply);
+    pressSend(getByLabelText);
+    await waitFor(() => expect(onSendPress).toHaveBeenCalled());
+    expect(returnFromVision).not.toHaveBeenCalled();
+    finishReply();
+    await waitFor(() => expect(returnFromVision).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not switch back when no switch was needed', async () => {
+    (ensureVisionForPictures as jest.Mock).mockResolvedValue('ready');
+    const {getByLabelText, onSendPress} = renderInput({
+      defaultImages: ['file:///photo.jpg'],
+    });
+    pressSend(getByLabelText);
+    await waitFor(() => expect(onSendPress).toHaveBeenCalled());
+    await new Promise(resolve => setImmediate(resolve));
+    expect(returnFromVision).not.toHaveBeenCalled();
   });
 
   it('keeps the draft when the switch is cancelled', async () => {
