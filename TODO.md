@@ -170,7 +170,7 @@ Not every phone has an app for every intent (e.g. no Clock app that handles `SET
 
 - "Evaluate ARTEMIS MCP integration": that is for driving a phone from a computer IDE, not for PocketAgent on the phone.
 
-## Voice assistant: wake word and voice control (researched, not implemented)
+## Voice assistant: wake word and voice control (phase 1 built, needs phone check)
 
 Goal: an Alexa-style assistant. Say a wake phrase, speak a request, and PocketAgent answers out loud and, for phone tasks, acts. Everything runs offline on the phone. Research done 2026-11-04; nothing built yet.
 
@@ -226,6 +226,16 @@ Like vision models, the app finds what's available instead of being tied to one 
    - Choice: sherpa-onnx keyword spotting (custom phrase, no training) if confirmed; otherwise openWakeWord.
    - On wake: a chime, then speech-to-text, the model answers and speaks.
    - Measure battery and false wakes on the phone before turning it on for anyone.
+
+### Phase 1 status (built 2026-11-04)
+- [x] Mic button in the chat input: tap to speak, tap again to stop early, long-press for Voice input settings.
+- [x] Speech-to-text on the phone with whisper.rn; any Whisper GGML model from Hugging Face (search, download, pick). Recommended default: `ggerganov/whisper.cpp` / `ggml-base.en.bin`.
+- [x] End of speech detected from loudness (no extra model); stops after a pause, when nothing is said, or at 30 s.
+- [x] Conversation mode: after the answer (and its speech, with auto-speak) listen again.
+- [x] Whisper model loaded only while in use.
+- [ ] Phone check: download the recommended model, speak a message, conversation mode with auto-speak on, mic permission prompt, a noisy room.
+- [ ] Measure Whisper speed and memory with a chat model loaded on the test phone.
+- Not yet: the Android built-in recognizer as a fallback (only Whisper for now).
 
 ### Safety and privacy
 - The mic is never on without a visible indicator (the app screen or the listening notification). Stop is always one tap away.
