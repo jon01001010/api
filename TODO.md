@@ -132,6 +132,18 @@ Goal: an Alexa-style assistant. Say a wake phrase, speak a request, and PocketAg
   - **sherpa-onnx streaming speech-to-text:** this would put wake word and speech-to-text in one library.
 - **Memory:** Whisper (or the wake-word model) has to share memory with the chat model, and on today's test phone only one large model fits well. A small speech-to-text model (Whisper tiny/base) is fine; the target is future phones.
 
+### Finding voice models (no fixed model)
+Like vision models, the app finds what's available instead of being tied to one model. The user can pick any compatible wake-word or speech-to-text model from Hugging Face.
+- **Models screen: a "Voice" search** next to the chat-model search. Today's search is limited to `gguf,conversational` (`HFStore.queryFilter`), so voice models never show.
+- **Compatibility is checked by the files in the repo; only models the app can run are offered:**
+  - Wake word, sherpa-onnx keyword spotter: encoder, decoder and joiner `.onnx` files plus `tokens.txt`.
+  - Wake word, openWakeWord: one classifier `.onnx` (the shared melspectrogram and embedding models ship with the app).
+  - Speech-to-text, whisper.rn: Whisper `ggml-*.bin` files.
+- **Tags in the list,** like today's Vision tag: **Wake word** and **Speech to text**. Also the size, and the language when the model card says.
+- **Settings → Voice** lists downloaded voice models; the user picks one for wake word and one for speech-to-text. A recommended default is suggested (the k2-fsa keyword spotter, Whisper base) but not forced.
+- **Unknown uploaders:** ONNX and GGML files are data, not code, but show the author and download count, and warn on new or unknown repos (like any download).
+- [ ] Confirm the file layouts above against real repos (needs `huggingface.co` allowed in this session's network settings).
+
 ### Plan (each phase usable on its own; ask before each)
 1. **Mic button and conversation mode.**
    - Tap the mic and speak; text appears in the input (whisper.rn plus voice detection), then it sends.
