@@ -27,8 +27,17 @@ export interface DownloadedWhisperModel extends WhisperModelRef {
   size: number;
 }
 
-/** Suggested default; the user can pick any other. */
+/**
+ * Suggested default; the user can pick any other. Tiny: about 75 MB and
+ * ~270 MB while running, so it fits next to a chat model on more phones.
+ */
 export const RECOMMENDED_WHISPER: WhisperModelRef = {
+  repo: 'ggerganov/whisper.cpp',
+  file: 'ggml-tiny.en.bin',
+};
+
+/** More accurate, about 150 MB (~390 MB while running). */
+export const ACCURATE_WHISPER: WhisperModelRef = {
   repo: 'ggerganov/whisper.cpp',
   file: 'ggml-base.en.bin',
 };

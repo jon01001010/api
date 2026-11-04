@@ -37,6 +37,11 @@ export class VoiceStore {
   /** Download progress 0–1 by model id. */
   downloads: Record<string, number> = {};
   isSheetOpen = false;
+  /** Wake word: what the background listener is doing (not persisted). */
+  wakeStatus: 'off' | 'listening' | 'paused' | 'error' = 'off';
+  wakeError: string | null = null;
+  /** What Whisper wrote down for the last utterance the wake word checked. */
+  lastHeard: string | null = null;
 
   constructor() {
     makeAutoObservable(this, {}, {autoBind: true});
@@ -86,6 +91,15 @@ export class VoiceStore {
 
   setWakeEnabled(on: boolean) {
     this.wakeEnabled = on;
+  }
+
+  setWakeStatus(status: VoiceStore['wakeStatus'], error: string | null = null) {
+    this.wakeStatus = status;
+    this.wakeError = error;
+  }
+
+  setLastHeard(text: string | null) {
+    this.lastHeard = text;
   }
 
   setWakePhrase(phrase: string) {

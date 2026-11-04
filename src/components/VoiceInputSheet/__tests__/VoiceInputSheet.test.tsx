@@ -27,6 +27,33 @@ describe('VoiceInputSheet', () => {
     expect(getByTestId('voice-download-recommended')).toBeTruthy();
   });
 
+  it('suggests a small model and a more accurate one', () => {
+    const {getByText, getByTestId} = render(<VoiceInputSheet />);
+    expect(getByText('ggml-tiny.en.bin')).toBeTruthy();
+    expect(getByText('ggml-base.en.bin')).toBeTruthy();
+    expect(getByTestId('voice-download-accurate')).toBeTruthy();
+  });
+
+  it('shows the wake status, its error, and what it last heard', () => {
+    runInAction(() => {
+      voiceStore.wakeStatus = 'error';
+      voiceStore.wakeError = 'Not listening: no native part';
+      voiceStore.lastHeard = 'Hey, Asian.';
+    });
+    const {getByTestId} = render(<VoiceInputSheet />);
+    expect(getByTestId('voice-wake-status')).toHaveTextContent(
+      'Not listening: no native part',
+    );
+    expect(getByTestId('voice-last-heard')).toHaveTextContent(
+      'Last heard: "Hey, Asian."',
+    );
+    runInAction(() => {
+      voiceStore.wakeStatus = 'off';
+      voiceStore.wakeError = null;
+      voiceStore.lastHeard = null;
+    });
+  });
+
   it('switches conversation mode', () => {
     const {getByTestId} = render(<VoiceInputSheet />);
     fireEvent(getByTestId('voice-conversation-switch'), 'valueChange', true);

@@ -29,12 +29,18 @@ import {createSegmenter} from './endpointer';
 import {
   base64ToBytes,
   releaseWhisper,
+  SpeechMemoryError,
   requestMicPermission,
   SAMPLE_RATE,
   transcribe,
 } from './speechInput';
 import {whisperModelPath} from './whisperModels';
-import {sendSpoken, setBeforeListen, startVoiceInput} from './voiceController';
+import {
+  memoryMessage,
+  sendSpoken,
+  setBeforeListen,
+  startVoiceInput,
+} from './voiceController';
 
 export const DEFAULT_WAKE_PHRASE = 'Hey Agent';
 
@@ -202,6 +208,7 @@ async function onUtterance(audio: Uint8Array) {
       audio,
       voiceStore.language,
     );
+    voiceStore.setLastHeard(text || '…');
     const hit = matchTargets(text, wakeTargets());
     if (!hit || voiceStore.state !== 'idle' || !streaming) {
       return;
@@ -224,6 +231,13 @@ async function onUtterance(audio: Uint8Array) {
     }
   } catch (error) {
     console.warn('[wake] check failed', error);
+    // Shown in Voice input settings, not as a popup on every utterance.
+    voiceStore.setWakeStatus(
+      'error',
+      error instanceof SpeechMemoryError
+        ? memoryMessage(error)
+        : String((error as Error)?.message ?? error),
+    );
   } finally {
     checking = false;
   }
@@ -234,6 +248,7 @@ function startStream() {
     return;
   }
   streaming = true;
+  voiceStore.setWakeStatus('listening');
   segmenter.reset();
   LiveAudioStream.init({
     sampleRate: SAMPLE_RATE,
@@ -258,6 +273,9 @@ function pauseStream() {
   streaming = false;
   segmenter.reset();
   Promise.resolve(LiveAudioStream.stop()).catch(() => {});
+  if (voiceStore.wakeStatus === 'listening') {
+    voiceStore.setWakeStatus(voiceStore.wakeEnabled ? 'paused' : 'off');
+  }
 }
 
 const nativeWake = () =>
@@ -300,21 +318,35 @@ export async function enableWake(): Promise<boolean> {
     return false;
   }
   await requestNotificationPermission();
-  try {
-    await nativeWake()?.start(voiceStore.wakePhrase);
-  } catch (error) {
-    console.warn('[wake] service failed to start', error);
-    warn(t.wakeFailed);
+  const native = nativeWake();
+  const fail = (reason: string) => {
+    warn(`${t.wakeFailed} (${reason})`);
+    voiceStore.setWakeStatus(
+      'error',
+      t.wakeStatusError.replace('{{reason}}', reason),
+    );
     voiceStore.setWakeEnabled(false);
     return false;
+  };
+  if (Platform.OS === 'android' && !native?.start) {
+    // Never skip silently: say the native part is missing.
+    return fail(t.wakeNoNative);
+  }
+  try {
+    await native?.start(voiceStore.wakePhrase);
+  } catch (error) {
+    console.warn('[wake] service failed to start', error);
+    return fail(String((error as Error)?.message ?? error));
   }
   voiceStore.setWakeEnabled(true);
+  voiceStore.setWakeStatus(streaming ? 'listening' : 'paused');
   return true;
 }
 
 export async function disableWake(): Promise<void> {
   voiceStore.setWakeEnabled(false);
   pauseStream();
+  voiceStore.setWakeStatus('off');
   await nativeWake()
     ?.stop()
     .catch(() => {});
@@ -355,6 +387,21 @@ export function watchWake(): () => void {
     {fireImmediately: true},
   );
   setBeforeListen(pauseStream);
+  // The native service couldn't start (and stopped itself).
+  const serviceError = DeviceEventEmitter.addListener(
+    'PocketAgentWakeError',
+    (reason: string) => {
+      voiceStore.setWakeEnabled(false);
+      pauseStream();
+      voiceStore.setWakeStatus(
+        'error',
+        uiStore.l10n.voiceAndSpeech.voiceInput.wakeStatusError.replace(
+          '{{reason}}',
+          String(reason),
+        ),
+      );
+    },
+  );
   const stopFromNotification = DeviceEventEmitter.addListener(
     'PocketAgentWakeStop',
     () => {
@@ -369,6 +416,7 @@ export function watchWake(): () => void {
     clearTimeout(timer);
     dispose();
     stopFromNotification.remove();
+    serviceError.remove();
     setBeforeListen(null);
     pauseStream();
   };

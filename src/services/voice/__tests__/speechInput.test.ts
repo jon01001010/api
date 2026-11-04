@@ -1,7 +1,10 @@
 import LiveAudioStream from '@fugood/react-native-audio-pcm-stream';
 import {initWhisper} from 'whisper.rn';
 
+import * as RNFS from '@dr.pogodin/react-native-fs';
+import NativeHardwareInfo from '../../../specs/NativeHardwareInfo';
 import {
+  SpeechMemoryError,
   base64ToBytes,
   cleanTranscript,
   listen,
@@ -89,6 +92,31 @@ describe('speechInput', () => {
     );
     await transcribe('/m/b.bin', audio);
     expect(initWhisper).toHaveBeenCalledTimes(2);
+    await releaseWhisper();
+  });
+
+  it("won't load the speech model when memory is too low", async () => {
+    await releaseWhisper();
+    (RNFS.stat as jest.Mock).mockResolvedValueOnce({size: 150e6});
+    (NativeHardwareInfo.getAvailableMemory as jest.Mock).mockResolvedValueOnce(
+      200e6,
+    );
+    (initWhisper as jest.Mock).mockClear();
+    await expect(
+      transcribe('/m/base.bin', new Uint8Array(4)),
+    ).rejects.toBeInstanceOf(SpeechMemoryError);
+    expect(initWhisper).not.toHaveBeenCalled();
+  });
+
+  it('loads it when there is room', async () => {
+    await releaseWhisper();
+    (RNFS.stat as jest.Mock).mockResolvedValueOnce({size: 75e6});
+    (NativeHardwareInfo.getAvailableMemory as jest.Mock).mockResolvedValueOnce(
+      2e9,
+    );
+    expect(await transcribe('/m/tiny.bin', new Uint8Array(4))).toBe(
+      'Hello there',
+    );
     await releaseWhisper();
   });
 });

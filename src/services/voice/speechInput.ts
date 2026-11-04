@@ -7,6 +7,9 @@
 import {PermissionsAndroid, Platform} from 'react-native';
 import LiveAudioStream from '@fugood/react-native-audio-pcm-stream';
 import {initWhisper, type WhisperContext} from 'whisper.rn';
+import * as RNFS from '@dr.pogodin/react-native-fs';
+
+import NativeHardwareInfo from '../../specs/NativeHardwareInfo';
 
 import {createEndpointer, type EndpointState} from './endpointer';
 
@@ -119,6 +122,38 @@ export function listen(onLevel?: (level: number) => void): ListenHandle {
   };
 }
 
+/** Not enough free memory to load the speech model next to the chat model. */
+export class SpeechMemoryError extends Error {
+  constructor(
+    readonly neededBytes: number,
+    readonly availableBytes: number,
+  ) {
+    super('Not enough free memory for the speech model');
+    this.name = 'SpeechMemoryError';
+  }
+}
+
+/**
+ * Whisper needs roughly 2.6x its file size while running (whisper.cpp:
+ * tiny ~270 MB, base ~390 MB). Loading it next to a big chat model can
+ * make Android close the app, so check first. If the check itself fails,
+ * go ahead (it is a guard, not a gate).
+ */
+export async function checkSpeechMemory(path: string): Promise<void> {
+  let size = 0;
+  let available = 0;
+  try {
+    size = Number((await RNFS.stat(path)).size) || 0;
+    available = await NativeHardwareInfo.getAvailableMemory();
+  } catch {
+    return;
+  }
+  const needed = Math.round(size * 2.6) + 100 * 1024 * 1024;
+  if (size > 0 && available > 0 && available < needed) {
+    throw new SpeechMemoryError(needed, available);
+  }
+}
+
 let loaded: {path: string; context: WhisperContext} | null = null;
 let loading: Promise<WhisperContext> | null = null;
 
@@ -133,6 +168,7 @@ async function getWhisper(path: string): Promise<WhisperContext> {
     }
   }
   await releaseWhisper();
+  await checkSpeechMemory(path);
   loading = initWhisper({filePath: path, useGpu: false});
   try {
     const context = await loading;

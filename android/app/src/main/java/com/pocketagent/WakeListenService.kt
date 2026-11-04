@@ -69,10 +69,20 @@ class WakeListenService : Service() {
             .setOngoing(true)
             .addAction(Notification.Action.Builder(null, "Stop", stop).build())
             .build()
-        if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-        } else {
-            startForeground(ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                startForeground(ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(ID, notification)
+            }
+        } catch (e: Exception) {
+            // Android refused the microphone service (e.g. permission or
+            // background-start rules). Report it instead of crashing the app.
+            reactContext
+                ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                ?.emit("PocketAgentWakeError", e.message ?: e.javaClass.simpleName)
+            stopSelf()
+            return START_NOT_STICKY
         }
         return START_NOT_STICKY
     }

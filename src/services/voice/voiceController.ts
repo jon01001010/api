@@ -18,6 +18,7 @@ import {whisperModelPath} from './whisperModels';
 import {
   listen,
   releaseWhisper,
+  SpeechMemoryError,
   requestMicPermission,
   transcribe,
   type ListenHandle,
@@ -54,6 +55,12 @@ const warn = (message: string) =>
     recoverable: true,
     severity: 'warning',
   } as any);
+
+const mb = (bytes: number) => `${Math.round(bytes / 1e6)} MB`;
+export const memoryMessage = (e: SpeechMemoryError) =>
+  uiStore.l10n.voiceAndSpeech.voiceInput.notEnoughMemory
+    .replace('{{needed}}', mb(e.neededBytes))
+    .replace('{{available}}', mb(e.availableBytes));
 
 /** Tap the mic: listen, transcribe, send. */
 export async function startVoiceInput(): Promise<StartResult> {
@@ -100,7 +107,11 @@ async function run(handle: ListenHandle, modelPath: string) {
     }
   } catch (error) {
     console.warn('[voice] input failed', error);
-    warn(uiStore.l10n.voiceAndSpeech.voiceInput.failed);
+    warn(
+      error instanceof SpeechMemoryError
+        ? memoryMessage(error)
+        : uiStore.l10n.voiceAndSpeech.voiceInput.failed,
+    );
   } finally {
     if (active === handle) {
       active = null;

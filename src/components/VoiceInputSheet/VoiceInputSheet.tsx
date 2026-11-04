@@ -16,6 +16,7 @@ import {L10nContext} from '../../utils';
 import {t} from '../../locales';
 import {disableWake, enableWake} from '../../services/voice/wakeWord';
 import {
+  ACCURATE_WHISPER,
   RECOMMENDED_WHISPER,
   searchWhisperModels,
   whisperModelId,
@@ -152,6 +153,29 @@ export const VoiceInputSheet: React.FC = observer(() => {
             onValueChange={toggleWake}
           />
         </View>
+        <Text
+          testID="voice-wake-status"
+          style={[
+            styles.meta,
+            voiceStore.wakeStatus === 'error'
+              ? {color: theme.colors.error}
+              : muted,
+          ]}>
+          {voiceStore.wakeStatus === 'error'
+            ? voiceStore.wakeError
+            : voiceStore.wakeStatus === 'listening'
+              ? l10n.voiceAndSpeech.voiceInput.wakeStatusListening
+              : voiceStore.wakeStatus === 'paused'
+                ? l10n.voiceAndSpeech.voiceInput.wakeStatusPaused
+                : l10n.voiceAndSpeech.voiceInput.wakeStatusOff}
+        </Text>
+        {voiceStore.lastHeard ? (
+          <Text testID="voice-last-heard" style={[styles.meta, muted]}>
+            {t(l10n.voiceAndSpeech.voiceInput.lastHeard, {
+              text: voiceStore.lastHeard,
+            })}
+          </Text>
+        ) : null}
         <View style={styles.searchRow}>
           <Text style={[styles.meta, muted]}>
             {l10n.voiceAndSpeech.voiceInput.wakePhrase}
@@ -212,20 +236,30 @@ export const VoiceInputSheet: React.FC = observer(() => {
           })
         )}
 
-        {!voiceStore.isDownloaded(RECOMMENDED_WHISPER) ? (
-          <View style={styles.row}>
-            <View style={styles.rowText}>
-              <Text style={styles.label}>
-                {l10n.voiceAndSpeech.voiceInput.recommended}:{' '}
-                {RECOMMENDED_WHISPER.file}
-              </Text>
-              <Text style={[styles.meta, muted]}>
-                {RECOMMENDED_WHISPER.repo}
-              </Text>
+        {[
+          {
+            model: RECOMMENDED_WHISPER,
+            label: l10n.voiceAndSpeech.voiceInput.recommendedTiny,
+            testID: 'voice-download-recommended',
+          },
+          {
+            model: ACCURATE_WHISPER,
+            label: l10n.voiceAndSpeech.voiceInput.recommendedBase,
+            testID: 'voice-download-accurate',
+          },
+        ]
+          .filter(({model}) => !voiceStore.isDownloaded(model))
+          .map(({model, label, testID}) => (
+            <View key={testID} style={styles.row}>
+              <View style={styles.rowText}>
+                <Text style={styles.label}>{model.file}</Text>
+                <Text style={[styles.meta, muted]}>
+                  {label} · {model.repo}
+                </Text>
+              </View>
+              {downloadButton(model, testID)}
             </View>
-            {downloadButton(RECOMMENDED_WHISPER, 'voice-download-recommended')}
-          </View>
-        ) : null}
+          ))}
 
         <Text style={styles.heading}>
           {l10n.voiceAndSpeech.voiceInput.findModels}
