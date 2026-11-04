@@ -39,6 +39,8 @@ import {
   ensureVisionForPictures,
   returnFromVision,
 } from '../../services/visionSwitch';
+import {setVoiceSender} from '../../services/voice/voiceController';
+import {MicButton} from '../MicButton';
 
 import {MessageType, ModelOrigin} from '../../utils/types';
 import {L10nContext, UserContext} from '../../utils';
@@ -248,8 +250,9 @@ export const ChatInput = observer(
       modelStore.visionModels.length > 0;
     const canAttachPictures = isVisionEnabled || canSwitchToVision;
 
-    const handleSend = async () => {
-      const trimmedValue = value.trim();
+    // `spoken` is text from voice input, sent as if typed.
+    const handleSend = async (spoken?: string) => {
+      const trimmedValue = (spoken ?? value).trim();
       if (isSwitchingToVision) {
         return;
       }
@@ -309,6 +312,18 @@ export const ChatInput = observer(
         setSelectedImages([]);
       }
     };
+
+    // Voice input sends through the same path as typing. The latest
+    // handleSend is kept in a ref so the registration stays current.
+    const handleSendRef = React.useRef(handleSend);
+    handleSendRef.current = handleSend;
+    React.useEffect(() => {
+      const send = (spokenText: string) => {
+        handleSendRef.current(spokenText).catch(() => {});
+      };
+      setVoiceSender(send);
+      return () => setVoiceSender(null);
+    }, []);
 
     // Handle plus button press to show image upload menu
     const handlePlusButtonPress = () => {
@@ -926,6 +941,11 @@ export const ChatInput = observer(
                   returns null when TTS is unavailable. */}
               <VoiceChip />
 
+              {/* Speak a message (voice input). */}
+              {!isStopVisible && !isVideoCapable ? (
+                <MicButton color={onSurfaceColor} />
+              ) : null}
+
               {/* Send/Stop Button */}
               {isStopVisible ? (
                 <StopButton color={onSurfaceColor} onPress={onStopPress} />
@@ -956,7 +976,7 @@ export const ChatInput = observer(
                   <View style={{opacity: sendButtonOpacity}}>
                     <SendButton
                       color={onSurfaceColor}
-                      onPress={handleSend}
+                      onPress={() => handleSend()}
                       touchableOpacityProps={{
                         disabled: isStopping,
                         accessibilityState: {disabled: isStopping},

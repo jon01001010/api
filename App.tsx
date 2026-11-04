@@ -30,6 +30,7 @@ import {
   HeaderLeft,
   AppWithMigration,
   TTSSetupSheet,
+  VoiceInputSheet,
   DownloadOverlay,
   HubRunSheetHost,
 } from './src/components';
@@ -242,6 +243,7 @@ const App = observer(() => {
                       }
                     />
                     <TTSSetupSheet />
+                    <VoiceInputSheet />
                     <DownloadOverlay />
                     <HubRunSheetHost />
                   </BottomSheetModalProvider>

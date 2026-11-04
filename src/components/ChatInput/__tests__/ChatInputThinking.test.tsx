@@ -51,6 +51,11 @@ jest.mock('../../../store', () => ({
     openSetupSheet: jest.fn(),
     setAutoSpeak: jest.fn(),
   },
+  voiceStore: {
+    state: 'idle',
+    level: 0,
+    openSheet: jest.fn(),
+  },
 }));
 
 // Mock the icons
