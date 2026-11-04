@@ -96,6 +96,26 @@ describe('ModelSettings', () => {
     expect(mockProps.onModelNameChange).toHaveBeenCalledWith('My Custom Name');
   });
 
+  it('shows the wake words field next to the name when enabled', () => {
+    const onWakeWordsChange = jest.fn();
+    const {getByTestId, getByText} = render(
+      <ModelSettings
+        {...mockProps}
+        wakeWords="Hey Jarvis"
+        onWakeWordsChange={onWakeWordsChange}
+      />,
+    );
+    expect(getByText('Wake words')).toBeTruthy();
+    expect(getByTestId('wake-words-input').props.value).toBe('Hey Jarvis');
+    fireEvent.changeText(getByTestId('wake-words-input'), 'Hey Friday');
+    expect(onWakeWordsChange).toHaveBeenCalledWith('Hey Friday');
+  });
+
+  it('hides the wake words field when not wired', () => {
+    const {queryByTestId} = render(<ModelSettings {...mockProps} />);
+    expect(queryByTestId('wake-words-input')).toBeNull();
+  });
+
   it('handles BOS token changes', async () => {
     const {getByPlaceholderText} = render(<ModelSettings {...mockProps} />);
 

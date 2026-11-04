@@ -27,6 +27,9 @@ interface ModelSettingsSheetProps {
 export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
   ({isVisible, onClose, model}) => {
     const [tempModelName, setTempModelName] = useState(model?.name || '');
+    const [tempWakeWords, setTempWakeWords] = useState(
+      (model?.wakeWords ?? []).join(', '),
+    );
     const [tempChatTemplate, setTempChatTemplate] = useState(
       model?.chatTemplate || chatTemplates.default,
     );
@@ -87,6 +90,7 @@ export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
     useEffect(() => {
       if (model) {
         setTempModelName(model.name);
+        setTempWakeWords((model.wakeWords ?? []).join(', '));
         setTempChatTemplate(model.chatTemplate);
         setTempStopWords(model.stopWords || []);
         const cap = resolveReasoningCapability(
@@ -116,6 +120,7 @@ export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
       if (model) {
         if (!isRemote) {
           modelStore.updateModelName(model.id, tempModelName);
+          modelStore.updateModelWakeWords(model.id, tempWakeWords.split(','));
           modelStore.updateModelChatTemplate(model.id, tempChatTemplate);
           modelStore.updateModelStopWords(model.id, tempStopWords);
         }
@@ -141,6 +146,7 @@ export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
       if (model) {
         // Reset to store values
         setTempModelName(model.name);
+        setTempWakeWords((model.wakeWords ?? []).join(', '));
         setTempChatTemplate(model.chatTemplate);
         setTempStopWords(model.stopWords || []);
       }
@@ -181,6 +187,8 @@ export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
               onChange={handleSettingsUpdate}
               onStopWordsChange={value => setTempStopWords(value || [])}
               onModelNameChange={handleModelNameChange}
+              wakeWords={tempWakeWords}
+              onWakeWordsChange={setTempWakeWords}
             />
           )}
 

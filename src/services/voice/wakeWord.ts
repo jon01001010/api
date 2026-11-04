@@ -111,6 +111,69 @@ export function matchWake(
   return {woke: false, rest: ''};
 }
 
+export interface WakeTarget {
+  phrase: string;
+  /** Model that answers; undefined = the loaded (or last used) model. */
+  modelId?: string;
+}
+
+/** All phrases to listen for: the general one plus each model's own. */
+export function wakeTargets(): WakeTarget[] {
+  const targets: WakeTarget[] = [{phrase: voiceStore.wakePhrase}];
+  for (const m of modelStore.models ?? []) {
+    if (!m.isDownloaded) {
+      continue;
+    }
+    for (const phrase of m.wakeWords ?? []) {
+      targets.push({phrase, modelId: m.id});
+    }
+  }
+  return targets;
+}
+
+/**
+ * Which target the utterance woke, if any. When several match, the
+ * longest phrase wins ("Hey Jarvis" over a general "Hey").
+ */
+export function matchTargets(
+  transcript: string,
+  targets: WakeTarget[],
+): {target: WakeTarget; rest: string} | null {
+  let best: {target: WakeTarget; rest: string} | null = null;
+  for (const target of targets) {
+    const {woke, rest} = matchWake(transcript, target.phrase);
+    if (
+      woke &&
+      (!best || words(target.phrase).length > words(best.target.phrase).length)
+    ) {
+      best = {target, rest};
+    }
+  }
+  return best;
+}
+
+/**
+ * Load the model the wake word asked for (or, for the general phrase,
+ * the last used one when nothing is loaded).
+ */
+async function ensureModelFor(target: WakeTarget): Promise<boolean> {
+  const wanted = target.modelId
+    ? modelStore.models.find(m => m.id === target.modelId)
+    : (modelStore.activeModel ?? modelStore.lastUsedModel);
+  if (!wanted) {
+    return !!modelStore.activeModel;
+  }
+  if (modelStore.activeModelId === wanted.id) {
+    return true;
+  }
+  try {
+    await modelStore.selectModel(wanted);
+  } catch (error) {
+    console.warn('[wake] could not load model', error);
+  }
+  return modelStore.activeModelId === wanted.id;
+}
+
 const replyRunning = () =>
   modelStore.isGenerationBusy ||
   [
@@ -139,12 +202,21 @@ async function onUtterance(audio: Uint8Array) {
       audio,
       voiceStore.language,
     );
-    const {woke, rest} = matchWake(text, voiceStore.wakePhrase);
-    if (!woke || voiceStore.state !== 'idle' || !streaming) {
+    const hit = matchTargets(text, wakeTargets());
+    if (!hit || voiceStore.state !== 'idle' || !streaming) {
       return;
     }
+    const {target, rest} = hit;
     Vibration.vibrate(60);
     pauseStream();
+    // Busy while the right model loads, so the mic stays closed.
+    voiceStore.setState('transcribing');
+    const ready = await ensureModelFor(target);
+    voiceStore.setState('idle');
+    if (!ready) {
+      warn(uiStore.l10n.voiceAndSpeech.voiceInput.wakeModelFailed);
+      return;
+    }
     if (rest) {
       sendSpoken(rest);
     } else {

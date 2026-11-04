@@ -243,7 +243,9 @@ Like vision models, the app finds what's available instead of being tied to one 
 - [x] Background: `WakeListenService`, a microphone-type foreground service, with a "Listening for …" notification and Stop. Started only while the app is visible (Android 14 rule); turned back on when the app opens if it was left on.
 - [x] The mic is released while voice input listens, a reply runs, or the app is speaking, so it never hears itself.
 - [x] Steady background noise (fan, traffic) is learned and ignored.
+- [x] Per-model wake words: a **Wake words** field next to the model's name in its settings ("Hey Jarvis, Jarvis"). Saying one picks that model and loads it if it isn't loaded. The general phrase ("Hey Agent") uses the loaded model, or the last used one.
 - [ ] Phone check: turn it on, close the app, say the phrase (with and without a request), screen off, the notification's Stop, a noisy room, TV talking.
+- [ ] Phone check: give two models wake words, wake each by name with no model loaded and with the other loaded (loading in the background; check the memory warning doesn't block it).
 - [ ] Measure battery over a day and false wakes (it runs Whisper on any speech it hears).
 - Later: a dedicated low-power wake engine (sherpa-onnx) if battery is a problem; opening as the default assistant (phase 3).
 

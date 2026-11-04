@@ -471,6 +471,9 @@
       }
     },
     "modelSettings": {
+      "wakeWords": "Wake words",
+      "wakeWordsPlaceholder": "e.g. Hey Jarvis, Jarvis",
+      "wakeWordsHint": "Say one of these to talk to this model (separate with commas). It loads the model if it isn't loaded. Needs Wake word on in Voice input.",
       "template": {
         "label": "Template:",
         "editButton": "Edit",
@@ -1549,10 +1552,11 @@
       "downloadFailed": "Download failed. Check your connection and try again.",
       "unknownAuthor": "From {{author}}: not a well-known uploader. Only download models you trust.",
       "wakeWord": "Wake word",
-      "wakeWordHint": "Listen for the phrase, also with the app closed or the screen off. Android shows a \"listening\" notification with Stop while it's on. Uses more battery.",
-      "wakePhrase": "Wake phrase",
+      "wakeWordHint": "Listen for the phrase below (or a model's own wake words, set in its settings), also with the app closed or the screen off. Android shows a \"listening\" notification with Stop while it's on. Uses more battery.",
+      "wakePhrase": "Wake phrase (any model)",
       "wakeNeedsModel": "Download a speech-to-text model first; the wake word uses it to hear the phrase.",
-      "wakeFailed": "Couldn't start listening in the background. Open PocketAgent and try again."
+      "wakeFailed": "Couldn't start listening in the background. Open PocketAgent and try again.",
+      "wakeModelFailed": "Heard you, but couldn't load the model. Open PocketAgent to check it."
     },
     "sectionTitle": "Voice & Speech",
     "voiceRowTitle": "Voice",

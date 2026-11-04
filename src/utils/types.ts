@@ -589,6 +589,8 @@ export interface Model {
   author: string;
   repo?: string; // Repository name (e.g., "gemma-2-2b-it-GGUF")
   name: string;
+  /** Phrases that wake this model by voice, e.g. ["Hey Jarvis"]. */
+  wakeWords?: string[];
   type?: string;
   capabilities?: SkillKey[]; // Array of capability keys
   size: number; // Size in bytes

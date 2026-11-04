@@ -55,6 +55,14 @@ export const createStyles = (theme: Theme) =>
       ...theme.fonts.titleMediumLight,
       paddingVertical: 8,
     },
+    wakeWordsLabel: {
+      marginTop: 8,
+    },
+    wakeWordsHint: {
+      fontSize: 12,
+      color: theme.colors.onSurfaceVariant,
+      marginTop: 4,
+    },
     divider: {
       marginVertical: 4,
     },

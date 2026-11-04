@@ -6,7 +6,38 @@ jest.mock('../../../store', () => {
   const {observable: obs} = jest.requireActual('mobx');
   return {
     chatSessionStore: obs({agentUiState: {status: 'idle'}}),
-    modelStore: obs({isGenerationBusy: false}),
+    modelStore: obs(
+      {
+        isGenerationBusy: false,
+        activeModelId: 'qwen' as string | undefined,
+        models: [
+          {id: 'qwen', name: 'Qwen', isDownloaded: true, wakeWords: []},
+          {
+            id: 'jarvis-model',
+            name: 'Jarvis',
+            isDownloaded: true,
+            wakeWords: ['Hey Jarvis', 'Jarvis'],
+          },
+          {
+            id: 'not-downloaded',
+            name: 'Friday',
+            isDownloaded: false,
+            wakeWords: ['Hey Friday'],
+          },
+        ],
+        get activeModel() {
+          return this.models.find((m: any) => m.id === this.activeModelId);
+        },
+        get lastUsedModel() {
+          return this.models[0];
+        },
+        selectModel: jest.fn(function (this: any, m: any) {
+          this.activeModelId = m.id;
+          return Promise.resolve();
+        }),
+      },
+      {selectModel: false},
+    ),
     ttsStore: obs({playbackState: {mode: 'idle'}}),
     uiStore: {
       setChatWarning: jest.fn(),
@@ -31,6 +62,9 @@ jest.mock('../../../store', () => {
       setWakeEnabled(on: boolean) {
         this.wakeEnabled = on;
       },
+      setState(state: string) {
+        this.state = state;
+      },
     }),
   };
 });
@@ -52,7 +86,14 @@ jest.mock('../voiceController', () => ({
 const store = jest.requireMock('../../../store');
 const speech = jest.requireMock('../speechInput');
 const controller = jest.requireMock('../voiceController');
-import {disableWake, enableWake, isWakeStreaming, watchWake} from '../wakeWord';
+import {
+  disableWake,
+  enableWake,
+  isWakeStreaming,
+  matchTargets,
+  watchWake,
+  wakeTargets,
+} from '../wakeWord';
 
 const emit = (LiveAudioStream as any).emit as (b64: string) => void;
 const chunkB64 = (amplitude: number) => {
@@ -99,6 +140,7 @@ describe('wake word', () => {
       store.voiceStore.wakeEnabled = true;
       store.voiceStore.state = 'idle';
       store.chatSessionStore.agentUiState = {status: 'idle'};
+      store.modelStore.activeModelId = 'qwen';
     });
     stop = watchWake();
   });
@@ -136,6 +178,57 @@ describe('wake word', () => {
     await settle();
     expect(controller.startVoiceInput).toHaveBeenCalled();
     expect(controller.sendSpoken).not.toHaveBeenCalled();
+  });
+
+  it("a model's own wake word loads that model first", async () => {
+    await listening();
+    speech.transcribe.mockResolvedValue('Hey Jarvis, tell me a joke');
+    utter();
+    await settle();
+    expect(store.modelStore.selectModel).toHaveBeenCalledWith(
+      expect.objectContaining({id: 'jarvis-model'}),
+    );
+    expect(store.modelStore.activeModelId).toBe('jarvis-model');
+    expect(controller.sendSpoken).toHaveBeenCalledWith('tell me a joke');
+  });
+
+  it('the general phrase loads the last used model when none is loaded', async () => {
+    runInAction(() => {
+      store.modelStore.activeModelId = undefined;
+    });
+    await listening();
+    speech.transcribe.mockResolvedValue('Hey Agent, hello');
+    utter();
+    await settle();
+    expect(store.modelStore.selectModel).toHaveBeenCalledWith(
+      expect.objectContaining({id: 'qwen'}),
+    );
+    expect(controller.sendSpoken).toHaveBeenCalledWith('hello');
+  });
+
+  it("doesn't reload a model that is already loaded", async () => {
+    await listening();
+    speech.transcribe.mockResolvedValue('Hey Agent, hello');
+    utter();
+    await settle();
+    expect(store.modelStore.selectModel).not.toHaveBeenCalled();
+  });
+
+  it('listens for every downloaded model, longest phrase first', () => {
+    const targets = wakeTargets();
+    expect(targets.map(t => t.phrase)).toEqual([
+      'Hey Agent',
+      'Hey Jarvis',
+      'Jarvis',
+    ]);
+    expect(matchTargets('Hey Jarvis, hi', targets)).toEqual({
+      target: {phrase: 'Hey Jarvis', modelId: 'jarvis-model'},
+      rest: 'hi',
+    });
+    expect(matchTargets('Jarvis hi', targets)?.target.modelId).toBe(
+      'jarvis-model',
+    );
+    expect(matchTargets('Hey Friday', targets)).toBeNull();
   });
 
   it('ignores other speech and keeps listening', async () => {

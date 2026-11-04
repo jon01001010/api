@@ -3084,6 +3084,16 @@ class ModelStore {
     }
   };
 
+  /** Voice wake words for this model (blank entries dropped). */
+  updateModelWakeWords = (modelId: string, wakeWords: string[]) => {
+    const model = this.models.find(m => m.id === modelId);
+    if (model) {
+      runInAction(() => {
+        model.wakeWords = wakeWords.map(w => w.trim()).filter(Boolean);
+      });
+    }
+  };
+
   resetModels = async () => {
     const localModels = this.models.filter(
       model => model.isLocal || model.origin === ModelOrigin.LOCAL,

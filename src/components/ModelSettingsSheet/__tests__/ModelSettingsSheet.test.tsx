@@ -9,8 +9,17 @@ import {defaultCompletionParams} from '../../../utils/completionSettingsVersions
 jest.mock('../../../screens/ModelsScreen/ModelSettings', () => {
   const {View} = require('react-native');
   return {
-    ModelSettings: ({onChange, onStopWordsChange, onModelNameChange}) => (
+    ModelSettings: ({
+      onChange,
+      onStopWordsChange,
+      onModelNameChange,
+      onWakeWordsChange,
+    }) => (
       <View testID="model-settings">
+        <View
+          testID="mock-wake-words-update"
+          onPress={() => onWakeWordsChange('Hey Jarvis, Jarvis')}
+        />
         <View
           testID="mock-settings-update"
           onPress={() => onChange('chatTemplate', 'new template')}
@@ -135,6 +144,20 @@ describe('ModelSettingsSheet', () => {
       mockModel.stopWords,
     );
     expect(defaultProps.onClose).toHaveBeenCalled();
+  });
+
+  it('saves the wake words typed with the name', async () => {
+    const {getByText, getByTestId} = render(
+      <ModelSettingsSheet {...defaultProps} />,
+    );
+    fireEvent.press(getByTestId('mock-wake-words-update'));
+    await act(async () => {
+      fireEvent.press(getByText('Save Changes'));
+    });
+    expect(modelStore.updateModelWakeWords).toHaveBeenCalledWith(mockModel.id, [
+      'Hey Jarvis',
+      ' Jarvis',
+    ]);
   });
 
   it('handles cancel correctly', async () => {
