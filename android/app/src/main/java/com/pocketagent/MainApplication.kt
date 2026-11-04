@@ -26,6 +26,7 @@ class MainApplication : Application(), ReactApplication {
               // add(MyReactNativePackage())
               add(KeepAwakePackage())
               add(BackgroundInferencePackage())
+              add(WakeListenPackage())
               add(HardwareInfoPackage())
               add(DownloadPackage())
               add(com.pocketagent.localapi.LocalApiPackage())

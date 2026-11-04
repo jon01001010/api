@@ -40,6 +40,12 @@ export function setVoiceSender(fn: ((text: string) => void) | null) {
   sender = fn;
 }
 
+/** Called before voice input opens the mic (the wake listener lets go). */
+let beforeListen: (() => void) | null = null;
+export function setBeforeListen(fn: (() => void) | null) {
+  beforeListen = fn;
+}
+
 const warn = (message: string) =>
   uiStore.setChatWarning({
     code: 'unknown',
@@ -72,6 +78,7 @@ export async function startVoiceInput(): Promise<StartResult> {
   // Don't record the app's own voice.
   await ttsStore.stop().catch(() => {});
 
+  beforeListen?.();
   const handle = listen(level => voiceStore.setLevel(level));
   active = handle;
   run(handle, whisperModelPath(model)).catch(() => {});
@@ -86,11 +93,9 @@ async function run(handle: ListenHandle, modelPath: string) {
     }
     voiceStore.setState('transcribing');
     const text = await transcribe(modelPath, audio, voiceStore.language);
-    if (text && sender) {
-      awaitingReply = true;
-      replyStarted = false;
-      sender(text);
-    } else if (!text) {
+    if (text) {
+      sendSpoken(text);
+    } else {
       warn(uiStore.l10n.voiceAndSpeech.voiceInput.nothingHeard);
     }
   } catch (error) {
@@ -101,10 +106,20 @@ async function run(handle: ListenHandle, modelPath: string) {
       active = null;
     }
     voiceStore.setState('idle');
-    if (!voiceStore.conversationMode) {
+    if (!voiceStore.conversationMode && !voiceStore.wakeEnabled) {
       releaseWhisper().catch(() => {});
     }
   }
+}
+
+/** Send spoken text as a message and wait for its answer. */
+export function sendSpoken(text: string) {
+  if (!sender) {
+    return;
+  }
+  awaitingReply = true;
+  replyStarted = false;
+  sender(text);
 }
 
 /** Tap while listening: stop and use what was heard. */
@@ -162,7 +177,7 @@ export function watchConversation(): () => void {
         awaitingReply = false;
         if (voiceStore.conversationMode) {
           startVoiceInput().catch(() => {});
-        } else {
+        } else if (!voiceStore.wakeEnabled) {
           releaseWhisper().catch(() => {});
         }
       }, 800);

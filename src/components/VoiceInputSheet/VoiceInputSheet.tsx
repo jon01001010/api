@@ -14,6 +14,7 @@ import {useTheme} from '../../hooks';
 import {hfStore, uiStore, voiceStore} from '../../store';
 import {L10nContext} from '../../utils';
 import {t} from '../../locales';
+import {disableWake, enableWake} from '../../services/voice/wakeWord';
 import {
   RECOMMENDED_WHISPER,
   searchWhisperModels,
@@ -39,6 +40,19 @@ export const VoiceInputSheet: React.FC = observer(() => {
   const [results, setResults] = useState<WhisperSearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(false);
+  const [phrase, setPhrase] = useState(voiceStore.wakePhrase);
+
+  const toggleWake = (on: boolean) => {
+    (on ? enableWake() : disableWake()).catch(() => {});
+  };
+  const savePhrase = () => {
+    voiceStore.setWakePhrase(phrase);
+    setPhrase(voiceStore.wakePhrase);
+    if (voiceStore.wakeEnabled) {
+      // Restart so the notification shows the new phrase.
+      enableWake().catch(() => {});
+    }
+  };
 
   const selectedId = voiceStore.selectedModel
     ? whisperModelId(voiceStore.selectedModel)
@@ -121,6 +135,41 @@ export const VoiceInputSheet: React.FC = observer(() => {
             testID="voice-conversation-switch"
             value={voiceStore.conversationMode}
             onValueChange={v => voiceStore.setConversationMode(v)}
+          />
+        </View>
+        <View style={styles.row}>
+          <View style={styles.rowText}>
+            <Text style={styles.label}>
+              {l10n.voiceAndSpeech.voiceInput.wakeWord}
+            </Text>
+            <Text style={[styles.meta, muted]}>
+              {l10n.voiceAndSpeech.voiceInput.wakeWordHint}
+            </Text>
+          </View>
+          <Switch
+            testID="voice-wake-switch"
+            value={voiceStore.wakeEnabled}
+            onValueChange={toggleWake}
+          />
+        </View>
+        <View style={styles.searchRow}>
+          <Text style={[styles.meta, muted]}>
+            {l10n.voiceAndSpeech.voiceInput.wakePhrase}
+          </Text>
+          <Sheet.TextInput
+            testID="voice-wake-phrase"
+            style={[
+              styles.searchInput,
+              {
+                color: theme.colors.onSurface,
+                borderColor: theme.colors.outline,
+              },
+            ]}
+            value={phrase}
+            onChangeText={setPhrase}
+            onEndEditing={savePhrase}
+            onSubmitEditing={savePhrase}
+            autoCorrect={false}
           />
         </View>
 

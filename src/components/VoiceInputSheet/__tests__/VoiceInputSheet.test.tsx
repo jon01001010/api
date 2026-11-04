@@ -2,7 +2,7 @@ import React from 'react';
 import {runInAction} from 'mobx';
 
 import {fireEvent, render, waitFor} from '../../../../jest/test-utils';
-import {voiceStore} from '../../../store';
+import {uiStore, voiceStore} from '../../../store';
 import * as models from '../../../services/voice/whisperModels';
 
 import {VoiceInputSheet} from '../VoiceInputSheet';
@@ -31,6 +31,29 @@ describe('VoiceInputSheet', () => {
     const {getByTestId} = render(<VoiceInputSheet />);
     fireEvent(getByTestId('voice-conversation-switch'), 'valueChange', true);
     expect(voiceStore.conversationMode).toBe(true);
+  });
+
+  it('wake word needs a speech model before it can turn on', async () => {
+    const {getByTestId} = render(<VoiceInputSheet />);
+    fireEvent(getByTestId('voice-wake-switch'), 'valueChange', true);
+    await waitFor(() =>
+      expect(uiStore.setChatWarning).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: uiStore.l10n.voiceAndSpeech.voiceInput.wakeNeedsModel,
+        }),
+      ),
+    );
+    expect(voiceStore.wakeEnabled).toBe(false);
+  });
+
+  it('saves the wake phrase', () => {
+    const {getByTestId} = render(<VoiceInputSheet />);
+    fireEvent.changeText(getByTestId('voice-wake-phrase'), '  Computer ');
+    fireEvent(getByTestId('voice-wake-phrase'), 'endEditing');
+    expect(voiceStore.wakePhrase).toBe('Computer');
+    fireEvent.changeText(getByTestId('voice-wake-phrase'), '   ');
+    fireEvent(getByTestId('voice-wake-phrase'), 'endEditing');
+    expect(voiceStore.wakePhrase).toBe('Hey Agent');
   });
 
   it('finds models from any uploader and warns about unknown ones', async () => {

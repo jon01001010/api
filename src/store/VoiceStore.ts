@@ -27,6 +27,9 @@ export class VoiceStore {
   conversationMode = false;
   /** Spoken language for Whisper ('auto' detects it). */
   language = 'auto';
+  /** Listen for the wake phrase, also in the background. */
+  wakeEnabled = false;
+  wakePhrase = 'Hey Agent';
 
   state: VoiceInputState = 'idle';
   /** Mic loudness 0–1 while listening. */
@@ -39,7 +42,14 @@ export class VoiceStore {
     makeAutoObservable(this, {}, {autoBind: true});
     makePersistable(this, {
       name: 'VoiceStore',
-      properties: ['models', 'selectedModelId', 'conversationMode', 'language'],
+      properties: [
+        'models',
+        'selectedModelId',
+        'conversationMode',
+        'language',
+        'wakeEnabled',
+        'wakePhrase',
+      ],
       storage: AsyncStorage,
     }).catch(() => {});
   }
@@ -72,6 +82,14 @@ export class VoiceStore {
 
   setConversationMode(on: boolean) {
     this.conversationMode = on;
+  }
+
+  setWakeEnabled(on: boolean) {
+    this.wakeEnabled = on;
+  }
+
+  setWakePhrase(phrase: string) {
+    this.wakePhrase = phrase.trim() || 'Hey Agent';
   }
 
   setLanguage(language: string) {

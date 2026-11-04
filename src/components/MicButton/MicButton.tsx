@@ -16,6 +16,7 @@ import {
   stopVoiceInput,
   watchConversation,
 } from '../../services/voice/voiceController';
+import {watchWake} from '../../services/voice/wakeWord';
 
 interface Props {
   color: string;
@@ -30,6 +31,8 @@ export const MicButton: React.FC<Props> = observer(({color}) => {
   const state = voiceStore.state;
 
   useEffect(() => watchConversation(), []);
+  // Wake word: keeps the mic open for the wake phrase while the app is idle.
+  useEffect(() => watchWake(), []);
 
   const onPress = () => {
     if (state === 'listening') {

@@ -221,7 +221,7 @@ Like vision models, the app finds what's available instead of being tied to one 
    - Picks: whisper.rn plus the Whisper base model as an optional download, with the Android recognizer as fallback.
 2. **Voice control (phone actions phase 1, see the section below).** Timers, alarms, opening apps, navigation and music through Android intents. Spoken requests go to the same tools, and anything that acts is confirmed.
 3. **Call it up like an assistant.** Register PocketAgent as a selectable default digital assistant: the assist gesture or power-button long-press opens a listening screen. No wake word and no constant mic, so no extra battery.
-4. **Wake word ("Hey Agent").**
+4. **Wake word ("Hey Agent"), built early (see status below).**
    - Off by default. A foreground microphone service with a visible "listening" notification and a Stop action. The user turns it on while the app is open.
    - Choice: sherpa-onnx keyword spotting (custom phrase, no training) if confirmed; otherwise openWakeWord.
    - On wake: a chime, then speech-to-text, the model answers and speaks.
@@ -236,6 +236,16 @@ Like vision models, the app finds what's available instead of being tied to one 
 - [ ] Phone check: download the recommended model, speak a message, conversation mode with auto-speak on, mic permission prompt, a noisy room.
 - [ ] Measure Whisper speed and memory with a chat model loaded on the test phone.
 - Not yet: the Android built-in recognizer as a fallback (only Whisper for now).
+
+### Wake word status (built 2026-11-04, decisions: reuse Whisper, background from the start)
+- [x] Detected with the same Whisper model: the mic stays open, each utterance (speech then a pause) is written down and checked for the phrase. Any phrase, default "Hey Agent"; loose matching for Whisper's spelling ("Hey, agent", "a gent").
+- [x] "Hey Agent, what time is it?" sends the request directly. "Hey Agent" alone vibrates and listens for the request.
+- [x] Background: `WakeListenService`, a microphone-type foreground service, with a "Listening for …" notification and Stop. Started only while the app is visible (Android 14 rule); turned back on when the app opens if it was left on.
+- [x] The mic is released while voice input listens, a reply runs, or the app is speaking, so it never hears itself.
+- [x] Steady background noise (fan, traffic) is learned and ignored.
+- [ ] Phone check: turn it on, close the app, say the phrase (with and without a request), screen off, the notification's Stop, a noisy room, TV talking.
+- [ ] Measure battery over a day and false wakes (it runs Whisper on any speech it hears).
+- Later: a dedicated low-power wake engine (sherpa-onnx) if battery is a problem; opening as the default assistant (phase 3).
 
 ### Safety and privacy
 - The mic is never on without a visible indicator (the app screen or the listening notification). Stop is always one tap away.

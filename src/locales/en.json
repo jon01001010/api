@@ -1547,7 +1547,12 @@
       "noResults": "No Whisper models found for that search.",
       "searchFailed": "Search failed. Check your connection and try again.",
       "downloadFailed": "Download failed. Check your connection and try again.",
-      "unknownAuthor": "From {{author}}: not a well-known uploader. Only download models you trust."
+      "unknownAuthor": "From {{author}}: not a well-known uploader. Only download models you trust.",
+      "wakeWord": "Wake word",
+      "wakeWordHint": "Listen for the phrase, also with the app closed or the screen off. Android shows a \"listening\" notification with Stop while it's on. Uses more battery.",
+      "wakePhrase": "Wake phrase",
+      "wakeNeedsModel": "Download a speech-to-text model first; the wake word uses it to hear the phrase.",
+      "wakeFailed": "Couldn't start listening in the background. Open PocketAgent and try again."
     },
     "sectionTitle": "Voice & Speech",
     "voiceRowTitle": "Voice",

@@ -10,6 +10,8 @@
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -74,6 +76,10 @@
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="User-initiated on-device chat inference with a visible notification" />
         </service>
+        <!-- Wake word: holds the microphone while listening in the background,
+             with a visible notification and a Stop action. -->
+        <service android:name="com.pocketagent.WakeListenService"
+            android:exported="false" android:foregroundServiceType="microphone" />
         <!-- Optional native library for OpenCL (GPU acceleration) -->
         <uses-native-library
             android:name="libOpenCL.so"

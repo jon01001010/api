@@ -20,6 +20,8 @@ jest.mock('../../../services/voice/voiceController', () => ({
   stopVoiceInput: jest.fn(),
   cancelVoiceInput: jest.fn(),
   watchConversation: jest.fn(() => () => {}),
+  sendSpoken: jest.fn(),
+  setBeforeListen: jest.fn(),
 }));
 
 describe('ChatInput: voice input', () => {
