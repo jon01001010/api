@@ -10,6 +10,7 @@ import {initWhisper, type WhisperContext} from 'whisper.rn';
 import * as RNFS from '@dr.pogodin/react-native-fs';
 
 import NativeHardwareInfo from '../../specs/NativeHardwareInfo';
+import {usableMemoryBytes} from '../diagnostics/crashReports';
 
 import {createEndpointer, type EndpointState} from './endpointer';
 
@@ -40,7 +41,7 @@ export function base64ToBytes(b64: string): Uint8Array {
 export interface ListenResult {
   /** 16-bit mono PCM at 16 kHz, or null when nothing was said. */
   audio: Uint8Array | null;
-  reason: EndpointState | 'stopped';
+  reason: EndpointState | 'stopped' | 'mic-unavailable';
 }
 
 export interface ListenHandle {
@@ -58,6 +59,7 @@ export function listen(onLevel?: (level: number) => void): ListenHandle {
   const endpointer = createEndpointer({sampleRate: SAMPLE_RATE});
   let finished = false;
   let heardSpeech = false;
+  let micUnavailable = false;
   let finish: (r: ListenResult) => void = () => {};
   const result = new Promise<ListenResult>(resolve => {
     finish = resolve;
@@ -72,7 +74,10 @@ export function listen(onLevel?: (level: number) => void): ListenHandle {
     subscription?.remove();
     Promise.resolve(LiveAudioStream.stop()).catch(() => {});
     if (!keep || (!heardSpeech && reason !== 'stopped') || !chunks.length) {
-      finish({audio: null, reason});
+      finish({
+        audio: null,
+        reason: micUnavailable ? 'mic-unavailable' : reason,
+      });
       return;
     }
     const total = chunks.reduce((n, c) => n + c.length, 0);
@@ -85,13 +90,19 @@ export function listen(onLevel?: (level: number) => void): ListenHandle {
     finish({audio, reason});
   };
 
-  LiveAudioStream.init({
-    sampleRate: SAMPLE_RATE,
-    channels: 1,
-    bitsPerSample: 16,
-    audioSource: 6, // VOICE_RECOGNITION: tuned for speech
-    bufferSize: 4096,
-    wavFile: '',
+  Promise.resolve(
+    LiveAudioStream.init({
+      sampleRate: SAMPLE_RATE,
+      channels: 1,
+      bitsPerSample: 16,
+      audioSource: 6, // VOICE_RECOGNITION: tuned for speech
+      bufferSize: 4096,
+      wavFile: '',
+    }),
+  ).catch(() => {
+    // The microphone couldn't be opened (e.g. another app has it).
+    micUnavailable = true;
+    end('stopped', false);
   });
   subscription = LiveAudioStream.on('data', (b64: string) => {
     if (finished) {
@@ -144,7 +155,11 @@ export async function checkSpeechMemory(path: string): Promise<void> {
   let available = 0;
   try {
     size = Number((await RNFS.stat(path)).size) || 0;
-    available = await NativeHardwareInfo.getAvailableMemory();
+    // Free memory above Android's low-memory line (raw "available" counts
+    // cache Android may not give up before it starts closing apps).
+    available =
+      (await usableMemoryBytes()) ??
+      (await NativeHardwareInfo.getAvailableMemory());
   } catch {
     return;
   }

@@ -76,6 +76,17 @@ describe('speechInput', () => {
     expect((await b.result).audio).toBeNull();
   });
 
+  it('gives up cleanly when the microphone is busy', async () => {
+    (LiveAudioStream.init as jest.Mock).mockReturnValueOnce(
+      Promise.reject(new Error('AudioRecord initialization failed')),
+    );
+    const handle = listen();
+    expect(await handle.result).toEqual({
+      audio: null,
+      reason: 'mic-unavailable',
+    });
+  });
+
   it('removes Whisper non-speech marks', () => {
     expect(
       cleanTranscript(' [BLANK_AUDIO] Hello (music) there *coughs* '),
