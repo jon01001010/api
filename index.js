@@ -2,6 +2,9 @@
  * @format
  */
 
+// Hermes has no Symbol.asyncIterator; streaming libraries (the Anthropic
+// SDK) need it at load time, so it must come first.
+import './src/polyfills/asyncIterator';
 // Hermes/React Native ship no URL; it must exist before the app graph loads.
 import 'react-native-url-polyfill/auto';
 
