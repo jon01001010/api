@@ -47,6 +47,9 @@ jest.mock('../../../store', () => {
             wakeNeedsModel: 'need model',
             noPermission: 'no mic',
             wakeFailed: 'failed',
+            wakeStatusError: 'Not listening: {{reason}}',
+            wakeNoNative: 'no native part',
+            notEnoughMemory: 'low memory {{needed}} {{available}}',
           },
         },
       },
@@ -65,6 +68,16 @@ jest.mock('../../../store', () => {
       setState(state: string) {
         this.state = state;
       },
+      wakeStatus: 'off',
+      wakeError: null as string | null,
+      lastHeard: null as string | null,
+      setWakeStatus(status: string, error: string | null = null) {
+        this.wakeStatus = status;
+        this.wakeError = error;
+      },
+      setLastHeard(text: string | null) {
+        this.lastHeard = text;
+      },
     }),
   };
 });
@@ -81,6 +94,10 @@ jest.mock('../voiceController', () => ({
   sendSpoken: jest.fn(),
   startVoiceInput: jest.fn(() => Promise.resolve('started')),
   setBeforeListen: jest.fn(),
+  memoryMessage: (e: any) =>
+    `low memory ${Math.round(e.neededBytes / 1e6)} MB ${Math.round(
+      e.availableBytes / 1e6,
+    )} MB`,
 }));
 
 const store = jest.requireMock('../../../store');
@@ -266,6 +283,54 @@ describe('wake word', () => {
     await settle();
     expect(store.voiceStore.wakeEnabled).toBe(false);
     expect(native.stop).toHaveBeenCalled();
+    expect(isWakeStreaming()).toBe(false);
+  });
+
+  it('shows what it heard and that it is listening', async () => {
+    await listening();
+    expect(store.voiceStore.wakeStatus).toBe('listening');
+    speech.transcribe.mockResolvedValue('Hey, Asian.');
+    utter();
+    await settle();
+    expect(store.voiceStore.lastHeard).toBe('Hey, Asian.');
+    expect(controller.sendSpoken).not.toHaveBeenCalled();
+  });
+
+  it('never fails silently when the native part is missing', async () => {
+    delete (NativeModules as any).WakeListen;
+    expect(await enableWake()).toBe(false);
+    expect(store.uiStore.setChatWarning).toHaveBeenCalledWith(
+      expect.objectContaining({message: 'failed (no native part)'}),
+    );
+    expect(store.voiceStore.wakeStatus).toBe('error');
+    expect(store.voiceStore.wakeError).toBe('Not listening: no native part');
+    expect(store.voiceStore.wakeEnabled).toBe(false);
+  });
+
+  it('reports why the service failed to start', async () => {
+    native.start.mockRejectedValueOnce(new Error('SecurityException: mic'));
+    expect(await enableWake()).toBe(false);
+    expect(store.voiceStore.wakeError).toBe(
+      'Not listening: SecurityException: mic',
+    );
+  });
+
+  it('shows low memory in the status instead of crashing', async () => {
+    await listening();
+    speech.transcribe.mockRejectedValue(
+      new speech.SpeechMemoryError(400e6, 200e6),
+    );
+    utter();
+    await settle();
+    expect(store.voiceStore.wakeStatus).toBe('error');
+    expect(store.voiceStore.wakeError).toBe('low memory 400 MB 200 MB');
+  });
+
+  it('turns off and says why when Android refuses the service', async () => {
+    await listening();
+    DeviceEventEmitter.emit('PocketAgentWakeError', 'SecurityException');
+    expect(store.voiceStore.wakeEnabled).toBe(false);
+    expect(store.voiceStore.wakeError).toBe('Not listening: SecurityException');
     expect(isWakeStreaming()).toBe(false);
   });
 

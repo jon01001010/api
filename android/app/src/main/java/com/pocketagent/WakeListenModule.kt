@@ -1,6 +1,8 @@
 package com.pocketagent
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
@@ -28,6 +30,11 @@ class WakeListenModule(private val context: ReactApplicationContext) : ReactCont
     @ReactMethod fun removeListeners(count: Int) {}
 
     @ReactMethod fun start(phrase: String, promise: Promise) {
+        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            promise.reject("WAKE_SERVICE", "microphone permission not granted")
+            return
+        }
         try {
             val intent = Intent(context, WakeListenService::class.java)
                 .putExtra(WakeListenService.EXTRA_PHRASE, phrase)
