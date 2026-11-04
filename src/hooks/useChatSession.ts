@@ -119,6 +119,12 @@ const prepareCompletion = async ({
     userMessageContent = message.text;
 
     if (hasImages && !isMultimodalEnabled) {
+      // Same note as for earlier messages (convertToChatMessages): the
+      // pictures can't be sent to this model, but it should know they exist.
+      const n = imageUris.length;
+      userMessageContent +=
+        `\n\n[${n} picture${n > 1 ? 's' : ''} attached here; ` +
+        'this model cannot see pictures. Any description is in the replies that follow.]';
       uiStore.setChatWarning(
         createMultimodalWarning(l10n.chat.multimodalNotEnabled),
       );

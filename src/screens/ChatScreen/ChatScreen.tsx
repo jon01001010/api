@@ -31,6 +31,7 @@ import {ErrorState} from '../../utils/errors';
 import {user, assistant} from '../../utils/chat';
 
 import {VideoPalScreen} from './VideoPalScreen';
+import {VisionSwitchNotice} from '../../components/VisionSwitchNotice';
 
 const renderBubble = ({
   child,
@@ -288,6 +289,7 @@ export const ChatScreen: React.FC = observer(() => {
             : l10n.chat.typeYourMessage,
         }}
       />
+      <VisionSwitchNotice />
       {uiStore.chatWarning && (
         <ErrorSnackbar
           error={uiStore.chatWarning}

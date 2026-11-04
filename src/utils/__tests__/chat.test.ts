@@ -130,7 +130,9 @@ describe('convertToChatMessages', () => {
       },
       {
         role: 'user',
-        content: 'Look at this image', // Images should be stripped, only text remains
+        // Images can't be sent to a text-only model; a note says they were there.
+        content:
+          'Look at this image\n\n[2 pictures attached here; this model cannot see pictures. Any description is in the replies that follow.]',
       },
     ] as ChatMessage[]);
   });

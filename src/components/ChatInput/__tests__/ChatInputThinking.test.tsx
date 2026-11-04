@@ -34,6 +34,7 @@ jest.mock('../../../store', () => ({
     activePalId: null,
   },
   modelStore: {
+    visionModels: [],
     activeModel: null,
   },
   palStore: {

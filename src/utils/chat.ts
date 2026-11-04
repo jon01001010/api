@@ -256,10 +256,18 @@ export function convertToChatMessages(
         ];
       }
 
+      // Text-only model: pictures can't be sent, but say they were there so
+      // the model doesn't answer as if the user sent only words.
+      const pictures = textMessage.imageUris?.length ?? 0;
+      const note =
+        pictures > 0
+          ? `\n\n[${pictures} picture${pictures > 1 ? 's' : ''} attached here; ` +
+            'this model cannot see pictures. Any description is in the replies that follow.]'
+          : '';
       return [
         {
           role,
-          content: messageText,
+          content: messageText + note,
         } as ChatMessage,
       ];
     });

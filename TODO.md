@@ -24,9 +24,9 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [ ] HTML preview: a generated clock ticks in chat and fullscreen; code view, copy, fullscreen, Save to workspace, and Share work.
 - [ ] Workspace tools: append / patch / undo through chat, with the diff in the approval dialog.
 
-## Auto-switch to a vision model for pictures (planned, not implemented)
+## Auto-switch to a vision model for pictures (built, needs phone check)
 
-Goal: when you attach a picture while a text-only model is loaded, the app switches to a vision model automatically instead of ignoring the picture. Research done 2026-11-03; **plan only, nothing implemented yet.**
+Goal: when you attach a picture while a text-only model is loaded, the app switches to a vision model automatically instead of ignoring the picture. Research done 2026-11-03; built 2026-11-04 (see Steps).
 
 ### What happens today (research findings)
 
@@ -66,14 +66,14 @@ Goal: when you attach a picture while a text-only model is loaded, the app switc
 
 ### Steps
 
-- [ ] `pickVisionModel()` in ModelStore: the choice order above, using `capsFor` + `getProjectionModelStatus` + the memory estimate.
-- [ ] Attach menu: show Camera / Gallery when any downloaded model can see.
-- [ ] Send path (`useChatSession`): if pictures + no vision → switch through `initContext`, then send with the picture; on cancel, keep the draft and pictures.
-- [ ] Status line with Undo (switch back to the previous model).
-- [ ] Image notes on messages, used for text-only models in later turns.
-- [ ] Keep the previous model loaded for a quick switch back when memory allows.
-- [ ] Tests: model choice order; switch then send; undo; cancel path; no-vision-model message; notes reaching text models; pal default untouched.
-- [ ] Phone checks: attach a photo with a text model → switch happens and the answer uses the picture; undo; memory prompt.
+- [x] `visionModels` / `pickVisionModel()` in ModelStore: last vision model used, otherwise the smallest (most likely to fit); projector must be downloaded. (Size stands in for the memory estimate; the loader's memory check still asks before loading.)
+- [x] Attach menu: Camera / Gallery shown when any downloaded model can see.
+- [x] Switch before sending (in the chat input, before the draft is cleared): if pictures + no vision → switch through `initContext`, then send; cancelled or no vision model → draft and pictures kept.
+- [x] "Switched to … to see your picture" notice with Undo (reloads the previous model).
+- [x] Text-only models get a short note where a picture was ("[1 picture attached here; this model cannot see pictures …]") instead of the picture silently vanishing. Simpler than a separate stored description: the vision model's own reply already describes it.
+- [ ] Keep the previous model loaded for a quick switch back when memory allows. **Not done:** the app holds one loaded model at a time; this needs multi-model support (see "multiple models" idea).
+- [x] Tests: choice order and filters, switch / ready / none / cancelled / failed / server cases, Undo, input keeps the draft, Camera/Gallery shown, notes for text-only models.
+- [ ] Phone checks: attach a photo with a text model → switch happens and the answer uses the picture; Undo; memory prompt.
 
 ### Decisions (2026-11-04)
 

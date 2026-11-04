@@ -216,6 +216,10 @@ class ModelStore {
 
   lastUsedModelId: string | undefined = undefined;
 
+  // The last local model that was loaded with vision working. Used first
+  // when a picture is sent to a text-only model (see pickVisionModel).
+  lastVisionModelId: string | undefined = undefined;
+
   // Auto-release tracking (persistent)
   wasAutoReleased: boolean = false;
   lastAutoReleasedModelId: string | undefined = undefined;
@@ -292,6 +296,7 @@ class ModelStore {
         'useAutoRelease',
         'contextInitParams',
         'lastUsedModelId',
+        'lastVisionModelId',
         'wasAutoReleased',
         'lastAutoReleasedModelId',
         'availableMemoryCeiling',
@@ -2405,6 +2410,9 @@ class ModelStore {
         this.activeContextSettings = contextInitParams;
         this.setActiveModel(model.id);
         this.pendingModelId = null;
+        if (this.isMultimodalActive) {
+          this.lastVisionModelId = model.id;
+        }
       });
 
       // Update largestSuccessfulLoad using GGUF estimator
@@ -2607,6 +2615,34 @@ class ModelStore {
    */
   capsFor = (model: Model | undefined): ModelCapabilityView =>
     resolveModelCaps(model, this.capabilityEnv);
+
+  /**
+   * Downloaded local models that can look at pictures right now: vision
+   * model, vision not switched off for it, and its projector file downloaded.
+   */
+  get visionModels(): Model[] {
+    return this.availableModels.filter(
+      m =>
+        m.origin !== ModelOrigin.REMOTE &&
+        m.isDownloaded &&
+        this.getModelVisionPreference(m) &&
+        // Projector must be on the phone (not missing, not still downloading).
+        this.getProjectionModelStatus(m).state === 'downloaded',
+    );
+  }
+
+  /**
+   * The vision model to switch to when a picture is sent to a text-only
+   * model: the last vision model used, otherwise the smallest one (the most
+   * likely to fit in memory). Undefined when no downloaded model can see.
+   */
+  pickVisionModel = (): Model | undefined => {
+    const candidates = this.visionModels;
+    return (
+      candidates.find(m => m.id === this.lastVisionModelId) ??
+      [...candidates].sort((a, b) => (a.size ?? 0) - (b.size ?? 0))[0]
+    );
+  };
 
   /** Capabilities of the live session — chat's entry point. */
   get activeModelCaps(): ModelCapabilityView {

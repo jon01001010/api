@@ -36,6 +36,10 @@ export const mockUiStore = {
   setBenchmarkShareDialogPreference: jest.fn(),
   showError: jest.fn(),
   setChatWarning: jest.fn(),
+  visionSwitchNotice: null as any,
+  setVisionSwitchNotice: jest.fn(function (this: any, notice: any) {
+    mockUiStore.visionSwitchNotice = notice;
+  }),
   clearChatWarning: jest.fn(),
   toolCompatWarnedModels: [] as string[],
   hasWarnedToolCompat: jest.fn(() => false),
