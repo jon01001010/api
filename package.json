@@ -28,6 +28,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.1.0",
     "@dr.pogodin/react-native-fs": "^2.36.0",
     "@flyerhq/react-native-link-preview": "^1.6.0",
     "@gorhom/bottom-sheet": "^5.2.8",

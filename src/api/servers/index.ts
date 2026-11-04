@@ -218,6 +218,20 @@ const contextFromArgs = (args: unknown): number | undefined => {
   return found;
 };
 
+/** Claude rows: every current model reads images; context from the list. */
+function readClaudeListRow(row: RemoteModelInfo | undefined): ListDerivedCaps {
+  const caps: ListDerivedCaps = {tier: 'list'};
+  if (!row) {
+    return caps;
+  }
+  caps.supportsVision = true;
+  const n = row.meta?.n_ctx;
+  if (typeof n === 'number' && Number.isSafeInteger(n) && n > 0) {
+    caps.contextLength = n;
+  }
+  return caps;
+}
+
 function readLlamaCppListRow(
   row: RemoteModelInfo | undefined,
 ): ListDerivedCaps {
@@ -281,6 +295,15 @@ export const SERVER_PROFILES = {
     reasoningExtras: openaiReasoningExtras,
     hasProps: false,
     hasRouter: false,
+  },
+  // Claude (Anthropic API) has its own engine and request format; nothing
+  // here is sent. Kept so the type is total and the list rows read right.
+  Claude: {
+    sendNames: {},
+    reasoningExtras: noReasoningExtras,
+    hasProps: false,
+    hasRouter: false,
+    readListRow: readClaudeListRow,
   },
   vLLM: {
     sendNames: BASE_SEND_NAMES,

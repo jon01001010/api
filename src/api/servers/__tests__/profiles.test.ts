@@ -30,6 +30,7 @@ describe('hasRouter', () => {
     ['LM Studio', false],
     ['Ollama', false],
     ['OpenAI', false],
+    ['Claude', false],
     ['vLLM', false],
     ['unknown', false],
     ['', false],

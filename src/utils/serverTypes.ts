@@ -10,6 +10,7 @@ export const SERVER_TYPE_OPTIONS = [
   'LM Studio',
   'Ollama',
   'OpenAI',
+  'Claude',
   'vLLM',
   'unknown',
 ] as const;
@@ -55,6 +56,9 @@ export function seedServerType(
   try {
     if (new URL(url).hostname.endsWith('api.openai.com')) {
       return 'OpenAI';
+    }
+    if (new URL(url).hostname === 'api.anthropic.com') {
+      return 'Claude';
     }
   } catch {
     // ignore malformed URL

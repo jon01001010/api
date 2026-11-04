@@ -130,6 +130,20 @@ describe('RemoteModelSheet', () => {
     expect(getByTestId('remote-url-input')).toBeTruthy();
   });
 
+  it('the Claude button fills in Anthropic and waits for the key', async () => {
+    const {getByTestId, getByText} = render(
+      <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,
+    );
+    fireEvent.press(getByText(l10n.en.settings.configureClaude));
+    expect(getByTestId('remote-url-input').props.value).toBe(
+      'https://api.anthropic.com',
+    );
+    // The key field shows right away, and no probe runs without a key.
+    expect(getByTestId('remote-apikey-input')).toBeTruthy();
+    expect(getByTestId('remote-name-input').props.value).toBe('Claude');
+    expect(fetchModelsWithHeaders).not.toHaveBeenCalled();
+  });
+
   it('renders the Add Model button', () => {
     const {getByTestId} = render(
       <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,

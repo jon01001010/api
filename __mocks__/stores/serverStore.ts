@@ -48,6 +48,7 @@ class MockServerStore {
   getModelsNotYetAdded: jest.Mock;
   getUserSelectedModelsForServer: jest.Mock;
   recordRemoteReasoningObserved: jest.Mock;
+  recordRemoteReasoningDetected: jest.Mock;
   setRemoteReasoningOverride: jest.Mock;
 
   constructor() {
@@ -69,6 +70,7 @@ class MockServerStore {
       getModelsNotYetAdded: false,
       getUserSelectedModelsForServer: false,
       recordRemoteReasoningObserved: false,
+      recordRemoteReasoningDetected: false,
       setRemoteReasoningOverride: false,
     });
     this.addServer = jest.fn().mockReturnValue('mock-server-id');
@@ -90,6 +92,7 @@ class MockServerStore {
     this.getModelsNotYetAdded = jest.fn().mockReturnValue([]);
     this.getUserSelectedModelsForServer = jest.fn().mockReturnValue([]);
     this.recordRemoteReasoningObserved = jest.fn();
+    this.recordRemoteReasoningDetected = jest.fn();
     this.setRemoteReasoningOverride = jest.fn();
   }
 }

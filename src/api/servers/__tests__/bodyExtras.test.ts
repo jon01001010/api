@@ -196,6 +196,8 @@ const REASONING_ROWS: Record<ServerType, Row[]> = {
   'LM Studio': lmStudioRows,
   Ollama: ollamaRows,
   OpenAI: openaiRows,
+  // Claude has its own engine: nothing goes through the OpenAI body.
+  Claude: silentRows,
   vLLM: vllmRows,
   unknown: silentRows,
 };
