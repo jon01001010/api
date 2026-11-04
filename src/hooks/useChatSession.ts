@@ -1,4 +1,5 @@
 import {buildMemoryContext} from '../services/talents/agentMemory';
+import {messagesForModel} from '../services/chatSummary';
 import React, {useRef} from 'react';
 import {AccessibilityInfo, DeviceEventEmitter, Platform} from 'react-native';
 
@@ -719,7 +720,10 @@ export const useChatSession = (
 
     const isMultimodalEnabled = modelStore.activeModelCaps.visionActive;
 
-    const currentMessages = toJS(chatSessionStore.currentSessionMessages);
+    // After a context summary the model sees the summary (in the system
+    // message) plus the kept recent messages, not the older ones.
+    const {summary: contextSummary, messages: currentMessages} =
+      messagesForModel(toJS(chatSessionStore.currentSessionMessages));
 
     const textMessage: MessageType.Text = {
       author: user,
@@ -800,8 +804,18 @@ export const useChatSession = (
     } catch (error) {
       console.warn('[chat] memory unavailable', error);
     }
-    const globalText = [globalInstructions.trim(), memoryContext, generatedToolPrompt(palTalents)]
-      .filter(Boolean).join('\n\n');
+    const summaryContext = contextSummary
+      ? 'Summary of the earlier conversation (older messages are not shown to you):\n' +
+        contextSummary
+      : '';
+    const globalText = [
+      globalInstructions.trim(),
+      memoryContext,
+      summaryContext,
+      generatedToolPrompt(palTalents),
+    ]
+      .filter(Boolean)
+      .join('\n\n');
     if (globalText) {
       const messages = cleanCompletionParams.messages ?? [];
       const first = messages[0];

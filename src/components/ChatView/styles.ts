@@ -83,6 +83,9 @@ export const createStyles = ({theme}: {theme: Theme}) =>
       left: 0,
       right: 0,
     },
+    summarizedMessage: {
+      opacity: 0.45,
+    },
     softCapBanner: {
       paddingHorizontal: 12,
       paddingVertical: 6,

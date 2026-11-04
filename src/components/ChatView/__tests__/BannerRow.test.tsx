@@ -75,6 +75,37 @@ describe('BannerRow', () => {
     );
   });
 
+  it('offers Summarize & continue on the warning and full banners', () => {
+    const onSummarize = jest.fn();
+    runInAction(() => {
+      chatSessionStore.lastCompletionResult = {
+        used: 3300,
+        contextFull: false,
+        isRemote: false,
+      };
+    });
+    const warning = renderBanner({canSummarize: true, onSummarize});
+    fireEvent.press(warning.getByTestId('context-warning-summarize'));
+    expect(onSummarize).toHaveBeenCalledTimes(1);
+    warning.unmount();
+
+    runInAction(() => {
+      chatSessionStore.lastCompletionResult = {
+        used: 4096,
+        contextFull: true,
+        isRemote: false,
+      };
+    });
+    const full = renderBanner({canSummarize: true, onSummarize});
+    fireEvent.press(full.getByText(l10n.en.chat.summarizeContinue));
+    expect(onSummarize).toHaveBeenCalledTimes(2);
+    full.unmount();
+
+    // Hidden when there is nothing older to summarize.
+    const none = renderBanner({canSummarize: false, onSummarize});
+    expect(none.queryByTestId('context-full-summarize')).toBeNull();
+  });
+
   it('renders the sticky full banner with the increase CTA when an upgrade fits', () => {
     runInAction(() => {
       chatSessionStore.lastCompletionResult = {

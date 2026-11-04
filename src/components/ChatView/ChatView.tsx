@@ -42,6 +42,14 @@ import {
 
 import ImageView from './ImageView';
 import {BannerRow} from './BannerRow';
+import {ContextSummaryCard} from '../ContextSummaryCard';
+import {
+  canSummarize,
+  isSummaryMessage,
+  summarizedMessageIds,
+  summarizeWithNotice,
+} from '../../services/chatSummary';
+import {useAutoSummary} from './useAutoSummary';
 import {RouterLoadStatus, boundRouterLoad} from '../RouterLoadStatus';
 import {createStyles} from './styles';
 
@@ -880,6 +888,16 @@ export const ChatView = observer(
     const isStreamingText =
       agentStatus === 'streaming_text' && !chatSessionStore.isStopping;
 
+    // Context summary: greyed messages, banner action, automatic run.
+    // The store mutates the messages array in place, so key the memo on the
+    // ids themselves to keep renderMessage stable between renders.
+    const summarizedNow = summarizedMessageIds(messages);
+    const summarizedKey = [...summarizedNow].join(',');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const summarizedIds = React.useMemo(() => summarizedNow, [summarizedKey]);
+    const summarizable = canSummarize(messages);
+    useAutoSummary(user.id, summarizable);
+
     // Render individual message
     const renderMessage = React.useCallback(
       ({item: message}: {item: MessageType.DerivedAny; index: number}) => {
@@ -902,8 +920,18 @@ export const ChatView = observer(
           message.type !== 'dateHeader' &&
           message.id === newestMessageId;
 
+        if (message.type !== 'dateHeader' && isSummaryMessage(message)) {
+          return <ContextSummaryCard message={message as MessageType.Text} />;
+        }
+
+        // Messages the summary replaced stay on screen, greyed.
+        const summarized =
+          message.type !== 'dateHeader' && summarizedIds.has(message.id);
+
         return (
-          <View>
+          <View
+            style={summarized ? styles.summarizedMessage : undefined}
+            testID={summarized ? 'summarized-message' : undefined}>
             <Message
               {...{
                 enableAnimation,
@@ -953,6 +981,8 @@ export const ChatView = observer(
         newestMessageId,
         activeRunPendingTalentNames,
         isGeneratingToolCall,
+        summarizedIds,
+        styles.summarizedMessage,
       ],
     );
 
@@ -1197,6 +1227,10 @@ export const ChatView = observer(
                 canIncrease={canIncreaseContext}
                 onNewChat={() => chatSessionStore.resetActiveSession()}
                 onIncreaseContext={() => setIncreaseSheetOpen(true)}
+                canSummarize={summarizable && !isStreaming}
+                onSummarize={() => {
+                  summarizeWithNotice(user.id).catch(() => {});
+                }}
               />
               <ChatInput
                 {...{

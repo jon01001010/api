@@ -134,6 +134,7 @@ export const mockChatSessionStore = {
   consecutiveFullFailures: 0,
   palLoadHintSeen: new Set<string>(),
   recordCompletionSnapshot: jest.fn(),
+  clearCompletionSnapshot: jest.fn(),
   setBannerDismissed: jest.fn(),
   markPalLoadHintSeen: jest.fn(),
 };

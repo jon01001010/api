@@ -9,6 +9,8 @@ export * from './ChatHeader';
 export * from './ChatPalModelPickerSheet';
 export * from './ChatEmptyPlaceholder';
 export * from './ContentReportSheet';
+export * from './ContextSummaryCard';
+export * from './SummaryNotice';
 export * from './ModelErrorReportSheet';
 export * from './Checkbox';
 export * from './CircularActivityIndicator';
