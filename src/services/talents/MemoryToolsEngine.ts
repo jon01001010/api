@@ -2,6 +2,15 @@ import type {TalentEngine, TalentExecuteContext, TalentResult, ToolDefinition} f
 import {memoryGet, memoryReplace, memoryHistory, memoryReadSnapshot} from './agentMemory';
 import {requestFileApproval} from './fileApprovalGate';
 
+/**
+ * The stale-edit check compares words, not spacing: small models often
+ * flatten line breaks when copying text back. Different wording still
+ * fails, and the user approves the change either way.
+ */
+const normalise = (text: string) => text.replace(/\s+/g, ' ').trim();
+const sameText = (given: unknown, current: string) =>
+  typeof given === 'string' && normalise(given) === normalise(current);
+
 type MemoryAction = 'memory_get' | 'memory_replace' | 'memory_history' | 'memory_restore';
 
 export class MemoryToolsEngine implements TalentEngine {
@@ -23,8 +32,13 @@ export class MemoryToolsEngine implements TalentEngine {
         ? await memoryReadSnapshot(args.snapshot)
         : args.content;
       if (typeof next !== 'string') throw new Error('Memory content must be text');
-      if (this.name === 'memory_replace' && args.expected_previous !== previous) {
-        throw new Error('Memory changed or was not reviewed. Call memory_get first and provide exact expected_previous.');
+      if (this.name === 'memory_replace' && !sameText(args.expected_previous, previous)) {
+        // Hand back the current memory so the model can retry with it.
+        throw new Error(
+          'Memory changed or was not reviewed: expected_previous must match the current memory. ' +
+            'Current memory (copy it exactly into expected_previous, keeping line breaks):\n' +
+            previous,
+        );
       }
       const approved = await requestFileApproval({
         action: 'file_edit', filename: 'PocketAgent memory (internal)',
@@ -41,7 +55,7 @@ export class MemoryToolsEngine implements TalentEngine {
 
   toToolDefinition(): ToolDefinition {
     const properties = this.name === 'memory_replace'
-      ? {content: {type: 'string', description: 'Complete new memory including editable first-line sigil mapping'}, expected_previous: {type: 'string', description: 'Exact content returned by memory_get to prevent stale edits'}}
+      ? {content: {type: 'string', description: 'Complete new memory including editable first-line sigil mapping'}, expected_previous: {type: 'string', description: 'The content returned by memory_get, copied exactly (keep its line breaks); prevents stale edits'}}
       : this.name === 'memory_restore'
         ? {snapshot: {type: 'string', description: 'Snapshot name returned by memory_history'}}
         : {};
