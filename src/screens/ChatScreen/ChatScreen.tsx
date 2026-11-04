@@ -8,6 +8,7 @@ import {
   ChatView,
   ErrorSnackbar,
   ModelErrorReportSheet,
+  SummaryNotice,
 } from '../../components';
 import {PalSheet} from '../../components/PalsSheets';
 
@@ -288,6 +289,7 @@ export const ChatScreen: React.FC = observer(() => {
             : l10n.chat.typeYourMessage,
         }}
       />
+      <SummaryNotice />
       {uiStore.chatWarning && (
         <ErrorSnackbar
           error={uiStore.chatWarning}

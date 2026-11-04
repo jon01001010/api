@@ -23,6 +23,9 @@ interface BannerRowProps {
   canIncrease: boolean;
   onIncreaseContext: () => void;
   onNewChat: () => void;
+  /** True when there are older messages a summary could replace. */
+  canSummarize?: boolean;
+  onSummarize?: () => void;
 }
 
 // Append an 8-bit alpha to a theme hex color (#RRGGBB or #RRGGBBAA) so the
@@ -79,7 +82,15 @@ const Meter: React.FC<{
  * host.
  */
 export const BannerRow: React.FC<BannerRowProps> = observer(
-  ({messages, htmlPreviewCount, canIncrease, onIncreaseContext, onNewChat}) => {
+  ({
+    messages,
+    htmlPreviewCount,
+    canIncrease,
+    onIncreaseContext,
+    onNewChat,
+    canSummarize,
+    onSummarize,
+  }) => {
     const theme = useTheme();
     const styles = createStyles({theme});
     const l10n = useContext(L10nContext);
@@ -153,6 +164,15 @@ export const BannerRow: React.FC<BannerRowProps> = observer(
             <Meter ratio={ratio} tint={error} styles={styles} />
           ) : null}
           <View style={styles.bannerActions}>
+            {canSummarize && onSummarize ? (
+              <Button
+                compact
+                mode="text"
+                testID="context-warning-summarize"
+                onPress={onSummarize}>
+                {l10n.chat.summarizeContinue}
+              </Button>
+            ) : null}
             {canIncrease ? (
               <Button
                 compact
@@ -240,6 +260,15 @@ export const BannerRow: React.FC<BannerRowProps> = observer(
           <Meter ratio={ratio} tint={error} styles={styles} />
         ) : null}
         <View style={styles.bannerActions}>
+          {canSummarize && onSummarize ? (
+            <Button
+              compact
+              mode="text"
+              testID="context-full-summarize"
+              onPress={onSummarize}>
+              {l10n.chat.summarizeContinue}
+            </Button>
+          ) : null}
           {canIncrease ? (
             <Button
               compact

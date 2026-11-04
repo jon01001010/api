@@ -24,6 +24,18 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [ ] HTML preview: a generated clock ticks in chat and fullscreen; code view, copy, fullscreen, Save to workspace, and Share work.
 - [ ] Workspace tools: append / patch / undo through chat, with the diff in the approval dialog.
 
+## Context summary ("Summarize & continue")
+
+When a chat fills the model's memory, older messages are replaced, for the model only, by a short summary the model writes. This frees up context without starting a new chat.
+
+- [x] Automatic: when a turn ends at 80% full or more (local models), the app summarizes once the turn is over, then shows "earlier messages were summarized" with Undo.
+- [x] Button: **Summarize & continue** on the "getting full" and "full" banners.
+- [x] The last 4 messages are kept word for word. The model sees: system prompt + summary + kept messages + anything newer.
+- [x] Older messages stay on screen, greyed. A card in the chat shows the summary, with Show, Edit and Undo (Undo restores the full context).
+- [x] Summarizing again folds in the previous summary. Long chats are summarized in chunks that fit the context.
+- [x] On failure nothing changes, and the app says so.
+- [ ] Phone check: fill a chat until the banner appears, summarize (button and automatic), keep chatting and check the model remembers earlier facts, then Edit and Undo.
+
 ## Phone actions via built-in Android intents (planned, not implemented)
 
 Replaces the earlier "ARTEMIS-inspired automation" batch. Research done 2026-11-03; **write-up only, nothing implemented yet.**

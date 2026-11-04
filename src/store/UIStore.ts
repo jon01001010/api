@@ -16,6 +16,12 @@ import {
   type TopicKey,
 } from './onboarding/types';
 
+export interface SummaryNotice {
+  kind: 'working' | 'done' | 'failed' | 'nothing';
+  messageId?: string;
+  automatic?: boolean;
+}
+
 export class UIStore {
   static readonly GROUP_KEYS = {
     READY_TO_USE: 'ready_to_use',
@@ -102,6 +108,18 @@ export class UIStore {
   showError(message: string) {
     // TODO: Implement error display logic (e.g., toast, alert, etc.)
     console.error(message);
+  }
+
+  /**
+   * Context summary progress and result. 'done' carries the new marker's id
+   * so the notice can offer Undo.
+   */
+  summaryNotice: SummaryNotice | null = null;
+
+  setSummaryNotice(notice: SummaryNotice | null) {
+    runInAction(() => {
+      this.summaryNotice = notice;
+    });
   }
 
   setChatWarning(warning: ErrorState | null) {

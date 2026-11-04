@@ -221,6 +221,15 @@ class ChatSessionStore {
     this.toolCallTokenCount = value;
   }
 
+  // After a context summary the chat is no longer near full: forget the last
+  // turn's fullness so the context banner clears until the next turn.
+  clearCompletionSnapshot() {
+    runInAction(() => {
+      this.lastCompletionResult = undefined;
+      this.consecutiveFullFailures = 0;
+    });
+  }
+
   // Mirror a finished turn's snapshot into the store and advance banner
   // bookkeeping: a fresh finished turn clears per-draft dismissals, and the
   // full-turn run either increments or resets.
@@ -425,9 +434,15 @@ class ChatSessionStore {
   private hydrateCompletionSnapshot(
     session: SessionMetaData | undefined,
   ): CompletionResultSnapshot | undefined {
-    const snapshot = session?.messages.find(
-      msg => msg.metadata?.completionResult,
-    )?.metadata?.completionResult;
+    // A context summary newer than the snapshot means the chat was shrunk
+    // since that turn, so its fullness no longer applies.
+    const newest = session?.messages.find(
+      msg => msg.metadata?.completionResult || msg.metadata?.contextSummary,
+    );
+    if (newest?.metadata?.contextSummary) {
+      return undefined;
+    }
+    const snapshot = newest?.metadata?.completionResult;
     return snapshot as CompletionResultSnapshot | undefined;
   }
 
