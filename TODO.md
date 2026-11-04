@@ -101,6 +101,62 @@ Not every phone has an app for every intent (e.g. no Clock app that handles `SET
 
 - "Evaluate ARTEMIS MCP integration": that is for driving a phone from a computer IDE, not for PocketAgent on the phone.
 
+## Voice assistant: wake word and voice control (researched, not implemented)
+
+Goal: an Alexa-style assistant. Say a wake phrase, speak a request, and PocketAgent answers out loud and, for phone tasks, acts. Everything runs offline on the phone. Research done 2026-11-04; nothing built yet.
+
+### What the app has today
+- Spoken replies (text-to-speech): system voice, Kitten and Supertonic voices, auto-speak. This covers the "answer out loud" part.
+- No microphone input, no wake word, no voice commands.
+
+### Research findings
+- **Android limits on "always listening".**
+  - Listening in the background needs a foreground service of type `microphone`, which shows a permanent notification. It also needs `RECORD_AUDIO`, `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MICROPHONE`.
+  - On Android 14+, a microphone service must be started while the app is visible (or from a notification, a widget, or by the default assistant app). It can't simply start itself at boot and listen.
+  - Source: developer.android.com, "Restrictions on starting a foreground service from the background".
+- **True Alexa/Google-style hotwords (screen off, very low power) are not available to normal apps.** Android's `HotwordDetectionService` and its permissions are limited to preinstalled or system apps. So PocketAgent can only listen through its own foreground service, using the phone's main processor, which costs battery.
+- **Default assistant app.** Android lets the user pick a third-party "digital assistant" app (Settings → Apps → Default apps). Being that app (`VoiceInteractionService`) means:
+  - the assist gesture or power-button long-press opens PocketAgent;
+  - its microphone service is allowed to start from the background.
+
+  This is the most reliable, battery-friendly way to call it up, even without a wake word.
+- **Wake-word engines (offline):**
+  - **sherpa-onnx keyword spotting:** Apache-2.0, Android support. It reportedly lets you type custom keywords without training a model. The same library also does speech-to-text, voice detection and text-to-speech.
+    - React Native: only a young wrapper exists (`@siteed/sherpa-onnx.rn`, "in development"); the likely route is our own small Kotlin module using sherpa-onnx's Kotlin API.
+    - Its docs site (k2-fsa.github.io) is blocked in this session's network, so the custom-keyword claim and model sizes still need confirming.
+  - **openWakeWord:** Apache-2.0 base models; Android ports exist (Kotlin). Custom words need a trained model (training is Python, done off the phone). Check the licence of any training voices or data.
+  - **Picovoice Porcupine:** high quality, but needs an online-validated access key. Forum reports say free-tier keys were stopped after 2026-06-30. **Not recommended:** it conflicts with offline use and costs money.
+- **Speech-to-text (after the wake word):**
+  - **whisper.rn:** by mybigday, the same people as llama.rn, which the app already uses. Offline Whisper with a `RealtimeTranscriber`, Silero voice detection (knows when you stop talking), and Parakeet support. It needs `@fugood/react-native-audio-pcm-stream` for mic audio.
+  - **Android on-device recognizer** (`createOnDeviceSpeechRecognizer`, Android 12+): no model download, but availability varies by phone and some ROMs remove it. Check `isOnDeviceRecognitionAvailable` first.
+  - **sherpa-onnx streaming speech-to-text:** this would put wake word and speech-to-text in one library.
+- **Memory:** Whisper (or the wake-word model) has to share memory with the chat model, and on today's test phone only one large model fits well. A small speech-to-text model (Whisper tiny/base) is fine; the target is future phones.
+
+### Plan (each phase usable on its own; ask before each)
+1. **Mic button and conversation mode.**
+   - Tap the mic and speak; text appears in the input (whisper.rn plus voice detection), then it sends.
+   - With auto-speak on, the answer is read out and the mic reopens ("conversation mode") until you stop it.
+   - No background listening; the app must be open.
+   - Picks: whisper.rn plus the Whisper base model as an optional download, with the Android recognizer as fallback.
+2. **Voice control (phone actions phase 1, see the section below).** Timers, alarms, opening apps, navigation and music through Android intents. Spoken requests go to the same tools, and anything that acts is confirmed.
+3. **Call it up like an assistant.** Register PocketAgent as a selectable default digital assistant: the assist gesture or power-button long-press opens a listening screen. No wake word and no constant mic, so no extra battery.
+4. **Wake word ("Hey Agent").**
+   - Off by default. A foreground microphone service with a visible "listening" notification and a Stop action. The user turns it on while the app is open.
+   - Choice: sherpa-onnx keyword spotting (custom phrase, no training) if confirmed; otherwise openWakeWord.
+   - On wake: a chime, then speech-to-text, the model answers and speaks.
+   - Measure battery and false wakes on the phone before turning it on for anyone.
+
+### Safety and privacy
+- The mic is never on without a visible indicator (the app screen or the listening notification). Stop is always one tap away.
+- Audio stays on the phone and isn't saved, except a transcript the user can see in the chat.
+- Wake word and assistant mode are off by default. Phone actions keep their per-action confirmation.
+
+### To confirm before building
+- [ ] sherpa-onnx custom-keyword support, model size and accuracy (allow `k2-fsa.github.io` in the network settings).
+- [ ] whisper.rn on the test phone: Whisper tiny/base speed, and memory with a chat model loaded.
+- [ ] Default digital assistant registration on a recent Android (which screens and permissions are needed).
+- [ ] The battery cost of an always-on wake-word service over a day.
+
 ## Deferred — NPU acceleration (on hold)
 
 On hold until a better test phone is available. On the current test device (Motorola Razr 2023, SM7450 / Hexagon V69) NPU offload is effectively a no-op, so CPU inference stays the only supported backend for now. See issue #1 for the investigation notes and safe implementation sequence.
