@@ -108,6 +108,7 @@ import {
   enableWake,
   isWakeStreaming,
   matchTargets,
+  resetWakeForTests,
   watchWake,
   wakeTargets,
 } from '../wakeWord';
@@ -159,6 +160,7 @@ describe('wake word', () => {
       store.chatSessionStore.agentUiState = {status: 'idle'};
       store.modelStore.activeModelId = 'qwen';
     });
+    resetWakeForTests();
     stop = watchWake();
   });
   afterEach(() => {
@@ -171,6 +173,37 @@ describe('wake word', () => {
     await settle();
   };
 
+  it('starts the service when saved settings load after startup', async () => {
+    stop();
+    resetWakeForTests();
+    native.start.mockClear();
+    runInAction(() => {
+      store.voiceStore.wakeEnabled = false; // not loaded yet
+    });
+    stop = watchWake();
+    await settle();
+    expect(native.start).not.toHaveBeenCalled();
+    runInAction(() => {
+      store.voiceStore.wakeEnabled = true; // saved setting arrives
+    });
+    await settle();
+    expect(native.start).toHaveBeenCalledTimes(1);
+    await listening();
+    expect(isWakeStreaming()).toBe(true);
+  });
+
+  it("doesn't restart the service on every pause", async () => {
+    await listening();
+    runInAction(() => {
+      store.chatSessionStore.agentUiState = {status: 'streaming_text'};
+    });
+    runInAction(() => {
+      store.chatSessionStore.agentUiState = {status: 'done'};
+    });
+    await listening();
+    expect(native.start).toHaveBeenCalledTimes(1);
+  });
+
   it('starts the background service and opens the mic when idle', async () => {
     await listening();
     expect(native.start).toHaveBeenCalledWith('Hey Agent');
@@ -181,11 +214,22 @@ describe('wake word', () => {
 
   it('wakes and sends a request said in the same breath', async () => {
     await listening();
+    // Sending starts a reply, which takes the mic.
+    controller.sendSpoken.mockImplementationOnce(() =>
+      runInAction(() => {
+        store.chatSessionStore.agentUiState = {status: 'prefill'};
+      }),
+    );
     speech.transcribe.mockResolvedValue('Hey Agent, what time is it?');
     utter();
     await settle();
     expect(controller.sendSpoken).toHaveBeenCalledWith('what time is it?');
     expect(isWakeStreaming()).toBe(false);
+    // When the answer is done, it listens again (no timer needed).
+    runInAction(() => {
+      store.chatSessionStore.agentUiState = {status: 'done'};
+    });
+    expect(isWakeStreaming()).toBe(true);
   });
 
   it('wakes and listens when only the phrase was said', async () => {
