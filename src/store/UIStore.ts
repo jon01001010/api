@@ -122,6 +122,28 @@ export class UIStore {
     });
   }
 
+  /**
+   * Shown after a picture made the app switch from a text model to a vision
+   * model; offers Undo (load the previous model again).
+   */
+  visionSwitchNotice: {
+    previousModelId?: string;
+    modelId: string;
+    modelName: string;
+  } | null = null;
+
+  setVisionSwitchNotice(
+    notice: {
+      previousModelId?: string;
+      modelId: string;
+      modelName: string;
+    } | null,
+  ) {
+    runInAction(() => {
+      this.visionSwitchNotice = notice;
+    });
+  }
+
   setChatWarning(warning: ErrorState | null) {
     runInAction(() => {
       this.chatWarning = warning;

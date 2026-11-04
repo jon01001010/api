@@ -35,8 +35,12 @@ import {useTheme} from '../../hooks';
 import {createStyles} from './styles';
 
 import {chatSessionStore, modelStore, palStore, uiStore} from '../../store';
+import {
+  ensureVisionForPictures,
+  returnFromVision,
+} from '../../services/visionSwitch';
 
-import {MessageType} from '../../utils/types';
+import {MessageType, ModelOrigin} from '../../utils/types';
 import {L10nContext, UserContext} from '../../utils';
 import {t} from '../../locales';
 
@@ -50,7 +54,8 @@ export interface ChatInputTopLevelProps {
   isStreaming?: boolean;
   /** Will be called on {@link SendButton} tap. Has {@link MessageType.PartialText} which can
    * be transformed to {@link MessageType.Text} and added to the messages list. */
-  onSendPress: (message: MessageType.PartialText) => void;
+  /** May return a promise that settles when the reply has finished. */
+  onSendPress: (message: MessageType.PartialText) => unknown;
   onStopPress?: () => void;
   onCancelEdit?: () => void;
   onPalBtnPress?: () => void;
@@ -234,8 +239,43 @@ export const ChatInput = observer(
       }
     };
 
-    const handleSend = () => {
+    // A text-only model can't see pictures: switch to a downloaded vision
+    // model first. Runs before the draft is cleared, so if the switch
+    // doesn't happen the text and pictures stay in the input.
+    const [isSwitchingToVision, setIsSwitchingToVision] = React.useState(false);
+    const canSwitchToVision =
+      modelStore.activeModel?.origin !== ModelOrigin.REMOTE &&
+      modelStore.visionModels.length > 0;
+    const canAttachPictures = isVisionEnabled || canSwitchToVision;
+
+    const handleSend = async () => {
       const trimmedValue = value.trim();
+      if (isSwitchingToVision) {
+        return;
+      }
+      let switchedToVision = false;
+      if (trimmedValue && selectedImages.length > 0 && !isVisionEnabled) {
+        setIsSwitchingToVision(true);
+        try {
+          const result = await ensureVisionForPictures();
+          switchedToVision = result === 'switched';
+          if (result === 'none') {
+            uiStore.setChatWarning({
+              code: 'multimodal',
+              message: l10n.chat.noVisionModel,
+              context: 'chat',
+              recoverable: true,
+              severity: 'warning',
+            });
+            return;
+          }
+          if (result === 'cancelled') {
+            return;
+          }
+        } finally {
+          setIsSwitchingToVision(false);
+        }
+      }
       if (trimmedValue) {
         // Check if model is loaded before sending
         if (!hasActiveModel) {
@@ -252,11 +292,18 @@ export const ChatInput = observer(
         }
 
         // Include imageUris in the message object
-        onSendPress({
+        const sent = onSendPress({
           text: trimmedValue,
           type: 'text',
           imageUris: selectedImages.length > 0 ? selectedImages : undefined,
         });
+        if (switchedToVision) {
+          // Once the picture is answered, go back to the model the user had.
+          Promise.resolve(sent)
+            .catch(() => {})
+            .then(() => returnFromVision())
+            .catch(() => {});
+        }
         setText('');
         // Clear selected images after sending
         setSelectedImages([]);
@@ -728,14 +775,14 @@ export const ChatInput = observer(
                       <PlusIcon width={20} height={20} stroke={plusColor} />
                     </TouchableOpacity>
                   }>
-                  {isVisionEnabled && (
+                  {canAttachPictures && (
                     <Menu.Item
                       label={l10n.camera?.takePhoto || 'Camera'}
                       icon="camera"
                       onPress={handleTakePhoto}
                     />
                   )}
-                  {isVisionEnabled && (
+                  {canAttachPictures && (
                     <Menu.Item
                       label={l10n.common?.gallery || 'Gallery'}
                       icon="image"

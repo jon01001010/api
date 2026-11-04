@@ -40,6 +40,10 @@ export const mockUiStore = {
   setSummaryNotice: jest.fn(function (notice: any) {
     mockUiStore.summaryNotice = notice;
   }),
+  visionSwitchNotice: null as any,
+  setVisionSwitchNotice: jest.fn(function (this: any, notice: any) {
+    mockUiStore.visionSwitchNotice = notice;
+  }),
   clearChatWarning: jest.fn(),
   toolCompatWarnedModels: [] as string[],
   hasWarnedToolCompat: jest.fn(() => false),

@@ -36,6 +36,63 @@ When a chat fills the model's memory, older messages are replaced, for the model
 - [x] On failure nothing changes, and the app says so.
 - [ ] Phone check: fill a chat until the banner appears, summarize (button and automatic), keep chatting and check the model remembers earlier facts, then Edit and Undo.
 
+## Auto-switch to a vision model for pictures (built, needs phone check)
+
+Goal: when you attach a picture while a text-only model is loaded, the app switches to a vision model automatically instead of ignoring the picture. Research done 2026-11-03; built 2026-11-04 (see Steps).
+
+### What happens today (research findings)
+
+- **Pictures are silently dropped for text models.** `useChatSession` sends images only when `activeModelCaps.visionActive` is true; otherwise the message goes out as text only and a "multimodal not enabled" warning appears. Older pictures in the conversation are also dropped for text models (`convertToChatMessages(…, isMultimodalEnabled)`).
+- **You can't easily attach a picture to a text model:** the attach menu only shows Camera / Gallery when the loaded model can see (`isVisionEnabled`); Files and Workspace stay.
+- **Vision = model + projector.** A local model can see only if it has `supportsMultimodal`, vision is switched on for it (`setModelVisionEnabled`), and its projector (mmproj) file is downloaded (`hasRequiredProjectionModel` / `getProjectionModelStatus`). Remote server models report vision through `serverStore.remoteCaps`.
+- **Loading already does the hard parts.** `modelStore.initContext(model)` releases the previous model, loads the projector, checks memory and **asks you** if it might not fit (`checkMemoryAndConfirm`), and handles "last request wins" when loads race. `selectModel` also covers remote models.
+- **A small vision model already ships as a preset:** SmolVLM2-500M-Instruct (Q8_0, ~437 MB + ~109 MB projector), used by the built-in "Lookie" pal (`LOOKIE_DEFAULT_MODEL` in `builtinPalModels.ts`). Good default suggestion for a first vision model.
+- Pals can name a default model (`pal.defaultModel`); a switch must not silently change a pal's saved model.
+
+### Design
+
+**Trigger:** you attach (or take) a picture and press send, the loaded model can't see, and a usable vision model exists.
+
+**Choosing the vision model:** no fixed model. The app already knows which downloaded models can see (the vision badge / `capsFor` + a ready projector), so it picks from those:
+1. the last vision model you used;
+2. otherwise the best-fitting downloaded vision model (the one the memory estimate says fits; if several, the most recently used);
+3. none downloaded → a short message that no downloaded model can see pictures, with a button to the Models screen. Nothing downloads on its own.
+
+**What happens on send — seamless switch (decided 2026-11-04):** you attach a picture while a text model is loaded and press send; the app switches to the vision model automatically and the chat simply continues on it with your picture. No question first; a status line and an **undo** (switch back to the previous model) are shown. The memory check still asks if the vision model might not fit; cancel = draft and picture kept, nothing changed.
+
+(Considered and not chosen: "look, then hand back" to the text model.)
+
+**Never lose the picture's content:** whatever the vision model says about a picture is saved on that message as a short text note (e.g. "Picture: café receipt, total €12.40, 3 Nov"), so later turns with a text model still know what was in it.
+
+**Switching back is quick when there's room:** on phones with enough free memory (the existing memory estimate), the previous model can stay loaded so undo / switching back skips the reload; otherwise it reloads.
+
+**UI:**
+- Camera / Gallery always offered when a vision model is available (or can be downloaded), not only when the loaded model can see.
+- A clear status in the chat: "Switched to <vision model> to see your picture" with **Undo**.
+- Pals: a temporary switch doesn't change a pal's saved default model.
+
+**Safety and limits:**
+- The memory check still asks before loading something that may not fit; cancel = picture not sent, nothing changed.
+- Remote (server) models: switch only to another model on the same server that reports vision, or ask.
+- No network involved for local models; pictures stay on the phone.
+
+### Steps
+
+- [x] `visionModels` / `pickVisionModel()` in ModelStore: last vision model used, otherwise the smallest (most likely to fit); projector must be downloaded. (Size stands in for the memory estimate; the loader's memory check still asks before loading.)
+- [x] Attach menu: Camera / Gallery shown when any downloaded model can see.
+- [x] Switch before sending (in the chat input, before the draft is cleared): if pictures + no vision → switch through `initContext`, then send; cancelled or no vision model → draft and pictures kept.
+- [x] "Switched to … to see your picture" notice with Undo (reloads the previous model).
+- [x] Text-only models get a short note where a picture was ("[1 picture attached here; this model cannot see pictures …]") instead of the picture silently vanishing. Simpler than a separate stored description: the vision model's own reply already describes it.
+- [ ] Keep the previous model loaded for a quick switch back when memory allows. **Not done:** the app holds one loaded model at a time; this needs multi-model support (see "multiple models" idea).
+- [x] Tests: choice order and filters, switch / ready / none / cancelled / failed / server cases, Undo, input keeps the draft, Camera/Gallery shown, notes for text-only models.
+- [ ] Phone checks: attach a photo with a text model → switch happens and the answer uses the picture; Undo; memory prompt.
+
+### Decisions (2026-11-04)
+
+- Seamless switch-and-stay to a vision model when a picture is sent to a text model.
+- Automatic, with a status line and Undo (no confirmation first; the memory check still asks if needed).
+- No fixed/recommended vision model: use what the app already knows can see; if none, say so.
+
 ## Phone actions via built-in Android intents (planned, not implemented)
 
 Replaces the earlier "ARTEMIS-inspired automation" batch. Research done 2026-11-03; **write-up only, nothing implemented yet.**

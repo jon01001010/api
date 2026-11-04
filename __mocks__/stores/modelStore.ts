@@ -180,6 +180,7 @@ class MockModelStore {
       activeModelCaps: computed,
       displayModels: computed,
       availableModels: computed,
+      visionModels: computed,
       effectiveDraftMode: computed,
       effectiveDraftCacheDefaults: computed,
       isDownloading: computed,
@@ -373,6 +374,24 @@ class MockModelStore {
   get availableModels() {
     return this.models.filter(model => model.isDownloaded);
   }
+
+  lastVisionModelId: string | undefined = undefined;
+
+  // Mirrors the real store: downloaded local models that can see pictures.
+  get visionModels() {
+    return this.availableModels.filter(
+      (m: any) =>
+        m.supportsMultimodal &&
+        m.visionEnabled !== false &&
+        m.origin !== 'remote',
+    );
+  }
+
+  pickVisionModel = jest.fn(
+    () =>
+      this.visionModels.find((m: any) => m.id === this.lastVisionModelId) ??
+      this.visionModels[0],
+  );
 
   get effectiveDraftMode() {
     return effectiveDraftModeOf(this);
