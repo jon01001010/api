@@ -152,7 +152,7 @@ export class WebSearchEngine implements TalentEngine {
       function: {
         name: 'web_search',
         description:
-          'Search the web for current information. Use this for any question about news, current events, prices, releases, sports, weather, or any fact that may have changed since your training data or that you are unsure about. Write short keyword queries (2-6 words), like a search engine user, not full sentences. Returns result titles, source URLs, and text snippets.',
+          'Search the web for current information. Use this for any question about news, current events, prices, releases, sports, weather, or any fact that may have changed since your training data or that you are unsure about. Write short keyword queries (2-6 words), like a search engine user, not full sentences. Returns result titles, source URLs, and text snippets. Then answer from them and name the source; if a snippet is not enough, read that page with read_url.',
         parameters: {
           type: 'object',
           properties: {

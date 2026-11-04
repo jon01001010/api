@@ -45,7 +45,9 @@ Reply with at most one short sentence what you build`,
       function: {
         name: 'render_html',
         description:
-          'Render an HTML document inline as a visual preview in the chat.',
+          'Show a live web page (HTML, CSS, JavaScript) inside the chat. Use it when the user asks for a page, ' +
+          'app, game, chart, clock or widget. How: write the whole page in `html` with all CSS and JavaScript ' +
+          'inline (no external files), and a short `title`. JavaScript runs, so timers and buttons work.',
         parameters: {
           type: 'object',
           properties: {
@@ -56,7 +58,7 @@ Reply with at most one short sentence what you build`,
             html: {
               type: 'string',
               description:
-                'Complete, self-contained HTML document or fragment to render.',
+                'The complete page, e.g. <!doctype html><html><head><style>…</style></head><body>…<script>…</script></body></html>.',
             },
           },
           required: ['html'],
