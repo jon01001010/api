@@ -93,6 +93,19 @@ Goal: when you attach a picture while a text-only model is loaded, the app switc
 - Automatic, with a status line and Undo (no confirmation first; the memory check still asks if needed).
 - No fixed/recommended vision model: use what the app already knows can see; if none, say so.
 
+## Claude as a remote model (built, needs phone check)
+
+Add remote model → **Configure Claude API**: paste an Anthropic API key, pick from the Claude models the key can use (live list from Anthropic's Models API).
+
+- [x] Official Anthropic SDK (`@anthropic-ai/sdk` 1.1.0), its own engine (`src/api/claude`), not the OpenAI-compatible path.
+- [x] Word-by-word streaming on the phone: a small XHR-based `fetch` the SDK reads as a stream (React Native's fetch can't stream), plus UTF-8 codecs if the engine lacks them.
+- [x] Pictures, system prompt, memory and the app's tools converted to Claude's format and back; all tool results of a turn in one message.
+- [x] Thinking toggle and effort map to Claude's per model (e.g. Opus 5.5 can't turn thinking off, so "off" = low effort; Sonnet 5.5 off = `between_tools`); reasoning summary shown in the reasoning panel; no sampling settings sent (newer models reject them).
+- [x] Claude's own replies (with thinking) kept in memory and sent back unchanged; `drop_block` on models that tie thinking to the conversation, since the app edits history (memory, summaries).
+- [x] Server-side refusal fallback (`fallbacks: "default"`) on the models that support it.
+- [ ] Phone check: add Claude with a real key, chat (streaming, Stop), a picture, a tool (web search / files), thinking on/off, a wrong key.
+- Not yet: prompt caching markers (a cost saver for long chats), counting Claude's usage in the context meter.
+
 ## Phone actions via built-in Android intents (planned, not implemented)
 
 Replaces the earlier "ARTEMIS-inspired automation" batch. Research done 2026-11-03; **write-up only, nothing implemented yet.**

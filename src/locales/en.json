@@ -35,6 +35,7 @@
     "noResults": "No results"
   },
   "settings": {
+    "configureClaude": "Configure Claude API",
     "modelInitializationSettings": "Model Initialization Settings",
     "metal": "Metal",
     "metalDescription": "Apple's hardware-accelerated API.",

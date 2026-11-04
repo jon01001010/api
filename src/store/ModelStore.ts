@@ -21,6 +21,8 @@ import {
   LocalCompletionEngine,
   OpenAICompletionEngine,
 } from '../api/completionEngines';
+import {ClaudeCompletionEngine} from '../api/claude/engine';
+import {claudeFeatures} from '../api/claude/models';
 
 import {uiStore, hfStore} from '.';
 import {serverStore} from './ServerStore';
@@ -2752,17 +2754,31 @@ class ModelStore {
     };
 
     runInAction(() => {
-      this.engine = hasRouter
-        ? new OpenAICompletionEngine(endpoint, {
-            ensureReady: (signal, options) =>
-              routerStore.ensureReady(binding, signal, options),
-          })
-        : new OpenAICompletionEngine(endpoint);
+      this.engine =
+        serverType === 'Claude'
+          ? new ClaudeCompletionEngine(endpoint)
+          : hasRouter
+            ? new OpenAICompletionEngine(endpoint, {
+                ensureReady: (signal, options) =>
+                  routerStore.ensureReady(binding, signal, options),
+              })
+            : new OpenAICompletionEngine(endpoint);
       this.activeRemoteBinding = binding;
       this.setActiveModel(model.id);
       // Do NOT set lastUsedModelId for remote models -- server may be offline on next launch
     });
 
+    if (serverType === 'Claude') {
+      // Thinking and effort levels come from the Claude model's rules.
+      const f = claudeFeatures(model.remoteModelId);
+      serverStore.recordRemoteReasoningDetected(model.id, {
+        isReasoning: f.adaptive ? 'yes' : 'no',
+        source: 'detected',
+        supportsEffort: f.efforts.length > 0,
+        effortValues: f.efforts,
+        effortSource: f.efforts.length > 0 ? 'detected' : 'none',
+      });
+    }
     serverStore
       .fetchRemoteModelCaps(model.serverId, model.remoteModelId, apiKey)
       .catch(() => {});

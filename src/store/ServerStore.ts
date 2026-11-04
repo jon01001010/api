@@ -240,6 +240,20 @@ class ServerStore {
     };
   }
 
+  /**
+   * What the provider says a remote model can do (e.g. Claude's thinking
+   * and effort levels). Never overrides a user declaration.
+   */
+  recordRemoteReasoningDetected(
+    modelId: string,
+    cap: ReasoningCapability,
+  ): void {
+    if (this.remoteReasoning[modelId]?.source === 'user') {
+      return;
+    }
+    this.remoteReasoning[modelId] = cap;
+  }
+
   /** Manual model-card override for a remote model. Top of precedence. */
   setRemoteReasoningOverride(modelId: string, cap: ReasoningCapability): void {
     this.remoteReasoning[modelId] = cap;

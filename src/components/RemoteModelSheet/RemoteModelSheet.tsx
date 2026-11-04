@@ -35,6 +35,7 @@ import {
 } from '../../utils/serverTypes';
 import {RemoteModelInfo, ServerConfig} from '../../utils/types';
 import {fetchModelsWithHeaders} from '../../api/openai';
+import {ANTHROPIC_API_URL, isAnthropicUrl} from '../../api/claude/client';
 import {detectServerType} from '../../api/servers/detect';
 import {deriveListCaps} from '../../api/servers';
 import {profileFor} from '../../api/servers';
@@ -155,7 +156,10 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
           if (models.length === 1) {
             setSelectedModelId(models[0].id);
           }
-          const detected = await detectServerType(trimmedUrl, models, headers);
+          // Anthropic's API is identified by its address (no probing).
+          const detected = isAnthropicUrl(trimmedUrl)
+            ? 'Claude'
+            : await detectServerType(trimmedUrl, models, headers);
           setServerType(seedServerType(detected, trimmedUrl));
           setServerName(prev => {
             if (prev) {
@@ -187,7 +191,10 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
     // Trigger probe on url change (only when not using a known server chip)
     useEffect(() => {
       if (!selectedServerId) {
-        if (!(url.trim() === 'https://api.openai.com/v1' && !apiKeyRef.current.trim())) {
+        // Cloud APIs need the key first: wait for Connect.
+        const isCloud =
+          url.trim() === 'https://api.openai.com/v1' || isAnthropicUrl(url);
+        if (!(isCloud && !apiKeyRef.current.trim())) {
           debouncedProbe(url);
         }
       }
@@ -351,7 +358,9 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
     // Show API key + server name fields when probe attempted (success OR auth failure)
     // This lets users enter an API key after a 401, then retry
     const showServerFields =
-      (probeResult !== null || url.trim() === 'https://api.openai.com/v1') &&
+      (probeResult !== null ||
+        url.trim() === 'https://api.openai.com/v1' ||
+        isAnthropicUrl(url)) &&
       !isProbing &&
       !selectedServerId;
 
@@ -433,13 +442,14 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
             </View>
           )}
 
-          {/* OpenAI uses the existing OpenAI-compatible remote backend.
-              Claude needs its own Messages API adapter; do not route it here. */}
+          {/* Cloud APIs: OpenAI uses the OpenAI-compatible backend; Claude
+              has its own Messages API engine (src/api/claude). */}
           {!selectedServerId && (
             <View style={{marginBottom: 12}}>
               <Text variant="titleSmall">Cloud chat API</Text>
               <Text variant="bodySmall">
-                OpenAI can use the existing remote chat connector. An API key is required and usage is billed separately. Claude support is coming in a separate adapter.
+                OpenAI and Claude (Anthropic) are supported. An API key is
+                required and usage is billed separately by the provider.
               </Text>
               <Button
                 mode="outlined"
@@ -456,6 +466,23 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
                   setUrlError('');
                 }}>
                 Configure OpenAI API
+              </Button>
+              <Button
+                mode="outlined"
+                testID="claude-api-preset"
+                style={{marginTop: 8}}
+                onPress={() => {
+                  setApiKey('');
+                  apiKeyRef.current = '';
+                  setUrl(ANTHROPIC_API_URL);
+                  setServerName('Claude');
+                  setServerType('Claude');
+                  setSelectedServerId(null);
+                  setProbeResult(null);
+                  setAvailableModels([]);
+                  setUrlError('');
+                }}>
+                {l10n.settings.configureClaude}
               </Button>
               <Text variant="bodySmall">Enter your API key below, then connect to list available models. Keys are stored using Android secure storage.</Text>
             </View>

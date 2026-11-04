@@ -19,6 +19,8 @@ import {
   resolveTimeout,
 } from './http';
 import {bodyExtras, readFinish} from './servers';
+import {isAnthropicUrl} from './claude/client';
+import {listClaudeModels} from './claude/list';
 import type {FinishRead, RemoteEndpoint} from './servers';
 import type {Samplers} from '../utils/samplerParams';
 
@@ -221,6 +223,10 @@ export async function fetchModelsWithHeaders(
   apiKey?: string,
   timeoutMs?: number,
 ): Promise<FetchModelsResult> {
+  // Anthropic's API isn't OpenAI-compatible: list models through its SDK.
+  if (isAnthropicUrl(serverUrl)) {
+    return {models: await listClaudeModels(apiKey, timeoutMs), headers: {}};
+  }
   const url = `${normalizeUrl(serverUrl)}/v1/models`;
   const response = await fetchWithTimeout(
     url,
@@ -292,7 +298,9 @@ function isLocalImageUrl(url: string | undefined): url is string {
 }
 
 /** True when any message carries a local-path image that must be encoded. */
-function hasLocalImageAttachment(messages: OpenAIChatMessage[]): boolean {
+export function hasLocalImageAttachment(
+  messages: OpenAIChatMessage[],
+): boolean {
   return messages.some(
     m =>
       Array.isArray(m.content) &&
@@ -411,7 +419,7 @@ async function encodeImagePart(part: {
  * Encodes sequentially (outer messages and inner parts) so peak heap is one
  * base64 buffer at a time on a long or multi-image history.
  */
-async function encodeMessagesForRemote(
+export async function encodeMessagesForRemote(
   messages: OpenAIChatMessage[],
 ): Promise<OpenAIChatMessage[]> {
   const encoded: OpenAIChatMessage[] = [];

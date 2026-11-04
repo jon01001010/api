@@ -120,7 +120,11 @@ const MOVED_SAMPLERS = {
 
 const REASONING: ReasoningIntent = {enabled: true, effort: 'high'};
 
-describe.each(SERVER_TYPE_OPTIONS)('a turn to a %s server', serverType => {
+// Claude doesn't use the OpenAI-compatible transport (its own engine and
+// tests: src/api/claude).
+const OPENAI_WIRE_TYPES = SERVER_TYPE_OPTIONS.filter(t => t !== 'Claude');
+
+describe.each(OPENAI_WIRE_TYPES)('a turn to a %s server', serverType => {
   // Against the table rather than a restatement of it: the wire names and the
   // reasoning keys are pinned where the table is, and a turn that dropped the
   // samplers, the reasoning intent or the server type shows up here as a body
