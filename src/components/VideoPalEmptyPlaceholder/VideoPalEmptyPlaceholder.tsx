@@ -1,11 +1,12 @@
 import React, {useContext} from 'react';
-import {Image, View} from 'react-native';
+import {View} from 'react-native';
 import {Text} from 'react-native-paper';
 import {observer} from 'mobx-react';
 
 import {useTheme} from '../../hooks';
 import {createStyles} from './styles';
 import {L10nContext} from '../../utils';
+import {PocketAgentLogo} from '../PocketAgentLogo';
 
 interface VideoPalEmptyPlaceholderProps {
   bottomComponentHeight: number;
@@ -20,10 +21,9 @@ export const VideoPalEmptyPlaceholder = observer(
     return (
       <View
         style={[styles.container, {paddingBottom: bottomComponentHeight + 20}]}>
-        <Image
+        <PocketAgentLogo
           source={require('../../assets/pocketagent-dark-v2.png')}
           style={styles.logo}
-          resizeMode="contain"
         />
 
         <View style={styles.content}>

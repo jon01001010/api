@@ -1,5 +1,5 @@
 import React, {useContext} from 'react';
-import {Image, Platform, View} from 'react-native';
+import {Platform, View} from 'react-native';
 import {Button, Text} from 'react-native-paper';
 import {observer} from 'mobx-react';
 
@@ -9,6 +9,7 @@ import {modelStore, palStore} from '../../store';
 import {useNavigation} from '@react-navigation/native';
 import {NavigationProp} from '@react-navigation/native';
 import {L10nContext} from '../../utils';
+import {PocketAgentLogo} from '../PocketAgentLogo';
 
 interface ChatEmptyPlaceholderProps {
   onSelectModel: () => void;
@@ -84,10 +85,13 @@ export const ChatEmptyPlaceholder = observer(
     return (
       <View
         style={[styles.container, {marginBottom: bottomComponentHeight + 100}]}>
-        <Image
-          source={Platform.OS === 'android' ? {uri: 'pocketagent_logo'} : require('../../assets/pocketagent-dark-v2.png')}
+        <PocketAgentLogo
+          source={
+            Platform.OS === 'android'
+              ? {uri: 'pocketagent_logo'}
+              : require('../../assets/pocketagent-dark-v2.png')
+          }
           style={styles.logo}
-          resizeMode="contain"
         />
         <View>
           <Text style={styles.title}>{title}</Text>
