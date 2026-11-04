@@ -9,7 +9,8 @@ declare module '@fugood/react-native-audio-pcm-stream' {
     bufferSize?: number;
   }
   const LiveAudioStream: {
-    init: (options: Options) => void;
+    /** Rejects when the microphone can't be opened. */
+    init: (options: Options) => Promise<void> | void;
     start: () => void;
     stop: () => Promise<string>;
     on: (event: 'data', callback: (data: string) => void) => unknown;

@@ -48,6 +48,7 @@ jest.mock('../../../store', () => {
             noPermission: 'no mic',
             wakeFailed: 'failed',
             wakeStatusError: 'Not listening: {{reason}}',
+            micUnavailable: 'mic busy',
             wakeNoNative: 'no native part',
             notEnoughMemory: 'low memory {{needed}} {{available}}',
           },
@@ -375,6 +376,24 @@ describe('wake word', () => {
     DeviceEventEmitter.emit('PocketAgentWakeError', 'SecurityException');
     expect(store.voiceStore.wakeEnabled).toBe(false);
     expect(store.voiceStore.wakeError).toBe('Not listening: SecurityException');
+    expect(isWakeStreaming()).toBe(false);
+  });
+
+  it('says so when the microphone is busy', async () => {
+    await listening();
+    // An answer runs (mic released), then the mic is busy when it reopens.
+    runInAction(() => {
+      store.chatSessionStore.agentUiState = {status: 'streaming_text'};
+    });
+    (LiveAudioStream.init as jest.Mock).mockReturnValueOnce(
+      Promise.reject(new Error('AudioRecord initialization failed')),
+    );
+    runInAction(() => {
+      store.chatSessionStore.agentUiState = {status: 'done'};
+    });
+    await settle();
+    expect(store.voiceStore.wakeStatus).toBe('error');
+    expect(store.voiceStore.wakeError).toBe('Not listening: mic busy');
     expect(isWakeStreaming()).toBe(false);
   });
 

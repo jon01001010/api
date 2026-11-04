@@ -45,6 +45,10 @@ import {
   SearchProviderKeySheet,
   InputSlider,
 } from '../../components';
+import {
+  CrashReportNotice,
+  useCrashReports,
+} from '../../components/CrashReportNotice';
 import {AuthSheet} from '../../components/PalsHub';
 import {LocalApiCard} from './LocalApiCard';
 
@@ -92,6 +96,8 @@ export const SettingsScreen: React.FC = observer(() => {
   const theme = useTheme();
   const styles = createStyles(theme);
   const isFocused = useIsFocused();
+  const [crashReportsOpen, setCrashReportsOpen] = useState(false);
+  const crashReports = useCrashReports(crashReportsOpen);
   const [contextSize, setContextSize] = useState(
     modelStore.contextInitParams.n_ctx.toString(),
   );
@@ -1215,6 +1221,30 @@ export const SettingsScreen: React.FC = observer(() => {
                     {l10n.voiceAndSpeech.voiceInput.settingsOpen}
                   </Button>
                 </View>
+
+                {/* Why the app closed recently (Android 11+ and app errors). */}
+                <Divider />
+                <View style={styles.switchContainer}>
+                  <View style={styles.textContainer}>
+                    <Text variant="titleMedium" style={styles.textLabel}>
+                      {l10n.settings.crashReports.row}
+                    </Text>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {l10n.settings.crashReports.rowHint}
+                    </Text>
+                  </View>
+                  <Button
+                    mode="outlined"
+                    testID="crash-reports-button"
+                    onPress={() => setCrashReportsOpen(true)}>
+                    {l10n.settings.crashReports.open}
+                  </Button>
+                </View>
+                <CrashReportNotice
+                  reports={crashReports}
+                  visible={crashReportsOpen}
+                  onClose={() => setCrashReportsOpen(false)}
+                />
 
                 {/* Display Memory Usage (iOS only) */}
                 {Platform.OS === 'ios' && (

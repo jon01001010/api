@@ -36,6 +36,18 @@
   },
   "settings": {
     "configureClaude": "Configure Claude API",
+    "crashReports": {
+      "row": "Crash reports",
+      "rowHint": "Why PocketAgent closed recently, if it did. Copy the details to report a problem.",
+      "open": "View",
+      "title": "Crash reports",
+      "closedUnexpectedly": "PocketAgent closed unexpectedly",
+      "none": "No recent crashes recorded.",
+      "copy": "Copy details",
+      "copied": "Copied",
+      "ok": "OK",
+      "hint": "Recorded by Android (Android 11 and newer) and by the app. Nothing is sent anywhere."
+    },
     "modelInitializationSettings": "Model Initialization Settings",
     "metal": "Metal",
     "metalDescription": "Apple's hardware-accelerated API.",
@@ -1567,6 +1579,7 @@
       "wakeStatusOff": "Off.",
       "wakeStatusError": "Not listening: {{reason}}",
       "wakeNoNative": "background listening isn't available in this build.",
+      "micUnavailable": "the microphone couldn't be opened (another app may be using it).",
       "lastHeard": "Last heard: \"{{text}}\"",
       "recommendedTiny": "Recommended (small, uses little memory)",
       "recommendedBase": "More accurate (needs more memory)"

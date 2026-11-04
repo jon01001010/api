@@ -31,6 +31,7 @@ import {
   AppWithMigration,
   TTSSetupSheet,
   VoiceInputSheet,
+  CrashReportNotice,
   DownloadOverlay,
   HubRunSheetHost,
 } from './src/components';
@@ -244,6 +245,7 @@ const App = observer(() => {
                     />
                     <TTSSetupSheet />
                     <VoiceInputSheet />
+                    <CrashReportNotice />
                     <DownloadOverlay />
                     <HubRunSheetHost />
                   </BottomSheetModalProvider>

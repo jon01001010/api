@@ -252,13 +252,24 @@ function startStream() {
   streaming = true;
   voiceStore.setWakeStatus('listening');
   segmenter.reset();
-  LiveAudioStream.init({
-    sampleRate: SAMPLE_RATE,
-    channels: 1,
-    bitsPerSample: 16,
-    audioSource: 6,
-    bufferSize: 4096,
-    wavFile: '',
+  Promise.resolve(
+    LiveAudioStream.init({
+      sampleRate: SAMPLE_RATE,
+      channels: 1,
+      bitsPerSample: 16,
+      audioSource: 6,
+      bufferSize: 4096,
+      wavFile: '',
+    }),
+  ).catch(() => {
+    streaming = false;
+    voiceStore.setWakeStatus(
+      'error',
+      uiStore.l10n.voiceAndSpeech.voiceInput.wakeStatusError.replace(
+        '{{reason}}',
+        uiStore.l10n.voiceAndSpeech.voiceInput.micUnavailable,
+      ),
+    );
   });
   LiveAudioStream.on('data', (b64: string) => {
     if (streaming) {

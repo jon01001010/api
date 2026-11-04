@@ -94,8 +94,11 @@ export async function startVoiceInput(): Promise<StartResult> {
 
 async function run(handle: ListenHandle, modelPath: string) {
   try {
-    const {audio} = await handle.result;
+    const {audio, reason} = await handle.result;
     if (!audio) {
+      if (reason === 'mic-unavailable') {
+        warn(uiStore.l10n.voiceAndSpeech.voiceInput.micUnavailable);
+      }
       return;
     }
     voiceStore.setState('transcribing');
