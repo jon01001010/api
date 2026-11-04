@@ -191,6 +191,8 @@ const replyRunning = () =>
 
 let streaming = false;
 let checking = false;
+/** The native listening service was started (and not stopped since). */
+let serviceStarted = false;
 const segmenter = createSegmenter(audio => {
   onUtterance(audio).catch(() => {});
 });
@@ -334,6 +336,7 @@ export async function enableWake(): Promise<boolean> {
   }
   try {
     await native?.start(voiceStore.wakePhrase);
+    serviceStarted = true;
   } catch (error) {
     console.warn('[wake] service failed to start', error);
     return fail(String((error as Error)?.message ?? error));
@@ -344,6 +347,7 @@ export async function enableWake(): Promise<boolean> {
 }
 
 export async function disableWake(): Promise<void> {
+  serviceStarted = false;
   voiceStore.setWakeEnabled(false);
   pauseStream();
   voiceStore.setWakeStatus('off');
@@ -361,7 +365,7 @@ export async function disableWake(): Promise<void> {
  * (so it never hears itself). Returns a disposer.
  */
 export function watchWake(): () => void {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let starting = false;
   const dispose = reaction(
     () => ({
       on: voiceStore.wakeEnabled,
@@ -371,18 +375,25 @@ export function watchWake(): () => void {
         (ttsStore.playbackState?.mode ?? 'idle') === 'idle',
     }),
     ({on, idle}) => {
-      clearTimeout(timer);
+      // Saved settings load after the app starts: when the wake word turns
+      // out to be on, start the background service then.
+      if (on && !serviceStarted && !starting) {
+        starting = true;
+        enableWake()
+          .catch(() => {})
+          .finally(() => {
+            starting = false;
+          });
+      }
       if (!on || !idle) {
         pauseStream();
         return;
       }
-      // Let a just-finished turn settle: auto-speak may be about to start,
-      // and conversation mode (after 800 ms) gets the mic first.
-      timer = setTimeout(() => {
-        if (voiceStore.wakeEnabled && voiceStore.state === 'idle') {
-          startStream();
-        }
-      }, 1500);
+      // Start right away: React Native pauses JS timers while the app is in
+      // the background, so a delayed start would never come. Not hearing
+      // itself is already covered: `idle` is false while auto-speak plays,
+      // and voice input takes the mic first (beforeListen).
+      startStream();
     },
     {fireImmediately: true},
   );
@@ -391,6 +402,7 @@ export function watchWake(): () => void {
   const serviceError = DeviceEventEmitter.addListener(
     'PocketAgentWakeError',
     (reason: string) => {
+      serviceStarted = false;
       voiceStore.setWakeEnabled(false);
       pauseStream();
       voiceStore.setWakeStatus(
@@ -408,12 +420,7 @@ export function watchWake(): () => void {
       disableWake().catch(() => {});
     },
   );
-  // Re-start the service if the wake word was left on (app is visible now).
-  if (voiceStore.wakeEnabled) {
-    enableWake().catch(() => {});
-  }
   return () => {
-    clearTimeout(timer);
     dispose();
     stopFromNotification.remove();
     serviceError.remove();
@@ -425,4 +432,10 @@ export function watchWake(): () => void {
 /** For tests. */
 export function isWakeStreaming() {
   return streaming;
+}
+
+/** For tests. */
+export function resetWakeForTests() {
+  serviceStarted = false;
+  checking = false;
 }
