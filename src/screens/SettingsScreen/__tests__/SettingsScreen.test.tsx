@@ -12,7 +12,7 @@ import {
 
 import {SettingsScreen} from '../SettingsScreen';
 
-import {modelStore, uiStore, ttsStore} from '../../../store';
+import {modelStore, uiStore, ttsStore, voiceStore} from '../../../store';
 import {l10n} from '../../../locales';
 
 jest.useFakeTimers();
@@ -1319,6 +1319,39 @@ describe('SettingsScreen', () => {
     await waitFor(() => {
       // Should show effective value clamped to n_ctx (2048)
       expect(getByText(/effective: 2048/)).toBeTruthy();
+    });
+  });
+
+  describe('Voice input & wake word row', () => {
+    afterEach(() => {
+      runInAction(() => {
+        voiceStore.wakeEnabled = false;
+        voiceStore.isSheetOpen = false;
+      });
+    });
+
+    it('opens the Voice input settings', () => {
+      const {getByTestId, getByText} = render(<SettingsScreen />, {
+        withSafeArea: true,
+        withNavigation: true,
+      });
+      expect(
+        getByText(l10n.en.voiceAndSpeech.voiceInput.settingsRowHint),
+      ).toBeTruthy();
+      fireEvent.press(getByTestId('voice-input-settings-button'));
+      expect(voiceStore.isSheetOpen).toBe(true);
+    });
+
+    it('says when the wake word is listening', () => {
+      runInAction(() => {
+        voiceStore.wakeEnabled = true;
+        voiceStore.wakePhrase = 'Hey Agent';
+      });
+      const {getByText} = render(<SettingsScreen />, {
+        withSafeArea: true,
+        withNavigation: true,
+      });
+      expect(getByText(/Wake word on: listening for "Hey Agent"/)).toBeTruthy();
     });
   });
 });

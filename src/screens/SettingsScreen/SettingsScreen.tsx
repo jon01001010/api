@@ -58,6 +58,7 @@ import {
   uiStore,
   hfStore,
   ttsStore,
+  voiceStore,
   searchProviderStore,
   purchaseStore,
 } from '../../store';
@@ -1189,6 +1190,30 @@ export const SettingsScreen: React.FC = observer(() => {
                     }
                     onValueChange={value => ttsStore.setUserTTSOverride(value)}
                   />
+                </View>
+
+                {/* Voice input and wake word (same sheet as long-pressing
+                    the mic in chat). */}
+                <Divider />
+                <View style={styles.switchContainer}>
+                  <View style={styles.textContainer}>
+                    <Text variant="titleMedium" style={styles.textLabel}>
+                      {l10n.voiceAndSpeech.voiceInput.settingsRow}
+                    </Text>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {voiceStore.wakeEnabled
+                        ? t(l10n.voiceAndSpeech.voiceInput.settingsWakeOn, {
+                            phrase: voiceStore.wakePhrase,
+                          })
+                        : l10n.voiceAndSpeech.voiceInput.settingsRowHint}
+                    </Text>
+                  </View>
+                  <Button
+                    mode="outlined"
+                    testID="voice-input-settings-button"
+                    onPress={() => voiceStore.openSheet()}>
+                    {l10n.voiceAndSpeech.voiceInput.settingsOpen}
+                  </Button>
                 </View>
 
                 {/* Display Memory Usage (iOS only) */}

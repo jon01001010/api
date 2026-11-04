@@ -1525,6 +1525,10 @@
   },
   "voiceAndSpeech": {
     "voiceInput": {
+      "settingsRow": "Voice input & wake word",
+      "settingsRowHint": "Speak instead of typing, and wake PocketAgent by saying its name.",
+      "settingsWakeOn": "Wake word on: listening for \"{{phrase}}\" and each model's wake words.",
+      "settingsOpen": "Open",
       "micLabel": "Speak a message",
       "stopLabel": "Stop listening",
       "listening": "Listening…",
