@@ -50,14 +50,17 @@ export class CalculateEngine implements TalentEngine {
       function: {
         name: 'calculate',
         description:
-          'Evaluate a mathematical expression and return the result.',
+          'Do exact math instead of guessing. Use it for any calculation with numbers. ' +
+          'How: put one expression in `expression`. Use + - * / ^ ( ), and functions such as ' +
+          'sqrt, abs, round, floor, ceil, min, max, pow, log, log10, exp, sin, cos, tan, and pi. ' +
+          'Percent: write "15% of 240" as 240*15/100 (the % sign means remainder, not percent).',
         parameters: {
           type: 'object',
           properties: {
             expression: {
               type: 'string',
               description:
-                'Mathematical expression to evaluate (e.g., "2^10", "sqrt(144)", "sin(pi/2)").',
+                'One math expression, e.g. "2^10", "sqrt(144)", "240*15/100", "(3+4)*2".',
             },
             precision: {
               type: 'number',

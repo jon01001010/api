@@ -339,40 +339,47 @@ export class FileToolsEngine implements TalentEngine {
     const limit = getWorkspaceLimits().maxToolTextBytes;
     const n = this.name;
     const list = n === 'file_list' || n === 'file_search';
+    // Each is a short how-to: when to use it, then the steps. Small models
+    // follow these literally, so they say exactly what to send.
     const description: Record<FileOperation, string> = {
-      file_list: 'List editable files in PocketAgent private workspace',
+      file_list:
+        'List the files in your private workspace. Use it first when you need a file name you do not know. No arguments.',
       file_search:
-        'Search filenames in the private workspace (case insensitive)',
-      file_info: 'Show file size and type in the private workspace',
+        'Find workspace files whose name contains `query` (ignores upper/lower case). Example: "notes" finds notes.md and old-notes.txt.',
+      file_info:
+        "Show a workspace file's size and whether it can be edited as text. Read only.",
       file_read_range:
-        'Read numbered lines from a text file in the private workspace',
-      file_read: 'Read a text/code file from PocketAgent private workspace',
+        'Read part of a long text file, with line numbers. Example: start_line 1, line_count 50 reads lines 1-50; then start_line 51 for the next part.',
+      file_read:
+        'Read a whole text file from your private workspace. Always read a file before changing it. For very long files use file_read_range.',
       file_create:
-        'Create a NEW private text/code file only, with explicit filename ending in .txt, .md, etc. User must approve full contents. If this fails, report the error; NEVER edit an unrelated existing file as a workaround.',
+        'Make a NEW text file. Only when the user asks for a new file. How: a name with an extension (notes.md, list.txt, page.html) and the full text in `content`. The user approves it. It fails if the name exists: then tell the user; never change a different file instead.',
       file_edit:
-        'Replace an EXISTING private text file only when the user explicitly requests editing that exact file. User must approve complete old/new contents before saving.',
+        'Replace ALL the text of an existing file. Only when the user asks to rewrite that file. How: 1) file_read it; 2) send the complete new text in `content` (everything, not just the changed part). The user approves. For a small change use file_patch; to add at the end use file_append.',
       file_append:
-        'Add text to the END of an existing private text file (exactly as given; include a leading newline if needed). User must approve.',
+        'Add text at the END of an existing file, keeping what is there. How: put only the new text in `content`; start it with a line break if it should begin on a new line. The user approves.',
       file_patch:
-        'Replace one exact snippet in an existing private text file. `find` must appear exactly once; read the file first and copy it exactly. User must approve.',
+        'Change one part of an existing file. How: 1) file_read the file; 2) copy the exact text to change into `find` (it must appear only once; copy more of the line if needed); 3) put the new text in `replace` ("" deletes it). The user approves.',
       file_diff:
-        'Show line-by-line changes: between the file and proposed `content`, or (without content) since its last saved version. Read only.',
+        'Show changes line by line. With `content`: compare the file with your proposed new text (check before file_edit). Without `content`: show what changed since its last saved version. Read only.',
       file_history:
-        'List earlier saved versions of a private text file (newest first). Read only.',
+        'List the saved earlier versions of a file, newest first. Read only. Use file_undo to go back one version.',
       file_undo:
-        'Restore the most recent earlier version of a private text file (undo the last change). User must approve.',
+        'Undo the last change to a file by restoring its most recent earlier version. The user approves.',
     };
     const props: Record<string, unknown> = {};
     if (!list)
       props.filename = {
         type: 'string',
         description:
-          'Complete basename including supported text/code extension (e.g. test.txt or notes.md). Never modify an unrelated existing file if creation fails.',
+          n === 'file_create'
+            ? 'New file name with a text extension, e.g. notes.md or list.txt (no folders).'
+            : 'Exact name of the workspace file, e.g. notes.md (from file_list if unsure).',
       };
     if (n === 'file_search')
       props.query = {
         type: 'string',
-        description: 'Case-insensitive filename substring',
+        description: 'Part of the file name to look for, e.g. "notes"',
       };
     if (n === 'file_read_range') {
       props.start_line = {
@@ -388,12 +395,13 @@ export class FileToolsEngine implements TalentEngine {
       props.content = {
         type: 'string',
         description:
-          'Complete replacement UTF-8 contents (' + limit + ' bytes maximum)',
+          'The complete text of the file (up to ' + limit + ' bytes)',
       };
     if (n === 'file_append')
       props.content = {
         type: 'string',
-        description: 'Text to add at the end (' + limit + ' bytes maximum)',
+        description:
+          'Only the new text to add at the end (up to ' + limit + ' bytes)',
       };
     if (n === 'file_diff')
       props.content = {
@@ -404,11 +412,12 @@ export class FileToolsEngine implements TalentEngine {
     if (n === 'file_patch') {
       props.find = {
         type: 'string',
-        description: 'Exact existing text to replace; must occur exactly once',
+        description:
+          'Text copied exactly from the file (from file_read); must appear only once',
       };
       props.replace = {
         type: 'string',
-        description: 'Replacement text ("" deletes the snippet)',
+        description: 'The new text to put there ("" deletes it)',
       };
     }
     const required: Record<FileOperation, string[]> = {
