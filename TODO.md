@@ -151,7 +151,7 @@ Add remote model → **Cloud chat API** now shows one button per provider: OpenA
 - [x] Groq (`api.groq.com/openai/v1`) and OpenRouter (`openrouter.ai/api/v1`) use the OpenAI profile. On OpenRouter, free models end in `:free`.
 - [ ] Phone check: each with a real free key, chat, a tool across two turns, a wrong key. Free-tier limits change; check each provider's page.
 
-## Phone actions via built-in Android intents (planned, not implemented)
+## Phone actions via built-in Android intents (phase 1 built, needs phone check)
 
 Replaces the earlier "ARTEMIS-inspired automation" batch. Research done 2026-11-03; **write-up only, nothing implemented yet.**
 
@@ -194,21 +194,21 @@ Not every phone has an app for every intent (e.g. no Clock app that handles `SET
 
 **Phase 1: intent actions (no accessibility).**
 
-- [ ] Kotlin `PhoneActions` module: send an allow-listed set of intents with typed extras; list launchable apps (label + package); `resolveActivity` check; nothing else.
-- [ ] Manifest: `SET_ALARM` permission; `<queries>` for MAIN/LAUNCHER and the intents above.
-- [ ] Model tools, all **off by default** in Toolbox like other tools:
+- [x] Kotlin `PhoneActions` module: send an allow-listed set of intents with typed extras; list launchable apps (label + package); `resolveActivity` check; nothing else. (First compiled in the next APK build.)
+- [x] Manifest: `SET_ALARM` permission; `<queries>` for MAIN/LAUNCHER and the intents above.
+- [x] Model tools, all **off by default**, grouped in Toolbox as **Phone actions** (one switch for all, "Show each" for single ones):
   - `set_timer`, `show_timers`
   - `set_alarm`, `show_alarms`
   - `add_reminder` (opens the Calendar screen pre-filled)
   - `open_app` (match by app name; ask when more than one matches)
   - `navigate_to`, `play_music`, `open_camera`, `open_settings`
   - `compose_message` (dial / SMS / email screens, user sends)
-- [ ] Safety:
+- [x] Safety:
   - Every action shows an approval prompt in chat first (like file writes), naming exactly what will happen ("Set a 15-minute timer named Tea?").
   - Nothing places calls, sends messages, pays, or changes settings by itself.
   - No `CALL_PHONE`, `SEND_SMS` or `QUERY_ALL_PACKAGES`.
 - [ ] Voice: spoken requests ("Set a timer for 15 minutes") go through the existing chat and voice input to the same tools. Time parsing is in the tool arguments, which are validated (timer 1 s–24 h; alarm hour 0–23 / minute 0–59).
-- [ ] Tests: JS tool tests (argument validation, approval required, denied → nothing sent, unknown app → clear message). The Kotlin side can only be verified on the phone APK.
+- [x] Tests: JS tool tests (argument validation, approval required, denied → nothing sent, unknown app → clear message). The Kotlin side can only be verified on the phone APK.
 - [ ] Phone checks on the test phone: timer, alarm, reminder, open app, navigation, music, camera, settings, and a "no app can handle this" case.
 
 **Phase 2: cross-app workflows (still intents only).**
