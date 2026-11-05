@@ -24,6 +24,18 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [ ] HTML preview: a generated clock ticks in chat and fullscreen; code view, copy, fullscreen, Save to workspace, and Share work.
 - [ ] Workspace tools: append / patch / undo through chat, with the diff in the approval dialog.
 
+## Confirmed on the phone (2026-11-05)
+
+- [x] Claude: chat, tools, memory, file_create, HTML preview.
+- [x] Gemini (free): chat, tool calls (HTML clock, cat drawing), Live/TTS models hidden, the 400s fixed (`max_tokens -1`, Claude engine on a Gemini address).
+- [x] Switching from a cloud model to a local one releases the server.
+- [x] Granite 3.0 1B-A400M (MoE) runs (~6.7 tok/s); too small for tool calls.
+- [x] memory_replace with approval.
+- [x] Pictures: SmolVLM with Vision on describes a photo; a text model switches to SmolVLM and back; a photo picked through Files attaches as a picture.
+- [x] HTML preview no longer cut off (fit / inner scroll / fullscreen).
+- [x] Declutter: 4-item side menu; Settings links, Chat section and Advanced fold; + Add model at the top; Save button visible.
+- [ ] Next build (not yet on the phone): Vision switch in the ⚙ sheet, a picture turns a switched-off vision model on, readable daily-quota (429) error with no retries, Attach to chat from the Workspace list.
+
 ## Context summary ("Summarize & continue")
 
 When a chat fills the model's memory, older messages are replaced, for the model only, by a short summary the model writes. This frees up context without starting a new chat.
