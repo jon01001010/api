@@ -228,6 +228,22 @@ Not every phone has an app for every intent (e.g. no Clock app that handles `SET
 
 - "Evaluate ARTEMIS MCP integration": that is for driving a phone from a computer IDE, not for PocketAgent on the phone.
 
+## Custom tools: made and saved by you or the model (planned, after phone actions)
+
+Decided 2026-11-05. Today Toolbox has tool drafts that only run as local tests; the model can neither call nor make them.
+
+Two kinds of custom tool (no code execution, no new network access):
+
+- **Saved instructions:** a named how-to (steps or a prompt). Calling it returns the stored text, so a model can keep and reuse a skill.
+- **Shortcut of tools:** a saved chain of existing tools with fill-in values, e.g. `morning` = `set_alarm` 07:00 + `open_app` Spotify. Each step still asks for approval as usual; the run stops at the first denial or failure. This also covers phone-actions phase 2 (chaining).
+
+Plan:
+
+- [ ] Toolbox: create / edit / delete both kinds by hand; a switch per tool to let the model use it (off by default, like every global tool).
+- [ ] Model tools `tool_save` and `tool_delete`: the model proposes a tool; you see the full definition in an approval dialog; once approved it is saved **switched off**, and you turn it on in Toolbox.
+- [ ] Checks: names can't clash with built-in tools; a shortcut may only use built-in tools (no shortcut inside a shortcut); a step limit; fill-in values are checked by the step's own tool.
+- [ ] How-to text for both kinds; tests; phone check.
+
 ## Voice assistant: wake word and voice control (phase 1 built, needs phone check)
 
 Goal: an Alexa-style assistant. Say a wake phrase, speak a request, and PocketAgent answers out loud and, for phone tasks, acts. Everything runs offline on the phone. Research done 2026-11-04; nothing built yet.
