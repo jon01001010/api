@@ -175,6 +175,40 @@ describe('OpenAICompletionEngine', () => {
     engine = new OpenAICompletionEngine(ENDPOINT);
   });
 
+  it('a model that refuses tools is retried, and then asked, without them', async () => {
+    const tools = [{type: 'function', function: {name: 'datetime'}}];
+    mockedStreamChat
+      .mockRejectedValueOnce(
+        new RemoteHttpError(
+          'Server error: 400 — Function calling is not enabled for this model',
+          400,
+        ),
+      )
+      .mockResolvedValue({text: 'Hi', content: 'Hi'});
+    const params = {messages: [{role: 'user', content: 'Hi'}], tools} as any;
+
+    await expect(engine.completion(params)).resolves.toMatchObject({
+      content: 'Hi',
+    });
+    await engine.completion(params);
+
+    const calls = mockedStreamChat.mock.calls.map(c => c[0].tools);
+    expect(calls).toEqual([tools, undefined, undefined]);
+  });
+
+  it('other 400s are not retried', async () => {
+    mockedStreamChat.mockRejectedValueOnce(
+      new RemoteHttpError('Server error: 400 — bad request', 400),
+    );
+    await expect(
+      engine.completion({
+        messages: [],
+        tools: [{type: 'function', function: {name: 'x'}}],
+      } as any),
+    ).rejects.toThrow('bad request');
+    expect(mockedStreamChat).toHaveBeenCalledTimes(1);
+  });
+
   it('calls streamChatCompletion with correct parameters', async () => {
     const mockResult = {
       text: 'Hello',

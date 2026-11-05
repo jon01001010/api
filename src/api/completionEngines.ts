@@ -72,6 +72,21 @@ export interface RemoteEngineOptions {
   ) => Promise<boolean | void>;
 }
 
+/**
+ * A 400 that says the model cannot take tools at all (Gemini: "Function
+ * calling is not enabled for this model"), as opposed to a bad tool call.
+ */
+export function refusesTools(error: unknown): boolean {
+  const status = (error as {status?: number} | null)?.status;
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return (
+    status === 400 &&
+    /function calling is not enabled|does not support (tools|function calling|tool use)|tools? (are|is) not supported/i.test(
+      message,
+    )
+  );
+}
+
 export class OpenAICompletionEngine implements CompletionEngine {
   private abortController: AbortController | null = null;
 
@@ -117,8 +132,31 @@ export class OpenAICompletionEngine implements CompletionEngine {
     }
   }
 
-  private send(
+  /** The model refused tools once (some Gemma / Gemini models): skip them. */
+  private toolsUnsupported = false;
+
+  private async send(
     params: ApiCompletionParams,
+    signal: AbortSignal,
+    callback?: (data: CompletionStreamData) => void,
+  ): Promise<CompletionResult> {
+    const tools = (params as any).tools;
+    const withTools = !!tools?.length && !this.toolsUnsupported;
+    try {
+      return await this.stream(params, withTools, signal, callback);
+    } catch (error) {
+      if (!withTools || !refusesTools(error) || signal.aborted) {
+        throw error;
+      }
+      // Chat without tools rather than not at all.
+      this.toolsUnsupported = true;
+      return this.stream(params, false, signal, callback);
+    }
+  }
+
+  private stream(
+    params: ApiCompletionParams,
+    withTools: boolean,
     signal: AbortSignal,
     callback?: (data: CompletionStreamData) => void,
   ): Promise<CompletionResult> {
@@ -131,8 +169,10 @@ export class OpenAICompletionEngine implements CompletionEngine {
         stream: true,
         // llama.rn's `tools` typedef is structurally compatible with OpenAI's
         // function-tool shape but lives under a different name.
-        tools: (params as any).tools,
-        tool_choice: (params as any).tool_choice,
+        ...(withTools && {
+          tools: (params as any).tools,
+          tool_choice: (params as any).tool_choice,
+        }),
         response_format: (params as any).response_format,
         // Reasoning intent carried on the params; the server profile owns the wire shape.
         reasoning: params.reasoning,

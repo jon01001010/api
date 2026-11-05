@@ -236,6 +236,17 @@ function liftModelEntryCapabilities(
  * Fetch available models and response headers from an OpenAI-compatible server.
  * GET /v1/models
  */
+const isGeminiUrl = (url: string) =>
+  /^https:\/\/generativelanguage\.googleapis\.com\//i.test(url.trim());
+
+/**
+ * Gemini lists every model, including ones its chat endpoint cannot serve:
+ * Live (WebSocket only), speech, embeddings, image/video generation and
+ * the like. They are left out of the list.
+ */
+const GEMINI_NOT_CHAT =
+  /(^|-)(live|tts|embedding|imagen|veo|aqa|native-audio|lyria|image-generation|robotics|computer-use)(-|$)/i;
+
 export async function fetchModelsWithHeaders(
   serverUrl: string,
   apiKey?: string,
@@ -266,11 +277,14 @@ export async function fetchModelsWithHeaders(
 
   const data = await response.json();
   // Gemini lists ids as `models/gemini-…`; its chat endpoint takes the bare id.
-  const rows = ((data.data || []) as RemoteModelInfo[]).map(row =>
+  let rows = ((data.data || []) as RemoteModelInfo[]).map(row =>
     typeof row?.id === 'string' && row.id.startsWith('models/')
       ? {...row, id: row.id.slice('models/'.length)}
       : row,
   );
+  if (isGeminiUrl(serverUrl)) {
+    rows = rows.filter(row => !GEMINI_NOT_CHAT.test(row?.id ?? ''));
+  }
   return {
     models: liftModelEntryCapabilities(rows, data.models),
     headers: responseHeaders,

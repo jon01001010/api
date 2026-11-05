@@ -206,6 +206,33 @@ describe('fetchModelsWithHeaders', () => {
     expect(result.models[0].id).toBe('gemini-2.5-flash');
   });
 
+  it('leaves Gemini models out that cannot chat (Live, speech, embeddings)', async () => {
+    const ids = [
+      'gemini-2.5-flash',
+      'gemini-3.8-live-extended-thinking',
+      'gemini-2.5-flash-preview-tts',
+      'gemini-embedding-001',
+      'imagen-4.0-generate-001',
+      'veo-3.0-generate-preview',
+      'gemma-4-31b-it',
+      'gemini-2.5-flash-native-audio-latest',
+    ];
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      headers: mockHeaders(),
+      json: () =>
+        Promise.resolve({data: ids.map(id => ({id: `models/${id}`}))}),
+    });
+    const result = await fetchModelsWithHeaders(
+      'https://generativelanguage.googleapis.com/v1beta/openai',
+      'key',
+    );
+    expect(result.models.map(m => m.id)).toEqual([
+      'gemini-2.5-flash',
+      'gemma-4-31b-it',
+    ]);
+  });
+
   // An undefined timeoutMs (e.g. a persisted ServerConfig from a prior version
   // with no requestTimeoutMs) is forwarded raw and must not crash; it behaves
   // identically to today (default applies).
