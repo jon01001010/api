@@ -5,6 +5,7 @@ import {WebSearchEngine} from './WebSearchEngine';
 import {ReadUrlEngine} from './ReadUrlEngine';
 import {FileToolsEngine, FILE_OPERATIONS} from './FileToolsEngine';
 import {MemoryToolsEngine} from './MemoryToolsEngine';
+import {PhoneActionsEngine, PHONE_TOOL_NAMES} from './PhoneActionsEngine';
 import {talentRegistry} from './TalentRegistry';
 import type {SearchAccess} from './searchAccess';
 import type {ToolDefinition, SystemPromptContext} from './types';
@@ -64,8 +65,17 @@ export function registerDefaultTalents(): void {
   for (const name of FILE_OPERATIONS) {
     talentRegistry.register(new FileToolsEngine(name));
   }
-  for (const name of ['memory_get', 'memory_replace', 'memory_history', 'memory_restore'] as const) {
+  for (const name of [
+    'memory_get',
+    'memory_replace',
+    'memory_history',
+    'memory_restore',
+  ] as const) {
     talentRegistry.register(new MemoryToolsEngine(name));
+  }
+  // Phone actions: off by default like every global tool; each call asks.
+  for (const name of PHONE_TOOL_NAMES) {
+    talentRegistry.register(new PhoneActionsEngine(name));
   }
   const searchAccess = createSearchAccess();
   talentRegistry.register(new WebSearchEngine(searchAccess));
