@@ -14,7 +14,9 @@ import type {
 } from './types';
 import {
   describeFailure,
+  listInstalledApps,
   performPhoneAction,
+  type InstalledApp,
   type PhoneAction,
 } from '../phoneActions/native';
 
@@ -32,7 +34,9 @@ interface Plan {
   what: string;
 }
 
-type Planner = (args: Record<string, unknown>) => Plan | string;
+type Planner = (
+  args: Record<string, unknown>,
+) => Plan | string | Promise<Plan | string>;
 
 interface PhoneTool {
   description: string;
@@ -75,6 +79,35 @@ export function formatDuration(totalSeconds: number): string {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
+
+const squash = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+/**
+ * Installed apps matching a name, best first: the exact name, then names
+ * starting with it, then names containing it (spaces and case ignored).
+ * An exact match stands alone, so "Maps" never also offers "Maps Go".
+ */
+export function matchApps(query: string, apps: InstalledApp[]): InstalledApp[] {
+  const q = squash(query);
+  if (!q) {
+    return [];
+  }
+  const exact = apps.filter(a => squash(a.label) === q);
+  if (exact.length) {
+    return exact;
+  }
+  const starts = apps.filter(a => squash(a.label).startsWith(q));
+  const contains = apps.filter(
+    a => !starts.includes(a) && squash(a.label).includes(q),
+  );
+  const byPackage = apps.filter(
+    a =>
+      !starts.includes(a) &&
+      !contains.includes(a) &&
+      squash(a.package).includes(q),
+  );
+  return [...starts, ...contains, ...byPackage];
+}
 
 export const PHONE_TOOLS: Record<string, PhoneTool> = {
   set_timer: {
@@ -207,6 +240,46 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
       what: 'show alarms',
     }),
   },
+  open_app: {
+    description:
+      'Open an app installed on the phone, by its name. ' +
+      'How: `name` is the app name as the user says it ("Spotify", "maps"). ' +
+      'If several apps match, you get their names: ask the user which one, then call again with that exact name.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {type: 'string', description: 'The app name, e.g. "Spotify".'},
+      },
+      required: ['name'],
+    },
+    plan: async args => {
+      const name = text(args.name, 80);
+      if (!name) {
+        return 'Give the app `name`, e.g. "Spotify".';
+      }
+      const apps = await listInstalledApps();
+      if (!apps.length) {
+        return 'The list of installed apps is not available on this phone.';
+      }
+      const found = matchApps(name, apps);
+      if (!found.length) {
+        return `No installed app is called "${name}". Ask the user for the app's name as it shows on the phone.`;
+      }
+      if (found.length > 1) {
+        const names = found.slice(0, 6).map(a => `"${a.label}"`);
+        return `Several apps match "${name}": ${names.join(', ')}. Ask the user which one, then call open_app with that exact name.`;
+      }
+      const app = found[0];
+      return {
+        action: 'open_app',
+        args: {package: app.package},
+        ask: `Open ${app.label}?`,
+        details: app.package,
+        done: `Opened ${app.label}.`,
+        what: `open ${app.label}`,
+      };
+    },
+  },
 };
 
 export const PHONE_TOOL_NAMES = Object.keys(PHONE_TOOLS);
@@ -222,7 +295,7 @@ export class PhoneActionsEngine implements TalentEngine {
     args: Record<string, any>,
     ctx?: TalentExecuteContext,
   ): Promise<TalentResult> {
-    const plan = PHONE_TOOLS[this.name].plan(args ?? {});
+    const plan = await PHONE_TOOLS[this.name].plan(args ?? {});
     if (typeof plan === 'string') {
       return {
         type: 'error',

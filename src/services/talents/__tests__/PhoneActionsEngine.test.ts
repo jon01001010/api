@@ -4,13 +4,15 @@ import {
   formatDuration,
 } from '../PhoneActionsEngine';
 import {requestFileApproval} from '../fileApprovalGate';
-import {performPhoneAction} from '../../phoneActions/native';
+import {listInstalledApps, performPhoneAction} from '../../phoneActions/native';
+import {matchApps} from '../PhoneActionsEngine';
 
 jest.mock('../fileApprovalGate', () => ({
   requestFileApproval: jest.fn(),
 }));
 jest.mock('../../phoneActions/native', () => ({
   performPhoneAction: jest.fn(),
+  listInstalledApps: jest.fn(),
   describeFailure: jest.requireActual('../../phoneActions/native')
     .describeFailure,
 }));
@@ -142,5 +144,56 @@ describe('phone action tools', () => {
     expect(approve).toHaveBeenCalledTimes(2);
     expect(perform).toHaveBeenNthCalledWith(1, 'show_timers', {});
     expect(perform).toHaveBeenNthCalledWith(2, 'show_alarms', {});
+  });
+});
+
+describe('open_app', () => {
+  const APPS = [
+    {label: 'Maps', package: 'com.google.android.apps.maps'},
+    {label: 'Maps Go', package: 'com.google.android.apps.mapslite'},
+    {label: 'Spotify', package: 'com.spotify.music'},
+    {label: 'Google Messages', package: 'com.google.android.apps.messaging'},
+    {label: 'Messenger', package: 'com.facebook.orca'},
+  ];
+  beforeEach(() => {
+    (listInstalledApps as jest.Mock).mockResolvedValue(APPS);
+  });
+
+  it('matches names ignoring case and spaces; an exact name stands alone', () => {
+    expect(matchApps('maps', APPS).map(a => a.label)).toEqual(['Maps']);
+    expect(matchApps('SPOT ify', APPS).map(a => a.label)).toEqual(['Spotify']);
+    expect(matchApps('mess', APPS).map(a => a.label)).toEqual([
+      'Messenger',
+      'Google Messages',
+    ]);
+    expect(matchApps('orca', APPS).map(a => a.label)).toEqual(['Messenger']);
+    expect(matchApps('', APPS)).toEqual([]);
+  });
+
+  it('asks, then opens the one matching app', async () => {
+    const result = await run('open_app', {name: 'spotify'});
+    expect(approve).toHaveBeenCalledWith(
+      expect.objectContaining({filename: 'Open Spotify?'}),
+      undefined,
+    );
+    expect(perform).toHaveBeenCalledWith('open_app', {
+      package: 'com.spotify.music',
+    });
+    expect(result).toEqual({type: 'text', summary: 'Opened Spotify.'});
+  });
+
+  it('lists the choices when several match, without asking or opening', async () => {
+    const result = await run('open_app', {name: 'mess'});
+    expect(result.type).toBe('error');
+    expect(result.summary).toMatch(/"Messenger", "Google Messages"/);
+    expect(result.summary).toMatch(/Ask the user which one/);
+    expect(approve).not.toHaveBeenCalled();
+    expect(perform).not.toHaveBeenCalled();
+  });
+
+  it('says so when no app has that name', async () => {
+    const result = await run('open_app', {name: 'Banana'});
+    expect(result.summary).toMatch(/No installed app is called "Banana"/);
+    expect(perform).not.toHaveBeenCalled();
   });
 });
