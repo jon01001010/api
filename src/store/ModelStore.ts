@@ -6,7 +6,14 @@ import {v4 as uuidv4} from 'uuid';
 import 'react-native-get-random-values';
 import {makePersistable} from 'mobx-persist-store';
 import * as RNFS from '@dr.pogodin/react-native-fs';
-import {comparer, computed, makeAutoObservable, runInAction, toJS} from 'mobx';
+import {
+  comparer,
+  computed,
+  makeAutoObservable,
+  observable,
+  runInAction,
+  toJS,
+} from 'mobx';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ContextParams, LlamaContext, initLlama} from 'llama.rn';
 import {
@@ -21,6 +28,7 @@ import {
   LocalCompletionEngine,
   OpenAICompletionEngine,
 } from '../api/completionEngines';
+import {voiceStore} from './VoiceStore';
 
 import {uiStore, hfStore} from '.';
 import {serverStore} from './ServerStore';
@@ -173,6 +181,21 @@ const answersSession = (
 const pairedDraftModel = (config?: DraftConfig): Model | undefined =>
   config?.mode === 'paired' ? config.draftModel : undefined;
 
+/**
+ * A model kept loaded while another one is active (multi-model). Switching
+ * back swaps these in instead of loading again.
+ */
+export interface ParkedModel {
+  modelId: string;
+  context: LlamaContext;
+  engine: CompletionEngine;
+  isMultimodalActive: boolean;
+  activeProjectionModelId: string | undefined;
+  activeContextSettings: ContextInitParams | undefined;
+  /** Estimated memory it holds, bytes. */
+  estimateBytes: number;
+}
+
 class ModelStore {
   models: Model[] = [];
   version: number | undefined = undefined; // Persisted version
@@ -188,6 +211,17 @@ class ModelStore {
 
   appState: AppStateStatus = AppState.currentState;
   useAutoRelease: boolean = true;
+  /**
+   * Multi-model (off by default; for phones with plenty of memory): keep
+   * recently used local models loaded so switching back is instant.
+   */
+  keepModelsLoaded: boolean = false;
+  /** Most local models loaded at once, the active one included (2-4). */
+  maxLoadedModels: number = 2;
+  /** Loaded but not active, oldest first. Not persisted. */
+  parkedModels: ParkedModel[] = [];
+  /** Estimated memory of each loaded model, from its last load. */
+  private loadEstimates: Record<string, number> = {};
   // UI loading state - true during model load/release transitions
   isContextLoading: boolean = false;
   loadingModel: Model | undefined = undefined;
@@ -272,8 +306,13 @@ class ModelStore {
   constructor() {
     makeAutoObservable<
       ModelStore,
-      'postCompletionProbeFor' | 'generationSlot' | 'isReleasingContext'
+      | 'postCompletionProbeFor'
+      | 'generationSlot'
+      | 'isReleasingContext'
+      | 'loadEstimates'
     >(this, {
+      parkedModels: observable.shallow,
+      loadEstimates: false,
       postCompletionProbeFor: false,
       generationSlot: false,
       isReleasingContext: false,
@@ -294,6 +333,8 @@ class ModelStore {
         'deviceTier',
         'rulesVersion',
         'useAutoRelease',
+        'keepModelsLoaded',
+        'maxLoadedModels',
         'contextInitParams',
         'lastUsedModelId',
         'lastVisionModelId',
@@ -1177,6 +1218,17 @@ class ModelStore {
   handleAppStateChange = async (nextAppState: AppStateStatus) => {
     console.log(`App state change: ${this.appState} → ${nextAppState}`);
 
+    // Multi-model: in the background, kept models stay only while the wake
+    // word is on (it may switch to one); otherwise free their memory, since
+    // Android is quicker to close a background app that holds a lot.
+    if (
+      nextAppState === 'background' &&
+      this.parkedModels.length > 0 &&
+      !voiceStore.wakeEnabled
+    ) {
+      this.releaseParkedModels().catch(() => {});
+    }
+
     if (
       this.appState.match(/inactive|background/) &&
       nextAppState === 'active'
@@ -1738,6 +1790,7 @@ class ModelStore {
   };
 
   deleteModel = async (model: Model) => {
+    await this.releaseParkedModel(model.id);
     // id should work as well, as long as we are differentiating between models by origin.
     const modelIndex = this.models.findIndex(
       m => m.id === model.id && m.origin === model.origin,
@@ -2172,6 +2225,13 @@ class ModelStore {
       // auto-load on cold launch). clearActiveModel:true so the queued
       // post-mutex callers see a clean slate if they ever run.
       await this._releaseContextInternal(true);
+      const slots = this.parkedModels;
+      runInAction(() => {
+        this.parkedModels = [];
+      });
+      for (const slot of slots) {
+        await this.releaseSlot(slot);
+      }
     });
     this.contextOperationMutex = op.then(() => {}).catch(() => {});
     await op;
@@ -2234,13 +2294,17 @@ class ModelStore {
 
       const draftConfig = await this.resolveDraftConfig(model);
 
-      // Check memory and get user confirmation if needed (no mutex - UI interaction)
-      const shouldProceed = await this.checkMemoryAndConfirm(
-        model,
-        isMultimodalInit,
-        projectionModel,
-        pairedDraftModel(draftConfig),
-      );
+      // Check memory and get user confirmation if needed (no mutex - UI interaction).
+      // A model that is still loaded (kept) needs no memory check.
+      const isKept = this.parkedModels.some(p => p.modelId === model.id);
+      const shouldProceed =
+        isKept ||
+        (await this.checkMemoryAndConfirm(
+          model,
+          isMultimodalInit,
+          projectionModel,
+          pairedDraftModel(draftConfig),
+        ));
 
       if (!shouldProceed) {
         throw new Error('Model loading cancelled by user');
@@ -2285,8 +2349,25 @@ class ModelStore {
           return this.context;
         }
 
-        // Release existing context
-        await this._releaseContextInternal();
+        // Kept loaded (multi-model): switch instantly, no reload.
+        if (this.parkedModels.some(p => p.modelId === model.id)) {
+          if (!(await this.parkActiveInternal())) {
+            await this._releaseContextInternal();
+          }
+          this.unparkInternal(model.id);
+          await this.trimParkedInternal();
+          return this.context;
+        }
+
+        // Keep the current model loaded (multi-model on), or release it.
+        const kept = await this.parkActiveInternal();
+        if (!kept) {
+          await this._releaseContextInternal();
+        }
+        // Unload the oldest kept models if over the limit or short of memory.
+        await this.trimParkedInternal(
+          this.estimateNewLoad(model, projectionModel, draftConfig),
+        );
 
         // Small delay for native cleanup before loading next model
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -2423,6 +2504,7 @@ class ModelStore {
           {...contextInitParams, state_cache_budget_mb: 0},
           pairedDraftModel(draftConfig),
         );
+        this.loadEstimates[model.id] = estimated;
         runInAction(() => {
           if (
             this.largestSuccessfulLoad === undefined ||
@@ -2571,6 +2653,177 @@ class ModelStore {
   };
 
   /** Acquires mutex before releasing context. */
+  // ===== Multi-model: keep recently used models loaded =====
+
+  setKeepModelsLoaded = (on: boolean) => {
+    runInAction(() => {
+      this.keepModelsLoaded = on;
+    });
+    if (!on) {
+      this.releaseParkedModels().catch(() => {});
+    }
+  };
+
+  setMaxLoadedModels = (count: number) => {
+    runInAction(() => {
+      this.maxLoadedModels = Math.min(4, Math.max(2, Math.round(count)));
+    });
+    this.withContextMutex(() => this.trimParkedInternal()).catch(() => {});
+  };
+
+  /** Loaded right now, active or kept. */
+  isModelLoaded = (modelId: string): boolean =>
+    (this.activeModelId === modelId && !!this.context) ||
+    this.parkedModels.some(p => p.modelId === modelId);
+
+  private withContextMutex = <T>(op: () => Promise<T>): Promise<T> => {
+    const operation = this.contextOperationMutex.then(op);
+    this.contextOperationMutex = operation.then(() => {}).catch(() => {});
+    return operation;
+  };
+
+  /**
+   * Move the active local model aside, still loaded, instead of releasing
+   * it. Caller holds the mutex. Returns false when there was nothing to keep
+   * (setting off, remote or no model): then release as usual.
+   */
+  private parkActiveInternal = async (): Promise<boolean> => {
+    if (
+      !this.keepModelsLoaded ||
+      this.benchmarkActive ||
+      !this.context ||
+      !this.engine ||
+      !this.activeModelId
+    ) {
+      return false;
+    }
+    chatSessionStore.exitEditMode();
+    await this.generationSlot.abortActive();
+    const model = this.models.find(m => m.id === this.activeModelId);
+    const slot: ParkedModel = {
+      modelId: this.activeModelId,
+      context: this.context,
+      engine: this.engine,
+      isMultimodalActive: this.isMultimodalActive,
+      activeProjectionModelId: this.activeProjectionModelId,
+      activeContextSettings: this.activeContextSettings,
+      estimateBytes: this.loadEstimates[this.activeModelId] ?? model?.size ?? 0,
+    };
+    runInAction(() => {
+      this.parkedModels = [
+        ...this.parkedModels.filter(p => p.modelId !== slot.modelId),
+        slot,
+      ];
+      this.context = undefined;
+      this.engine = undefined;
+      this.activeContextSettings = undefined;
+      this.isMultimodalActive = false;
+      this.activeProjectionModelId = undefined;
+    });
+    return true;
+  };
+
+  /** Make a kept model active again, instantly. Caller holds the mutex. */
+  private unparkInternal = (modelId: string): boolean => {
+    const slot = this.parkedModels.find(p => p.modelId === modelId);
+    if (!slot) {
+      return false;
+    }
+    runInAction(() => {
+      this.parkedModels = this.parkedModels.filter(p => p !== slot);
+      this.context = slot.context;
+      this.engine = slot.engine;
+      this.activeRemoteBinding = undefined;
+      this.activeContextSettings = slot.activeContextSettings;
+      this.isMultimodalActive = slot.isMultimodalActive;
+      this.activeProjectionModelId = slot.activeProjectionModelId;
+      this.setActiveModel(modelId);
+      this.pendingModelId = null;
+      this.lastUsedModelId = modelId;
+      if (slot.isMultimodalActive) {
+        this.lastVisionModelId = modelId;
+      }
+    });
+    return true;
+  };
+
+  private releaseSlot = async (slot: ParkedModel) => {
+    try {
+      if (slot.isMultimodalActive) {
+        await slot.context.releaseMultimodal();
+      }
+      await slot.context.release();
+    } catch (error) {
+      console.warn('[ModelStore] Failed to release a kept model:', error);
+    }
+  };
+
+  /**
+   * Unload kept models, oldest first, until the count limit holds and (when
+   * `neededBytes` is given) the next load is estimated to fit.
+   */
+  private trimParkedInternal = async (neededBytes?: number) => {
+    const keepAtMost = Math.max(0, this.maxLoadedModels - 1);
+    const ceiling = this.availableMemoryCeiling;
+    const overBudget = () =>
+      neededBytes !== undefined &&
+      ceiling !== undefined &&
+      this.parkedModels.reduce((sum, p) => sum + p.estimateBytes, 0) +
+        neededBytes >
+        ceiling;
+    while (
+      this.parkedModels.length > 0 &&
+      (this.parkedModels.length > keepAtMost || overBudget())
+    ) {
+      const oldest = this.parkedModels[0];
+      runInAction(() => {
+        this.parkedModels = this.parkedModels.slice(1);
+      });
+      await this.releaseSlot(oldest);
+    }
+  };
+
+  /** Unload every kept model (the active one stays). */
+  releaseParkedModels = (): Promise<void> =>
+    this.withContextMutex(async () => {
+      const slots = this.parkedModels;
+      runInAction(() => {
+        this.parkedModels = [];
+      });
+      for (const slot of slots) {
+        await this.releaseSlot(slot);
+      }
+    });
+
+  /** Unload one kept model (e.g. before deleting its file). */
+  releaseParkedModel = (modelId: string): Promise<void> =>
+    this.withContextMutex(async () => {
+      const slot = this.parkedModels.find(p => p.modelId === modelId);
+      if (slot) {
+        runInAction(() => {
+          this.parkedModels = this.parkedModels.filter(p => p !== slot);
+        });
+        await this.releaseSlot(slot);
+      }
+    });
+
+  private estimateNewLoad = (
+    model: Model,
+    projectionModel?: Model,
+    draftConfig?: DraftConfig,
+  ): number => {
+    try {
+      return getModelMemoryRequirement(
+        model,
+        projectionModel,
+        {...this.contextInitParams, state_cache_budget_mb: 0},
+        pairedDraftModel(draftConfig),
+      );
+    } catch {
+      return model.size ?? 0;
+    }
+  };
+
   releaseContext = async (clearActiveModel: boolean = false) => {
     const operationPromise = this.contextOperationMutex.then(async () => {
       return this._releaseContextInternal(clearActiveModel);
@@ -2721,6 +2974,14 @@ class ModelStore {
    * Releases any active local context first.
    */
   setRemoteModel = async (model: Model): Promise<void> => {
+    // Multi-model: keep the local model loaded while a remote one is used.
+    if (this.keepModelsLoaded && this.context) {
+      await this.withContextMutex(async () => {
+        if (!(await this.parkActiveInternal())) {
+          await this._releaseContextInternal();
+        }
+      });
+    }
     if (!model.serverId || !model.remoteModelId) {
       throw new Error('Model is missing remote configuration');
     }

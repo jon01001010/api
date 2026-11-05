@@ -93,6 +93,18 @@ Goal: when you attach a picture while a text-only model is loaded, the app switc
 - Automatic, with a status line and Undo (no confirmation first; the memory check still asks if needed).
 - No fixed/recommended vision model: use what the app already knows can see; if none, say so.
 
+## Multi-model: keep models loaded (built, off by default, needs phone check)
+
+For future phones with plenty of memory. Settings → Model Loading → **Keep models loaded**.
+
+- [x] Switching parks the current local model (still loaded) instead of releasing it; switching back is instant, no reload and no memory prompt.
+- [x] Up to 2 models loaded at once by default (the one in use included), adjustable to 3 or 4; the oldest kept model is unloaded beyond that, or when the next load wouldn't fit in memory.
+- [x] In the background kept models stay only while the wake word is on (decision 2026-11-05); otherwise they're unloaded. The active model follows the existing auto-offload setting.
+- [x] Remote models keep the local one parked; deleting a kept model unloads it first; benchmarks unload everything; turning the setting off unloads the kept ones. "Unload N kept models" button.
+- [x] Benefits: instant vision switch-back after a picture, instant "Hey <name>" switching between named models.
+- [ ] Phone check (needs a phone with enough memory): load A, switch to B, back to A (instant), picture with a text model and back, a third model with the limit at 2.
+- Later: show a "Loaded" badge on model cards; free kept models when Android reports memory pressure.
+
 ## Phone actions via built-in Android intents (planned, not implemented)
 
 Replaces the earlier "ARTEMIS-inspired automation" batch. Research done 2026-11-03; **write-up only, nothing implemented yet.**

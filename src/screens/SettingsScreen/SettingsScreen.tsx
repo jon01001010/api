@@ -1065,6 +1065,56 @@ export const SettingsScreen: React.FC = observer(() => {
                 </View>
                 <Divider />
 
+                {/* Multi-model: keep recently used models loaded (off by default). */}
+                <View style={styles.switchContainer}>
+                  <View style={styles.textContainer}>
+                    <Text variant="titleMedium" style={styles.textLabel}>
+                      {l10n.settings.multiModel.title}
+                    </Text>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {l10n.settings.multiModel.description}
+                    </Text>
+                  </View>
+                  <Switch
+                    testID="keep-models-loaded-switch"
+                    value={modelStore.keepModelsLoaded}
+                    onValueChange={value =>
+                      modelStore.setKeepModelsLoaded(value)
+                    }
+                  />
+                </View>
+                {modelStore.keepModelsLoaded && (
+                  <View style={styles.settingItemContainer}>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {l10n.settings.multiModel.howMany}
+                    </Text>
+                    <SegmentedButtons
+                      value={String(modelStore.maxLoadedModels)}
+                      onValueChange={value =>
+                        modelStore.setMaxLoadedModels(Number(value))
+                      }
+                      buttons={['2', '3', '4'].map(n => ({
+                        value: n,
+                        label: n,
+                        testID: `max-loaded-${n}`,
+                      }))}
+                    />
+                    {modelStore.parkedModels.length > 0 && (
+                      <Button
+                        mode="text"
+                        testID="unload-kept-models"
+                        onPress={() =>
+                          modelStore.releaseParkedModels().catch(() => {})
+                        }>
+                        {t(l10n.settings.multiModel.unloadKept, {
+                          count: modelStore.parkedModels.length,
+                        })}
+                      </Button>
+                    )}
+                  </View>
+                )}
+                <Divider />
+
                 {/* Auto Navigate to Chat */}
                 <View style={styles.switchContainer}>
                   <View style={styles.textContainer}>

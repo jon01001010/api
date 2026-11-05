@@ -39,6 +39,9 @@ class MockModelStore {
   max_threads = 4;
   MIN_CONTEXT_SIZE = 200;
   useAutoRelease = true;
+  keepModelsLoaded = false;
+  maxLoadedModels = 2;
+  parkedModels: any[] = [];
   activeModelId: string | undefined;
   inferencing = false;
   isStreaming = false;
@@ -60,6 +63,11 @@ class MockModelStore {
   removeModelByFullPath: jest.Mock;
   setNContext: jest.Mock;
   updateUseAutoRelease: jest.Mock;
+  setKeepModelsLoaded: jest.Mock;
+  setMaxLoadedModels: jest.Mock;
+  releaseParkedModels: jest.Mock;
+  releaseParkedModel: jest.Mock;
+  isModelLoaded: jest.Mock;
   setNoGpuDevices: jest.Mock;
   setDevices: jest.Mock;
   setFlashAttnType: jest.Mock;
@@ -126,6 +134,11 @@ class MockModelStore {
       removeModelByFullPath: false,
       setNContext: false,
       updateUseAutoRelease: false,
+      setKeepModelsLoaded: false,
+      setMaxLoadedModels: false,
+      releaseParkedModels: false,
+      releaseParkedModel: false,
+      isModelLoaded: false,
 
       setNGPULayers: false,
       resetModels: false,
@@ -195,6 +208,15 @@ class MockModelStore {
     this.removeModelByFullPath = jest.fn();
     this.setNContext = jest.fn();
     this.updateUseAutoRelease = jest.fn();
+    this.setKeepModelsLoaded = jest.fn((on: boolean) => {
+      this.keepModelsLoaded = on;
+    });
+    this.setMaxLoadedModels = jest.fn((n: number) => {
+      this.maxLoadedModels = n;
+    });
+    this.releaseParkedModels = jest.fn().mockResolvedValue(undefined);
+    this.releaseParkedModel = jest.fn().mockResolvedValue(undefined);
+    this.isModelLoaded = jest.fn(() => false);
     this.setNoGpuDevices = jest.fn();
     this.setDevices = jest.fn();
     this.setFlashAttnType = jest.fn();

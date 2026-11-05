@@ -1354,4 +1354,39 @@ describe('SettingsScreen', () => {
       expect(getByText(/Wake word on: listening for "Hey Agent"/)).toBeTruthy();
     });
   });
+
+  describe('Keep models loaded (multi-model)', () => {
+    afterEach(() => {
+      runInAction(() => {
+        modelStore.keepModelsLoaded = false;
+        (modelStore as any).parkedModels = [];
+      });
+    });
+
+    it('is off by default and turns on', () => {
+      const {getByTestId, queryByTestId} = render(<SettingsScreen />, {
+        withSafeArea: true,
+        withNavigation: true,
+      });
+      expect(getByTestId('keep-models-loaded-switch').props.value).toBe(false);
+      expect(queryByTestId('max-loaded-3')).toBeNull();
+      fireEvent(getByTestId('keep-models-loaded-switch'), 'valueChange', true);
+      expect(modelStore.setKeepModelsLoaded).toHaveBeenCalledWith(true);
+    });
+
+    it('sets how many, and unloads kept models', () => {
+      runInAction(() => {
+        modelStore.keepModelsLoaded = true;
+        (modelStore as any).parkedModels = [{modelId: 'a'}];
+      });
+      const {getByTestId, getByText} = render(<SettingsScreen />, {
+        withSafeArea: true,
+        withNavigation: true,
+      });
+      fireEvent.press(getByTestId('max-loaded-3'));
+      expect(modelStore.setMaxLoadedModels).toHaveBeenCalledWith(3);
+      fireEvent.press(getByText('Unload 1 kept model(s)'));
+      expect(modelStore.releaseParkedModels).toHaveBeenCalled();
+    });
+  });
 });
