@@ -36,6 +36,7 @@
   },
   "settings": {
     "configureClaude": "Configure Claude API",
+    "configureDeepSeek": "Configure DeepSeek API",
     "modelInitializationSettings": "Model Initialization Settings",
     "metal": "Metal",
     "metalDescription": "Apple's hardware-accelerated API.",

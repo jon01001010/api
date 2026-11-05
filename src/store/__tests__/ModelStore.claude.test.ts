@@ -13,6 +13,12 @@ jest.mock('../ServerStore', () => ({
         url: 'https://api.anthropic.com',
         serverType: 'Claude',
       },
+      {
+        id: 'deepseek',
+        name: 'DeepSeek',
+        url: 'https://api.deepseek.com',
+        serverType: 'DeepSeek',
+      },
     ],
     fetchRemoteModelCaps: jest.fn().mockResolvedValue(undefined),
     recordRemoteReasoningDetected: jest.fn(),
@@ -58,6 +64,23 @@ describe('Claude remote models', () => {
     expect(serverStore.recordRemoteReasoningDetected).toHaveBeenCalledWith(
       'anthropic/claude-3-5-haiku-20241022',
       expect.objectContaining({isReasoning: 'no', supportsEffort: false}),
+    );
+  });
+
+  it('DeepSeek uses the OpenAI-compatible engine, with thinking at low/high/max', async () => {
+    await modelStore.setRemoteModel({
+      id: 'deepseek/deepseek-v4-flash',
+      serverId: 'deepseek',
+      remoteModelId: 'deepseek-v4-flash',
+      origin: 1,
+    } as any);
+    expect(modelStore.engine).toBeInstanceOf(OpenAICompletionEngine);
+    expect(serverStore.recordRemoteReasoningDetected).toHaveBeenCalledWith(
+      'deepseek/deepseek-v4-flash',
+      expect.objectContaining({
+        isReasoning: 'yes',
+        effortValues: ['low', 'high', 'max'],
+      }),
     );
   });
 });

@@ -36,6 +36,9 @@ import {
 import {RemoteModelInfo, ServerConfig} from '../../utils/types';
 import {fetchModelsWithHeaders} from '../../api/openai';
 import {ANTHROPIC_API_URL, isAnthropicUrl} from '../../api/claude/client';
+
+/** DeepSeek's OpenAI-compatible API (the app adds /v1/...). */
+const DEEPSEEK_API_URL = 'https://api.deepseek.com';
 import {detectServerType} from '../../api/servers/detect';
 import {deriveListCaps} from '../../api/servers';
 import {profileFor} from '../../api/servers';
@@ -193,7 +196,9 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
       if (!selectedServerId) {
         // Cloud APIs need the key first: wait for Connect.
         const isCloud =
-          url.trim() === 'https://api.openai.com/v1' || isAnthropicUrl(url);
+          url.trim() === 'https://api.openai.com/v1' ||
+          url.trim() === DEEPSEEK_API_URL ||
+          isAnthropicUrl(url);
         if (!(isCloud && !apiKeyRef.current.trim())) {
           debouncedProbe(url);
         }
@@ -360,6 +365,7 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
     const showServerFields =
       (probeResult !== null ||
         url.trim() === 'https://api.openai.com/v1' ||
+        url.trim() === DEEPSEEK_API_URL ||
         isAnthropicUrl(url)) &&
       !isProbing &&
       !selectedServerId;
@@ -448,8 +454,8 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
             <View style={{marginBottom: 12}}>
               <Text variant="titleSmall">Cloud chat API</Text>
               <Text variant="bodySmall">
-                OpenAI and Claude (Anthropic) are supported. An API key is
-                required and usage is billed separately by the provider.
+                OpenAI, Claude (Anthropic) and DeepSeek are supported. An API
+                key is required and usage is billed separately by the provider.
               </Text>
               <Button
                 mode="outlined"
@@ -483,6 +489,23 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
                   setUrlError('');
                 }}>
                 {l10n.settings.configureClaude}
+              </Button>
+              <Button
+                mode="outlined"
+                testID="deepseek-api-preset"
+                style={{marginTop: 8}}
+                onPress={() => {
+                  setApiKey('');
+                  apiKeyRef.current = '';
+                  setUrl(DEEPSEEK_API_URL);
+                  setServerName('DeepSeek');
+                  setServerType('DeepSeek');
+                  setSelectedServerId(null);
+                  setProbeResult(null);
+                  setAvailableModels([]);
+                  setUrlError('');
+                }}>
+                {l10n.settings.configureDeepSeek}
               </Button>
               <Text variant="bodySmall">Enter your API key below, then connect to list available models. Keys are stored using Android secure storage.</Text>
             </View>

@@ -106,6 +106,15 @@ Add remote model → **Configure Claude API**: paste an Anthropic API key, pick 
 - [ ] Phone check: add Claude with a real key, chat (streaming, Stop), a picture, a tool (web search / files), thinking on/off, a wrong key.
 - Not yet: prompt caching markers (a cost saver for long chats), counting Claude's usage in the context meter.
 
+## DeepSeek as a remote model (built, needs phone check)
+
+Add remote model → **Configure DeepSeek API** (`https://api.deepseek.com`), paste a DeepSeek API key, pick a model from the live list (e.g. `deepseek-v4-flash`, `deepseek-v4-pro`).
+
+- [x] Uses the existing OpenAI-compatible connector with a DeepSeek profile: `max_tokens`; thinking via `thinking: {type: enabled|disabled}` (on by default at DeepSeek, so "off" is sent explicitly); effort mapped onto DeepSeek's low / high / max.
+- [x] Thinking text (`reasoning_content`) is kept in the history and in tool loops, as DeepSeek requires with tools (else HTTP 400).
+- [x] The app never forces a tool choice (DeepSeek's thinking mode rejects that).
+- [ ] Phone check: add DeepSeek with a real key, chat, thinking on/off and effort, a tool (web search / files) across two turns, a wrong key.
+
 ## Phone actions via built-in Android intents (planned, not implemented)
 
 Replaces the earlier "ARTEMIS-inspired automation" batch. Research done 2026-11-03; **write-up only, nothing implemented yet.**

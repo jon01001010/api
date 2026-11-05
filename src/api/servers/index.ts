@@ -156,6 +156,44 @@ function openaiReasoningExtras(
 }
 
 /**
+ * DeepSeek (api.deepseek.com): thinking is its own switch,
+ * `thinking: {type: 'enabled' | 'disabled'}`, with `reasoning_effort` low,
+ * high or max. Thinking is on by default there, so "off" is sent explicitly.
+ */
+const DEEPSEEK_EFFORT: Record<string, string> = {
+  minimal: 'low',
+  low: 'low',
+  medium: 'high',
+  high: 'high',
+  xhigh: 'max',
+  max: 'max',
+};
+function deepseekReasoningExtras(
+  reasoning: ReasoningIntent | undefined,
+): Record<string, unknown> {
+  if (!reasoning) {
+    return {};
+  }
+  if (!reasoning.enabled) {
+    return {thinking: {type: 'disabled'}};
+  }
+  const effort = reasoning.effort
+    ? DEEPSEEK_EFFORT[reasoning.effort]
+    : undefined;
+  return {
+    thinking: {type: 'enabled'},
+    ...(effort ? {reasoning_effort: effort} : {}),
+  };
+}
+
+/** DeepSeek takes `max_tokens`, not OpenAI's newer `max_completion_tokens`. */
+const DEEPSEEK_SEND_NAMES = {
+  temperature: 'temperature',
+  top_p: 'top_p',
+  n_predict: 'max_tokens',
+} as const;
+
+/**
  * Modern vLLM ignores an unknown `chat_template_kwargs` entry, so both keys are
  * safe. Its sampler names are its own (`repetition_penalty`, not
  * `repeat_penalty`), so none is forwarded until one has been read back off a
@@ -293,6 +331,13 @@ export const SERVER_PROFILES = {
   OpenAI: {
     sendNames: BASE_SEND_NAMES,
     reasoningExtras: openaiReasoningExtras,
+    hasProps: false,
+    hasRouter: false,
+  },
+  // OpenAI-compatible wire; thinking via its own `thinking` switch.
+  DeepSeek: {
+    sendNames: DEEPSEEK_SEND_NAMES,
+    reasoningExtras: deepseekReasoningExtras,
     hasProps: false,
     hasRouter: false,
   },

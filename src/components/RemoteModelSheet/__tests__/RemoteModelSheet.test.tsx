@@ -144,6 +144,19 @@ describe('RemoteModelSheet', () => {
     expect(fetchModelsWithHeaders).not.toHaveBeenCalled();
   });
 
+  it('the DeepSeek button fills in DeepSeek and waits for the key', () => {
+    const {getByTestId, getByText} = render(
+      <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,
+    );
+    fireEvent.press(getByText(l10n.en.settings.configureDeepSeek));
+    expect(getByTestId('remote-url-input').props.value).toBe(
+      'https://api.deepseek.com',
+    );
+    expect(getByTestId('remote-name-input').props.value).toBe('DeepSeek');
+    expect(getByTestId('remote-apikey-input')).toBeTruthy();
+    expect(fetchModelsWithHeaders).not.toHaveBeenCalled();
+  });
+
   it('renders the Add Model button', () => {
     const {getByTestId} = render(
       <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,
