@@ -197,3 +197,44 @@ describe('open_app', () => {
     expect(perform).not.toHaveBeenCalled();
   });
 });
+
+describe('maps, music, camera and settings', () => {
+  it('navigate_to opens maps for the place', async () => {
+    await run('navigate_to', {destination: '  Eiffel Tower '});
+    expect(approve).toHaveBeenCalledWith(
+      expect.objectContaining({filename: 'Open maps for "Eiffel Tower"?'}),
+      undefined,
+    );
+    expect(perform).toHaveBeenCalledWith('navigate', {
+      destination: 'Eiffel Tower',
+    });
+    expect((await run('navigate_to', {})).type).toBe('error');
+  });
+
+  it('play_music searches the music app', async () => {
+    await run('play_music', {query: 'Bohemian Rhapsody'});
+    expect(perform).toHaveBeenCalledWith('play_music', {
+      query: 'Bohemian Rhapsody',
+    });
+  });
+
+  it('open_camera opens the camera', async () => {
+    await run('open_camera', {});
+    expect(perform).toHaveBeenCalledWith('open_camera', {});
+  });
+
+  it('open_settings opens only known pages, and changes nothing itself', async () => {
+    const result = await run('open_settings', {page: 'Wi-Fi'});
+    expect(approve).toHaveBeenCalledWith(
+      expect.objectContaining({filename: 'Open Wi-Fi settings?'}),
+      undefined,
+    );
+    expect(perform).toHaveBeenCalledWith('open_settings', {page: 'wifi'});
+    expect(result.summary).toMatch(/Nothing was changed/);
+    perform.mockClear();
+    expect((await run('open_settings', {page: 'developer'})).type).toBe(
+      'error',
+    );
+    expect(perform).not.toHaveBeenCalled();
+  });
+});

@@ -80,6 +80,32 @@ export function formatDuration(totalSeconds: number): string {
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
+/** Settings pages PhoneActionsModule can open (same names as there). */
+export const SETTINGS_PAGES = [
+  'main',
+  'wifi',
+  'bluetooth',
+  'battery',
+  'display',
+  'sound',
+  'location',
+  'apps',
+  'notifications',
+  'airplane',
+] as const;
+const SETTINGS_LABEL: Record<(typeof SETTINGS_PAGES)[number], string> = {
+  main: 'Settings',
+  wifi: 'Wi-Fi',
+  bluetooth: 'Bluetooth',
+  battery: 'Battery',
+  display: 'Display',
+  sound: 'Sound',
+  location: 'Location',
+  apps: 'Apps',
+  notifications: 'Notification',
+  airplane: 'Airplane mode',
+};
+
 const squash = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '');
 
 /**
@@ -277,6 +303,106 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
         details: app.package,
         done: `Opened ${app.label}.`,
         what: `open ${app.label}`,
+      };
+    },
+  },
+  navigate_to: {
+    description:
+      'Show a place or route in the maps app. ' +
+      'How: `destination` is an address or place name ("Eiffel Tower", "12 High St, Leeds", "nearest pharmacy"). ' +
+      'The maps app opens; the user starts the route there.',
+    parameters: {
+      type: 'object',
+      properties: {
+        destination: {
+          type: 'string',
+          description: 'Address or place to go to.',
+        },
+      },
+      required: ['destination'],
+    },
+    plan: args => {
+      const destination = text(args.destination, 200);
+      if (!destination) {
+        return 'Give the `destination`: an address or a place name.';
+      }
+      return {
+        action: 'navigate',
+        args: {destination},
+        ask: `Open maps for "${destination}"?`,
+        done: `Opened maps for ${destination}.`,
+        what: 'open maps',
+      };
+    },
+  },
+  play_music: {
+    description:
+      "Play music in the phone's music app by searching for it. " +
+      'How: `query` is a song, artist, album or playlist ("Bohemian Rhapsody", "Taylor Swift", "my workout playlist"). ' +
+      'Which app plays it depends on the phone.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Song, artist, album or playlist.',
+        },
+      },
+      required: ['query'],
+    },
+    plan: args => {
+      const query = text(args.query, 200);
+      if (!query) {
+        return 'Give the `query`: a song, artist, album or playlist.';
+      }
+      return {
+        action: 'play_music',
+        args: {query},
+        ask: `Play "${query}" in your music app?`,
+        done: `Asked the music app to play ${query}.`,
+        what: 'play music',
+      };
+    },
+  },
+  open_camera: {
+    description:
+      'Open the camera app to take a photo. How: no arguments. The user takes the photo.',
+    parameters: {type: 'object', properties: {}},
+    plan: () => ({
+      action: 'open_camera',
+      args: {},
+      ask: 'Open the camera?',
+      done: 'Opened the camera.',
+      what: 'open the camera',
+    }),
+  },
+  open_settings: {
+    description:
+      "Open a page of the phone's Settings so the user can change it there (nothing is changed by this tool). " +
+      'How: `page` is one of: main, wifi, bluetooth, battery, display, sound, location, apps, notifications, airplane.',
+    parameters: {
+      type: 'object',
+      properties: {
+        page: {type: 'string', enum: [...SETTINGS_PAGES]},
+      },
+      required: ['page'],
+    },
+    plan: args => {
+      const page = text(args.page, 30)
+        ?.toLowerCase()
+        .replace(/[^a-z]/g, '');
+      const known = SETTINGS_PAGES.find(p => p === page);
+      if (!known) {
+        return `\`page\` must be one of: ${SETTINGS_PAGES.join(', ')}.`;
+      }
+      const label =
+        known === 'main' ? 'Settings' : `${SETTINGS_LABEL[known]} settings`;
+      return {
+        action: 'open_settings',
+        args: {page: known},
+        ask: `Open ${label}?`,
+        done: `Opened ${label}. Nothing was changed; the user makes changes there.`,
+        what: `open ${label}`,
       };
     },
   },
