@@ -11,7 +11,6 @@ import {createStyles} from './styles';
 import {chatSessionStore, SessionMetaData} from '../../store';
 import {Menu, RenameModal, Checkbox} from '..';
 import {
-  BenchmarkIcon,
   ChatIcon,
   DuplicateIcon,
   EditIcon,
@@ -21,7 +20,6 @@ import {
   ShareIcon,
   StarIcon,
   TrashIcon,
-  AppInfoIcon,
 } from '../../assets/icons';
 import {L10nContext} from '../../utils';
 import {t} from '../../locales';
@@ -547,6 +545,7 @@ export const SidebarContent: React.FC<DrawerContentComponentProps> = observer(
     const ListHeaderComponent = React.useMemo(
       () => (
         <View>
+          {/* Toolbox, Hardware, Benchmark and App Info moved into Settings. */}
           <Drawer.Section showDivider={false}>
             <Drawer.Item
               label={l10n.components.sidebarContent.menuItems.chat}
@@ -570,41 +569,6 @@ export const SidebarContent: React.FC<DrawerContentComponentProps> = observer(
               testID="drawer-item-models"
             />
             <Drawer.Item
-              label="Toolbox"
-              icon={() => (
-                <SettingsIcon
-                  width={24}
-                  height={24}
-                  stroke={theme.colors.primary}
-                />
-              )}
-              onPress={() => props.navigation.navigate(ROUTES.TOOLBOX)}
-              style={styles.menuDrawerItem}
-              testID="drawer-item-toolbox"
-            />
-            <Drawer.Item
-              label={l10n.components.sidebarContent.menuItems.benchmark}
-              icon={() => <BenchmarkIcon stroke={theme.colors.primary} />}
-              onPress={() => props.navigation.navigate(ROUTES.BENCHMARK)}
-              style={styles.menuDrawerItem}
-              testID="drawer-item-benchmark"
-            />
-            <Drawer.Item
-              label="PocketAgent Hardware"
-              icon={() => (
-                <SettingsIcon
-                  width={24}
-                  height={24}
-                  stroke={theme.colors.primary}
-                />
-              )}
-              onPress={() =>
-                props.navigation.navigate(ROUTES.POCKETAGENT_HARDWARE)
-              }
-              style={styles.menuDrawerItem}
-              testID="drawer-item-pocketagent-hardware"
-            />
-            <Drawer.Item
               label={l10n.components.sidebarContent.menuItems.settings}
               icon={() => (
                 <SettingsIcon
@@ -616,18 +580,6 @@ export const SidebarContent: React.FC<DrawerContentComponentProps> = observer(
               onPress={() => props.navigation.navigate(ROUTES.SETTINGS)}
               style={styles.menuDrawerItem}
               testID="drawer-item-settings"
-            />
-            <Drawer.Item
-              label={l10n.components.sidebarContent.menuItems.appInfo}
-              icon={() => (
-                <AppInfoIcon
-                  width={24}
-                  height={24}
-                  stroke={theme.colors.primary}
-                />
-              )}
-              onPress={() => props.navigation.navigate(ROUTES.APP_INFO)}
-              style={styles.menuDrawerItem}
             />
             {/* Only show Dev Tools in debug mode */}
             {isDebugMode && (

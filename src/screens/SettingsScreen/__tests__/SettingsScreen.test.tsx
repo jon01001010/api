@@ -17,10 +17,41 @@ import {l10n} from '../../../locales';
 
 jest.useFakeTimers();
 
-const render = (ui: React.ReactElement, options: any = {}) =>
-  baseRender(ui, {withBottomSheetProvider: true, ...options});
+// Advanced settings are folded away on screen; these tests cover them, so
+// each render opens the Advanced section first.
+const render = (ui: React.ReactElement, options: any = {}) => {
+  const result = baseRender(ui, {withBottomSheetProvider: true, ...options});
+  const toggle = result.queryByTestId('settings-advanced-toggle');
+  if (toggle) {
+    fireEvent.press(toggle);
+  }
+  return result;
+};
 
 describe('SettingsScreen', () => {
+  it('folds the advanced settings away until opened', () => {
+    const {queryByTestId, getByTestId} = baseRender(<SettingsScreen />, {
+      withBottomSheetProvider: true,
+      withSafeArea: true,
+      withNavigation: true,
+    });
+    expect(queryByTestId('use-mmap-switch')).toBeNull();
+    fireEvent.press(getByTestId('settings-advanced-toggle'));
+    expect(getByTestId('use-mmap-switch')).toBeTruthy();
+  });
+
+  it('links to the screens moved out of the side menu', () => {
+    const {getByTestId} = baseRender(<SettingsScreen />, {
+      withBottomSheetProvider: true,
+      withSafeArea: true,
+      withNavigation: true,
+    });
+    expect(getByTestId('settings-link-Toolbox')).toBeTruthy();
+    expect(getByTestId('settings-link-PocketAgent Hardware')).toBeTruthy();
+    expect(getByTestId('settings-link-Benchmark')).toBeTruthy();
+    expect(getByTestId('settings-link-App Info')).toBeTruthy();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Keyboard, 'dismiss');
