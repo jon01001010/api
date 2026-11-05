@@ -580,6 +580,20 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
                   value={url}
                   onChangeText={text => {
                     setUrl(text);
+                    // A new address is a new server, not the selected chip's.
+                    if (selectedServerId) {
+                      setSelectedServerId(null);
+                      setProbeResult(null);
+                      setAvailableModels([]);
+                      setSelectedModelId(null);
+                      setServerName('');
+                      setApiKey('');
+                      apiKeyRef.current = '';
+                    }
+                    const preset = presetForUrl(text);
+                    if (preset) {
+                      setServerType(preset.serverType);
+                    }
                     if (urlError) {
                       setUrlError('');
                     }
