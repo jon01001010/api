@@ -51,6 +51,7 @@ import {
 } from '../../components/CrashReportNotice';
 import {AuthSheet} from '../../components/PalsHub';
 import {LocalApiCard} from './LocalApiCard';
+import {ChatSettingsCard} from './ChatSettingsCard';
 
 import {useTheme} from '../../hooks';
 
@@ -394,9 +395,9 @@ export const SettingsScreen: React.FC = observer(() => {
                 </Text>
                 <Text variant="bodySmall" style={styles.textDescription}>
                   Selection applies when the model is next loaded. NPU execution
-                  is not verified until a compatible model runs successfully.
-                  If Hexagon is not listed below, the runtime has not detected
-                  an available NPU backend.
+                  is not verified until a compatible model runs successfully. If
+                  Hexagon is not listed below, the runtime has not detected an
+                  available NPU backend.
                 </Text>
               </Card.Content>
             </Card>
@@ -1156,6 +1157,10 @@ export const SettingsScreen: React.FC = observer(() => {
               </View>
             </Card.Content>
           </Card>
+
+          {/* Chat: generation settings and export/import (moved from the
+              chat screen's top-right menu). */}
+          <ChatSettingsCard cardStyle={styles.card} />
 
           {/* UI Settings */}
           <Card elevation={0} style={styles.card}>

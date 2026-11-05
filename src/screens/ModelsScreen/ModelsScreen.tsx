@@ -274,12 +274,13 @@ export const ModelsScreen: React.FC = observer(() => {
   // so we use computed instead for deep comparison
   // (model state changes not-downloaded -> downloaded)
   const filteredAndSortedModels = computed(() => {
-    // The app's suggested models are not offered for download here; one
-    // already downloaded (or downloading) still shows. Models added from
-    // Hugging Face are unaffected.
+    // The app's suggested models (legacy PRESET, or rule-resolved and marked
+    // isRulePreset) are not offered for download here; one already downloaded
+    // (or downloading) still shows. Models added from Hugging Face are
+    // unaffected.
     let result = models.filter(
       model =>
-        model.origin !== ModelOrigin.PRESET ||
+        (model.origin !== ModelOrigin.PRESET && !model.isRulePreset) ||
         model.isDownloaded ||
         downloadManager.isDownloading(model.id),
     );

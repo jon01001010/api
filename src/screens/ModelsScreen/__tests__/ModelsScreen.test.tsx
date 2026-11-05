@@ -468,6 +468,16 @@ describe('ModelsScreen', () => {
 
     it("does not offer the app's suggested models for download", async () => {
       uiStore.pageStates.modelsScreen.filters = [];
+      // Today's suggestions come from device rules, stored as HF models.
+      modelStore.models = [
+        ...modelStore.models,
+        {
+          ...hfModel1,
+          id: 'rules/suggested',
+          name: 'suggested by rules',
+          isRulePreset: true,
+        } as any,
+      ];
 
       const {getByText, queryByText} = render(<ModelsScreen />);
       fireEvent.press(getByText('Available to Download'));
@@ -475,6 +485,7 @@ describe('ModelsScreen', () => {
       await waitFor(() => {
         // Preset, not downloaded: hidden. Preset, downloaded: shown.
         expect(queryByText('basic model')).toBeNull();
+        expect(queryByText('suggested by rules')).toBeNull();
         expect(getByText('downloaded model')).toBeTruthy();
       });
     });

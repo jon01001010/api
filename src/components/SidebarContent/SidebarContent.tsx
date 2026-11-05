@@ -13,6 +13,7 @@ import {Menu, RenameModal, Checkbox} from '..';
 import {
   BenchmarkIcon,
   ChatIcon,
+  DuplicateIcon,
   EditIcon,
   ModelIcon,
   PalIcon,
@@ -162,6 +163,16 @@ const SessionItem = React.memo<SessionItemProps>(
               }}
               label={l10n.common.rename}
               leadingIcon={() => <EditIcon stroke={theme.colors.primary} />}
+            />
+            <Menu.Item
+              onPress={() => {
+                chatSessionStore.duplicateSession(session.id);
+                onMenuDismiss();
+              }}
+              label={l10n.components.headerRight.duplicateChatHistory}
+              leadingIcon={() => (
+                <DuplicateIcon stroke={theme.colors.primary} />
+              )}
             />
             <Menu.Item
               onPress={() => {
@@ -560,7 +571,13 @@ export const SidebarContent: React.FC<DrawerContentComponentProps> = observer(
             />
             <Drawer.Item
               label="Toolbox"
-              icon={() => <SettingsIcon width={24} height={24} stroke={theme.colors.primary} />}
+              icon={() => (
+                <SettingsIcon
+                  width={24}
+                  height={24}
+                  stroke={theme.colors.primary}
+                />
+              )}
               onPress={() => props.navigation.navigate(ROUTES.TOOLBOX)}
               style={styles.menuDrawerItem}
               testID="drawer-item-toolbox"
@@ -574,8 +591,16 @@ export const SidebarContent: React.FC<DrawerContentComponentProps> = observer(
             />
             <Drawer.Item
               label="PocketAgent Hardware"
-              icon={() => <SettingsIcon width={24} height={24} stroke={theme.colors.primary} />}
-              onPress={() => props.navigation.navigate(ROUTES.POCKETAGENT_HARDWARE)}
+              icon={() => (
+                <SettingsIcon
+                  width={24}
+                  height={24}
+                  stroke={theme.colors.primary}
+                />
+              )}
+              onPress={() =>
+                props.navigation.navigate(ROUTES.POCKETAGENT_HARDWARE)
+              }
               style={styles.menuDrawerItem}
               testID="drawer-item-pocketagent-hardware"
             />
