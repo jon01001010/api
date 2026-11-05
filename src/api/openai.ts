@@ -15,7 +15,7 @@ import {
   IDLE_TIMEOUT_MS,
   buildHeaders,
   fetchWithTimeout,
-  normalizeUrl,
+  openAiApiUrl,
   resolveTimeout,
 } from './http';
 import {bodyExtras, readFinish} from './servers';
@@ -227,7 +227,7 @@ export async function fetchModelsWithHeaders(
   if (isAnthropicUrl(serverUrl)) {
     return {models: await listClaudeModels(apiKey, timeoutMs), headers: {}};
   }
-  const url = `${normalizeUrl(serverUrl)}/v1/models`;
+  const url = openAiApiUrl(serverUrl, '/models');
   const response = await fetchWithTimeout(
     url,
     {method: 'GET', headers: buildHeaders(apiKey)},
@@ -247,11 +247,14 @@ export async function fetchModelsWithHeaders(
   });
 
   const data = await response.json();
+  // Gemini lists ids as `models/gemini-…`; its chat endpoint takes the bare id.
+  const rows = ((data.data || []) as RemoteModelInfo[]).map(row =>
+    typeof row?.id === 'string' && row.id.startsWith('models/')
+      ? {...row, id: row.id.slice('models/'.length)}
+      : row,
+  );
   return {
-    models: liftModelEntryCapabilities(
-      (data.data || []) as RemoteModelInfo[],
-      data.models,
-    ),
+    models: liftModelEntryCapabilities(rows, data.models),
     headers: responseHeaders,
     ...(isObject(data) && 'models' in data && {hasModelsKey: true}),
   };
@@ -469,7 +472,7 @@ export async function streamChatCompletion(
   onToken?: (data: CompletionStreamData) => void,
 ): Promise<CompletionResult> {
   const {apiKey, serverType, timeoutMs} = endpoint;
-  const url = `${normalizeUrl(endpoint.url)}/v1/chat/completions`;
+  const url = openAiApiUrl(endpoint.url, '/chat/completions');
   const connectionTimeoutMs = resolveTimeout(timeoutMs, CONNECTION_TIMEOUT_MS);
   const idleTimeoutMs = resolveTimeout(timeoutMs, IDLE_TIMEOUT_MS);
   // Only pay the async encode when a local image is actually attached; the

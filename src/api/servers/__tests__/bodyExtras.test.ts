@@ -175,6 +175,29 @@ const vllmRows: Row[] = [
   ],
 ];
 
+/** Gemini: reasoning_effort up to high, `none` for off. */
+const geminiRows: Row[] = [
+  NO_INTENT,
+  ['off', {enabled: false}, {reasoning_effort: 'none'}],
+  ['on, no effort', {enabled: true}, {}],
+  [
+    'minimal',
+    {enabled: true, effort: 'minimal'},
+    {reasoning_effort: 'minimal'},
+  ],
+  ['medium', {enabled: true, effort: 'medium'}, {reasoning_effort: 'medium'}],
+  [
+    'xhigh folded to high',
+    {enabled: true, effort: 'xhigh'},
+    {reasoning_effort: 'high'},
+  ],
+  [
+    'max folded to high',
+    {enabled: true, effort: 'max'},
+    {reasoning_effort: 'high'},
+  ],
+];
+
 /** DeepSeek: its own thinking switch, efforts folded onto low/high/max. */
 const DEEPSEEK_EFFORT: Record<string, string> = {
   minimal: 'low',
@@ -231,6 +254,7 @@ const REASONING_ROWS: Record<ServerType, Row[]> = {
   // Claude has its own engine: nothing goes through the OpenAI body.
   Claude: silentRows,
   DeepSeek: deepseekRows,
+  Gemini: geminiRows,
   vLLM: vllmRows,
   unknown: silentRows,
 };

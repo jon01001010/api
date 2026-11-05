@@ -185,6 +185,27 @@ describe('fetchModelsWithHeaders', () => {
     expect(result.headers.server).toBe('llama.cpp');
   });
 
+  it('lists Gemini under its own path with bare model ids', async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      headers: mockHeaders(),
+      json: () =>
+        Promise.resolve({
+          data: [{id: 'models/gemini-2.5-flash', object: 'model'}],
+        }),
+    });
+
+    const result = await fetchModelsWithHeaders(
+      'https://generativelanguage.googleapis.com/v1beta/openai',
+      'key',
+    );
+
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/openai/models',
+    );
+    expect(result.models[0].id).toBe('gemini-2.5-flash');
+  });
+
   // An undefined timeoutMs (e.g. a persisted ServerConfig from a prior version
   // with no requestTimeoutMs) is forwarded raw and must not crash; it behaves
   // identically to today (default applies).

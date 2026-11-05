@@ -26,6 +26,16 @@ export const createStyles = (theme: Theme) => {
       marginLeft: 8,
       padding: 4,
     },
+    cloudPresetRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 8,
+    },
+    cloudKeyLink: {
+      alignSelf: 'flex-start',
+      marginTop: 4,
+    },
     chipsSection: {
       marginBottom: 16,
     },

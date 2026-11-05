@@ -186,6 +186,31 @@ function deepseekReasoningExtras(
   };
 }
 
+/**
+ * Gemini's OpenAI-compatible endpoint takes `reasoning_effort` minimal, low,
+ * medium or high (no xhigh/max), and `none` to turn thinking off.
+ */
+const GEMINI_EFFORT: Record<string, string> = {
+  minimal: 'minimal',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'high',
+  max: 'high',
+};
+function geminiReasoningExtras(
+  reasoning: ReasoningIntent | undefined,
+): Record<string, unknown> {
+  if (!reasoning) {
+    return {};
+  }
+  if (!reasoning.enabled) {
+    return {reasoning_effort: 'none'};
+  }
+  const effort = reasoning.effort ? GEMINI_EFFORT[reasoning.effort] : undefined;
+  return effort ? {reasoning_effort: effort} : {};
+}
+
 /** DeepSeek takes `max_tokens`, not OpenAI's newer `max_completion_tokens`. */
 const DEEPSEEK_SEND_NAMES = {
   temperature: 'temperature',
@@ -338,6 +363,13 @@ export const SERVER_PROFILES = {
   DeepSeek: {
     sendNames: DEEPSEEK_SEND_NAMES,
     reasoningExtras: deepseekReasoningExtras,
+    hasProps: false,
+    hasRouter: false,
+  },
+  // Google Gemini through its OpenAI-compatible endpoint (free tier).
+  Gemini: {
+    sendNames: DEEPSEEK_SEND_NAMES,
+    reasoningExtras: geminiReasoningExtras,
     hasProps: false,
     hasRouter: false,
   },
