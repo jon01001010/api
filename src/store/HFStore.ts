@@ -336,10 +336,25 @@ class HFStore {
       });
 
       let processedModels = this.keepMatches(processHFSearchResults(models));
+      let next = nextLink;
+      // A filtered search can keep few of each page (MoE models of one
+      // family, say): read on a few pages before showing "No models found".
+      for (
+        let page = 0;
+        plan.matches && processedModels.length < 10 && next && page < 5;
+        page++
+      ) {
+        const more = await fetchModels({nextPageUrl: next, authToken});
+        processedModels = [
+          ...processedModels,
+          ...this.keepMatches(processHFSearchResults(more.models)),
+        ];
+        next = more.nextLink;
+      }
 
       runInAction(() => {
         this.models = processedModels;
-        this.nextPageLink = nextLink;
+        this.nextPageLink = next;
       });
     } catch (error) {
       runInAction(() => {

@@ -29,6 +29,12 @@ describe('planSearch', () => {
     });
   });
 
+  it('searches on a size or version tag before a family name', () => {
+    expect(planSearch('granite a400').search).toBe('a400');
+    expect(planSearch('qwen3 moe').search).toBe('qwen3');
+    expect(run('Granite a800', IDS).kept).toEqual([IDS[1]]);
+  });
+
   it('"moe" finds the mixture-of-experts repos by their active size', () => {
     expect(run('granite 3.1 moe', IDS).kept).toEqual(IDS.slice(0, 2));
     expect(run('qwen3 moe', IDS).kept).toEqual(['unsloth/Qwen3-30B-A3B-GGUF']);

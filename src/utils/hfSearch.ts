@@ -29,8 +29,12 @@ export function planSearch(query: string): SearchPlan {
   if (terms.length <= 1 && !wantsMoe) {
     return {search: query.trim()};
   }
-  // The longest word is the most selective one the API can search on.
-  const search = [...terms].sort((a, b) => b.length - a.length)[0] ?? '';
+  // Send the most selective word: one mixing letters and digits (a size or
+  // version tag like "a400", "a3b", "30b") beats a family name like
+  // "granite", which has hundreds of repos; otherwise the longest word.
+  const byLength = [...terms].sort((a, b) => b.length - a.length);
+  const tagged = byLength.find(w => /[a-z]/.test(w) && /\d/.test(w));
+  const search = tagged ?? byLength[0] ?? '';
   const parts = terms.map(squash).filter(Boolean);
   return {
     search,
