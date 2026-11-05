@@ -36,6 +36,12 @@
   },
   "settings": {
     "configureClaude": "Configure Claude API",
+    "multiModel": {
+      "title": "Keep models loaded",
+      "description": "Keep recently used models loaded so switching back is instant (for phones with plenty of memory). The oldest is unloaded when memory runs short. In the background they stay only while the wake word is on.",
+      "howMany": "Models loaded at once (including the one in use)",
+      "unloadKept": "Unload {{count}} kept model(s)"
+    },
     "crashReports": {
       "row": "Crash reports",
       "rowHint": "Why PocketAgent closed recently, if it did. Copy the details to report a problem.",
