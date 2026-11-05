@@ -26,6 +26,7 @@ import {
 } from '../../components';
 
 import {uiStore, modelStore, hfStore, UIStore, serverStore} from '../../store';
+import {downloadManager} from '../../services/downloads';
 
 import {L10nContext} from '../../utils';
 import {Model, ModelOrigin} from '../../utils/types';
@@ -273,7 +274,15 @@ export const ModelsScreen: React.FC = observer(() => {
   // so we use computed instead for deep comparison
   // (model state changes not-downloaded -> downloaded)
   const filteredAndSortedModels = computed(() => {
-    let result = models;
+    // The app's suggested models are not offered for download here; one
+    // already downloaded (or downloading) still shows. Models added from
+    // Hugging Face are unaffected.
+    let result = models.filter(
+      model =>
+        model.origin !== ModelOrigin.PRESET ||
+        model.isDownloaded ||
+        downloadManager.isDownloading(model.id),
+    );
     if (filters.includes('downloaded')) {
       result = result.filter(model => model.isDownloaded);
     }

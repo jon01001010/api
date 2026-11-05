@@ -452,19 +452,30 @@ describe('ModelsScreen', () => {
     it('should handle group expansion and collapse', async () => {
       uiStore.pageStates.modelsScreen.filters = [];
 
-      const {getByText, queryByText} = render(<ModelsScreen />);
+      const {getByText, queryAllByText} = render(<ModelsScreen />);
+      // The name also shows outside the group (search), so count it.
+      const collapsed = queryAllByText('hf-model-name-1').length;
 
-      // Not downloaded model should not be visible
+      fireEvent.press(getByText('Available to Download'));
+
+      // A not-downloaded Hugging Face model shows once the group is open
       await waitFor(() => {
-        expect(queryByText('basic model')).toBeNull();
+        expect(queryAllByText('hf-model-name-1').length).toBeGreaterThan(
+          collapsed,
+        );
       });
+    });
 
-      const availableGroup = getByText('Available to Download');
-      fireEvent.press(availableGroup);
+    it("does not offer the app's suggested models for download", async () => {
+      uiStore.pageStates.modelsScreen.filters = [];
 
-      // Not downloaded model should be visible after expanding the group
+      const {getByText, queryByText} = render(<ModelsScreen />);
+      fireEvent.press(getByText('Available to Download'));
+
       await waitFor(() => {
-        expect(getByText('basic model')).toBeTruthy();
+        // Preset, not downloaded: hidden. Preset, downloaded: shown.
+        expect(queryByText('basic model')).toBeNull();
+        expect(getByText('downloaded model')).toBeTruthy();
       });
     });
   });
