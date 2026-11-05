@@ -11,6 +11,7 @@ export const SERVER_TYPE_OPTIONS = [
   'Ollama',
   'OpenAI',
   'Claude',
+  'DeepSeek',
   'vLLM',
   'unknown',
 ] as const;
@@ -59,6 +60,9 @@ export function seedServerType(
     }
     if (new URL(url).hostname === 'api.anthropic.com') {
       return 'Claude';
+    }
+    if (new URL(url).hostname === 'api.deepseek.com') {
+      return 'DeepSeek';
     }
   } catch {
     // ignore malformed URL

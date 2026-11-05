@@ -31,6 +31,7 @@ describe('hasRouter', () => {
     ['Ollama', false],
     ['OpenAI', false],
     ['Claude', false],
+    ['DeepSeek', false],
     ['vLLM', false],
     ['unknown', false],
     ['', false],

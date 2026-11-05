@@ -3098,6 +3098,16 @@ class ModelStore {
       // Do NOT set lastUsedModelId for remote models -- server may be offline on next launch
     });
 
+    if (serverType === 'DeepSeek') {
+      // DeepSeek models think (on by default there) at low, high or max.
+      serverStore.recordRemoteReasoningDetected(model.id, {
+        isReasoning: 'yes',
+        source: 'detected',
+        supportsEffort: true,
+        effortValues: ['low', 'high', 'max'],
+        effortSource: 'detected',
+      });
+    }
     if (serverType === 'Claude') {
       // Thinking and effort levels come from the Claude model's rules.
       const f = claudeFeatures(model.remoteModelId);

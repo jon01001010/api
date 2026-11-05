@@ -58,6 +58,7 @@
       "ok": "OK",
       "hint": "Recorded by Android (Android 11 and newer) and by the app. Nothing is sent anywhere."
     },
+    "configureDeepSeek": "Configure DeepSeek API",
     "modelInitializationSettings": "Model Initialization Settings",
     "metal": "Metal",
     "metalDescription": "Apple's hardware-accelerated API.",
