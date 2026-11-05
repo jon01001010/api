@@ -535,6 +535,24 @@ export const ChatInput = observer(
       }
     };
 
+    const isImageName = (name: string) =>
+      /\.(jpe?g|png|webp|gif|heic|heif|bmp)$/i.test(name);
+
+    // A workspace picture into this message, like one from the gallery. A
+    // cache copy is attached, so the workspace file itself is never touched.
+    const attachWorkspaceImage = async (name: string) => {
+      try {
+        const path = workspacePath(name);
+        const cachePath = RNFS.CachesDirectoryPath + '/attach-' + name;
+        if (await RNFS.exists(cachePath)) await RNFS.unlink(cachePath);
+        await RNFS.copyFile(path, cachePath);
+        setSelectedImages([...selectedImages, 'file://' + cachePath]);
+        setWorkspaceVisible(false);
+      } catch (error) {
+        Alert.alert('Attach failed', error instanceof Error ? error.message : String(error));
+      }
+    };
+
     const shareWorkspaceFile = async (name: string) => {
       try {
         const path = workspacePath(name);
@@ -542,8 +560,11 @@ export const ChatInput = observer(
         if (!info.isFile()) throw new Error('File is not available');
         // Share all workspace files using the same cached-file path as PNGs.
         // The data: URI path fails on some Android share targets with a null URI.
+        const lower = name.toLowerCase();
         const mime = isEditableTextName(name) ? 'text/plain' :
-          name.toLowerCase().endsWith('.png') ? 'image/png' : 'application/octet-stream';
+          lower.endsWith('.png') ? 'image/png' :
+          /\.jpe?g$/.test(lower) ? 'image/jpeg' :
+          lower.endsWith('.webp') ? 'image/webp' : 'application/octet-stream';
         const cachePath = RNFS.CachesDirectoryPath + '/' + name;
         if (await RNFS.exists(cachePath)) await RNFS.unlink(cachePath);
         await RNFS.copyFile(path, cachePath);
@@ -614,7 +635,7 @@ export const ChatInput = observer(
             <View style={{backgroundColor: theme.colors.surface, borderRadius: themeRadius(theme, 16), padding: 16, maxHeight: '75%'}}>
               <Text variant="titleMedium">PocketAgent workspace</Text>
               <Text variant="bodySmall" style={{marginVertical: 10}}>
-                Tap a file to share it or save a copy using Android's share sheet.
+                Attach a picture to the chat, or share / save a copy of any file.
               </Text>
               <TouchableOpacity onPress={() => chooseWorkspaceLimit('maxFileBytes')} style={{paddingVertical: 8}}>
                 <Text>Max text file: {Math.round(workspaceLimits.maxFileBytes / 1024)} KiB · Change</Text>
@@ -627,14 +648,29 @@ export const ChatInput = observer(
                 keyExtractor={item => item.name}
                 ListEmptyComponent={<Text>No workspace files yet.</Text>}
                 renderItem={({item}) => (
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    accessibilityLabel={'Share ' + item.name}
-                    onPress={() => shareWorkspaceFile(item.name)}
-                    style={{paddingVertical: 12, borderBottomWidth: 1, borderColor: theme.colors.outlineVariant}}>
+                  <View style={{paddingVertical: 8, borderBottomWidth: 1, borderColor: theme.colors.outlineVariant}}>
                     <Text>{item.name}</Text>
-                    <Text variant="bodySmall">{item.size} bytes · Share / Save</Text>
-                  </TouchableOpacity>
+                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
+                      <Text variant="bodySmall">{item.size} bytes</Text>
+                      {isImageName(item.name) && canAttachPictures && (
+                        <TouchableOpacity
+                          accessibilityRole="button"
+                          accessibilityLabel={'Attach ' + item.name + ' to chat'}
+                          testID={'workspace-attach-' + item.name}
+                          onPress={() => attachWorkspaceImage(item.name)}
+                          style={{paddingVertical: 6}}>
+                          <Text variant="labelLarge" style={{color: theme.colors.primary}}>Attach to chat</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        accessibilityRole="button"
+                        accessibilityLabel={'Share ' + item.name}
+                        onPress={() => shareWorkspaceFile(item.name)}
+                        style={{paddingVertical: 6}}>
+                        <Text variant="labelLarge" style={{color: theme.colors.primary}}>Share / Save</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 )}
               />
               <TouchableOpacity onPress={() => setWorkspaceVisible(false)} style={{alignSelf: 'flex-end', padding: 12}}>

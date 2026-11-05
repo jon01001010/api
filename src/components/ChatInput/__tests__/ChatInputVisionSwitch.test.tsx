@@ -146,3 +146,42 @@ describe('ChatInput: picture sent to a text model', () => {
     expect(ensureVisionForPictures).not.toHaveBeenCalled();
   });
 });
+
+describe('ChatInput: a workspace picture into the chat', () => {
+  const RNFS = require('@dr.pogodin/react-native-fs');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    runInAction(() => {
+      modelStore.activeModelId = 'qwen';
+      (modelStore as any).models = [visionModel];
+    });
+    RNFS.readDir = jest.fn().mockResolvedValue([
+      {name: 'cat.jpg', size: 1200, isFile: () => true},
+      {name: 'notes.txt', size: 10, isFile: () => true},
+    ]);
+    RNFS.CachesDirectoryPath = '/cache';
+  });
+
+  afterEach(() =>
+    runInAction(() => {
+      (modelStore as any).models = [];
+    }),
+  );
+
+  it('offers Attach for pictures only, and attaches a copy', async () => {
+    const {getByLabelText, getByText, findByTestId, queryByTestId} =
+      renderInput();
+    fireEvent.press(getByLabelText('Add attachment'));
+    fireEvent.press(getByText('Workspace files / Share'));
+    const attach = await findByTestId('workspace-attach-cat.jpg');
+    expect(queryByTestId('workspace-attach-notes.txt')).toBeNull();
+    fireEvent.press(attach);
+    await waitFor(() =>
+      expect(RNFS.copyFile).toHaveBeenCalledWith(
+        expect.stringContaining('cat.jpg'),
+        '/cache/attach-cat.jpg',
+      ),
+    );
+  });
+});
