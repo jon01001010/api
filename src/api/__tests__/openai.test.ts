@@ -1765,6 +1765,44 @@ describe('streamChatCompletion', () => {
       });
     });
 
+    // Gemini's OpenAI-compatible stream sends each call whole, without an
+    // index, and Gemini 3 adds a thought signature that must be sent back.
+    it('keeps Gemini tool calls that carry no index, with their signature', async () => {
+      const resultPromise = streamChatCompletion(
+        {
+          samplers: {},
+          messages: [{role: 'user', content: 'Time?'}],
+          model: 'gemini-3.1-flash-lite',
+          tools: [calculateTool],
+        },
+        endpointFor(),
+      );
+      const xhr = MockXHR.instances[0];
+      xhr.simulateHeaders(200);
+      xhr.simulateProgress(
+        'data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"id":"fc_1","type":"function","function":{"name":"calculate","arguments":"{\\"expression\\":\\"1+1\\"}"},"extra_content":{"google":{"thought_signature":"sig1"}}}]},"finish_reason":null}]}\n\n',
+      );
+      xhr.simulateProgress(
+        'data: {"choices":[{"delta":{"tool_calls":[{"id":"fc_2","type":"function","function":{"name":"calculate","arguments":"{\\"expression\\":\\"2+2\\"}"}}]},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n',
+      );
+      xhr.simulateLoad();
+
+      const result = await resultPromise;
+      expect(result.tool_calls).toEqual([
+        {
+          id: 'fc_1',
+          type: 'function',
+          function: {name: 'calculate', arguments: '{"expression":"1+1"}'},
+          extra_content: {google: {thought_signature: 'sig1'}},
+        },
+        {
+          id: 'fc_2',
+          type: 'function',
+          function: {name: 'calculate', arguments: '{"expression":"2+2"}'},
+        },
+      ]);
+    });
+
     it('handles parallel tool_calls indexed across chunks', async () => {
       const resultPromise = streamChatCompletion(
         {

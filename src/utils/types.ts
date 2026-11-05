@@ -47,6 +47,11 @@ export interface AgentToolCall {
   type?: 'function';
   function: {name: string; arguments: string};
   metrics?: AgentToolCallMetrics;
+  /**
+   * Provider data that must go back with the call on the next turn, as
+   * given (Gemini 3: `{google: {thought_signature}}`, else a 400).
+   */
+  extra_content?: unknown;
 }
 
 /**

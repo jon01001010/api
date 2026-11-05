@@ -94,6 +94,8 @@ type ToolCallAccumulator = Map<
     id: string;
     type: 'function';
     function: {name: string; argsFragments: string[]};
+    /** Provider data to send back with the call (Gemini thought signature). */
+    extra_content?: unknown;
   }
 >;
 
@@ -106,10 +108,20 @@ function applyToolCallDelta(
   // assembled from the accumulator at xhr.onload.
   const result: ToolCall[] = [];
   for (const delta of deltaCalls) {
-    if (typeof delta?.index !== 'number') {
+    if (!delta || typeof delta !== 'object') {
       continue;
     }
-    const idx = delta.index;
+    // OpenAI indexes each streamed call. Gemini sends every call whole in one
+    // chunk with no index: match it by id, else it is the next call.
+    let idx: number;
+    if (typeof delta.index === 'number') {
+      idx = delta.index;
+    } else {
+      const byId = delta.id
+        ? [...acc.entries()].find(([, e]) => e.id === delta.id)?.[0]
+        : undefined;
+      idx = byId ?? (acc.size === 0 ? 0 : Math.max(...acc.keys()) + 1);
+    }
     const existing = acc.get(idx) ?? {
       id: '',
       type: 'function' as const,
@@ -120,6 +132,9 @@ function applyToolCallDelta(
     }
     if (delta.function?.name) {
       existing.function.name = delta.function.name;
+    }
+    if (delta.extra_content !== undefined) {
+      existing.extra_content = delta.extra_content;
     }
     const argsDelta: string = delta.function?.arguments ?? '';
     if (argsDelta) {
@@ -155,6 +170,9 @@ function assembleFinalToolCalls(
         name: entry.function.name,
         arguments: entry.function.argsFragments.join(''),
       },
+      ...(entry.extra_content !== undefined && {
+        extra_content: entry.extra_content,
+      }),
     }));
 }
 

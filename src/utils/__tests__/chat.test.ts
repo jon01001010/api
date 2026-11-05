@@ -318,6 +318,24 @@ describe('convertToChatMessages — AssistantTurn', () => {
     ]);
   });
 
+  it("sends a tool call's provider data back as given (Gemini thought signature)", () => {
+    const extra = {google: {thought_signature: 'sig1'}};
+    const turn = makeAssistantTurn([
+      {
+        content: '',
+        toolCalls: [
+          {
+            id: 'c0',
+            function: {name: 'datetime', arguments: '{}'},
+            extra_content: extra,
+          },
+        ],
+      },
+    ]);
+    const [assistantMsg] = convertToChatMessages([turn]);
+    expect((assistantMsg as any).tool_calls[0].extra_content).toEqual(extra);
+  });
+
   it('#3 step with empty content but tool_calls → assistant message with empty content + tool_calls + sentinel "aborted" tool response (orphan-pair guard)', () => {
     // A persisted step with toolCalls and no toolOutcomes is the
     // abort/crash recovery shape. The orphan-pair guard in
