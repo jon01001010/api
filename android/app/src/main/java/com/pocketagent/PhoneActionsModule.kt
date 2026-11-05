@@ -156,7 +156,7 @@ class PhoneActionsModule(private val context: ReactApplicationContext) :
                 return
             }
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            val activity = currentActivity
+            val activity = context.currentActivity
             if (activity != null) activity.startActivity(intent) else context.startActivity(intent)
             promise.resolve(result(true))
         } catch (e: Exception) {
