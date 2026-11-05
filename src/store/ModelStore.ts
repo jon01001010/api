@@ -1193,6 +1193,12 @@ class ModelStore {
   };
 
   checkAndReloadAutoReleasedModel = async () => {
+    // Only bring back an offloaded model when nothing else was picked since:
+    // reloading it over a model in use (e.g. Claude) would unload that one.
+    if (this.wasAutoReleased && (this.engine || this.isContextLoading)) {
+      this.clearAutoReleaseFlags();
+      return;
+    }
     if (this.wasAutoReleased && this.lastAutoReleasedModelId) {
       // Skip if the auto-released model ID refers to a remote model
       if (this.lastAutoReleasedModelId.includes('/')) {
@@ -2974,6 +2980,8 @@ class ModelStore {
    * Releases any active local context first.
    */
   setRemoteModel = async (model: Model): Promise<void> => {
+    // A model picked now replaces any pending reload of an offloaded one.
+    this.clearAutoReleaseFlags();
     // Multi-model: keep the local model loaded while a remote one is used.
     if (this.keepModelsLoaded && this.context) {
       await this.withContextMutex(async () => {
