@@ -11,7 +11,7 @@ import {Portal, Snackbar} from 'react-native-paper';
 
 import {useTheme} from '../../hooks';
 
-import {FABGroup} from './FABGroup';
+import {AddModelBar} from './AddModelBar';
 import {ModelCard} from './ModelCard';
 import {createStyles} from './styles';
 import {HFModelSearch} from './HFModelSearch';
@@ -413,6 +413,15 @@ export const ModelsScreen: React.FC = observer(() => {
         keyExtractor={item => item.type}
         extraData={activeModelId}
         renderItem={renderGroupHeader}
+        ListHeaderComponent={
+          <AddModelBar
+            onAddHFModel={() => setHFSearchVisible(true)}
+            onAddLocalModel={handleAddLocalModel}
+            onAddRemoteModel={handleAddRemoteModel}
+            onManageServers={handleManageServers}
+            hasServers={serverStore.servers.length > 0}
+          />
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -452,13 +461,6 @@ export const ModelsScreen: React.FC = observer(() => {
         duration={86400000}>
         {l10n.models.fileManagement.copyingModel}
       </Snackbar>
-      <FABGroup
-        onAddHFModel={() => setHFSearchVisible(true)}
-        onAddLocalModel={handleAddLocalModel}
-        onAddRemoteModel={handleAddRemoteModel}
-        onManageServers={handleManageServers}
-        hasServers={serverStore.servers.length > 0}
-      />
       <ModelSettingsSheet
         isVisible={settingsVisible}
         onClose={handleCloseSettings}

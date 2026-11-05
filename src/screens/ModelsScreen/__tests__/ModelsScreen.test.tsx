@@ -38,7 +38,7 @@ describe('ModelsScreen', () => {
   it('renders correctly', async () => {
     const {getByTestId} = render(<ModelsScreen />);
     expect(getByTestId('flat-list')).toBeTruthy();
-    expect(getByTestId('fab-group')).toBeTruthy();
+    expect(getByTestId('models-add-button')).toBeTruthy();
   });
 
   it('refreshes models on pull-to-refresh', async () => {
@@ -57,7 +57,7 @@ describe('ModelsScreen', () => {
     const {getByTestId} = render(<ModelsScreen />);
 
     // Open the FAB group
-    const fabGroup = getByTestId('fab-group');
+    const fabGroup = getByTestId('models-add-button');
     fireEvent.press(fabGroup);
 
     // Wait for the FAB group to open and its children to be accessible
@@ -97,7 +97,7 @@ describe('ModelsScreen', () => {
     const {getByTestId} = render(<ModelsScreen />);
 
     // Open the FAB group
-    const fabGroup = getByTestId('fab-group');
+    const fabGroup = getByTestId('models-add-button');
     fireEvent.press(fabGroup);
 
     // Wait for the FAB group to open and its children to be accessible
@@ -143,7 +143,7 @@ describe('ModelsScreen', () => {
     const {getByTestId} = render(<ModelsScreen />);
 
     // Open the FAB group
-    const fabGroup = getByTestId('fab-group');
+    const fabGroup = getByTestId('models-add-button');
     fireEvent.press(fabGroup);
 
     // Wait for the FAB group to open and its children to be accessible
@@ -188,7 +188,7 @@ describe('ModelsScreen', () => {
 
     const {getByTestId} = render(<ModelsScreen />);
     // Open the FAB group
-    const fabGroup = getByTestId('fab-group');
+    const fabGroup = getByTestId('models-add-button');
     fireEvent.press(fabGroup);
 
     // Wait for the FAB group to open and its children to be accessible
@@ -237,7 +237,7 @@ describe('ModelsScreen', () => {
     const {getByTestId} = render(<ModelsScreen />);
 
     // Open the FAB group
-    const fabGroup = getByTestId('fab-group');
+    const fabGroup = getByTestId('models-add-button');
     fireEvent.press(fabGroup);
 
     // Wait for the FAB group to open and its children to be accessible
@@ -287,7 +287,7 @@ describe('ModelsScreen', () => {
     const {getByTestId} = render(<ModelsScreen />);
 
     // Open FAB, press local
-    const fabGroup = getByTestId('fab-group');
+    const fabGroup = getByTestId('models-add-button');
     fireEvent.press(fabGroup);
     await waitFor(() => {
       expect(
@@ -324,7 +324,7 @@ describe('ModelsScreen', () => {
 
     const {getByTestId} = render(<ModelsScreen />);
 
-    const fabGroup = getByTestId('fab-group');
+    const fabGroup = getByTestId('models-add-button');
     fireEvent.press(fabGroup);
     await waitFor(() => {
       expect(
@@ -358,7 +358,7 @@ describe('ModelsScreen', () => {
     const {getByTestId} = render(<ModelsScreen />);
 
     // Open FAB and press local to start the first copy
-    const fabGroup = getByTestId('fab-group');
+    const fabGroup = getByTestId('models-add-button');
     fireEvent.press(fabGroup);
     await waitFor(() => {
       expect(
