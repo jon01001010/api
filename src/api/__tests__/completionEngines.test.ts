@@ -196,6 +196,47 @@ describe('OpenAICompletionEngine', () => {
     expect(calls).toEqual([tools, undefined, undefined]);
   });
 
+  describe('busy servers', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    const busy = () =>
+      new RemoteHttpError(
+        'Server error: 503 — This model is currently experiencing high demand',
+        503,
+      );
+
+    it('a 503 is retried after a wait, and the reply comes through', async () => {
+      mockedStreamChat
+        .mockRejectedValueOnce(busy())
+        .mockResolvedValueOnce({text: 'Hi', content: 'Hi'});
+      const reply = engine.completion({messages: []} as any);
+      await jest.advanceTimersByTimeAsync(2000);
+      await expect(reply).resolves.toMatchObject({content: 'Hi'});
+      expect(mockedStreamChat).toHaveBeenCalledTimes(2);
+    });
+
+    it('gives up after three retries and shows the error', async () => {
+      mockedStreamChat.mockRejectedValue(busy());
+      const reply = engine.completion({messages: []} as any);
+      const settled = expect(reply).rejects.toThrow('high demand');
+      await jest.advanceTimersByTimeAsync(2000 + 4000 + 8000);
+      await settled;
+      expect(mockedStreamChat).toHaveBeenCalledTimes(4);
+    });
+
+    it('never retries once part of the reply has streamed', async () => {
+      mockedStreamChat.mockImplementationOnce(async (_p, _e, _s, onToken) => {
+        onToken({content: 'Hel'});
+        throw busy();
+      });
+      await expect(
+        engine.completion({messages: []} as any, jest.fn()),
+      ).rejects.toThrow('high demand');
+      expect(mockedStreamChat).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('other 400s are not retried', async () => {
     mockedStreamChat.mockRejectedValueOnce(
       new RemoteHttpError('Server error: 400 — bad request', 400),
@@ -239,10 +280,13 @@ describe('OpenAICompletionEngine', () => {
       },
       ENDPOINT,
       expect.any(Object), // AbortSignal
-      onToken,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
 
     expect(result).toEqual(mockResult);
+    // The callback handed down still reaches the caller's.
+    mockedStreamChat.mock.calls[0][3]({content: 'x'});
+    expect(onToken).toHaveBeenCalledWith({content: 'x'});
   });
 
   // PACT support requires the engine to forward tools and tool_choice
@@ -279,7 +323,7 @@ describe('OpenAICompletionEngine', () => {
       }),
       ENDPOINT,
       expect.any(Object),
-      undefined,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 
@@ -307,7 +351,7 @@ describe('OpenAICompletionEngine', () => {
       expect.objectContaining({response_format: responseFormat}),
       ENDPOINT,
       expect.any(Object),
-      undefined,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 
@@ -339,7 +383,7 @@ describe('OpenAICompletionEngine', () => {
       expect.objectContaining({samplers}),
       ENDPOINT,
       expect.any(Object),
-      undefined,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 
@@ -365,7 +409,7 @@ describe('OpenAICompletionEngine', () => {
       }),
       ENDPOINT,
       expect.any(Object),
-      undefined,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 
@@ -410,7 +454,7 @@ describe('OpenAICompletionEngine', () => {
       expect.any(Object),
       timedEndpoint, // raw timeoutMs forwarded, not normalized
       expect.any(Object), // AbortSignal
-      undefined, // callback
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 
@@ -430,7 +474,7 @@ describe('OpenAICompletionEngine', () => {
       expect.any(Object),
       noKeyEndpoint,
       expect.any(Object),
-      undefined,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 
@@ -448,7 +492,7 @@ describe('OpenAICompletionEngine', () => {
       expect.objectContaining({reasoning: {enabled: false}}),
       typedEndpoint,
       expect.any(Object),
-      undefined,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 });

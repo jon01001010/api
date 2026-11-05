@@ -87,6 +87,27 @@ export function refusesTools(error: unknown): boolean {
   );
 }
 
+/** Waits before each retry of a busy server; its length is the retry count. */
+export const BUSY_RETRY_DELAYS_MS = [2000, 4000, 8000];
+
+/** Busy, rate-limited or briefly down: worth asking again shortly. */
+export function isBusyError(error: unknown): boolean {
+  const status = (error as {status?: number} | null)?.status;
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+function waitUnlessAborted(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise(resolve => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    }
+    signal.addEventListener('abort', done);
+  });
+}
+
 export class OpenAICompletionEngine implements CompletionEngine {
   private abortController: AbortController | null = null;
 
@@ -143,14 +164,51 @@ export class OpenAICompletionEngine implements CompletionEngine {
     const tools = (params as any).tools;
     const withTools = !!tools?.length && !this.toolsUnsupported;
     try {
-      return await this.stream(params, withTools, signal, callback);
+      return await this.streamRetrying(params, withTools, signal, callback);
     } catch (error) {
       if (!withTools || !refusesTools(error) || signal.aborted) {
         throw error;
       }
       // Chat without tools rather than not at all.
       this.toolsUnsupported = true;
-      return this.stream(params, false, signal, callback);
+      return this.streamRetrying(params, false, signal, callback);
+    }
+  }
+
+  /**
+   * A busy or rate-limited server (503, 429, …) usually answers a moment
+   * later: wait 2 s, 4 s, 8 s and try again before showing the error. Only
+   * while nothing has streamed yet, so a reply is never sent twice.
+   */
+  private async streamRetrying(
+    params: ApiCompletionParams,
+    withTools: boolean,
+    signal: AbortSignal,
+    callback?: (data: CompletionStreamData) => void,
+  ): Promise<CompletionResult> {
+    let streamed = false;
+    const onData = (data: CompletionStreamData) => {
+      streamed = true;
+      callback?.(data);
+    };
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.stream(params, withTools, signal, onData);
+      } catch (error) {
+        const delay = BUSY_RETRY_DELAYS_MS[attempt];
+        if (
+          streamed ||
+          signal.aborted ||
+          delay === undefined ||
+          !isBusyError(error)
+        ) {
+          throw error;
+        }
+        await waitUnlessAborted(delay, signal);
+        if (signal.aborted) {
+          throw error;
+        }
+      }
     }
   }
 
