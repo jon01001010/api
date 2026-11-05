@@ -37,6 +37,7 @@ jest.mock('../../../store', () => ({
     visionModels: [],
     activeModel: null,
     pickVisionTarget: () => undefined,
+    getModelVisionPreference: () => true,
   },
   palStore: {
     pals: [],

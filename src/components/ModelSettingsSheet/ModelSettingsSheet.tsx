@@ -15,6 +15,31 @@ import {
 } from '../../utils/reasoningCapability';
 
 import {styles} from './styles';
+import {observer} from 'mobx-react';
+
+/**
+ * The Vision switch, here as well as on the model card (⌄), since this sheet
+ * is where people look for it. Same store call as the card's switch.
+ */
+const VisionSwitchRow = observer(({model}: {model: Model}) => {
+  const l10n = useContext(L10nContext);
+  const on = modelStore.getModelVisionPreference(model);
+  const canTurnOn = modelStore.getProjectionModelStatus(model).isAvailable;
+  return (
+    <View style={styles.reasoningRow}>
+      <Text>{l10n.models.modelCard.labels.vision}</Text>
+      <Switch
+        testID="settings-vision-switch"
+        accessibilityLabel={l10n.models.modelCard.labels.vision}
+        value={on}
+        disabled={!on && !canTurnOn}
+        onValueChange={enabled => {
+          modelStore.setModelVisionEnabled(model.id, enabled).catch(() => {});
+        }}
+      />
+    </View>
+  );
+});
 import {View} from 'react-native';
 import {L10nContext} from '../../utils';
 
@@ -199,6 +224,7 @@ export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
               <Text style={styles.multimodalSectionTitle}>
                 {l10n.models.multimodal.settings}
               </Text>
+              <VisionSwitchRow model={model} />
               <ProjectionModelSelector
                 model={model}
                 onProjectionModelSelect={projectionModelId => {

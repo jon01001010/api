@@ -2971,12 +2971,25 @@ class ModelStore {
    * likely to fit in memory). Undefined when no downloaded model can see.
    */
   pickVisionModel = (): Model | undefined => {
-    const candidates = this.visionModels;
-    return (
+    const pick = (candidates: Model[]) =>
       candidates.find(m => m.id === this.lastVisionModelId) ??
-      [...candidates].sort((a, b) => (a.size ?? 0) - (b.size ?? 0))[0]
-    );
+      [...candidates].sort((a, b) => (a.size ?? 0) - (b.size ?? 0))[0];
+    // Then a vision model whose projector is on the phone but whose Vision
+    // switch is off: sending a picture turns it on (see visionSwitch).
+    return pick(this.visionModels) ?? pick(this.switchedOffVisionModels);
   };
+
+  /** Downloaded vision models, projector downloaded, Vision switched off. */
+  get switchedOffVisionModels(): Model[] {
+    return this.availableModels.filter(
+      m =>
+        m.origin !== ModelOrigin.REMOTE &&
+        m.isDownloaded &&
+        m.supportsMultimodal &&
+        !this.getModelVisionPreference(m) &&
+        this.getProjectionModelStatus(m).state === 'downloaded',
+    );
+  }
 
   /**
    * A vision model that loaded without vision (projector missing, still

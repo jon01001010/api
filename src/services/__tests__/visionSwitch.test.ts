@@ -29,6 +29,10 @@ jest.mock('../../store', () => {
       lastVisionModelId: undefined as string | undefined,
       pickVisionTarget: jest.fn(),
       selectModel: jest.fn(),
+      initContext: jest.fn(),
+      releaseContext: jest.fn(),
+      getModelVisionPreference: jest.fn(() => true),
+      setModelVisionEnabled: jest.fn(async () => {}),
     },
   };
 });
@@ -156,5 +160,35 @@ describe('returnFromVision (after the picture is answered)', () => {
     await ensureVisionForPictures();
     await returnFromVision();
     expect(modelStore.selectModel).not.toHaveBeenCalled();
+  });
+});
+
+describe('a vision model with its Vision switch off', () => {
+  it('turns it on and reloads it when it is the loaded model', async () => {
+    const smol = {...visionModel, origin: ModelOrigin.LOCAL};
+    mockState.active = smol;
+    (modelStore as any).activeModelId = smol.id;
+    (modelStore.pickVisionTarget as jest.Mock).mockReturnValue(smol);
+    (modelStore.getModelVisionPreference as jest.Mock).mockReturnValue(false);
+    (modelStore.initContext as jest.Mock).mockImplementation(async () => {
+      mockState.canSee = true;
+    });
+    expect(await ensureVisionForPictures()).toBe('ready');
+    expect(modelStore.setModelVisionEnabled).toHaveBeenCalledWith(
+      smol.id,
+      true,
+    );
+    expect(modelStore.releaseContext).toHaveBeenCalled();
+    expect(modelStore.initContext).toHaveBeenCalledWith(smol);
+  });
+
+  it('turns it on before switching to it from a text model', async () => {
+    (modelStore.getModelVisionPreference as jest.Mock).mockReturnValue(false);
+    expect(await ensureVisionForPictures()).toBe('switched');
+    expect(modelStore.setModelVisionEnabled).toHaveBeenCalledWith(
+      visionModel.id,
+      true,
+    );
+    expect(modelStore.selectModel).toHaveBeenCalledWith(visionModel);
   });
 });

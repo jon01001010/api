@@ -1,5 +1,6 @@
 import {modelStore, uiStore} from '../store';
 import {runInAction} from 'mobx';
+import {ModelOrigin} from '../utils/types';
 
 /**
  * What happened when a picture was about to be sent:
@@ -28,8 +29,33 @@ export async function ensureVisionForPictures(): Promise<VisionSwitchResult> {
   }
   // A local vision model first; only when there is none, a cloud one.
   const target = modelStore.pickVisionTarget();
-  if (!target || target.id === modelStore.activeModelId) {
+  if (!target) {
     return 'none';
+  }
+  // A local vision model with its projector but the Vision switch off: the
+  // picture is a clear ask, so turn it on (as the card's switch would).
+  const switchedOff =
+    target.origin !== ModelOrigin.REMOTE &&
+    !modelStore.getModelVisionPreference(target);
+  if (switchedOff) {
+    await modelStore.setModelVisionEnabled(target.id, true).catch(() => {});
+  }
+  if (target.id === modelStore.activeModelId) {
+    if (!switchedOff) {
+      return 'none';
+    }
+    // Already loaded without vision: turning it on may have reloaded it;
+    // if not, load it again, now with vision.
+    if (modelStore.activeModelCaps.visionActive) {
+      return 'ready';
+    }
+    try {
+      await modelStore.releaseContext();
+      await modelStore.initContext(target);
+    } catch {
+      return 'cancelled';
+    }
+    return modelStore.activeModelCaps.visionActive ? 'ready' : 'cancelled';
   }
   const previousModelId = modelStore.activeModelId;
   try {

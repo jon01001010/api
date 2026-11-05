@@ -247,8 +247,12 @@ export const ChatInput = observer(
     const [isSwitchingToVision, setIsSwitchingToVision] = React.useState(false);
     // Local vision model first, then a cloud one that reads images.
     const visionTarget = modelStore.pickVisionTarget();
+    // The loaded model counts too when only its Vision switch is off: sending
+    // a picture turns it on.
     const canSwitchToVision =
-      !!visionTarget && visionTarget.id !== modelStore.activeModelId;
+      !!visionTarget &&
+      (visionTarget.id !== modelStore.activeModelId ||
+        !modelStore.getModelVisionPreference(visionTarget));
     const canAttachPictures = isVisionEnabled || canSwitchToVision;
 
     // `spoken` is text from voice input, sent as if typed.

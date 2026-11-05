@@ -104,6 +104,24 @@ describe('ModelSettingsSheet', () => {
     jest.clearAllMocks();
   });
 
+  it('has a Vision switch for a vision model, same as the card', () => {
+    // MobX wraps the mock store's methods; check the call with a plain spy.
+    const calls: unknown[][] = [];
+    const original = modelStore.setModelVisionEnabled;
+    (modelStore as any).setModelVisionEnabled = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const {getByTestId} = render(
+      <ModelSettingsSheet
+        {...defaultProps}
+        model={{...mockModel, supportsMultimodal: true}}
+      />,
+    );
+    fireEvent(getByTestId('settings-vision-switch'), 'onValueChange', false);
+    expect(calls).toEqual([[mockModel.id, false]]);
+    (modelStore as any).setModelVisionEnabled = original;
+  });
+
   it('renders correctly when visible', () => {
     const {getByTestId} = render(<ModelSettingsSheet {...defaultProps} />);
 
