@@ -101,3 +101,52 @@ describe('Claude remote models', () => {
     );
   });
 });
+
+describe('switching away from a remote model', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    modelStore.engine = undefined;
+  });
+
+  it('a later pick wins over a remote pick still in flight', async () => {
+    let releaseKey!: (key: string) => void;
+    (serverStore.getApiKey as jest.Mock).mockReturnValueOnce(
+      new Promise<string>(resolve => {
+        releaseKey = resolve;
+      }),
+    );
+    const first = modelStore.setRemoteModel(claudeModel('claude-opus-5-5'));
+    const second = modelStore.setRemoteModel({
+      id: 'deepseek/deepseek-v4-flash',
+      serverId: 'deepseek',
+      remoteModelId: 'deepseek-v4-flash',
+      origin: 1,
+    } as any);
+    releaseKey('sk-ant-test');
+    await Promise.all([first, second]);
+    expect(modelStore.activeModelId).toBe('deepseek/deepseek-v4-flash');
+    expect(modelStore.engine).toBeInstanceOf(OpenAICompletionEngine);
+  });
+
+  it('starting a local load stops using the server at once', async () => {
+    await modelStore.setRemoteModel(claudeModel('claude-opus-5-5'));
+    expect(modelStore.engine).toBeDefined();
+    // The load itself is not under test: let it fail after it has begun.
+    const load = modelStore
+      .initContext({id: 'local-smol', name: 'Smol', origin: 0} as any)
+      .catch(() => {});
+    expect(modelStore.engine).toBeUndefined();
+    expect(modelStore.activeRemoteBinding).toBeUndefined();
+    await load;
+  });
+
+  it('never hands out a remote engine for a different active model', async () => {
+    await modelStore.setRemoteModel(claudeModel('claude-opus-5-5'));
+    const lease = modelStore.tryAcquireGeneration();
+    expect(lease).not.toBeNull();
+    lease!.end();
+    expect(modelStore.isGenerationBusy).toBe(false);
+    modelStore.setActiveModel('local-smol');
+    expect(modelStore.tryAcquireGeneration()).toBeNull();
+  });
+});

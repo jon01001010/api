@@ -2304,6 +2304,17 @@ class ModelStore {
     // pendingModelId will overwrite ours and we'll detect it later
     this.pendingModelId = model.id;
 
+    // Switching from a remote model: stop using its server right away, so
+    // nothing is sent there while the local model loads.
+    if (!this.context && this.activeRemoteBinding) {
+      const remote = this.engine;
+      remote?.stopCompletion().catch(() => {});
+      runInAction(() => {
+        this.engine = undefined;
+        this.activeRemoteBinding = undefined;
+      });
+    }
+
     // Set loading state immediately for UI feedback
     runInAction(() => {
       this.isContextLoading = true;
@@ -3045,62 +3056,74 @@ class ModelStore {
   setRemoteModel = async (model: Model): Promise<void> => {
     // A model picked now replaces any pending reload of an offloaded one.
     this.clearAutoReleaseFlags();
-    // Multi-model: keep the local model loaded while a remote one is used.
-    if (this.keepModelsLoaded && this.context) {
-      await this.withContextMutex(async () => {
-        if (!(await this.parkActiveInternal())) {
-          await this._releaseContextInternal();
-        }
-      });
-    }
     if (!model.serverId || !model.remoteModelId) {
       throw new Error('Model is missing remote configuration');
     }
+    // Last pick wins, local or remote: a local load queued before this one
+    // sees the change and skips; a later pick makes this one stop.
+    this.pendingModelId = model.id;
 
-    // Release any existing context (local or remote)
-    await this.releaseContext();
+    const picked = await this.withContextMutex(async () => {
+      if (this.pendingModelId !== model.id) {
+        return null;
+      }
+      // Multi-model keeps the local model loaded; otherwise release it (and
+      // any previous remote engine).
+      if (!(await this.parkActiveInternal())) {
+        await this._releaseContextInternal();
+      }
 
-    const apiKey = await serverStore.getApiKey(model.serverId);
-    const server = serverStore.servers.find(s => s.id === model.serverId);
-    if (!server) {
-      throw new Error('Server not found');
-    }
+      const apiKey = await serverStore.getApiKey(model.serverId!);
+      const server = serverStore.servers.find(s => s.id === model.serverId);
+      if (!server) {
+        throw new Error('Server not found');
+      }
+      if (this.pendingModelId !== model.id) {
+        return null;
+      }
 
-    const serverType = effectiveServerType(
-      toServerType(server.serverType),
-      server.url,
-    );
-    const hasRouter = profileFor(serverType).hasRouter;
-    const binding = {
-      modelId: model.id,
-      serverId: model.serverId,
-      remoteModelId: model.remoteModelId,
-      url: server.url,
-      serverType,
-    };
-    const endpoint = {
-      url: server.url,
-      remoteModelId: model.remoteModelId,
-      apiKey,
-      timeoutMs: server.requestTimeoutMs,
-      serverType,
-    };
+      const type = effectiveServerType(
+        toServerType(server.serverType),
+        server.url,
+      );
+      const hasRouter = profileFor(type).hasRouter;
+      const binding = {
+        modelId: model.id,
+        serverId: model.serverId!,
+        remoteModelId: model.remoteModelId!,
+        url: server.url,
+        serverType: type,
+      };
+      const endpoint = {
+        url: server.url,
+        remoteModelId: model.remoteModelId!,
+        apiKey,
+        timeoutMs: server.requestTimeoutMs,
+        serverType: type,
+      };
 
-    runInAction(() => {
-      this.engine =
-        serverType === 'Claude'
-          ? new ClaudeCompletionEngine(endpoint)
-          : hasRouter
-            ? new OpenAICompletionEngine(endpoint, {
-                ensureReady: (signal, options) =>
-                  routerStore.ensureReady(binding, signal, options),
-              })
-            : new OpenAICompletionEngine(endpoint);
-      this.activeRemoteBinding = binding;
-      this.setActiveModel(model.id);
-      this.lastSessionModelId = model.id;
-      // Do NOT set lastUsedModelId for remote models -- server may be offline on next launch
+      runInAction(() => {
+        this.engine =
+          type === 'Claude'
+            ? new ClaudeCompletionEngine(endpoint)
+            : hasRouter
+              ? new OpenAICompletionEngine(endpoint, {
+                  ensureReady: (signal, options) =>
+                    routerStore.ensureReady(binding, signal, options),
+                })
+              : new OpenAICompletionEngine(endpoint);
+        this.activeRemoteBinding = binding;
+        this.setActiveModel(model.id);
+        this.lastSessionModelId = model.id;
+        this.pendingModelId = null;
+        // Do NOT set lastUsedModelId for remote models -- server may be offline on next launch
+      });
+      return {serverType: type, apiKey, hasRouter};
     });
+    if (!picked) {
+      return;
+    }
+    const {serverType, apiKey, hasRouter} = picked;
 
     if (serverType === 'DeepSeek') {
       // DeepSeek models think (on by default there) at low, high or max.
@@ -3124,11 +3147,11 @@ class ModelStore {
       });
     }
     serverStore
-      .fetchRemoteModelCaps(model.serverId, model.remoteModelId, apiKey)
+      .fetchRemoteModelCaps(model.serverId!, model.remoteModelId!, apiKey)
       .catch(() => {});
     if (hasRouter) {
       routerStore
-        .ensureLoaded(model.serverId, model.remoteModelId)
+        .ensureLoaded(model.serverId!, model.remoteModelId!)
         .catch(() => {});
     }
   };
@@ -3830,8 +3853,21 @@ class ModelStore {
     return this.generationSlot.isBusy;
   }
 
-  private grantableEngine = (): CompletionEngine | null =>
-    this.isReleasingContext ? null : (this.engine ?? null);
+  /**
+   * The engine to generate with, or null. A remote engine is only handed out
+   * for the remote model it was made for: never while another model is the
+   * active one (a switch in progress, or one that went wrong).
+   */
+  private grantableEngine = (): CompletionEngine | null => {
+    if (this.isReleasingContext || !this.engine) {
+      return null;
+    }
+    const binding = this.activeRemoteBinding;
+    if (binding && (this.context || binding.modelId !== this.activeModelId)) {
+      return null;
+    }
+    return this.engine;
+  };
 
   /**
    * Get compatible projection models for a given LLM
