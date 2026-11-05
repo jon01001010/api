@@ -238,3 +238,77 @@ describe('maps, music, camera and settings', () => {
     expect(perform).not.toHaveBeenCalled();
   });
 });
+
+describe('reminders and messages', () => {
+  it('add_reminder fills the calendar with a local time', async () => {
+    const result = await run('add_reminder', {
+      title: 'Dentist',
+      when: '2026-11-06T09:30',
+      notes: 'Bring card',
+    });
+    expect(approve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filename: 'Add "Dentist" on 2026-11-06 at 09:30 to your calendar?',
+        content: 'Bring card',
+      }),
+      undefined,
+    );
+    expect(perform).toHaveBeenCalledWith('add_reminder', {
+      title: 'Dentist',
+      startMs: new Date(2026, 10, 6, 9, 30).getTime(),
+      notes: 'Bring card',
+    });
+    expect(result.summary).toMatch(/presses save/);
+  });
+
+  it('add_reminder refuses an impossible date', async () => {
+    for (const when of ['tomorrow', '2026-02-30T09:00', '2026-13-01T09:00']) {
+      expect((await run('add_reminder', {title: 'x', when})).type).toBe(
+        'error',
+      );
+    }
+    expect(perform).not.toHaveBeenCalled();
+  });
+
+  it('compose_message only opens filled-in screens', async () => {
+    await run('compose_message', {kind: 'call', to: '+44 20 7946 0958'});
+    expect(perform).toHaveBeenLastCalledWith('dial', {
+      number: '+44 20 7946 0958',
+    });
+    await run('compose_message', {kind: 'text', to: '555-0101', body: 'Hi'});
+    expect(perform).toHaveBeenLastCalledWith('sms', {
+      number: '555-0101',
+      body: 'Hi',
+    });
+    await run('compose_message', {
+      kind: 'email',
+      to: 'jon@example.com',
+      subject: 'Plans',
+      body: 'See you',
+    });
+    expect(perform).toHaveBeenLastCalledWith('email', {
+      to: 'jon@example.com',
+      subject: 'Plans',
+      body: 'See you',
+    });
+    expect(approve).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filename:
+          'Open an e-mail to jon@example.com about "Plans"? You press send.',
+      }),
+      undefined,
+    );
+  });
+
+  it('compose_message refuses bad numbers, addresses and kinds', async () => {
+    for (const args of [
+      {kind: 'call'},
+      {kind: 'call', to: 'mum'},
+      {kind: 'email', to: 'not-an-address'},
+      {kind: 'fax', to: '123'},
+    ]) {
+      expect((await run('compose_message', args)).type).toBe('error');
+    }
+    expect(perform).not.toHaveBeenCalled();
+  });
+});

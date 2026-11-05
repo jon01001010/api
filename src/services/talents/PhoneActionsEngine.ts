@@ -406,6 +406,131 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
       };
     },
   },
+  add_reminder: {
+    description:
+      'Add a reminder as a calendar event. The calendar app opens pre-filled and the user presses save. ' +
+      'How: `title`, and `when` as local date-time "YYYY-MM-DDTHH:MM" (call datetime first if you need today\'s date), optional `notes`.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: {type: 'string', description: 'What to be reminded of.'},
+        when: {
+          type: 'string',
+          description:
+            'Local date and time, "YYYY-MM-DDTHH:MM", e.g. "2026-11-06T09:00".',
+        },
+        notes: {type: 'string', description: 'Optional details.'},
+      },
+      required: ['title'],
+    },
+    plan: args => {
+      const title = text(args.title, 120);
+      if (!title) {
+        return 'Give the reminder `title`.';
+      }
+      const whenText = text(args.when, 40);
+      let startMs: number | undefined;
+      if (whenText) {
+        const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(whenText);
+        const date = m
+          ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5])
+          : undefined;
+        if (
+          !date ||
+          Number.isNaN(date.getTime()) ||
+          date.getMonth() !== +m![2] - 1
+        ) {
+          return '`when` must be a local date and time like "2026-11-06T09:00".';
+        }
+        startMs = date.getTime();
+      }
+      const notes = text(args.notes, 500);
+      const at =
+        whenText && startMs !== undefined
+          ? ` on ${whenText.replace('T', ' at ')}`
+          : '';
+      return {
+        action: 'add_reminder',
+        args: {
+          title,
+          ...(startMs !== undefined ? {startMs} : {}),
+          ...(notes ? {notes} : {}),
+        },
+        ask: `Add "${title}"${at} to your calendar?`,
+        details: notes,
+        done: `The calendar opened with "${title}"${at} filled in. The user presses save there.`,
+        what: 'add a reminder',
+      };
+    },
+  },
+  compose_message: {
+    description:
+      'Open a call, text or e-mail screen filled in for the user, who presses call or send. Nothing is sent by this tool. ' +
+      'How: `kind` is "call", "text" or "email"; `to` is the phone number or e-mail address; for text and email an optional `body`, for email an optional `subject`.',
+    parameters: {
+      type: 'object',
+      properties: {
+        kind: {type: 'string', enum: ['call', 'text', 'email']},
+        to: {
+          type: 'string',
+          description: 'Phone number, or e-mail address for email.',
+        },
+        subject: {type: 'string', description: 'E-mail subject (email only).'},
+        body: {type: 'string', description: 'Message text (text and email).'},
+      },
+      required: ['kind'],
+    },
+    plan: args => {
+      const kind = text(args.kind, 10)?.toLowerCase();
+      const to = text(args.to, 120);
+      const body = text(args.body, 2000);
+      const subject = text(args.subject, 200);
+      const phoneOk = (v?: string) => !!v && /^\+?[\d\s().-]{3,20}$/.test(v);
+      if (kind === 'call') {
+        if (!phoneOk(to)) {
+          return 'For a call, `to` must be a phone number.';
+        }
+        return {
+          action: 'dial',
+          args: {number: to},
+          ask: `Open the dialer with ${to}? You press call.`,
+          done: `The dialer opened with ${to}. The user presses call.`,
+          what: 'open the dialer',
+        };
+      }
+      if (kind === 'text') {
+        if (to && !phoneOk(to)) {
+          return 'For a text, `to` must be a phone number (or leave it out).';
+        }
+        return {
+          action: 'sms',
+          args: {...(to ? {number: to} : {}), ...(body ? {body} : {})},
+          ask: `Open a text${to ? ` to ${to}` : ''}? You press send.`,
+          details: body,
+          done: `The messages app opened with the text filled in. The user presses send.`,
+          what: 'open a text message',
+        };
+      }
+      if (kind === 'email') {
+        if (to && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+          return 'For an email, `to` must be an e-mail address (or leave it out).';
+        }
+        return {
+          action: 'email',
+          args: {
+            ...(to ? {to} : {}),
+            ...(subject ? {subject} : {}),
+            ...(body ? {body} : {}),
+          },
+          ask: `Open an e-mail${to ? ` to ${to}` : ''}${subject ? ` about "${subject}"` : ''}? You press send.`,
+          details: body,
+          done: 'The e-mail app opened with the message filled in. The user presses send.',
+          what: 'open an e-mail',
+        };
+      }
+      return '`kind` must be "call", "text" or "email".';
+    },
+  },
 };
 
 export const PHONE_TOOL_NAMES = Object.keys(PHONE_TOOLS);

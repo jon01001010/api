@@ -115,12 +115,12 @@ class PhoneActionsModule(private val context: ReactApplicationContext) :
         }
         // Pre-filled screens only: the user presses call / send.
         "dial" -> str(args, "number")?.let {
-            Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(it)))
+            Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(it, "+")))
         }
-        "sms" -> Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(str(args, "number") ?: ""))).apply {
+        "sms" -> Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(str(args, "number") ?: "", "+"))).apply {
             str(args, "body")?.let { putExtra("sms_body", it) }
         }
-        "email" -> Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + Uri.encode(str(args, "to") ?: ""))).apply {
+        "email" -> Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + Uri.encode(str(args, "to") ?: "", "@.+-_"))).apply {
             str(args, "subject")?.let { putExtra(Intent.EXTRA_SUBJECT, it) }
             str(args, "body")?.let { putExtra(Intent.EXTRA_TEXT, it) }
         }
