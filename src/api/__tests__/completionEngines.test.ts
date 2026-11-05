@@ -712,3 +712,44 @@ describe('OpenAICompletionEngine when the router has unloaded the model', () => 
     expect(mockedStreamChat).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('quota errors (429)', () => {
+  const {
+    isBusyError,
+    readableQuotaError,
+    retryAfterSeconds,
+  } = require('../completionEngines');
+  const geminiDaily = new RemoteHttpError(
+    'Server error: 429 — You exceeded your current quota. Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.6-flash, description: Generate content requests per day limit exceeded on Free Tier. Please retry in 14h29m47.992060539s.',
+    429,
+  );
+
+  it('reads the wait the server asks for', () => {
+    expect(Math.round(retryAfterSeconds(geminiDaily))).toBe(52188);
+    expect(retryAfterSeconds(new Error('... "retryDelay": "52s" ...'))).toBe(
+      52,
+    );
+    expect(retryAfterSeconds(new Error('nothing here'))).toBeUndefined();
+  });
+
+  it('does not retry a daily limit, but does retry a short rate limit', () => {
+    expect(isBusyError(geminiDaily)).toBe(false);
+    expect(
+      isBusyError(new RemoteHttpError('429 — Please retry in 5s.', 429)),
+    ).toBe(true);
+    expect(isBusyError(new RemoteHttpError('429 — slow down', 429))).toBe(true);
+  });
+
+  it('says a used-up daily limit in plain words', () => {
+    const readable = readableQuotaError(geminiDaily, 'gemini-3.6-flash');
+    expect(readable.message).toBe(
+      'Daily limit used up (free tier) for gemini-3.6-flash. Resets in about 14h 30m. Try another model meanwhile.',
+    );
+    expect(readable.status).toBe(429);
+  });
+
+  it('leaves other errors as they are', () => {
+    const other = new RemoteHttpError('Server error: 500', 500);
+    expect(readableQuotaError(other, 'm')).toBe(other);
+  });
+});

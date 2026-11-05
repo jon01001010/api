@@ -10,7 +10,10 @@ import {
   CompletionStreamData,
   normaliseTimings,
 } from '../utils/completionTypes';
-import {RemoteModelRequestWithdrawnError} from '../utils/errors';
+import {
+  RemoteHttpError,
+  RemoteModelRequestWithdrawnError,
+} from '../utils/errors';
 import {isModelNotLoaded} from './llamaServer/routerWire';
 
 export class LocalCompletionEngine implements CompletionEngine {
@@ -90,10 +93,69 @@ export function refusesTools(error: unknown): boolean {
 /** Waits before each retry of a busy server; its length is the retry count. */
 export const BUSY_RETRY_DELAYS_MS = [2000, 4000, 8000];
 
+/**
+ * How long the server says to wait, in seconds, if it says: Gemini writes
+ * "Please retry in 14h29m47.99s" or `"retryDelay": "52s"`.
+ */
+export function retryAfterSeconds(error: unknown): number | undefined {
+  const text = error instanceof Error ? error.message : String(error ?? '');
+  const m =
+    /retry in ((?:\d+(?:\.\d+)?[hms])+)/i.exec(text) ??
+    /"retryDelay"\s*:\s*"((?:\d+(?:\.\d+)?[hms])+)"/i.exec(text);
+  if (!m) {
+    return undefined;
+  }
+  let seconds = 0;
+  for (const [, n, unit] of m[1].matchAll(/(\d+(?:\.\d+)?)([hms])/gi)) {
+    seconds += Number(n) * (unit === 'h' ? 3600 : unit === 'm' ? 60 : 1);
+  }
+  return seconds;
+}
+
+/** Longest wait worth retrying for; past it (a daily limit) say so instead. */
+const MAX_RETRY_WAIT_S = 20;
+
 /** Busy, rate-limited or briefly down: worth asking again shortly. */
 export function isBusyError(error: unknown): boolean {
   const status = (error as {status?: number} | null)?.status;
-  return status === 429 || status === 502 || status === 503 || status === 504;
+  if (status === 429) {
+    const wait = retryAfterSeconds(error);
+    const daily = /per ?day|daily/i.test(
+      error instanceof Error ? error.message : String(error ?? ''),
+    );
+    return !daily && (wait === undefined || wait <= MAX_RETRY_WAIT_S);
+  }
+  return status === 502 || status === 503 || status === 504;
+}
+
+const formatWait = (seconds: number): string => {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m} min` : `${Math.ceil(seconds)} s`;
+};
+
+/**
+ * A used-up quota (429) in plain words instead of the provider's JSON:
+ * "Free daily limit used up for gemini-3.6-flash (resets in ~14h 30m)."
+ * Anything else is returned as it was.
+ */
+export function readableQuotaError(error: unknown, model: string): unknown {
+  const status = (error as {status?: number} | null)?.status;
+  const text = error instanceof Error ? error.message : '';
+  if (status !== 429 || !/quota|limit|exhausted/i.test(text)) {
+    return error;
+  }
+  const wait = retryAfterSeconds(error);
+  const daily = /per ?day|daily/i.test(text);
+  const what = daily ? 'Daily limit used up' : 'Rate limit reached';
+  const free = /free.?tier/i.test(text) ? ' (free tier)' : '';
+  const when =
+    wait !== undefined ? ` Resets in about ${formatWait(wait)}.` : '';
+  return new RemoteHttpError(
+    `${what}${free} for ${model}.${when} Try another model meanwhile.`,
+    429,
+    (error as {serverMessage?: string}).serverMessage,
+  );
 }
 
 function waitUnlessAborted(ms: number, signal: AbortSignal): Promise<void> {
@@ -202,7 +264,7 @@ export class OpenAICompletionEngine implements CompletionEngine {
           delay === undefined ||
           !isBusyError(error)
         ) {
-          throw error;
+          throw readableQuotaError(error, this.endpoint.remoteModelId);
         }
         await waitUnlessAborted(delay, signal);
         if (signal.aborted) {
