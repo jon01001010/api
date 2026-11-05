@@ -59,6 +59,22 @@ describe('HFStore', () => {
       expect(hfStore.isLoading).toBe(false);
     });
 
+    it('reads on a few pages when a filtered search keeps nothing', async () => {
+      const moe = {...mockHFModel1, id: 'bartowski/granite-3.1-3b-a800m-GGUF'};
+      const dense = {...mockHFModel2, id: 'bartowski/granite-3.3-8b-GGUF'};
+      (fetchModels as jest.Mock)
+        .mockResolvedValueOnce({models: [dense], nextLink: 'page-2'})
+        .mockResolvedValueOnce({models: [moe], nextLink: null});
+      hfStore.setSearchQuery('granite moe');
+
+      await hfStore.fetchModels();
+
+      expect(fetchModels).toHaveBeenCalledTimes(2);
+      expect(hfStore.models.map(m => m.id)).toEqual([moe.id]);
+      expect(hfStore.nextPageLink).toBe(null);
+      hfStore.setSearchQuery('');
+    });
+
     it('should handle fetch error', async () => {
       (fetchModels as jest.Mock).mockRejectedValueOnce(
         new Error('Network error'),
