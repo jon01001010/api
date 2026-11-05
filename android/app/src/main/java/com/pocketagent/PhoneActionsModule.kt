@@ -13,6 +13,7 @@ import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
+import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.uimanager.ViewManager
@@ -164,13 +165,13 @@ class PhoneActionsModule(private val context: ReactApplicationContext) :
     }
 
     /** Launchable apps (label + package), for matching "open <app>". */
+    @Suppress("DEPRECATION")
     @ReactMethod fun listApps(promise: Promise) {
         try {
             val pm = context.packageManager
             val main = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
             val apps = Arguments.createArray()
             val seen = HashSet<String>()
-            @Suppress("DEPRECATION")
             for (info in pm.queryIntentActivities(main, 0)) {
                 val pkg = info.activityInfo.packageName
                 if (pkg == context.packageName || !seen.add(pkg)) continue
