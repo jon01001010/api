@@ -72,3 +72,25 @@ const sameUrl = (a: string, b: string) =>
 /** The preset for this server address, if it is one. */
 export const presetForUrl = (url: string): CloudPreset | undefined =>
   CLOUD_PRESETS.find(p => sameUrl(p.url, url));
+
+const ANTHROPIC_URL = /^https:\/\/api\.anthropic\.com(\/|$)/i;
+
+/**
+ * The type a server is used as. Claude means the Anthropic engine, which only
+ * talks to api.anthropic.com, so the address decides: a Claude-typed server
+ * repointed at, say, Gemini uses that preset's type (else `unknown`), and an
+ * Anthropic address is always Claude.
+ */
+export function effectiveServerType(
+  serverType: ServerType,
+  url: string | undefined,
+): ServerType {
+  const isAnthropic = !!url && ANTHROPIC_URL.test(url.trim());
+  if (isAnthropic) {
+    return 'Claude';
+  }
+  if (serverType === 'Claude') {
+    return (url && presetForUrl(url)?.serverType) || 'unknown';
+  }
+  return serverType;
+}

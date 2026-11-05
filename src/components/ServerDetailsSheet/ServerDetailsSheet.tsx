@@ -1,3 +1,4 @@
+import {presetForUrl} from '../../api/cloudPresets';
 import React, {
   useState,
   useContext,
@@ -230,6 +231,12 @@ export const ServerDetailsSheet: React.FC<ServerDetailsSheetProps> = observer(
               defaultValue={url}
               onChangeText={text => {
                 setUrl(text);
+                // A known cloud address brings its own type (Claude's engine
+                // only talks to Anthropic).
+                const preset = presetForUrl(text);
+                if (preset) {
+                  setServerType(preset.serverType);
+                }
                 debouncedProbe(text);
               }}
               placeholder={l10n.settings.serverUrlPlaceholder}

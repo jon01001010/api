@@ -1,5 +1,9 @@
 import {fetchWithTimeout, normalizeUrl, openAiApiUrl} from '../http';
-import {CLOUD_PRESETS, presetForUrl} from '../cloudPresets';
+import {
+  CLOUD_PRESETS,
+  effectiveServerType,
+  presetForUrl,
+} from '../cloudPresets';
 
 function pendingFetch() {
   return jest.fn().mockImplementation(
@@ -151,5 +155,28 @@ describe('cloud presets', () => {
         .map(p => p.id)
         .sort(),
     ).toEqual(['gemini', 'groq', 'openrouter']);
+  });
+});
+
+describe('effectiveServerType', () => {
+  const GEMINI = 'https://generativelanguage.googleapis.com/v1beta/openai';
+  it('a Claude server repointed at another API stops using the Claude engine', () => {
+    expect(effectiveServerType('Claude', GEMINI)).toBe('Gemini');
+    expect(effectiveServerType('Claude', 'https://openrouter.ai/api/v1')).toBe(
+      'OpenAI',
+    );
+    expect(effectiveServerType('Claude', 'http://192.168.1.5:8080')).toBe(
+      'unknown',
+    );
+  });
+
+  it('an Anthropic address is always Claude; other types are kept', () => {
+    expect(effectiveServerType('unknown', 'https://api.anthropic.com')).toBe(
+      'Claude',
+    );
+    expect(effectiveServerType('Gemini', GEMINI)).toBe('Gemini');
+    expect(effectiveServerType('llama.cpp', 'http://192.168.1.5:8080')).toBe(
+      'llama.cpp',
+    );
   });
 });

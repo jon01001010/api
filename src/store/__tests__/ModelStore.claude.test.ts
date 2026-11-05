@@ -14,6 +14,12 @@ jest.mock('../ServerStore', () => ({
         serverType: 'Claude',
       },
       {
+        id: 'repointed',
+        name: 'Claude',
+        url: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        serverType: 'Claude',
+      },
+      {
         id: 'deepseek',
         name: 'DeepSeek',
         url: 'https://api.deepseek.com',
@@ -43,6 +49,17 @@ describe('Claude remote models', () => {
     await modelStore.setRemoteModel(claudeModel('claude-opus-5-5'));
     expect(modelStore.engine).toBeInstanceOf(ClaudeCompletionEngine);
     expect(modelStore.engine).not.toBeInstanceOf(OpenAICompletionEngine);
+  });
+
+  it('a Claude-typed server pointed at Gemini uses the OpenAI-compatible engine', async () => {
+    await modelStore.setRemoteModel({
+      id: 'repointed/gemini-2.5-flash',
+      serverId: 'repointed',
+      remoteModelId: 'gemini-2.5-flash',
+      origin: 1,
+    } as any);
+    expect(modelStore.engine).toBeInstanceOf(OpenAICompletionEngine);
+    expect(modelStore.engine).not.toBeInstanceOf(ClaudeCompletionEngine);
   });
 
   it("sets the thinking toggle and effort levels from the model's rules", async () => {

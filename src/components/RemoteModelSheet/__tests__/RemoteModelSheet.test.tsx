@@ -186,6 +186,19 @@ describe('RemoteModelSheet', () => {
     },
   );
 
+  it('a typed cloud address sets its type, so Gemini is not saved as Claude', async () => {
+    const {getByTestId} = render(
+      <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,
+    );
+    fireEvent.press(getByTestId('claude-api-preset'));
+    fireEvent.changeText(
+      getByTestId('remote-url-input'),
+      'https://generativelanguage.googleapis.com/v1beta/openai',
+    );
+    expect(getByTestId('gemini-api-preset')).toBeTruthy();
+    expect(getByTestId('cloud-api-key-link')).toBeTruthy();
+  });
+
   it('renders the Add Model button', () => {
     const {getByTestId} = render(
       <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,

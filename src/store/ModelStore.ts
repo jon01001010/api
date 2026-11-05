@@ -22,6 +22,7 @@ import {
   OpenAICompletionEngine,
 } from '../api/completionEngines';
 import {ClaudeCompletionEngine} from '../api/claude/engine';
+import {effectiveServerType} from '../api/cloudPresets';
 import {claudeFeatures} from '../api/claude/models';
 
 import {uiStore, hfStore} from '.';
@@ -2736,7 +2737,10 @@ class ModelStore {
       throw new Error('Server not found');
     }
 
-    const serverType = toServerType(server.serverType);
+    const serverType = effectiveServerType(
+      toServerType(server.serverType),
+      server.url,
+    );
     const hasRouter = profileFor(serverType).hasRouter;
     const binding = {
       modelId: model.id,
