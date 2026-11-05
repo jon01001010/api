@@ -1065,6 +1065,26 @@ export const SettingsScreen: React.FC = observer(() => {
                 </View>
                 <Divider />
 
+                {/* Bring back the model in use when the app starts. */}
+                <View style={styles.switchContainer}>
+                  <View style={styles.textContainer}>
+                    <Text variant="titleMedium" style={styles.textLabel}>
+                      {l10n.settings.restoreModel.title}
+                    </Text>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {l10n.settings.restoreModel.description}
+                    </Text>
+                  </View>
+                  <Switch
+                    testID="restore-model-switch"
+                    value={modelStore.restoreModelOnStart}
+                    onValueChange={value =>
+                      modelStore.setRestoreModelOnStart(value)
+                    }
+                  />
+                </View>
+                <Divider />
+
                 {/* Multi-model: keep recently used models loaded (off by default). */}
                 <View style={styles.switchContainer}>
                   <View style={styles.textContainer}>

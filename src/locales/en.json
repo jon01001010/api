@@ -35,6 +35,10 @@
     "noResults": "No results"
   },
   "settings": {
+    "restoreModel": {
+      "title": "Restore last model on start",
+      "description": "When the app starts, bring back the model you were using: Claude and other remote models reconnect at once; a local model loads (with the usual memory check). Unloading a model yourself stops it coming back."
+    },
     "multiModel": {
       "title": "Keep models loaded",
       "description": "Keep recently used models loaded so switching back is instant (for phones with plenty of memory). The oldest is unloaded when memory runs short. In the background they stay only while the wake word is on.",
