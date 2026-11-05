@@ -1363,6 +1363,19 @@ describe('SettingsScreen', () => {
       });
     });
 
+    it('restore-on-start is on by default and can be turned off', () => {
+      const {getByTestId} = render(<SettingsScreen />, {
+        withSafeArea: true,
+        withNavigation: true,
+      });
+      expect(getByTestId('restore-model-switch').props.value).toBe(true);
+      fireEvent(getByTestId('restore-model-switch'), 'valueChange', false);
+      expect(modelStore.setRestoreModelOnStart).toHaveBeenCalledWith(false);
+      runInAction(() => {
+        (modelStore as any).restoreModelOnStart = true;
+      });
+    });
+
     it('is off by default and turns on', () => {
       const {getByTestId, queryByTestId} = render(<SettingsScreen />, {
         withSafeArea: true,

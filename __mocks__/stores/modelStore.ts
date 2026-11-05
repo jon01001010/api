@@ -40,6 +40,8 @@ class MockModelStore {
   MIN_CONTEXT_SIZE = 200;
   useAutoRelease = true;
   keepModelsLoaded = false;
+  restoreModelOnStart = true;
+  lastSessionModelId: string | undefined = undefined;
   maxLoadedModels = 2;
   parkedModels: any[] = [];
   activeModelId: string | undefined;
@@ -64,6 +66,8 @@ class MockModelStore {
   setNContext: jest.Mock;
   updateUseAutoRelease: jest.Mock;
   setKeepModelsLoaded: jest.Mock;
+  setRestoreModelOnStart: jest.Mock;
+  restoreLastModel: jest.Mock;
   setMaxLoadedModels: jest.Mock;
   releaseParkedModels: jest.Mock;
   releaseParkedModel: jest.Mock;
@@ -135,6 +139,8 @@ class MockModelStore {
       setNContext: false,
       updateUseAutoRelease: false,
       setKeepModelsLoaded: false,
+      setRestoreModelOnStart: false,
+      restoreLastModel: false,
       setMaxLoadedModels: false,
       releaseParkedModels: false,
       releaseParkedModel: false,
@@ -208,6 +214,10 @@ class MockModelStore {
     this.removeModelByFullPath = jest.fn();
     this.setNContext = jest.fn();
     this.updateUseAutoRelease = jest.fn();
+    this.setRestoreModelOnStart = jest.fn((on: boolean) => {
+      this.restoreModelOnStart = on;
+    });
+    this.restoreLastModel = jest.fn().mockResolvedValue(false);
     this.setKeepModelsLoaded = jest.fn((on: boolean) => {
       this.keepModelsLoaded = on;
     });

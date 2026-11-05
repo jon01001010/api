@@ -116,6 +116,9 @@ For future phones with plenty of memory. Settings → Model Loading → **Keep m
 - [x] Remote models keep the local one parked; deleting a kept model unloads it first; benchmarks unload everything; turning the setting off unloads the kept ones. "Unload N kept models" button.
 - [x] Benefits: instant vision switch-back after a picture, instant "Hey <name>" switching between named models.
 - [ ] Phone check (needs a phone with enough memory): load A, switch to B, back to A (instant), picture with a text model and back, a third model with the limit at 2.
+- [x] Restore last model on start (decision 2026-11-05; Settings → Model Loading, on by default): Claude/remote reconnects instantly, a local model loads with the usual memory check. Unloading a model yourself stops it coming back.
+- [x] Fix: coming back to the app no longer reloads an earlier offloaded model over the one in use (it had unloaded Claude).
+- [ ] Phone check: use Claude, close the app fully, reopen → Claude is back; same with a local model; unload manually → stays unloaded after restart.
 - Later: show a "Loaded" badge on model cards; free kept models when Android reports memory pressure.
 
 ## Phone actions via built-in Android intents (planned, not implemented)

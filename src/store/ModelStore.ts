@@ -220,6 +220,10 @@ class ModelStore {
   keepModelsLoaded: boolean = false;
   /** Most local models loaded at once, the active one included (2-4). */
   maxLoadedModels: number = 2;
+  /** Bring back the model in use (local or remote) when the app starts. */
+  restoreModelOnStart: boolean = true;
+  /** The model in use when the app last ran, local or remote. */
+  lastSessionModelId: string | undefined = undefined;
   /** Loaded but not active, oldest first. Not persisted. */
   parkedModels: ParkedModel[] = [];
   /** Estimated memory of each loaded model, from its last load. */
@@ -337,6 +341,8 @@ class ModelStore {
         'useAutoRelease',
         'keepModelsLoaded',
         'maxLoadedModels',
+        'restoreModelOnStart',
+        'lastSessionModelId',
         'contextInitParams',
         'lastUsedModelId',
         'lastVisionModelId',
@@ -349,7 +355,10 @@ class ModelStore {
       storage: AsyncStorage,
     }).then(async () => {
       await this.initializeThreadCount();
-      this.initializeStore();
+      this.initializeStore()
+        // Then bring back the model that was in use (setting, on by default).
+        .then(() => this.restoreLastModel())
+        .catch(() => {});
     });
 
     this.setupAppStateListener();
@@ -1799,6 +1808,11 @@ class ModelStore {
 
   deleteModel = async (model: Model) => {
     await this.releaseParkedModel(model.id);
+    if (this.lastSessionModelId === model.id) {
+      runInAction(() => {
+        this.lastSessionModelId = undefined;
+      });
+    }
     // id should work as well, as long as we are differentiating between models by origin.
     const modelIndex = this.models.findIndex(
       m => m.id === model.id && m.origin === model.origin,
@@ -2498,6 +2512,7 @@ class ModelStore {
         this.activeRemoteBinding = undefined;
         this.activeContextSettings = contextInitParams;
         this.setActiveModel(model.id);
+        this.lastSessionModelId = model.id;
         this.pendingModelId = null;
         if (this.isMultimodalActive) {
           this.lastVisionModelId = model.id;
@@ -2746,6 +2761,7 @@ class ModelStore {
       this.isMultimodalActive = slot.isMultimodalActive;
       this.activeProjectionModelId = slot.activeProjectionModelId;
       this.setActiveModel(modelId);
+      this.lastSessionModelId = modelId;
       this.pendingModelId = null;
       this.lastUsedModelId = modelId;
       if (slot.isMultimodalActive) {
@@ -2846,7 +2862,51 @@ class ModelStore {
   };
 
   manualReleaseContext = async () => {
+    // Unloaded on purpose: don't bring it back on the next start.
+    runInAction(() => {
+      this.lastSessionModelId = undefined;
+    });
     await this.releaseContext(true); // Clear active model for manual release
+  };
+
+  setRestoreModelOnStart = (on: boolean) => {
+    runInAction(() => {
+      this.restoreModelOnStart = on;
+    });
+  };
+
+  /**
+   * App start: bring back the model that was in use. A remote one (Claude)
+   * reconnects instantly; a local one loads with the usual memory check.
+   * Remote servers load their saved list a moment after start, so wait for
+   * it briefly. Does nothing once the user has picked a model.
+   */
+  restoreLastModel = async (): Promise<boolean> => {
+    const id = this.lastSessionModelId;
+    if (!this.restoreModelOnStart || !id || this.benchmarkActive) {
+      return false;
+    }
+    for (let attempt = 0; attempt < 12; attempt++) {
+      if (this.engine || this.isContextLoading) {
+        return false;
+      }
+      const local = this.models.find(m => m.id === id && m.isDownloaded);
+      if (local) {
+        await this.initContext(local).catch(error =>
+          console.warn('[ModelStore] restore failed:', error),
+        );
+        return this.activeModelId === id;
+      }
+      const remote = this.remoteModels.find(m => m.id === id);
+      if (remote) {
+        await this.setRemoteModel(remote).catch(error =>
+          console.warn('[ModelStore] restore failed:', error),
+        );
+        return this.activeModelId === id;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    return false;
   };
 
   get activeModel(): Model | undefined {
@@ -3034,6 +3094,7 @@ class ModelStore {
             : new OpenAICompletionEngine(endpoint);
       this.activeRemoteBinding = binding;
       this.setActiveModel(model.id);
+      this.lastSessionModelId = model.id;
       // Do NOT set lastUsedModelId for remote models -- server may be offline on next launch
     });
 
