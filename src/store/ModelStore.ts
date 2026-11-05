@@ -2530,6 +2530,7 @@ class ModelStore {
           this.lastVisionModelId = model.id;
         }
       });
+      this.warnIfVisionOff(model);
 
       // Update largestSuccessfulLoad using GGUF estimator
       try {
@@ -2976,6 +2977,49 @@ class ModelStore {
       [...candidates].sort((a, b) => (a.size ?? 0) - (b.size ?? 0))[0]
     );
   };
+
+  /**
+   * A vision model that loaded without vision (projector missing, still
+   * downloading, failed to start, or vision switched off) can't see pictures
+   * and used to say nothing; say why, so the fix is one tap away.
+   */
+  private warnIfVisionOff = (model: Model) => {
+    if (!model.supportsMultimodal || this.isMultimodalActive) {
+      return;
+    }
+    const status = this.getProjectionModelStatus(model);
+    const reason = !this.getModelVisionPreference(model)
+      ? 'vision is switched off for it'
+      : status.state === 'downloading'
+        ? 'its vision file (projector) is still downloading'
+        : status.state === 'missing' || !status.projectionModel
+          ? 'its vision file (projector) is not downloaded'
+          : 'its vision file (projector) failed to start';
+    uiStore.setChatWarning({
+      code: 'multimodal',
+      message: `${model.name} loaded without pictures: ${reason}. Open Models, tap ⚙ on it to fix.`,
+      context: 'chat',
+      recoverable: true,
+      severity: 'warning',
+    });
+  };
+
+  /**
+   * When no local model can see: a configured cloud model whose list says it
+   * reads images (Claude, Gemini, …). The last one used wins, else the first.
+   */
+  pickCloudVisionModel = (): Model | undefined => {
+    const candidates = this.remoteModels.filter(
+      m => this.capsFor(m).vision === 'yes',
+    );
+    return (
+      candidates.find(m => m.id === this.lastVisionModelId) ?? candidates[0]
+    );
+  };
+
+  /** Where a picture goes: a local vision model first, then a cloud one. */
+  pickVisionTarget = (): Model | undefined =>
+    this.pickVisionModel() ?? this.pickCloudVisionModel();
 
   /** Capabilities of the live session — chat's entry point. */
   get activeModelCaps(): ModelCapabilityView {

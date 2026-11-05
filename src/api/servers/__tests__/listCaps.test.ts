@@ -39,6 +39,19 @@ describe('deriveListCaps', () => {
     });
   });
 
+  describe('a Gemini server', () => {
+    it.each([
+      ['gemini-3.5-flash', true],
+      ['gemma-4-31b-it', true],
+      ['gemma-3-4b-it', true],
+      ['gemma-2-9b-it', false],
+      ['learnlm-2.0', false],
+    ])('%s reads pictures: %s', (id, sees) => {
+      const caps = deriveListCaps({id} as any, 'Gemini');
+      expect(caps.supportsVision === true).toBe(sees);
+    });
+  });
+
   describe('the tier brand', () => {
     it('is enforced by the compiler, not at runtime', () => {
       const listed: ListDerivedCaps = {tier: 'list', supportsVision: true};

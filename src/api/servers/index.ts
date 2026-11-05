@@ -281,6 +281,18 @@ const contextFromArgs = (args: unknown): number | undefined => {
   return found;
 };
 
+/**
+ * Gemini rows (OpenAI-compatible list, ids without `models/`): Gemini and
+ * Gemma 3+ models read images; the list says nothing more.
+ */
+function readGeminiListRow(row: RemoteModelInfo | undefined): ListDerivedCaps {
+  const caps: ListDerivedCaps = {tier: 'list'};
+  if (row?.id && /^(gemini-|gemma-[3-9])/i.test(row.id)) {
+    caps.supportsVision = true;
+  }
+  return caps;
+}
+
 /** Claude rows: every current model reads images; context from the list. */
 function readClaudeListRow(row: RemoteModelInfo | undefined): ListDerivedCaps {
   const caps: ListDerivedCaps = {tier: 'list'};
@@ -372,6 +384,7 @@ export const SERVER_PROFILES = {
     reasoningExtras: geminiReasoningExtras,
     hasProps: false,
     hasRouter: false,
+    readListRow: readGeminiListRow,
   },
   // Claude (Anthropic API) has its own engine and request format; nothing
   // here is sent. Kept so the type is total and the list rows read right.

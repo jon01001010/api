@@ -204,6 +204,32 @@ describe('resolveModelCaps', () => {
         expect(caps.effectiveContextLength).toBeUndefined();
       });
 
+      it('for a cloud API (no probe) the list decides, once that model is in session', () => {
+        const binding = {
+          modelId: 'srv/gemma-4-e2b',
+          serverId: 'srv',
+          remoteModelId: 'gemma-4-e2b',
+          url: 'https://generativelanguage.googleapis.com/v1beta/openai',
+          serverType: 'Gemini',
+        } as any;
+        const listCaps = listed({supportsVision: true});
+        const active = resolveModelCaps(
+          remoteModel(),
+          env({listCaps, activeModelId: 'srv/gemma-4-e2b', binding}),
+        );
+        expect(active.visionActive).toBe(true);
+        // A llama.cpp server has a probe: the list alone never decides there.
+        const probed = resolveModelCaps(
+          remoteModel(),
+          env({
+            listCaps,
+            activeModelId: 'srv/gemma-4-e2b',
+            binding: {...binding, serverType: 'llama.cpp'},
+          }),
+        );
+        expect(probed.visionActive).toBe(false);
+      });
+
       it('answers the declared axis when a probe entry describes another backend', () => {
         // Defensive only: a url edit drops the probe entry and the list
         // together, and the write guard refuses a probe whose url has moved,

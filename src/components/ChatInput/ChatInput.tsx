@@ -42,7 +42,7 @@ import {
 import {setVoiceSender} from '../../services/voice/voiceController';
 import {MicButton} from '../MicButton';
 
-import {MessageType, ModelOrigin} from '../../utils/types';
+import {MessageType} from '../../utils/types';
 import {L10nContext, UserContext} from '../../utils';
 import {t} from '../../locales';
 
@@ -245,9 +245,10 @@ export const ChatInput = observer(
     // model first. Runs before the draft is cleared, so if the switch
     // doesn't happen the text and pictures stay in the input.
     const [isSwitchingToVision, setIsSwitchingToVision] = React.useState(false);
+    // Local vision model first, then a cloud one that reads images.
+    const visionTarget = modelStore.pickVisionTarget();
     const canSwitchToVision =
-      modelStore.activeModel?.origin !== ModelOrigin.REMOTE &&
-      modelStore.visionModels.length > 0;
+      !!visionTarget && visionTarget.id !== modelStore.activeModelId;
     const canAttachPictures = isVisionEnabled || canSwitchToVision;
 
     // `spoken` is text from voice input, sent as if typed.
@@ -445,6 +446,16 @@ export const ChatInput = observer(
           throw new Error(copy?.status === 'error'
             ? 'Android could not copy this document: ' + copy.copyError
             : 'Android did not return a local copy');
+        }
+        // A photo picked here is a picture, same as from the gallery, when
+        // the model (or a vision switch) can look at it. The cache copy is
+        // kept, since the message reads it when sent.
+        const isImage =
+          (file.type ?? '').startsWith('image/') ||
+          /\.(jpe?g|png|webp|gif|heic|heif|bmp)$/i.test(requestedName);
+        if (isImage && (isVisionEnabled || canSwitchToVision)) {
+          setSelectedImages([...selectedImages, copy.localUri]);
+          return;
         }
         // keepLocalCopy returns a file:// URI, whereas RNFS expects a path.
         tempPath = decodeURIComponent(copy.localUri.replace(/^file:\/\//, ''));

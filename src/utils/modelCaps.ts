@@ -1,4 +1,5 @@
 import {resolveRemoteCaps} from './remoteCaps';
+import {profileFor} from '../api/servers';
 import {ModelOrigin} from './types';
 import type {ListDerivedCaps} from './types';
 import type {
@@ -84,7 +85,15 @@ export function resolveModelCaps(
         positive(confirmed.contextLength) ?? positive(listed?.contextLength),
       // The session axis reads the probe alone: a listed value describes how
       // the server is configured, never what the live session can do.
-      visionActive: isActiveModel && confirmed.supportsVision === true,
+      // Cloud APIs (OpenAI-style, Claude, Gemini, …) have no props probe:
+      // their models list is the only word on pictures, so it decides there.
+      visionActive:
+        isActiveModel &&
+        (confirmed.supportsVision ??
+          (env.binding?.modelId === model.id &&
+          !profileFor(env.binding.serverType).hasProps
+            ? listed?.supportsVision
+            : undefined)) === true,
       effectiveContextLength: isActiveModel
         ? positive(confirmed.contextLength)
         : undefined,

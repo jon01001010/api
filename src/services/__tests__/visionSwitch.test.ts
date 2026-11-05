@@ -25,8 +25,9 @@ jest.mock('../../store', () => {
       },
       activeModelId: undefined as string | undefined,
       models: [] as any[],
-      pickVisionModel: jest.fn(),
-      initContext: jest.fn(),
+      remoteModels: [] as any[],
+      lastVisionModelId: undefined as string | undefined,
+      pickVisionTarget: jest.fn(),
       selectModel: jest.fn(),
     },
   };
@@ -46,11 +47,11 @@ beforeEach(() => {
   uiStore.setVisionSwitchNotice(null);
   (modelStore as any).activeModelId = textModel.id;
   (modelStore as any).models = [textModel, visionModel];
-  (modelStore.pickVisionModel as jest.Mock).mockReturnValue(visionModel);
-  // A successful load makes the vision model active with vision working.
-  (modelStore.initContext as jest.Mock).mockImplementation(async (m: any) => {
+  (modelStore.pickVisionTarget as jest.Mock).mockReturnValue(visionModel);
+  // A successful load makes the model active; only the vision one can see.
+  (modelStore.selectModel as jest.Mock).mockImplementation(async (m: any) => {
     mockState.active = m;
-    mockState.canSee = true;
+    mockState.canSee = m.id !== textModel.id;
     (modelStore as any).activeModelId = m.id;
   });
 });
@@ -59,12 +60,12 @@ describe('ensureVisionForPictures', () => {
   it('does nothing when the loaded model can already see', async () => {
     mockState.canSee = true;
     expect(await ensureVisionForPictures()).toBe('ready');
-    expect(modelStore.initContext).not.toHaveBeenCalled();
+    expect(modelStore.selectModel).not.toHaveBeenCalled();
   });
 
   it('switches a text model to the vision model and offers Undo', async () => {
     expect(await ensureVisionForPictures()).toBe('switched');
-    expect(modelStore.initContext).toHaveBeenCalledWith(visionModel);
+    expect(modelStore.selectModel).toHaveBeenCalledWith(visionModel);
     expect(uiStore.visionSwitchNotice).toEqual({
       previousModelId: 'qwen',
       modelId: 'smolvlm',
@@ -72,27 +73,42 @@ describe('ensureVisionForPictures', () => {
     });
   });
 
-  it('reports when no downloaded model can see', async () => {
-    (modelStore.pickVisionModel as jest.Mock).mockReturnValue(undefined);
+  it('reports when no local or cloud model can see', async () => {
+    (modelStore.pickVisionTarget as jest.Mock).mockReturnValue(undefined);
     expect(await ensureVisionForPictures()).toBe('none');
-    expect(modelStore.initContext).not.toHaveBeenCalled();
+    expect(modelStore.selectModel).not.toHaveBeenCalled();
   });
 
   it('reports cancelled when the load was declined (e.g. memory warning)', async () => {
-    (modelStore.initContext as jest.Mock).mockResolvedValue(undefined);
+    (modelStore.selectModel as jest.Mock).mockResolvedValue(undefined);
     expect(await ensureVisionForPictures()).toBe('cancelled');
     expect(uiStore.visionSwitchNotice).toBeNull();
   });
 
   it('reports cancelled when loading fails', async () => {
-    (modelStore.initContext as jest.Mock).mockRejectedValue(new Error('oom'));
+    (modelStore.selectModel as jest.Mock).mockRejectedValue(new Error('oom'));
     expect(await ensureVisionForPictures()).toBe('cancelled');
   });
 
-  it('leaves server (remote) models alone', async () => {
-    mockState.active = {...textModel, origin: ModelOrigin.REMOTE};
-    expect(await ensureVisionForPictures()).toBe('remote');
-    expect(modelStore.initContext).not.toHaveBeenCalled();
+  it('a text-only cloud model switches too, and comes back after', async () => {
+    const cloudText = {...textModel, id: 'cloud', origin: ModelOrigin.REMOTE};
+    mockState.active = cloudText;
+    (modelStore as any).activeModelId = cloudText.id;
+    (modelStore as any).remoteModels = [cloudText];
+    expect(await ensureVisionForPictures()).toBe('switched');
+    await returnFromVision();
+    expect(modelStore.selectModel).toHaveBeenLastCalledWith(cloudText);
+  });
+
+  it('goes to a cloud vision model when the picker offers one', async () => {
+    const cloudVision = {
+      id: 'gemini',
+      name: 'Gemini',
+      origin: ModelOrigin.REMOTE,
+    };
+    (modelStore.pickVisionTarget as jest.Mock).mockReturnValue(cloudVision);
+    expect(await ensureVisionForPictures()).toBe('switched');
+    expect(modelStore.selectModel).toHaveBeenCalledWith(cloudVision);
   });
 
   it('Undo loads the previous model again', async () => {
@@ -115,7 +131,8 @@ describe('returnFromVision (after the picture is answered)', () => {
     await ensureVisionForPictures();
     await returnFromVision();
     await returnFromVision();
-    expect(modelStore.selectModel).toHaveBeenCalledTimes(1);
+    // One switch there, one back.
+    expect(modelStore.selectModel).toHaveBeenCalledTimes(2);
   });
 
   it('does nothing after Undo', async () => {
@@ -129,6 +146,7 @@ describe('returnFromVision (after the picture is answered)', () => {
   it('leaves a model the user picked meanwhile', async () => {
     await ensureVisionForPictures();
     (modelStore as any).activeModelId = 'other-model';
+    (modelStore.selectModel as jest.Mock).mockClear();
     await returnFromVision();
     expect(modelStore.selectModel).not.toHaveBeenCalled();
   });

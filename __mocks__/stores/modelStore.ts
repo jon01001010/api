@@ -428,6 +428,12 @@ class MockModelStore {
       this.visionModels[0],
   );
 
+  pickCloudVisionModel = jest.fn((): any => undefined);
+
+  pickVisionTarget = jest.fn(
+    () => this.pickVisionModel() ?? this.pickCloudVisionModel(),
+  );
+
   get effectiveDraftMode() {
     return effectiveDraftModeOf(this);
   }
