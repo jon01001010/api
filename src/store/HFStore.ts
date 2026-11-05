@@ -1,3 +1,4 @@
+import {planSearch} from '../utils/hfSearch';
 import {Platform} from 'react-native';
 import NativeDownloadModule from '../specs/NativeDownloadModule';
 import {makeAutoObservable, runInAction} from 'mobx';
@@ -33,7 +34,11 @@ class HFStore {
   private lastFetchMoreAttempt: number = 0;
   private consecutiveSmallResults: number = 0;
   searchQuery = '';
-  queryFilter = 'gguf,conversational';
+  // GGUF only: requiring the `conversational` tag as well hid many GGUF
+  // uploads that lack it (MoE quants among them).
+  queryFilter = 'gguf';
+  /** The check the typed query adds on top of the API search (see hfSearch). */
+  private resultFilter?: (id: string) => boolean;
   queryFull = true;
   queryConfig = true;
   hfToken: string | null = null;
@@ -296,6 +301,11 @@ class HFStore {
     }
   }
 
+  private keepMatches(models: HuggingFaceModel[]): HuggingFaceModel[] {
+    const keep = this.resultFilter;
+    return keep ? models.filter(m => keep(m.id)) : models;
+  }
+
   // Fetch the models from the Hugging Face API
   async fetchModels() {
     this.isLoading = true;
@@ -309,11 +319,14 @@ class HFStore {
     try {
       const authToken = this.shouldUseToken ? this.hfToken : null;
       const sortParams = this.getSortParams();
+      const plan = planSearch(this.searchQuery);
+      this.resultFilter = plan.matches;
 
       const {models, nextLink} = await fetchModels({
-        search: this.searchQuery,
+        search: plan.search,
         author: this.searchFilters.author || undefined,
-        limit: 10,
+        // A filtered search keeps fewer of each page, so fetch more.
+        limit: plan.matches ? 50 : 10,
         sort: sortParams?.sort,
         direction: sortParams?.direction,
         filter: this.buildFilterString(),
@@ -322,7 +335,7 @@ class HFStore {
         authToken: authToken,
       });
 
-      let processedModels = processHFSearchResults(models);
+      let processedModels = this.keepMatches(processHFSearchResults(models));
 
       runInAction(() => {
         this.models = processedModels;
@@ -378,7 +391,7 @@ class HFStore {
         authToken: authToken,
       });
 
-      let processedModels = processHFSearchResults(models);
+      let processedModels = this.keepMatches(processHFSearchResults(models));
 
       runInAction(() => {
         // Track consecutive small results for pagination protection
