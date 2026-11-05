@@ -12,6 +12,7 @@ export const SERVER_TYPE_OPTIONS = [
   'OpenAI',
   'Claude',
   'DeepSeek',
+  'Gemini',
   'vLLM',
   'unknown',
 ] as const;
@@ -61,8 +62,15 @@ export function seedServerType(
     if (new URL(url).hostname === 'api.anthropic.com') {
       return 'Claude';
     }
-    if (new URL(url).hostname === 'api.deepseek.com') {
+    const host = new URL(url).hostname;
+    if (host === 'api.deepseek.com') {
       return 'DeepSeek';
+    }
+    if (host === 'generativelanguage.googleapis.com') {
+      return 'Gemini';
+    }
+    if (host === 'api.groq.com' || host === 'openrouter.ai') {
+      return 'OpenAI';
     }
   } catch {
     // ignore malformed URL

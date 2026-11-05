@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useRef,
 } from 'react';
-import {Alert, Keyboard, TouchableOpacity, View} from 'react-native';
+import {Alert, Keyboard, Linking, TouchableOpacity, View} from 'react-native';
 import {
   Text,
   Button,
@@ -35,10 +35,10 @@ import {
 } from '../../utils/serverTypes';
 import {RemoteModelInfo, ServerConfig} from '../../utils/types';
 import {fetchModelsWithHeaders} from '../../api/openai';
-import {ANTHROPIC_API_URL, isAnthropicUrl} from '../../api/claude/client';
+import {isAnthropicUrl} from '../../api/claude/client';
+import {CLOUD_PRESETS, presetForUrl} from '../../api/cloudPresets';
 
 /** DeepSeek's OpenAI-compatible API (the app adds /v1/...). */
-const DEEPSEEK_API_URL = 'https://api.deepseek.com';
 import {detectServerType} from '../../api/servers/detect';
 import {deriveListCaps} from '../../api/servers';
 import {profileFor} from '../../api/servers';
@@ -195,10 +195,7 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
     useEffect(() => {
       if (!selectedServerId) {
         // Cloud APIs need the key first: wait for Connect.
-        const isCloud =
-          url.trim() === 'https://api.openai.com/v1' ||
-          url.trim() === DEEPSEEK_API_URL ||
-          isAnthropicUrl(url);
+        const isCloud = !!presetForUrl(url) || isAnthropicUrl(url);
         if (!(isCloud && !apiKeyRef.current.trim())) {
           debouncedProbe(url);
         }
@@ -362,11 +359,9 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
     const showPostConnection = probeResult?.ok === true;
     // Show API key + server name fields when probe attempted (success OR auth failure)
     // This lets users enter an API key after a 401, then retry
+    const activePreset = presetForUrl(url);
     const showServerFields =
-      (probeResult !== null ||
-        url.trim() === 'https://api.openai.com/v1' ||
-        url.trim() === DEEPSEEK_API_URL ||
-        isAnthropicUrl(url)) &&
+      (probeResult !== null || !!activePreset || isAnthropicUrl(url)) &&
       !isProbing &&
       !selectedServerId;
 
@@ -448,66 +443,55 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
             </View>
           )}
 
-          {/* Cloud APIs: OpenAI uses the OpenAI-compatible backend; Claude
-              has its own Messages API engine (src/api/claude). */}
+          {/* Cloud APIs: one tap fills the address and type. Claude has its
+              own Messages API engine (src/api/claude); the rest speak the
+              OpenAI-compatible wire. */}
           {!selectedServerId && (
             <View style={{marginBottom: 12}}>
               <Text variant="titleSmall">Cloud chat API</Text>
               <Text variant="bodySmall">
-                OpenAI, Claude (Anthropic) and DeepSeek are supported. An API
-                key is required and usage is billed separately by the provider.
+                Each needs an API key. Gemini, Groq and OpenRouter have free
+                tiers with daily limits; the others bill usage.
               </Text>
-              <Button
-                mode="outlined"
-                testID="openai-api-preset"
-                onPress={() => {
-                  setApiKey('');
-                  apiKeyRef.current = '';
-                  setUrl('https://api.openai.com/v1');
-                  setServerName('OpenAI');
-                  setServerType('OpenAI');
-                  setSelectedServerId(null);
-                  setProbeResult(null);
-                  setAvailableModels([]);
-                  setUrlError('');
-                }}>
-                Configure OpenAI API
-              </Button>
-              <Button
-                mode="outlined"
-                testID="claude-api-preset"
-                style={{marginTop: 8}}
-                onPress={() => {
-                  setApiKey('');
-                  apiKeyRef.current = '';
-                  setUrl(ANTHROPIC_API_URL);
-                  setServerName('Claude');
-                  setServerType('Claude');
-                  setSelectedServerId(null);
-                  setProbeResult(null);
-                  setAvailableModels([]);
-                  setUrlError('');
-                }}>
-                {l10n.settings.configureClaude}
-              </Button>
-              <Button
-                mode="outlined"
-                testID="deepseek-api-preset"
-                style={{marginTop: 8}}
-                onPress={() => {
-                  setApiKey('');
-                  apiKeyRef.current = '';
-                  setUrl(DEEPSEEK_API_URL);
-                  setServerName('DeepSeek');
-                  setServerType('DeepSeek');
-                  setSelectedServerId(null);
-                  setProbeResult(null);
-                  setAvailableModels([]);
-                  setUrlError('');
-                }}>
-                {l10n.settings.configureDeepSeek}
-              </Button>
-              <Text variant="bodySmall">Enter your API key below, then connect to list available models. Keys are stored using Android secure storage.</Text>
+              <View style={styles.cloudPresetRow}>
+                {CLOUD_PRESETS.map(preset => (
+                  <Button
+                    key={preset.id}
+                    compact
+                    mode={
+                      activePreset?.id === preset.id ? 'contained' : 'outlined'
+                    }
+                    testID={`${preset.id}-api-preset`}
+                    onPress={() => {
+                      setApiKey('');
+                      apiKeyRef.current = '';
+                      setUrl(preset.url);
+                      setServerName(preset.label);
+                      setServerType(preset.serverType);
+                      setSelectedServerId(null);
+                      setProbeResult(null);
+                      setAvailableModels([]);
+                      setUrlError('');
+                    }}>
+                    {preset.free ? `${preset.label} (free)` : preset.label}
+                  </Button>
+                ))}
+              </View>
+              {activePreset && (
+                <Button
+                  mode="text"
+                  compact
+                  icon="open-in-new"
+                  testID="cloud-api-key-link"
+                  style={styles.cloudKeyLink}
+                  onPress={() => Linking.openURL(activePreset.keyUrl)}>
+                  {`Get a ${activePreset.label} API key`}
+                </Button>
+              )}
+              <Text variant="bodySmall">
+                Enter your API key below, then connect to list available models.
+                Keys are stored using Android secure storage.
+              </Text>
             </View>
           )}
 

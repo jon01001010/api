@@ -32,6 +32,7 @@ describe('hasRouter', () => {
     ['OpenAI', false],
     ['Claude', false],
     ['DeepSeek', false],
+    ['Gemini', false],
     ['vLLM', false],
     ['unknown', false],
     ['', false],

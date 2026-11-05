@@ -16,6 +16,21 @@ describe('seedServerType', () => {
     );
   });
 
+  it('seeds the free cloud APIs', () => {
+    expect(
+      seedServerType(
+        undefined,
+        'https://generativelanguage.googleapis.com/v1beta/openai',
+      ),
+    ).toBe('Gemini');
+    expect(seedServerType(undefined, 'https://api.groq.com/openai/v1')).toBe(
+      'OpenAI',
+    );
+    expect(seedServerType(undefined, 'https://openrouter.ai/api/v1')).toBe(
+      'OpenAI',
+    );
+  });
+
   it('a detected type wins; anything else is unknown', () => {
     expect(seedServerType('llama.cpp', 'https://api.deepseek.com')).toBe(
       'llama.cpp',
