@@ -412,6 +412,11 @@ function sendSamplers(
   const body: Record<string, number> = {};
   for (const [param, wireName] of Object.entries(sendNames)) {
     const value = finiteNumber(samplers[param as SamplerParam]);
+    // n_predict -1 (or 0) is our "no limit". Cloud APIs reject a non-positive
+    // max_tokens (Gemini: 400), and leaving it out means the server default.
+    if (param === 'n_predict' && value !== undefined && value <= 0) {
+      continue;
+    }
     if (value !== undefined) {
       body[wireName] = value;
     }
