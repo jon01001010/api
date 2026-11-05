@@ -237,7 +237,7 @@ export const Selectors = {
     },
     // FAB.Group - use testID
     get fabGroup(): string {
-      return byTestId('fab-group');
+      return byTestId('models-add-button');
     },
     get fabGroupClose(): string {
       return byAccessibilityLabel('Close menu');
