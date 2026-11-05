@@ -2988,16 +2988,19 @@ class ModelStore {
       return;
     }
     const status = this.getProjectionModelStatus(model);
-    const reason = !this.getModelVisionPreference(model)
-      ? 'vision is switched off for it'
-      : status.state === 'downloading'
-        ? 'its vision file (projector) is still downloading'
-        : status.state === 'missing' || !status.projectionModel
-          ? 'its vision file (projector) is not downloaded'
-          : 'its vision file (projector) failed to start';
+    // The projector comes first: with it missing, the Vision switch on the
+    // card is greyed out, so "switch it on" would be no help.
+    const fix =
+      status.state === 'downloading'
+        ? 'its vision file (projector) is still downloading. Try again when it finishes.'
+        : status.state === 'missing' || !status.projectionModel?.isDownloaded
+          ? "its vision file (projector) isn't downloaded. Open Models, tap ⌄ on its card and download the projector."
+          : !this.getModelVisionPreference(model)
+            ? 'vision is switched off. Open Models, tap ⌄ on its card and turn on Vision.'
+            : 'its vision file (projector) failed to start. Try loading it again.';
     uiStore.setChatWarning({
       code: 'multimodal',
-      message: `${model.name} loaded without pictures: ${reason}. Open Models, tap ⚙ on it to fix.`,
+      message: `${model.name} loaded without pictures: ${fix}`,
       context: 'chat',
       recoverable: true,
       severity: 'warning',
