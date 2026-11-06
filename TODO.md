@@ -265,6 +265,16 @@ Toolbox → Custom tools gets **Share as QR** on each tool and a **Scan a tool**
 - [ ] Never run anything from a scan; a QR is data only (instructions or a shortcut of built-in tools).
 - [ ] Later, optional: the colour "mcode" from QR2D (8 colours, Reed–Solomon) for denser codes; only if plain QR is too small in practice.
 
+## HTML preview lock: no WebRTC, frames or pop-ups (built, needs phone check)
+
+Question 2026-11-06: can a downloaded assistant make an HTML page that reaches other things? The preview already had no app bridge, no files, no navigation, no network by CSP, incognito. **Gap found and closed:** no browser enforces a CSP rule for WebRTC, so a page could still send data out (e.g. chat or memory the model put in the page) over a WebRTC connection, also from a blank inner frame.
+
+- [x] Frame tags in the page text are renamed before the page is built (`<iframe>` → `<blocked-iframe>`).
+- [x] A guard script runs first: WebRTC removed for good, `window.open` blocked, frames added by scripts removed before they can be used, frame `contentWindow` returns nothing.
+- [x] Checked in Chromium against 24 ways in (direct, redefine, parser frames, innerHTML, shadow DOM, document.write, execCommand, Range, srcdoc, javascript: frames, pop-ups …): all blocked. Clocks, eval calculators, canvas and DOM pages still work.
+- [ ] Phone check: an HTML clock and a calculator still work in the preview.
+- [ ] Saved `.html` files opened in another browser are outside this lock (that browser's rules apply).
+
 ## Off means off: tool switch audit (done 2026-11-06)
 
 Checked every path that can run a tool. Only two exist: the chat loop (`AgentRunner`) and a shortcut run.

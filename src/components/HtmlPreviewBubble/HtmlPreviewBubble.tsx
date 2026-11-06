@@ -18,6 +18,8 @@ import {
 } from 'react-native';
 import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
 import {WebView} from 'react-native-webview';
+
+import {neutralizeFrameTags, PREVIEW_GUARD_SCRIPT} from './sandboxGuard';
 import {useIsFocused} from '@react-navigation/native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
@@ -58,6 +60,8 @@ interface HtmlPreviewBubbleProps {
  *     workers, plugins or <base> rewriting. The policy is the first thing
  *     in the document, before any model markup, so a page cannot loosen it.
  *   - Navigation pinned to about:blank; no popups; no file access.
+ *   - No WebRTC, frames or pop-ups (see sandboxGuard.ts): the CSP can't
+ *     close WebRTC, so a guard script and a frame-tag rewrite do.
  *   - No native bridge: `onMessage` is never set, so the page has no
  *     `window.ReactNativeWebView` and cannot call into the app.
  *   - Incognito + no cache, so nothing persists between previews.
@@ -84,6 +88,7 @@ export function referencesRemoteResources(html: string): boolean {
 }
 
 const HEAD_INJECTION = `<meta http-equiv="Content-Security-Policy" content="${CSP}" />
+<script data-preview-guard>${PREVIEW_GUARD_SCRIPT}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style data-preview-override>
   /* Override common desktop-first CSS that breaks in a small preview
@@ -137,7 +142,9 @@ export function wrapDocument(html: string): string {
   // Policy must precede every byte of untrusted markup. Never locate a head
   // with a regex: an attacker can put the first match inside a comment.
   return `<!DOCTYPE html><html><head><meta charset="utf-8" />
-${HEAD_INJECTION}${FRAGMENT_STYLES}</head><body>${html}</body></html>`;
+${HEAD_INJECTION}${FRAGMENT_STYLES}</head><body>${neutralizeFrameTags(
+    html,
+  )}</body></html>`;
 }
 
 interface SandboxedHtmlViewProps {
