@@ -326,3 +326,54 @@ describe('reminders and messages', () => {
     expect(perform).not.toHaveBeenCalled();
   });
 });
+
+describe('text into apps', () => {
+  const APPS = [
+    {label: 'Claude', package: 'com.anthropic.claude'},
+    {label: 'YouTube', package: 'com.google.android.youtube'},
+  ];
+  beforeEach(() => {
+    (listInstalledApps as jest.Mock).mockResolvedValue(APPS);
+  });
+
+  it('share_text opens the named app with the text filled in', async () => {
+    const result = await run('share_text', {
+      app: 'claude',
+      text: 'What time is it?',
+    });
+    expect(approve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filename: 'Open Claude with this text filled in? You press send.',
+        content: 'What time is it?',
+      }),
+      undefined,
+    );
+    expect(perform).toHaveBeenCalledWith('share_text', {
+      text: 'What time is it?',
+      package: 'com.anthropic.claude',
+    });
+    expect(result.summary).toMatch(/presses send/);
+  });
+
+  it('share_text with no app opens the share menu', async () => {
+    await run('share_text', {text: 'note'});
+    expect(perform).toHaveBeenCalledWith('share_text', {text: 'note'});
+  });
+
+  it('share_text says plainly when the app cannot take shared text', async () => {
+    perform.mockResolvedValue({ok: false, reason: 'no_app'});
+    const result = await run('share_text', {app: 'YouTube', text: 'hi'});
+    expect(result.summary).toMatch(/may not accept shared text/);
+  });
+
+  it('search_in_app searches an app, or the web without one', async () => {
+    await run('search_in_app', {app: 'youtube', query: 'lofi'});
+    expect(perform).toHaveBeenLastCalledWith('search', {
+      query: 'lofi',
+      package: 'com.google.android.youtube',
+    });
+    await run('search_in_app', {query: 'weather'});
+    expect(perform).toHaveBeenLastCalledWith('search', {query: 'weather'});
+    expect((await run('search_in_app', {})).type).toBe('error');
+  });
+});

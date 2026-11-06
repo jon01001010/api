@@ -125,6 +125,28 @@ class PhoneActionsModule(private val context: ReactApplicationContext) :
             str(args, "subject")?.let { putExtra(Intent.EXTRA_SUBJECT, it) }
             str(args, "body")?.let { putExtra(Intent.EXTRA_TEXT, it) }
         }
+        // Text handed to another app (it shows it ready; the user sends).
+        "share_text" -> str(args, "text")?.let { text ->
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            val pkg = str(args, "package")
+            if (pkg != null) send.setPackage(pkg)
+            else Intent.createChooser(send, null)
+        }
+        // A search inside an app (YouTube, Play Store, …), or the web.
+        "search" -> str(args, "query")?.let { query ->
+            val pkg = str(args, "package")
+            if (pkg == null) {
+                Intent(Intent.ACTION_WEB_SEARCH).putExtra(android.app.SearchManager.QUERY, query)
+            } else {
+                Intent(Intent.ACTION_SEARCH).apply {
+                    setPackage(pkg)
+                    putExtra(android.app.SearchManager.QUERY, query)
+                }
+            }
+        }
         else -> null
     }
 

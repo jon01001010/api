@@ -270,7 +270,7 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
     description:
       'Open an app installed on the phone, by its name. ' +
       'Use this when the user just wants an app opened, with nothing else ("open maps", "open the camera app"). ' +
-      'If they also name a place ("open maps to <place>"), use navigate_to; a song to play, use play_music. ' +
+      'If they also name a place ("open maps to <place>"), use navigate_to; a song to play, use play_music; text to write or ask in it, use share_text. ' +
       'How: `name` is the app name exactly as the user said it. ' +
       'If several apps match, you get their names: ask the user which one, then call again with that exact name.',
     parameters: {
@@ -534,6 +534,106 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
         };
       }
       return '`kind` must be "call", "text" or "email".';
+    },
+  },
+  share_text: {
+    description:
+      'Open an app with text already filled in, e.g. a question for a chat app or a note for a notes app; the user then presses send or save. ' +
+      'Use this for "open <app> and write/ask <text>". ' +
+      'How: `app` is the app name the user said (leave it out to let the user pick from the share menu), `text` is exactly what to fill in.',
+    parameters: {
+      type: 'object',
+      properties: {
+        app: {
+          type: 'string',
+          description: 'The app name the user said; optional.',
+        },
+        text: {type: 'string', description: 'The text to fill in.'},
+      },
+      required: ['text'],
+    },
+    plan: async args => {
+      const body = text(args.text, 4000);
+      if (!body) {
+        return 'Give the `text` to fill in.';
+      }
+      const name = text(args.app, 80);
+      if (!name) {
+        return {
+          action: 'share_text',
+          args: {text: body},
+          ask: 'Share this text? You pick the app.',
+          details: body,
+          done: 'The share menu opened with the text. The user picks the app and sends.',
+          what: 'share text',
+        };
+      }
+      const found = matchApps(name, await listInstalledApps());
+      if (!found.length) {
+        return `No installed app is called "${name}". Ask the user for the app's name as it shows on the phone.`;
+      }
+      if (found.length > 1) {
+        const names = found.slice(0, 6).map(a => `"${a.label}"`);
+        return `Several apps match "${name}": ${names.join(', ')}. Ask the user which one, then call share_text with that exact name.`;
+      }
+      const app = found[0];
+      return {
+        action: 'share_text',
+        args: {text: body, package: app.package},
+        ask: `Open ${app.label} with this text filled in? You press send.`,
+        details: body,
+        done: `${app.label} opened with the text filled in. The user presses send there.`,
+        what: `fill in text in ${app.label} (it may not accept shared text)`,
+      };
+    },
+  },
+  search_in_app: {
+    description:
+      'Search for something: inside an app that has its own search (video, store, shopping apps) or, with no app, on the web. ' +
+      'How: `query` is exactly what the user wants to find; `app` is the app name they said (optional).',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {type: 'string', description: 'What to search for.'},
+        app: {
+          type: 'string',
+          description: 'The app name the user said; optional.',
+        },
+      },
+      required: ['query'],
+    },
+    plan: async args => {
+      const query = text(args.query, 300);
+      if (!query) {
+        return 'Give the `query` to search for.';
+      }
+      const name = text(args.app, 80);
+      if (!name) {
+        return {
+          action: 'search',
+          args: {query},
+          ask: `Search the web for "${query}"?`,
+          done: `Opened a web search for ${query}.`,
+          what: 'search the web',
+        };
+      }
+      const found = matchApps(name, await listInstalledApps());
+      if (found.length !== 1) {
+        return found.length
+          ? `Several apps match "${name}": ${found
+              .slice(0, 6)
+              .map(a => `"${a.label}"`)
+              .join(', ')}. Ask the user which one.`
+          : `No installed app is called "${name}".`;
+      }
+      const app = found[0];
+      return {
+        action: 'search',
+        args: {query, package: app.package},
+        ask: `Search ${app.label} for "${query}"?`,
+        done: `Opened ${app.label} searching for ${query}.`,
+        what: `search in ${app.label} (it may not support search from other apps)`,
+      };
     },
   },
 };

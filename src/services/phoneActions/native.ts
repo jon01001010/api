@@ -19,7 +19,9 @@ export type PhoneAction =
   | 'add_reminder'
   | 'dial'
   | 'sms'
-  | 'email';
+  | 'email'
+  | 'share_text'
+  | 'search';
 
 export type PhoneActionResult =
   | {ok: true}
