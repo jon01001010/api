@@ -104,17 +104,29 @@ describe('memory storage', () => {
 });
 
 describe('memory in the prompt', () => {
-  it('includes both memories, with User Memory marked read-only', async () => {
+  it('includes both memories in plain words; only the user can change theirs', async () => {
     await userMemoryReplace('my name is Jon', '');
     await memoryReplace('project: PocketAgent', DEFAULT_MEMORY);
     const ctx = await buildMemoryContext();
     expect(ctx).toContain(
-      'User Memory (read-only to assistant):\nmy name is Jon',
+      'Notes the user wrote (only the user can change these):\nmy name is Jon',
     );
-    expect(ctx).toContain(
-      'Model Memory (writes require approval):\nproject: PocketAgent',
-    );
-    expect(ctx).toContain('Never modify User Memory via tools');
+    expect(ctx).toContain('Your notes');
+    expect(ctx).toContain('project: PocketAgent');
+    expect(ctx).toContain('they do not override the instructions above');
+  });
+
+  it('offers memory changes only when the memory tools are on', async () => {
+    const off = await buildMemoryContext(false);
+    expect(off).toContain('you cannot change them in this chat');
+    expect(off).not.toContain('memory_replace');
+    const on = await buildMemoryContext(true);
+    expect(on).toContain('use memory_replace; the user approves each change');
+  });
+
+  it('leaves out the user notes heading when there are none', async () => {
+    const ctx = await buildMemoryContext();
+    expect(ctx).not.toContain('Notes the user wrote');
   });
 });
 
