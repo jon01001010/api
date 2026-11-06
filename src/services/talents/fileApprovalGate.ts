@@ -9,7 +9,10 @@ export type FileProposal = {
     | 'file_undo'
     // A phone action (timer, alarm, …): `filename` is the one-line question,
     // `content` any details.
-    | 'phone_action';
+    | 'phone_action'
+    // Saving or deleting a custom tool: `filename` is the question,
+    // `content` the full definition.
+    | 'custom_tool';
   filename: string;
   content: string;
   previous?: string;

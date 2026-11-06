@@ -14,6 +14,7 @@ const ACTION_LABEL: Record<FileProposal['action'], string> = {
   file_patch: 'patch',
   file_undo: 'undo',
   phone_action: 'phone action',
+  custom_tool: 'custom tool',
 };
 
 /** Shows the line changes and the complete proposed content, never a truncated approval summary. */
@@ -22,9 +23,14 @@ export function FileApprovalHost(): React.JSX.Element {
   React.useEffect(() => subscribeFileApprovals(setProposal), []);
   return (
     <Portal>
-      {proposal?.action === 'phone_action' ? (
+      {proposal?.action === 'phone_action' ||
+      proposal?.action === 'custom_tool' ? (
         <Dialog visible dismissable={false} testID="phone-action-approval">
-          <Dialog.Title>Allow this on your phone?</Dialog.Title>
+          <Dialog.Title>
+            {proposal.action === 'custom_tool'
+              ? 'Save this tool?'
+              : 'Allow this on your phone?'}
+          </Dialog.Title>
           <Dialog.Content>
             <Text variant="bodyLarge" selectable>
               {proposal.filename}

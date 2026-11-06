@@ -510,3 +510,19 @@ describe('finding the contact for a name', () => {
     expect(perform).toHaveBeenCalledWith('sms', {body: 'hi'});
   });
 });
+
+describe('inside an approved shortcut', () => {
+  it('runs without asking, even with another app on screen; Clock stays in the background', async () => {
+    (AppState as any).currentState = 'background';
+    const result = await new PhoneActionsEngine('set_alarm').execute(
+      {hour: 7, minute: 0},
+      {signal: new AbortController().signal, inApprovedShortcut: true},
+    );
+    expect(approve).not.toHaveBeenCalled();
+    expect(perform).toHaveBeenCalledWith(
+      'set_alarm',
+      expect.objectContaining({hour: 7, skipUi: true}),
+    );
+    expect(result.summary).toMatch(/^Done/);
+  });
+});

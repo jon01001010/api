@@ -6,6 +6,7 @@ import {ReadUrlEngine} from './ReadUrlEngine';
 import {FileToolsEngine, FILE_OPERATIONS} from './FileToolsEngine';
 import {MemoryToolsEngine} from './MemoryToolsEngine';
 import {PhoneActionsEngine, PHONE_TOOL_NAMES} from './PhoneActionsEngine';
+import {ToolMakerEngine, TOOL_MAKER_NAMES} from './ToolMakerEngine';
 import {talentRegistry} from './TalentRegistry';
 import type {SearchAccess} from './searchAccess';
 import type {ToolDefinition, SystemPromptContext} from './types';
@@ -76,6 +77,10 @@ export function registerDefaultTalents(): void {
   // Phone actions: off by default like every global tool; each call asks.
   for (const name of PHONE_TOOL_NAMES) {
     talentRegistry.register(new PhoneActionsEngine(name));
+  }
+  // Custom tools: the model may propose one; the user approves; it starts off.
+  for (const name of TOOL_MAKER_NAMES) {
+    talentRegistry.register(new ToolMakerEngine(name));
   }
   const searchAccess = createSearchAccess();
   talentRegistry.register(new WebSearchEngine(searchAccess));

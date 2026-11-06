@@ -769,29 +769,38 @@ export class PhoneActionsEngine implements TalentEngine {
         summary: `Already done a moment ago (${plan.what}); not repeated. ${STOP}`,
       };
     }
-    // Approval needs PocketAgent on screen. After an action opens another
-    // app it is not, and that is not the user saying no.
-    if (AppState.currentState !== 'active') {
-      return {
-        type: 'text',
-        summary: `Not done: another app is on screen, so the user could not be asked (${plan.what}). Stop here; the user can ask again when they are back.`,
-      };
+    const quiet = ctx?.inApprovedShortcut === true;
+    if (!quiet) {
+      // Approval needs PocketAgent on screen. After an action opens another
+      // app it is not, and that is not the user saying no.
+      if (AppState.currentState !== 'active') {
+        return {
+          type: 'text',
+          summary: `Not done: another app is on screen, so the user could not be asked (${plan.what}). Stop here; the user can ask again when they are back.`,
+        };
+      }
+      const approved = await requestFileApproval(
+        {
+          action: 'phone_action',
+          filename: plan.ask,
+          content: plan.details ?? '',
+        },
+        ctx?.signal,
+      );
+      if (!approved || ctx?.signal?.aborted) {
+        return {
+          type: 'text',
+          summary: `The user said no (${plan.what}). Nothing was done. Do not try it again unless they ask.`,
+        };
+      }
     }
-    const approved = await requestFileApproval(
-      {
-        action: 'phone_action',
-        filename: plan.ask,
-        content: plan.details ?? '',
-      },
-      ctx?.signal,
-    );
-    if (!approved || ctx?.signal?.aborted) {
-      return {
-        type: 'text',
-        summary: `The user said no (${plan.what}). Nothing was done. Do not try it again unless they ask.`,
-      };
-    }
-    const result = await performPhoneAction(plan.action, plan.args);
+    // Inside an approved shortcut, timers and alarms stay in the background
+    // so the next step can still run.
+    const sendArgs =
+      quiet && (plan.action === 'set_timer' || plan.action === 'set_alarm')
+        ? {...plan.args, skipUi: true}
+        : plan.args;
+    const result = await performPhoneAction(plan.action, sendArgs);
     if (!result.ok) {
       const why = describeFailure(result, plan.what);
       return {

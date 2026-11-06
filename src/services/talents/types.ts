@@ -52,6 +52,12 @@ export interface SystemPromptContext {
 /** Aborts when the run is stopped. */
 export interface TalentExecuteContext {
   signal: AbortSignal;
+  /**
+   * Set by a custom shortcut the user already approved as a whole: phone
+   * actions run without asking again, and timers/alarms stay in the
+   * background so later steps can still run.
+   */
+  inApprovedShortcut?: boolean;
 }
 
 export interface TalentEngine {

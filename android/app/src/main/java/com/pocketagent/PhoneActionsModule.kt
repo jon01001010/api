@@ -86,7 +86,7 @@ class PhoneActionsModule(private val context: ReactApplicationContext) :
                     }
                     if (days.isNotEmpty()) putIntegerArrayListExtra(AlarmClock.EXTRA_DAYS, days)
                 }
-                putExtra(AlarmClock.EXTRA_SKIP_UI, false)
+                putExtra(AlarmClock.EXTRA_SKIP_UI, args.hasKey("skipUi") && args.getBoolean("skipUi"))
             }
         }
         "show_alarms" -> Intent(AlarmClock.ACTION_SHOW_ALARMS)
