@@ -36,6 +36,7 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [x] Declutter: 4-item side menu; Settings links, Chat section and Advanced fold; + Add model at the top; Save button visible.
 - [x] Hugging Face search: "Granite moe" finds the Granite a400m / a800m MoE repos.
 - [x] Phone actions: approval dialog, then Maps opens (navigate_to).
+- [x] Phone actions: "text Mack Attack hello mack" finds the contact and opens Messages with the words unchanged; one call, one short confirmation (Gemini 3.1 Flash Lite).
 - [ ] Next build (not yet on the phone): Vision switch in the ⚙ sheet, a picture turns a switched-off vision model on, readable daily-quota (429) error with no retries, Attach to chat from the Workspace list.
 
 ## Context summary ("Summarize & continue")
