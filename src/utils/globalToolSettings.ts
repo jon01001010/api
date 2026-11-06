@@ -37,14 +37,18 @@ export async function writeGlobalPrompt(prompt: string): Promise<void> {
   await AsyncStorage.setItem(PROMPT_KEY, prompt);
 }
 
+/**
+ * The tool line added to the system prompt. Names only: each tool's full
+ * how-to already reaches the model in the tool list itself, and repeating
+ * it here doubled what a phone model must read before its first word.
+ */
 export function generatedToolPrompt(names: string[]): string {
   const tools = deriveToolSchemas(names);
   if (!tools.length) return '';
   return (
-    "Available tools (request a tool call using the model's supported function-call format; never pretend a tool executed):\n" +
-    tools
-      .map(t => '- ' + t.function.name + ': ' + t.function.description)
-      .join('\n')
+    "Available tools (request a tool call using the model's supported function-call format; never pretend a tool executed; each tool's how-to is in its description): " +
+    tools.map(t => t.function.name).join(', ') +
+    '.'
   );
 }
 
