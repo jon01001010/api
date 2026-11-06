@@ -269,7 +269,8 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
   open_app: {
     description:
       'Open an app installed on the phone, by its name. ' +
-      'Use this when the user just wants an app opened ("open maps", "open the camera app"). ' +
+      'Use this when the user just wants an app opened, with nothing else ("open maps", "open the camera app"). ' +
+      'If they also name a place ("open maps to <place>"), use navigate_to; a song to play, use play_music. ' +
       'How: `name` is the app name exactly as the user said it. ' +
       'If several apps match, you get their names: ask the user which one, then call again with that exact name.',
     parameters: {
@@ -310,7 +311,8 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
   navigate_to: {
     description:
       'Show a place or route in the maps app. ' +
-      'Only when the user names a place to go or see; to just open the maps app, use open_app instead. ' +
+      'Use this whenever the user names a place, including "open maps to <place>" or "directions to <place>". ' +
+      'With no place ("open maps"), use open_app instead. ' +
       'How: `destination` is the address or place exactly as the user said it; never invent one. ' +
       'The maps app opens; the user starts the route there.',
     parameters: {

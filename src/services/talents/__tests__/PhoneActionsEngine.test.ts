@@ -51,6 +51,10 @@ describe('phone action tools', () => {
     // "Open maps" is open_app, not a trip somewhere.
     const nav = new PhoneActionsEngine('navigate_to').toToolDefinition();
     expect(nav.function.description).toMatch(/use open_app/);
+    // ...while "open maps to <place>" is a trip.
+    expect(nav.function.description).toMatch(/open maps to <place>/);
+    const open = new PhoneActionsEngine('open_app').toToolDefinition();
+    expect(open.function.description).toMatch(/use navigate_to/);
   });
 
   it('formats durations for people', () => {
