@@ -260,10 +260,12 @@ Plan:
 - [x] Done: clearer editor wording ("When should the model use it? e.g. when I say good morning"; "Tools never run on a timer; for an alarm use Shortcut with set_alarm") and a plainer description for the model.
 - [ ] Phone check: make "morning" (alarm with `{{hour}}` + open an app) in Toolbox, turn it on, ask "run morning at 7"; ask a model to save a packing list as instructions, approve, turn it on, ask for it back; delete both.
 
-### Share and scan tools by QR (planned, not started)
+### Share and scan by QR: tools and device pairing (planned, not started)
 
 Toolbox → Custom tools gets **Share as QR** on each tool and a **Scan a tool** button. Uses the scheme from the user's QR2D page (`qr2d-v0_27.html`):
 
+- [ ] **One QR scanner for everything** (decided 2026-11-06): a single **Scan QR** screen reads every PocketAgent QR, and the tag in front says what it is: `PA1:T:` a tool, `PA1:P:` a desktop pairing (address, public key, one-time code; see PocketAgent Desktop), later mods. Each kind goes to its own review screen; nothing is installed or paired without the user confirming. Unknown tags are refused.
+- [ ] Scan QR is reached from Toolbox (tools) and from the server / desktop list (pairing); same screen, same camera and "from a picture" options.
 - [ ] Pack: the tool's JSON → deflate (pako) → base64, with a short tag and version in front (e.g. `PA1:`), so the app knows it's a PocketAgent tool and which format it is. Keep plain JSON when it is smaller.
 - [ ] Size check: one standard QR holds about 2,331 characters (version 40, medium error correction); most tools fit. If a tool is too big, offer **Share as file** instead (no multi-QR for now).
 - [ ] Draw the QR with `qrcode-generator` + `react-native-svg` (already in the app). Share the QR as a picture too.
@@ -333,7 +335,7 @@ A desktop app that pairs with the phone: trains the personal LoRA, runs bigger m
 
 ### How they talk (the link)
 
-- [ ] **Pair once by QR:** the desktop shows a QR with its address, its public key and a one-time code; the phone scans it (same scanner as tool sharing), sends its own public key, both save each other. No account or server involved.
+- [ ] **Pair once by QR** (same Scan QR screen as tools, tag `PA1:P:`): the desktop shows a QR with its address, its public key and a one-time code; the phone scans it (same scanner as tool sharing), sends its own public key, both save each other. No account or server involved.
 - [ ] **Find each other:** on the same Wi-Fi by local discovery (mDNS / Android NSD); fall back to the address from the QR.
 - [ ] **Encrypted both ways:** every connection is mutually authenticated with the saved keys (TLS with pinned keys, or the Noise protocol); nothing in clear text, even at home. Unknown devices are refused.
 - [ ] **Away from home (later, optional):** the user's own WireGuard VPN or a self-hosted relay; never a PocketAgent-run server.
