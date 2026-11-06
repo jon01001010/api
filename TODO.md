@@ -15,7 +15,9 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [x] `read_url`: strict port matching for user-named sites, no https→http downgrade, redirect-escape tests.
 - [x] `read_url`: the default reader is now **the phone itself** (no r.jina.ai): it fetches the page directly, the final URL after redirects comes from the network layer (verified), and the HTML becomes plain text on the phone. Provider readers that can't attest the final URL fall back to it. Fail-closed checks unchanged (allowlist, no https→http downgrade).
 - [ ] Phone check: search, then "read the first result"; a page that redirects; a PDF / non-HTML link (refused cleanly).
-- [ ] The consent text in non-English locales still mentions r.jina.ai; English is updated.
+- [x] **Web search is free, no key:** the paid providers (Brave, Tavily, Exa, Firecrawl, Parallel — all need sign-ups now) are no longer offered; their adapters stay in the code, not selectable. The one search is **DuckDuckGo**, done by the phone from its plain HTML results page (not an official API: can change or rate-limit, and says so). Reading a page needs only the consent, no key.
+- [ ] Phone check: consent, then "search the web for …" and "read the first result"; a few searches in a row (rate limit message).
+- [ ] The consent text in non-English locales still mentions r.jina.ai and keys; English is updated.
 - [x] `read_url`: an http page and its https version count as the same page (https preferred when both are allowed).
 - [x] Workspace file operations: `file_append`, `file_patch`, `file_diff`, `file_history`, `file_undo`; per-file version history; diff shown in the approval dialog.
 - [x] Fix newline (`file_read_range`, `file_search`) and extension (`file_info`) matching bugs.

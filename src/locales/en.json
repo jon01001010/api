@@ -157,7 +157,7 @@
     "importError": "Failed to import chat sessions. Please check the file format.",
     "internetSearch": {
       "title": "Internet Search",
-      "description": "Let Pals search the web with their own tools. Bring your own API key — PocketAgent never holds your keys or routes your queries.",
+      "description": "Let the model search the web and read pages. Free, no key or sign-up: your phone sends the search to DuckDuckGo and fetches pages itself; nothing goes through PocketAgent.",
       "providerLabel": "Search provider",
       "providerGated": "Coming soon",
       "keyLabel": "API key",
@@ -173,7 +173,7 @@
       "resultCountLabel": "Results per search",
       "resultCountDescription": "Fewer results keep more room in the model's context.",
       "consentTitle": "Searches leave your device",
-      "consentDescription": "When a Pal searches the web, your query is sent to the selected provider over the internet. When a Pal reads a page, your phone fetches it directly from that site, unless the selected provider has its own reader. Keys and queries are never sent to PocketAgent.",
+      "consentDescription": "When the model searches the web, your query is sent from your phone to DuckDuckGo. When the model reads a page, your phone fetches it directly from that site. Nothing is sent to PocketAgent.",
       "consentAccept": "I understand",
       "consentRequired": "Accept the disclosure above to set a key and enable search.",
       "consentGivenTitle": "Searching the web is enabled",

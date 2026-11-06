@@ -6,6 +6,7 @@ import {BraveProvider} from './providers/brave';
 import {ExaProvider} from './providers/exa';
 import {FirecrawlProvider} from './providers/firecrawl';
 import {ParallelProvider} from './providers/parallel';
+import {DuckDuckGoProvider} from './providers/duckduckgo';
 
 export type {
   SearchProvider,
@@ -29,6 +30,8 @@ export const createSearchProvider = (
   getKey: () => string,
 ): SearchProvider => {
   switch (id) {
+    case 'duckduckgo':
+      return new DuckDuckGoProvider();
     case 'tavily':
       return new TavilyProvider(getKey);
     case 'brave':

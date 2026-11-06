@@ -15,18 +15,30 @@ export interface SearchProviderMeta {
   label: string;
   /** Gated providers appear in the picker but cannot be the active provider. */
   selectable: boolean;
+  /** False for a provider that works without an API key. */
+  needsKey?: boolean;
 }
 
-/** Parallel ships gated (not selectable) until its free-tier/PAYG terms are confirmed. */
+/**
+ * DuckDuckGo needs no key or sign-up, so it is the one search offered. The
+ * keyed providers all require a paid sign-up now; their adapters are kept
+ * (not selectable) in case a free tier returns.
+ */
 export const SEARCH_PROVIDERS: SearchProviderMeta[] = [
-  {id: 'tavily', label: 'Tavily', selectable: true},
-  {id: 'brave', label: 'Brave', selectable: true},
-  {id: 'exa', label: 'Exa', selectable: true},
-  {id: 'firecrawl', label: 'Firecrawl', selectable: true},
+  {
+    id: 'duckduckgo',
+    label: 'DuckDuckGo (free, no key)',
+    selectable: true,
+    needsKey: false,
+  },
+  {id: 'tavily', label: 'Tavily', selectable: false},
+  {id: 'brave', label: 'Brave', selectable: false},
+  {id: 'exa', label: 'Exa', selectable: false},
+  {id: 'firecrawl', label: 'Firecrawl', selectable: false},
   {id: 'parallel', label: 'Parallel', selectable: false},
 ];
 
-const DEFAULT_PROVIDER: SearchProviderId = 'brave';
+const DEFAULT_PROVIDER: SearchProviderId = 'duckduckgo';
 const DEFAULT_RESULT_COUNT = 5;
 const MIN_RESULT_COUNT = 1;
 const MAX_RESULT_COUNT = 8;
@@ -104,7 +116,8 @@ class SearchProviderStore {
   }
 
   get isProviderConfigured(): boolean {
-    return this.hasKey(this.activeProviderId);
+    const meta = SEARCH_PROVIDERS.find(p => p.id === this.activeProviderId);
+    return meta?.needsKey === false || this.hasKey(this.activeProviderId);
   }
 
   get canSearch(): boolean {

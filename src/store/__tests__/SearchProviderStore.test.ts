@@ -27,9 +27,9 @@ describe('SearchProviderStore', () => {
   };
 
   describe('initial state', () => {
-    it('defaults to brave, result count 5, no consent', async () => {
+    it('defaults to DuckDuckGo (no key), result count 5, no consent', async () => {
       const store = await newStore();
-      expect(store.activeProviderId).toBe('brave');
+      expect(store.activeProviderId).toBe('duckduckgo');
       expect(store.resultCount).toBe(5);
       expect(store.hasConsentedToSearch).toBe(false);
     });
@@ -116,12 +116,17 @@ describe('SearchProviderStore', () => {
   describe('preferences', () => {
     it('sets the active provider only for selectable providers', async () => {
       const store = await newStore();
-      // Switch away from the brave default so the write is observable.
-      store.setActiveProvider('tavily');
-      expect(store.activeProviderId).toBe('tavily');
-
-      store.setActiveProvider('parallel');
-      expect(store.activeProviderId).toBe('tavily');
+      // The keyed providers all need paid sign-ups now and are not offered.
+      for (const id of [
+        'tavily',
+        'brave',
+        'exa',
+        'firecrawl',
+        'parallel',
+      ] as const) {
+        store.setActiveProvider(id);
+        expect(store.activeProviderId).toBe('duckduckgo');
+      }
     });
 
     it('clamps result count into range', async () => {
@@ -144,9 +149,9 @@ describe('SearchProviderStore', () => {
   describe('post-hydration normalization (persisted prefs bypass setters)', () => {
     it('resets a persisted gated/unknown provider to the default', async () => {
       const store = await newStore();
-      store.activeProviderId = 'parallel'; // gated; only reachable via stale storage
+      store.activeProviderId = 'brave'; // no longer offered; stale storage
       store.normalizeHydratedPrefs();
-      expect(store.activeProviderId).toBe('brave');
+      expect(store.activeProviderId).toBe('duckduckgo');
     });
 
     it('clamps a persisted out-of-range result count', async () => {
@@ -162,11 +167,11 @@ describe('SearchProviderStore', () => {
 
     it('leaves valid persisted prefs unchanged', async () => {
       const store = await newStore();
-      store.activeProviderId = 'tavily';
+      store.activeProviderId = 'duckduckgo';
       store.resultCount = 4;
       store.hasConsentedToSearch = true;
       store.normalizeHydratedPrefs();
-      expect(store.activeProviderId).toBe('tavily');
+      expect(store.activeProviderId).toBe('duckduckgo');
       expect(store.resultCount).toBe(4);
       expect(store.hasConsentedToSearch).toBe(true);
     });
@@ -190,20 +195,15 @@ describe('SearchProviderStore', () => {
   });
 
   describe('isProviderConfigured', () => {
-    it('is false with no key and true once the active provider has a key', async () => {
+    it('DuckDuckGo needs no key', async () => {
       const store = await newStore();
-      expect(store.isProviderConfigured).toBe(false);
-      await store.setKey('brave', 'k'); // the active provider
       expect(store.isProviderConfigured).toBe(true);
     });
   });
 
   describe('canSearch (consent + key, load-bearing at execution)', () => {
-    it('requires both consent and a key', async () => {
+    it('requires consent (DuckDuckGo needs no key)', async () => {
       const store = await newStore();
-      expect(store.canSearch).toBe(false);
-
-      await store.setKey('brave', 'k'); // the active provider
       expect(store.canSearch).toBe(false);
 
       store.setConsent(true);
@@ -223,10 +223,9 @@ describe('SearchProviderStore', () => {
       await store.setKey('tavily', 'k');
       await store.clearKey('tavily');
       store.setConsent(true);
-      store.setActiveProvider('brave');
 
-      // setKey + clearKey + setConsent + setActiveProvider each invalidate.
-      expect(reset.mock.calls.length).toBeGreaterThanOrEqual(4);
+      // setKey + clearKey + setConsent each invalidate.
+      expect(reset.mock.calls.length).toBeGreaterThanOrEqual(3);
       reset.mockRestore();
     });
   });

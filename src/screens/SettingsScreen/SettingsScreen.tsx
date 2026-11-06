@@ -771,67 +771,77 @@ export const SettingsScreen: React.FC = observer(() => {
                       onDismiss={() => setShowSearchProviderMenu(false)}
                       anchor={searchProviderAnchor}
                       selectable>
-                      {searchProviderStore.providers.map(provider => (
-                        <Menu.Item
-                          key={provider.id}
-                          testID={`search-provider-option-${provider.id}`}
-                          disabled={!provider.selectable}
-                          style={styles.menu}
-                          label={
-                            provider.selectable
-                              ? provider.label
-                              : `${provider.label} (${l10n.settings.internetSearch.providerGated})`
-                          }
-                          selected={provider.id === activeSearchProviderId}
-                          onPress={() => {
-                            searchProviderStore.setActiveProvider(
-                              provider.id as SearchProviderId,
-                            );
-                            setShowSearchProviderMenu(false);
-                          }}
-                        />
-                      ))}
+                      {searchProviderStore.providers
+                        .filter(provider => provider.selectable)
+                        .map(provider => (
+                          <Menu.Item
+                            key={provider.id}
+                            testID={`search-provider-option-${provider.id}`}
+                            disabled={!provider.selectable}
+                            style={styles.menu}
+                            label={
+                              provider.selectable
+                                ? provider.label
+                                : `${provider.label} (${l10n.settings.internetSearch.providerGated})`
+                            }
+                            selected={provider.id === activeSearchProviderId}
+                            onPress={() => {
+                              searchProviderStore.setActiveProvider(
+                                provider.id as SearchProviderId,
+                              );
+                              setShowSearchProviderMenu(false);
+                            }}
+                          />
+                        ))}
                     </Menu>
                   </View>
                 </View>
 
-                {/* Per-provider BYOK key entry */}
-                <Divider style={styles.divider} />
-                <View style={styles.switchContainer}>
-                  <View style={styles.textContainer}>
-                    <Text variant="titleMedium" style={styles.textLabel}>
-                      {l10n.settings.internetSearch.keyLabel}
-                    </Text>
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {searchProviderStore.hasKey(activeSearchProviderId)
-                        ? t(l10n.settings.internetSearch.keyIsSet, {
-                            provider:
-                              activeSearchProvider?.label ??
-                              activeSearchProviderId,
-                          })
-                        : t(l10n.settings.internetSearch.keyNotSet, {
-                            provider:
-                              activeSearchProvider?.label ??
-                              activeSearchProviderId,
-                          })}
-                    </Text>
-                    {!searchHasConsent && (
-                      <Text variant="labelSmall" style={styles.textDescription}>
-                        {l10n.settings.internetSearch.consentRequired}
-                      </Text>
-                    )}
-                  </View>
-                  <Button
-                    testID="search-provider-key-button"
-                    mode="outlined"
-                    disabled={!searchHasConsent}
-                    onPress={() => setShowSearchKeySheet(true)}
-                    style={styles.menuButton}>
-                    {searchProviderStore.hasKey(activeSearchProviderId)
-                      ? l10n.settings.internetSearch.updateKeyButton
-                      : l10n.settings.internetSearch.setKeyButton}
-                  </Button>
-                </View>
+                {/* Per-provider BYOK key entry (none for a no-key provider) */}
+                {activeSearchProvider?.needsKey !== false && (
+                  <>
+                    <Divider style={styles.divider} />
+                    <View style={styles.switchContainer}>
+                      <View style={styles.textContainer}>
+                        <Text variant="titleMedium" style={styles.textLabel}>
+                          {l10n.settings.internetSearch.keyLabel}
+                        </Text>
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {searchProviderStore.hasKey(activeSearchProviderId)
+                            ? t(l10n.settings.internetSearch.keyIsSet, {
+                                provider:
+                                  activeSearchProvider?.label ??
+                                  activeSearchProviderId,
+                              })
+                            : t(l10n.settings.internetSearch.keyNotSet, {
+                                provider:
+                                  activeSearchProvider?.label ??
+                                  activeSearchProviderId,
+                              })}
+                        </Text>
+                        {!searchHasConsent && (
+                          <Text
+                            variant="labelSmall"
+                            style={styles.textDescription}>
+                            {l10n.settings.internetSearch.consentRequired}
+                          </Text>
+                        )}
+                      </View>
+                      <Button
+                        testID="search-provider-key-button"
+                        mode="outlined"
+                        disabled={!searchHasConsent}
+                        onPress={() => setShowSearchKeySheet(true)}
+                        style={styles.menuButton}>
+                        {searchProviderStore.hasKey(activeSearchProviderId)
+                          ? l10n.settings.internetSearch.updateKeyButton
+                          : l10n.settings.internetSearch.setKeyButton}
+                      </Button>
+                    </View>
+                  </>
+                )}
 
                 {/* Result-count control */}
                 <Divider style={styles.divider} />
@@ -1594,7 +1604,11 @@ export const SettingsScreen: React.FC = observer(() => {
                         <Text
                           variant="labelSmall"
                           style={styles.textDescription}>
-                          Experiment, off by default. Lets a mixture-of-experts model (names like 1b-a400m, 30B-A3B) load when it is bigger than free memory: the file is read from storage while it runs. Slower, and Android may close the app. Ordinary models are not affected.
+                          Experiment, off by default. Lets a mixture-of-experts
+                          model (names like 1b-a400m, 30B-A3B) load when it is
+                          bigger than free memory: the file is read from storage
+                          while it runs. Slower, and Android may close the app.
+                          Ordinary models are not affected.
                         </Text>
                       </View>
                       <Switch
