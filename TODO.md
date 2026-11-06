@@ -352,6 +352,24 @@ Like vision models, the app finds what's available instead of being tied to one 
 - [ ] Default digital assistant registration on a recent Android (which screens and permissions are needed).
 - [ ] The battery cost of an always-on wake-word service over a day.
 
+## Future hardware & GrapheneOS readiness (write-up only, not started)
+
+Target: the next foldable/flagship Motorola phones (a 2027 razr or similar), possibly running GrapheneOS.
+
+**Motorola + GrapheneOS (checked 2026-11-06):** a long-term partnership was announced at MWC on 2 March 2026. No devices are confirmed: GrapheneOS said the first compatible Motorola phones could come in 2027, premium hardware first (reports name the Motorola Signature and razr fold), and it isn't settled whether GrapheneOS ships preinstalled or is installed afterwards. Current Motorola phones, the 2023 Razr included, don't meet GrapheneOS's hardware requirements. Motorola also plans to bring some GrapheneOS features to its regular Android phones.
+
+Expected hardware (estimate): 12-16 GB RAM, a Snapdragon 8 Elite-class chip with a stronger Hexagon NPU, UFS 4/5 storage.
+
+- [ ] **Work with no Google services.** Firebase (incl. App Check), Google Sign-In and in-app purchases (left from PocketPal's hub account and paid features) must be optional: the app starts and works fully without Google Play services; only hub sign-in and purchases switch off. Also needed for an F-Droid or Accrescent build.
+- [ ] **No-network mode.** GrapheneOS can remove an app's internet access. Local models keep working; search, page reading and cloud models say "no network" plainly instead of failing with errors.
+- [ ] **Scoped permissions.** Test contact lookup with Contact Scopes and file picking with Storage Scopes (the user grants only some contacts/files).
+- [ ] **Hardened memory allocator.** Measure model load time and memory under GrapheneOS's allocator; if a large model crashes, note the per-app "exploit protection compatibility mode" workaround in the app's help.
+- [ ] **Bigger models.** With 12-16 GB: dense 8-14B Q4 fully in RAM; Qwen3-30B-A3B with "Stream large models from storage"; keep multi-model sensible (2 models of ~4 GB).
+- [ ] **NPU.** Resume the Hexagon NPU work (section below) on that hardware.
+- [ ] **Distribution.** A Google-free build for Accrescent / F-Droid alongside the normal APK.
+
+Sources: [Android Authority](https://www.androidauthority.com/grapheneos-motorola-partnership-announced-3645710), [TechRepublic](https://www.techrepublic.com/article/news-motorola-grapheneos-partnership-2027/), [The Register](https://www.theregister.com/2026/03/02/motorola_grapheneos/), [Neowin](https://www.neowin.net/news/motorola-announces-partnership-with-grapheneos-foundation/).
+
 ## Deferred — NPU acceleration (on hold)
 
 On hold until a better test phone is available. On the current test device (Motorola Razr 2023, SM7450 / Hexagon V69) NPU offload is effectively a no-op, so CPU inference stays the only supported backend for now. See issue #1 for the investigation notes and safe implementation sequence.
