@@ -327,6 +327,37 @@ Privacy and safety:
 - [ ] An adapter is personal data: sharing it as a mod is blocked by default (it can leak what it was trained on).
 - [ ] No contacts, messages or photos are read without a per-source opt-in; each source can be switched off and its examples deleted. Messages from other people are training data about them too: show that in the opt-in.
 
+## PocketAgent Desktop: companion app and phone ↔ desktop link (idea 2026-11-06, write-up only)
+
+A desktop app that pairs with the phone: trains the personal LoRA, runs bigger models (14B–30B) for the phone, and takes heavy jobs. Linux first, then Windows and Mac. Open source, no Google, no account, no cloud.
+
+### How they talk (the link)
+
+- [ ] **Pair once by QR:** the desktop shows a QR with its address, its public key and a one-time code; the phone scans it (same scanner as tool sharing), sends its own public key, both save each other. No account or server involved.
+- [ ] **Find each other:** on the same Wi-Fi by local discovery (mDNS / Android NSD); fall back to the address from the QR.
+- [ ] **Encrypted both ways:** every connection is mutually authenticated with the saved keys (TLS with pinned keys, or the Noise protocol); nothing in clear text, even at home. Unknown devices are refused.
+- [ ] **Away from home (later, optional):** the user's own WireGuard VPN or a self-hosted relay; never a PocketAgent-run server.
+- [ ] **USB fallback:** works over a cable too (adb reverse), for no-Wi-Fi setups.
+- [ ] **One small protocol, three kinds of message:**
+  1. *Model:* the OpenAI-style chat API the app already speaks (the desktop runs llama-server or similar), so "use the desktop's model" is just a paired server.
+  2. *Files:* send a dataset to the desktop, get an adapter back; checked by hash, resumable.
+  3. *Jobs:* start / progress / cancel for training and heavy work; the phone shows progress.
+- [ ] **Desktop side:** listens on the local network only, never the internet; paired devices listed with **Remove**; a log of what each device asked for.
+
+### Safety rules for the link (add to SECURITY.md when built)
+
+- [ ] A request from the other device counts like a request from a model: the same Toolbox switches and approvals apply. The desktop can never trigger a phone action, read contacts or texts, or change memory without the approval dialog on the phone; the phone can't run anything on the desktop that the desktop user hasn't allowed.
+- [ ] Only what the user picked is sent (e.g. the chosen training examples). The desktop deletes training data after the job unless the user keeps it.
+- [ ] Remove a device on either side and its keys stop working at once.
+
+### Steps (each on its own; ask before each)
+
+1. [ ] **Use a desktop model:** QR pairing + the encrypted link to a llama-server on the PC; appears as a server in the app.
+2. [ ] **Desktop training:** dataset upload, LoRA training on the PC's GPU (llama.cpp's own or the usual Python tools, whichever works best per GPU), adapter sent back, data deleted.
+3. [ ] **Phone dataset export** in the order decided: contacts → texts → later files and photos.
+4. [ ] **Heavy jobs:** long transcriptions, photo captioning for training.
+5. [ ] **Later:** away-from-home link (own VPN / relay).
+
 ## Mods ecosystem (write-up only, not started)
 
 Idea 2026-11-06: let people make and share small add-ons ("mods") for the app, listed on a website. Start free and simple.
