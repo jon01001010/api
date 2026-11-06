@@ -92,6 +92,10 @@ export const CustomToolsSection: React.FC<Props> = ({
   const [editing, setEditing] = useState<Draft | null>(null);
   const [error, setError] = useState('');
   const [viewing, setViewing] = useState<CustomTool | null>(null);
+  // Each opening of the editor gets fresh text boxes. The boxes keep their
+  // own text (defaultValue) and the app only reads it: feeding it back on
+  // every key press made the cursor jump on Android inside a dialog.
+  const [session, setSession] = useState(0);
 
   const reload = useCallback(() => {
     listCustomTools()
@@ -139,6 +143,7 @@ export const CustomToolsSection: React.FC<Props> = ({
 
   const edit = (tool: CustomTool) => {
     setError('');
+    setSession(n => n + 1);
     setEditing({
       replacing: tool.name,
       kind: tool.kind,
@@ -210,6 +215,7 @@ export const CustomToolsSection: React.FC<Props> = ({
             testID="custom-tool-new"
             onPress={() => {
               setError('');
+              setSession(n => n + 1);
               setEditing({...EMPTY});
             }}>
             New custom tool
@@ -235,19 +241,21 @@ export const CustomToolsSection: React.FC<Props> = ({
                 style={{marginVertical: 8}}
               />
               <TextInput
+                key={`${session}-name`}
                 testID="custom-tool-name"
                 label="Name (e.g. morning_routine)"
                 mode="outlined"
                 autoCapitalize="none"
-                value={editing?.name ?? ''}
+                defaultValue={editing?.name ?? ''}
                 onChangeText={name => setEditing(d => (d ? {...d, name} : d))}
               />
               <TextInput
+                key={`${session}-description`}
                 testID="custom-tool-description"
                 label="When should the model use it?"
                 mode="outlined"
                 multiline
-                value={editing?.description ?? ''}
+                defaultValue={editing?.description ?? ''}
                 onChangeText={description =>
                   setEditing(d => (d ? {...d, description} : d))
                 }
@@ -256,12 +264,13 @@ export const CustomToolsSection: React.FC<Props> = ({
               {editing?.kind === 'shortcut' ? (
                 <>
                   <TextInput
+                    key={`${session}-steps`}
                     testID="custom-tool-steps"
                     label="Steps, one per line"
                     mode="outlined"
                     multiline
                     autoCapitalize="none"
-                    value={editing.stepsText}
+                    defaultValue={editing.stepsText}
                     onChangeText={stepsText =>
                       setEditing(d => (d ? {...d, stepsText} : d))
                     }
@@ -275,11 +284,12 @@ export const CustomToolsSection: React.FC<Props> = ({
                 </>
               ) : (
                 <TextInput
+                  key={`${session}-instructions`}
                   testID="custom-tool-instructions"
                   label="Instructions"
                   mode="outlined"
                   multiline
-                  value={editing?.instructions ?? ''}
+                  defaultValue={editing?.instructions ?? ''}
                   onChangeText={instructions =>
                     setEditing(d => (d ? {...d, instructions} : d))
                   }

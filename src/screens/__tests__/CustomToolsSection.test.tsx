@@ -1,3 +1,4 @@
+import React from 'react';
 import {stepsToText, textToSteps} from '../CustomToolsSection';
 
 describe('shortcut steps as text', () => {
@@ -26,5 +27,54 @@ describe('shortcut steps as text', () => {
       {tool: 'datetime', args: {}},
     ];
     expect(textToSteps(stepsToText(steps))).toEqual(steps);
+  });
+});
+
+describe('custom tool editor text boxes', () => {
+  const {render, fireEvent, waitFor} = require('../../../jest/test-utils');
+  const {CustomToolsSection} = require('../CustomToolsSection');
+  const customTools = require('../../services/talents/customTools');
+
+  beforeEach(() => {
+    jest.spyOn(customTools, 'listCustomTools').mockResolvedValue([]);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('lets each box keep its own text, so the cursor never jumps', async () => {
+    const save = jest
+      .spyOn(customTools, 'saveCustomTool')
+      .mockResolvedValue({name: 'morning'} as any);
+    const {getByTestId} = render(
+      <CustomToolsSection
+        enabledTools={[]}
+        disabled={false}
+        onToggle={() => {}}
+        errorColor="red"
+      />,
+    );
+    fireEvent.press(getByTestId('custom-tool-new'));
+    // The boxes keep their own text inside the dialog (the screen never
+    // writes it back while typing, which arrived late through the dialog
+    // layer and moved the cursor); saving still gets every box's text.
+    fireEvent.changeText(getByTestId('custom-tool-name'), 'morning');
+    fireEvent.changeText(
+      getByTestId('custom-tool-description'),
+      'when I say good morning',
+    );
+    fireEvent.changeText(
+      getByTestId('custom-tool-instructions'),
+      'Open Claude',
+    );
+    fireEvent.press(getByTestId('custom-tool-save'));
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'morning',
+          description: 'when I say good morning',
+          instructions: 'Open Claude',
+        }),
+        undefined,
+      ),
+    );
   });
 });

@@ -254,6 +254,9 @@ Plan:
 - [x] Checks: names can't clash with built-ins or each other; shortcuts use built-in tools only (no tool_save / tool_delete, no custom tool inside a shortcut); at most 8 steps; fill-ins `{{name}}` become required arguments.
 - [x] **Changed from the plan:** a shortcut asks **once per run**, showing every step, instead of once per step. Android stops a background app from asking or opening apps, so after a step that opens another app nothing further could run. Inside an approved shortcut, phone actions don't ask again, timers/alarms stay in the background, and a step that opens another app must be the last one. The run stops at the first failure and says what was done.
 - [x] How-to text for both kinds; tests.
+- [x] 2026-11-06: an Instructions tool "morning" ("Open Claude") works: "Run morning" read it, then open_app opened Claude (Gemini 3.1 Flash Lite; the first try it said it couldn't read the instructions).
+- [x] Fixed: typing in the custom tool editor moved the cursor (backspace deleted the wrong letter). The dialog layer delivered the screen's copy of the text late; the boxes now keep their own text.
+- [ ] Proposed: clearer editor wording ("When should the model use it? e.g. when I say good morning"; "Tools never run on a timer; for an alarm use Shortcut with set_alarm") and a plainer description for the model.
 - [ ] Phone check: make "morning" (alarm with `{{hour}}` + open an app) in Toolbox, turn it on, ask "run morning at 7"; ask a model to save a packing list as instructions, approve, turn it on, ask for it back; delete both.
 
 ### Share and scan tools by QR (planned, not started)
