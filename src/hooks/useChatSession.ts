@@ -812,9 +812,7 @@ export const useChatSession = (
     cleanCompletionParams.tools = deriveToolSchemas(palTalents);
     let memoryContext = '';
     try {
-      memoryContext = await buildMemoryContext(
-        palTalents.includes('memory_replace'),
-      );
+      memoryContext = await buildMemoryContext();
     } catch (error) {
       console.warn('[chat] memory unavailable', error);
     }

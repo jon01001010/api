@@ -24,7 +24,7 @@ const DESCRIPTIONS: Record<MemoryAction, string> = {
     '2) write the WHOLE new memory in `content`, one note per line, keeping every note that ' +
     'should stay and only changing what the user asked; 3) put the text memory_get returned in ' +
     '`expected_previous`. The user approves. Example: to rename yourself, change only the line ' +
-    'with your name.',
+    'with your name. This changes "Your notes" only; "Notes the user wrote" only the user can change.',
   memory_history:
     'List saved earlier versions of your memory, newest first (for memory_restore).',
   memory_restore:

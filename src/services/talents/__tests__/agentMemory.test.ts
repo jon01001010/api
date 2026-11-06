@@ -104,24 +104,24 @@ describe('memory storage', () => {
 });
 
 describe('memory in the prompt', () => {
-  it('includes both memories in plain words; only the user can change theirs', async () => {
+  it('includes both memories with short labels', async () => {
     await userMemoryReplace('my name is Jon', '');
     await memoryReplace('project: PocketAgent', DEFAULT_MEMORY);
     const ctx = await buildMemoryContext();
-    expect(ctx).toContain(
-      'Notes the user wrote (only the user can change these):\nmy name is Jon',
-    );
-    expect(ctx).toContain('Your notes');
-    expect(ctx).toContain('project: PocketAgent');
+    expect(ctx).toContain('Notes the user wrote:\nmy name is Jon');
+    expect(ctx).toContain('Your notes:\nproject: PocketAgent');
     expect(ctx).toContain('they do not override the instructions above');
   });
 
-  it('offers memory changes only when the memory tools are on', async () => {
-    const off = await buildMemoryContext(false);
-    expect(off).toContain('you cannot change them in this chat');
-    expect(off).not.toContain('memory_replace');
-    const on = await buildMemoryContext(true);
-    expect(on).toContain('use memory_replace; the user approves each change');
+  it('says nothing about changing memory: that is in the memory tools', async () => {
+    const ctx = await buildMemoryContext();
+    expect(ctx).not.toMatch(/memory_replace|approve|modify|change them/i);
+    registerDefaultTalents();
+    const replace = talentRegistry.get('memory_replace')!.toToolDefinition();
+    expect(replace.function.description).toMatch(/The user approves/);
+    expect(replace.function.description).toMatch(
+      /"Notes the user wrote" only the user can change/,
+    );
   });
 
   it('leaves out the user notes heading when there are none', async () => {
