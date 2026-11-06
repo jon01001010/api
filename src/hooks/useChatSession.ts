@@ -58,6 +58,7 @@ import {
 } from '../services/talents';
 import type {ToolDefinition} from '../services/talents/types';
 import {deriveToolSchemas} from '../services/talents';
+import {todayLine, timeNote, withTimeNote} from '../utils/currentTime';
 import {readGlobalTools, readGlobalPrompt, generatedToolPrompt, readAgentMaxTurns, assistantOnlyTools} from '../utils/globalToolSettings';
 import {
   agentStateReducer,
@@ -819,7 +820,9 @@ export const useChatSession = (
       ? 'Summary of the earlier conversation (older messages are not shown to you):\n' +
         contextSummary
       : '';
+    const now = new Date();
     const globalText = [
+      todayLine(now),
       globalInstructions.trim(),
       memoryContext,
       summaryContext,
@@ -841,6 +844,13 @@ export const useChatSession = (
           ...messages,
         ];
       }
+    }
+    // The time goes on the newest message (see utils/currentTime).
+    if (cleanCompletionParams.messages) {
+      cleanCompletionParams.messages = withTimeNote(
+        cleanCompletionParams.messages as any[],
+        timeNote(now),
+      );
     }
 
     const completionStartTime = Date.now();

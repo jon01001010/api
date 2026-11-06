@@ -27,6 +27,15 @@ import {
 import {l10n} from '../../locales';
 import {assistant} from '../../utils/chat';
 import {ModelOrigin} from '../../utils/types';
+
+// These tests check the exact prompt text, so the date and time lines are
+// left out here; utils/__tests__/currentTime.test.ts and the assistant-turn
+// test cover them.
+jest.mock('../../utils/currentTime', () => ({
+  todayLine: () => '',
+  timeNote: () => '',
+  withTimeNote: (messages: unknown[]) => messages,
+}));
 import {
   RemoteModelNotReadyError,
   RemoteModelRequestWithdrawnError,

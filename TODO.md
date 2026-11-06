@@ -42,7 +42,7 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [x] Phone actions: approval dialog, then Maps opens (navigate_to).
 - [x] Phone actions: "text Mack Attack hello mack" finds the contact and opens Messages with the words unchanged; one call, one short confirmation (Gemini 3.1 Flash Lite).
 - [x] 2026-11-06, build 42196457922: first reply on Qwen3.5 2B with tools off in **~2 s** (1964 ms to first token, 6.2 tok/s), down from ~20 s. Sending only switched-on tools fixed it; memory still in the prompt (it used the name Jon).
-- [x] 2026-11-06: free search (DuckDuckGo, no key) finds 5 results and the model answers from them. Seen: the model guessed the year (searched "2025"), and the reply after the results took ~15 s (reading 5 results). Proposed: today's date in the prompt; 3 shorter results for phone models.
+- [x] 2026-11-06: free search (DuckDuckGo, no key) finds 5 results and the model answers from them. Seen: the model guessed the year (searched "2025"), and the reply after the results took ~15 s (reading 5 results). Done: today's date at the start of the prompt (changes once a day, so the phone keeps reusing earlier work) and the local time on the end of the newest message, fresh each message; only what is sent changes, the chat stays as typed. Kept 5 results (Settings slider). Phone check: ask "what's the date and time?" and a search that needs the year.
 - [x] 2026-11-06: PocketAgent can be picked as the Default digital assistant app; long-press power opens it straight to the mic listening.
 - [ ] Next build (not yet on the phone): Vision switch in the ⚙ sheet, a picture turns a switched-off vision model on, readable daily-quota (429) error with no retries, Attach to chat from the Workspace list.
 

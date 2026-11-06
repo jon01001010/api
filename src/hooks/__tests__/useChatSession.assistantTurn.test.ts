@@ -413,6 +413,44 @@ describe('useChatSession — AssistantTurn integration', () => {
     errSpy.mockRestore();
   });
 
+  it("tells the model today's date (start of the prompt) and the time (end of the newest message)", async () => {
+    palStore.pals = [];
+    chatSessionStore.sessions = [
+      {
+        id: 'session-1',
+        title: '',
+        date: '',
+        messages: [],
+        completionSettings: {},
+      } as any,
+    ];
+    chatSessionStore.activeSessionId = 'session-1';
+    const sent: any[] = [];
+    if (modelStore.context) {
+      modelStore.context.completion = jest
+        .fn()
+        .mockImplementation(async (params: any) => {
+          sent.push(params);
+          return {text: 'ok', content: 'ok'};
+        });
+    }
+    const {result} = renderHook(() =>
+      useChatSession({current: null}, textMessage.author, mockAssistant),
+    );
+    await act(async () => {
+      await result.current.handleSendPress(textMessage);
+    });
+    const messages = sent[0]?.messages ?? [];
+    expect(messages[0].role).toBe('system');
+    expect(messages[0].content).toMatch(/Today is \w+day, \d{1,2} \w+ \d{4}\./);
+    const lastUser = [...messages]
+      .reverse()
+      .find((m: any) => m.role === 'user');
+    expect(lastUser.content).toMatch(
+      /\(Sent at \d\d:\d\d, UTC[+-]\d\d:\d\d\)$/,
+    );
+  });
+
   it('never runs a switched-off tool, even when the assistant lists it and the model calls it', async () => {
     const execute = jest.fn(
       async () => ({type: 'text', summary: 'alarm set'}) as TalentResult,
