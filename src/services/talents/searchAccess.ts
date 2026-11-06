@@ -11,6 +11,11 @@ export interface SearchAccess {
    * Consent is enforced here, not just in the Settings UI.
    */
   canSearch(): boolean;
+  /**
+   * True when the user has consented to web access, key or not. Reading a
+   * page the phone fetches itself needs no provider key.
+   */
+  canRead?(): boolean;
   getResultCount(): number;
   readWithDefaultReader(
     url: string,

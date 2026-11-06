@@ -8,7 +8,12 @@ import type {SearchAccess} from './searchAccess';
 import type {PageContent} from '../search/types';
 import {budgetPage} from '../search/searchBudget';
 import {wrapUntrusted} from './untrustedContent';
-import {allowReadUrls, extractUrls, matchReadUrl, isReadUrlAllowed} from './readUrlAllowlist';
+import {
+  allowReadUrls,
+  extractUrls,
+  matchReadUrl,
+  isReadUrlAllowed,
+} from './readUrlAllowlist';
 
 /**
  * Reject non-http(s) schemes and embedded credentials so a malicious page
@@ -68,12 +73,15 @@ export class ReadUrlEngine implements TalentEngine {
       return {type: 'error', summary, errorMessage: summary};
     }
 
-    if (!this.access.canSearch()) {
-      const provider = this.access.getActiveProvider();
+    // Reading needs the user's consent to web access; a provider key only
+    // matters for the provider's own reader. Without a key the phone reads.
+    const keyed = this.access.canSearch();
+    if (!keyed && !this.access.canRead?.()) {
       return {
         type: 'error',
-        summary: `read_url: ${provider.id} not enabled`,
-        errorMessage: `Internet search is not enabled. Accept the disclosure and set an API key for ${provider.id} in Settings → Internet Search.`,
+        summary: 'read_url: web access is not enabled',
+        errorMessage:
+          'Web access is not enabled. Tap "I understand" in Settings → Internet Search (a search key is only needed for web_search).',
       };
     }
 
@@ -89,12 +97,13 @@ export class ReadUrlEngine implements TalentEngine {
 
     let page: PageContent;
     try {
-      page = provider.read
-        ? await provider.read(targetUrl, ctx?.signal)
+      const useProvider = keyed && !!provider.read;
+      page = useProvider
+        ? await provider.read!(targetUrl, ctx?.signal)
         : await this.access.readWithDefaultReader(targetUrl, ctx?.signal);
       // A provider's reader that can't attest where it landed: read the page
       // on the phone instead, which can.
-      if (provider.read && !page?.finalUrlVerified) {
+      if (useProvider && !page?.finalUrlVerified) {
         page = await this.access.readWithDefaultReader(targetUrl, ctx?.signal);
       }
     } catch (e) {
@@ -115,7 +124,8 @@ export class ReadUrlEngine implements TalentEngine {
       isDowngrade(targetUrl, page.url) ||
       !isReadUrlAllowed(page.url)
     ) {
-      const summary = 'read_url: final destination is not allowed or could not be verified';
+      const summary =
+        'read_url: final destination is not allowed or could not be verified';
       return {type: 'error', summary, errorMessage: summary};
     }
 

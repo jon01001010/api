@@ -116,8 +116,8 @@ describe('ReadUrlEngine', () => {
     spy.mockRestore();
   });
 
-  it('returns an error result when search is not enabled', async () => {
-    const access = makeAccess({canSearch: () => false});
+  it('returns an error result when web access is not consented', async () => {
+    const access = makeAccess({canSearch: () => false, canRead: () => false});
     const result = await new ReadUrlEngine(access).execute({
       url: 'https://e.com',
     });
@@ -127,12 +127,37 @@ describe('ReadUrlEngine', () => {
     }
   });
 
+  it('reads a page the user named on the phone without a search key', async () => {
+    const readDefault = jest.fn().mockResolvedValue({
+      url: 'https://e.com/p',
+      finalUrlVerified: true,
+      text: 'page text',
+    });
+    const read = jest.fn();
+    const access = makeAccess({
+      getActiveProvider: () => ({id: 'brave', search: jest.fn(), read}),
+      canSearch: () => false,
+      canRead: () => true,
+      readWithDefaultReader: readDefault,
+    });
+    const {seedReadUrlAllowlist} = require('../readUrlAllowlist');
+    seedReadUrlAllowlist([{role: 'user', content: 'read https://e.com/p'}], []);
+    const result = await new ReadUrlEngine(access).execute({
+      url: 'https://e.com/p',
+    });
+    expect(result.type).not.toBe('error');
+    expect(readDefault).toHaveBeenCalled();
+    // The provider's own reader needs its key, so it is not used.
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it('errors when consent is absent even with a key (canSearch=false), before any fetch', async () => {
     const read = jest.fn();
     const provider: SearchProvider = {id: 'exa', search: jest.fn(), read};
     const access = makeAccess({
       getActiveProvider: () => provider,
       canSearch: () => false,
+      canRead: () => false,
     });
     const result = await new ReadUrlEngine(access).execute({
       url: 'https://e.com/p',

@@ -44,6 +44,7 @@ function createSearchAccess(): SearchAccess {
       return createSearchProvider(id, () => searchProviderStore.getKey(id));
     },
     canSearch: () => searchProviderStore.canSearch,
+    canRead: () => searchProviderStore.hasConsentedToSearch,
     getResultCount: () => searchProviderStore.resultCount,
     readWithDefaultReader,
   };
