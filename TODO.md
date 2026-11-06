@@ -267,7 +267,9 @@ Toolbox → Custom tools gets **Share as QR** on each tool and a **Scan a tool**
 
 ## Mods ecosystem (write-up only, not started)
 
-Idea 2026-11-06: let people make and share small add-ons ("mods") for the app, then maybe sell some. Start free and simple.
+Idea 2026-11-06: let people make and share small add-ons ("mods") for the app, listed on a website. Start free and simple.
+
+**Audience:** privacy-minded people, GrapheneOS and de-Googled phone users, people running models on the phone. So **no Google anywhere**: not in the site, not in the app's mod flow, not in payments.
 
 Mod types (all **data, not code**):
 
@@ -288,11 +290,19 @@ Safety rules for every mod:
 - [ ] Versioned format with a tag (`PA1:` …); the app rejects formats it doesn't know.
 - [ ] Later: signed mods (author key) and a way to report a bad one.
 
+The site:
+
+- [ ] A plain website with **lists** of mods (by type, newest, most used), each with its full contents shown, the tools it uses and a QR / download link.
+- [ ] Static pages: no Google Analytics, Fonts, reCAPTCHA, Firebase or ads; no trackers or cookies; works without JavaScript where possible. Hosted off Google (e.g. Codeberg Pages or a small VPS).
+- [ ] The app can read the same lists (one index file) to browse and install, with the same review screen. Off until the user turns it on (it's a network call).
+- [ ] Submissions by pull request or a simple form; reviewed before listing.
+
 Steps:
 
 1. [ ] **Free sharing:** QR, file and link for custom tools first, then assistants and model recipes.
-2. [ ] **Community catalog:** a public list (e.g. a GitHub repo with an index file) the app can browse; each entry still goes through the same install review.
-3. [ ] **Paid mods (maybe):** small price, the app takes a small cut. Needs Google Play billing (Play takes 15%), payouts and tax handling for makers, and a store outside Play for GrapheneOS users (e.g. Accrescent). Only worth it once step 2 has real users.
+2. [ ] **The site with lists** (above).
+3. [ ] **Paid mods (maybe):** small price, the site takes a small cut. No Google Play billing: use options this audience accepts (e.g. Liberapay / Open Collective tips, a non-Google card processor, or crypto such as Monero), plus payouts and tax handling for makers. Only worth it once the site has real users.
+4. [ ] App distribution to match: GitHub releases, F-Droid and Accrescent first; Play only if ever wanted.
 
 ## Stream large MoE models from storage (built, experiment, needs phone check)
 
