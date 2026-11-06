@@ -231,7 +231,7 @@ Not every phone has an app for every intent (e.g. no Clock app that handles `SET
 
 - "Evaluate ARTEMIS MCP integration": that is for driving a phone from a computer IDE, not for PocketAgent on the phone.
 
-## Custom tools: made and saved by you or the model (planned, after phone actions)
+## Custom tools: made and saved by you or the model (built, needs phone check)
 
 Decided 2026-11-05. Today Toolbox has tool drafts that only run as local tests; the model can neither call nor make them.
 
@@ -242,10 +242,12 @@ Two kinds of custom tool (no code execution, no new network access):
 
 Plan:
 
-- [ ] Toolbox: create / edit / delete both kinds by hand; a switch per tool to let the model use it (off by default, like every global tool).
-- [ ] Model tools `tool_save` and `tool_delete`: the model proposes a tool; you see the full definition in an approval dialog; once approved it is saved **switched off**, and you turn it on in Toolbox.
-- [ ] Checks: names can't clash with built-in tools; a shortcut may only use built-in tools (no shortcut inside a shortcut); a step limit; fill-in values are checked by the step's own tool.
-- [ ] How-to text for both kinds; tests; phone check.
+- [x] Toolbox → **Custom tools**: create / edit / delete both kinds by hand, View, a switch per tool (off by default). Editing switches a tool off. The old local-test drafts stay below, labelled.
+- [x] Model tools `tool_save` and `tool_delete`: full definition in the approval dialog; saved (or replaced) tools start **switched off**.
+- [x] Checks: names can't clash with built-ins or each other; shortcuts use built-in tools only (no tool_save / tool_delete, no custom tool inside a shortcut); at most 8 steps; fill-ins `{{name}}` become required arguments.
+- [x] **Changed from the plan:** a shortcut asks **once per run**, showing every step, instead of once per step. Android stops a background app from asking or opening apps, so after a step that opens another app nothing further could run. Inside an approved shortcut, phone actions don't ask again, timers/alarms stay in the background, and a step that opens another app must be the last one. The run stops at the first failure and says what was done.
+- [x] How-to text for both kinds; tests.
+- [ ] Phone check: make "morning" (alarm with `{{hour}}` + open an app) in Toolbox, turn it on, ask "run morning at 7"; ask a model to save a packing list as instructions, approve, turn it on, ask for it back; delete both.
 
 ## Voice assistant: wake word and voice control (phase 1 built, needs phone check)
 

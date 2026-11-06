@@ -370,6 +370,23 @@ describe('text into apps', () => {
     expect(perform).toHaveBeenCalledWith('share_text', {text: 'note'});
   });
 
+  it('search_in_app opens an app that takes no outside search, words copied', async () => {
+    const Clipboard = require('@react-native-clipboard/clipboard');
+    (listInstalledApps as jest.Mock).mockResolvedValue([
+      {label: 'Files', package: 'com.google.android.documentsui'},
+    ]);
+    perform
+      .mockResolvedValueOnce({ok: false, reason: 'no_app'})
+      .mockResolvedValueOnce({ok: true});
+    const result = await run('search_in_app', {app: 'files', query: 'neos'});
+    expect(perform).toHaveBeenLastCalledWith('open_app', {
+      package: 'com.google.android.documentsui',
+    });
+    expect(Clipboard.setString).toHaveBeenCalledWith('neos');
+    expect(result.summary).toMatch(/opened instead and "neos" was copied/);
+    expect(approve).toHaveBeenCalledTimes(1);
+  });
+
   it('share_text says plainly when the app cannot take shared text', async () => {
     perform.mockResolvedValue({ok: false, reason: 'no_app'});
     const result = await run('share_text', {app: 'YouTube', text: 'hi'});

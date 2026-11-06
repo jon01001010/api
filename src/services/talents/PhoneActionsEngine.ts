@@ -6,6 +6,7 @@
  * PhoneActionsModule. Nothing calls, sends or pays by itself.
  */
 import {AppState} from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 
 import {requestFileApproval} from './fileApprovalGate';
 import type {
@@ -35,6 +36,17 @@ interface Plan {
   done: string;
   /** For a failure message: "set a timer". */
   what: string;
+  /**
+   * If no app handles `action`, do this instead (already approved as part
+   * of the same request), e.g. open the app when it can't be searched.
+   */
+  fallback?: {
+    action: PhoneAction;
+    args: Record<string, unknown>;
+    /** Text put on the clipboard for the user to paste. */
+    clipboard?: string;
+    done: string;
+  };
 }
 
 type Planner = (
@@ -719,7 +731,15 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
         args: {query, package: app.package},
         ask: `Search ${app.label} for "${query}"?`,
         done: `Opened ${app.label} searching for ${query}.`,
-        what: `search in ${app.label} (it may not support search from other apps)`,
+        what: `search in ${app.label}`,
+        // Many apps (Files, most notes apps) take no search from outside:
+        // open the app and leave the words on the clipboard to paste.
+        fallback: {
+          action: 'open_app',
+          args: {package: app.package},
+          clipboard: query,
+          done: `${app.label} can't be searched from another app, so it was opened instead and "${query}" was copied: the user pastes it into ${app.label}'s search.`,
+        },
       };
     },
   },
@@ -800,7 +820,18 @@ export class PhoneActionsEngine implements TalentEngine {
       quiet && (plan.action === 'set_timer' || plan.action === 'set_alarm')
         ? {...plan.args, skipUi: true}
         : plan.args;
-    const result = await performPhoneAction(plan.action, sendArgs);
+    let result = await performPhoneAction(plan.action, sendArgs);
+    if (!result.ok && result.reason === 'no_app' && plan.fallback) {
+      const fb = plan.fallback;
+      result = await performPhoneAction(fb.action, fb.args);
+      if (result.ok) {
+        if (fb.clipboard) {
+          Clipboard.setString(fb.clipboard);
+        }
+        recentlyDone.set(key, Date.now());
+        return {type: 'text', summary: `Done: ${fb.done} ${STOP}`};
+      }
+    }
     if (!result.ok) {
       const why = describeFailure(result, plan.what);
       return {
