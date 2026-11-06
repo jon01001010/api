@@ -800,8 +800,10 @@ export const useChatSession = (
     }
     const palTalents = [...new Set([
       ...(pal?.pact?.talents ?? []).map(t => t.name),
+      // Only tools the user switched on (or the assistant declares). Memory
+      // tools too: the memory itself is always in the prompt below, but the
+      // tools that read and change it are sent only when turned on.
       ...globalNames,
-      'memory_get', 'memory_replace', 'memory_history', 'memory_restore',
     ])];
     cleanCompletionParams.tools = deriveToolSchemas(palTalents);
     let memoryContext = '';

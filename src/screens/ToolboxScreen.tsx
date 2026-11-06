@@ -8,6 +8,8 @@ import {safeMath} from '../services/talents/safeMath';
 import {isBackgroundInferenceEnabled, setBackgroundInferenceEnabled} from '../utils/backgroundInference';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
 import {PHONE_TOOL_NAMES} from '../services/talents/PhoneActionsEngine';
+
+const MEMORY_TOOL_NAMES = ['memory_get', 'memory_replace', 'memory_history', 'memory_restore'];
 import {CustomToolEngine} from '../services/talents/customTools';
 import {CustomToolsSection} from './CustomToolsSection';
 import {useTheme} from '../hooks';
@@ -55,7 +57,10 @@ export const ToolboxScreen: React.FC = () => {
   useEffect(() => {isBackgroundInferenceEnabled().then(setBackgroundEnabled).catch(() => {});}, []);
   const [showPhoneTools, setShowPhoneTools] = useState(false);
   const phoneTools = tools.filter(t => PHONE_TOOL_NAMES.includes(t.name));
-  const otherTools = tools.filter(t => !PHONE_TOOL_NAMES.includes(t.name));
+  const memoryTools = tools.filter(t => MEMORY_TOOL_NAMES.includes(t.name));
+  const otherTools = tools.filter(
+    t => !PHONE_TOOL_NAMES.includes(t.name) && !MEMORY_TOOL_NAMES.includes(t.name),
+  );
   const toggleGroup = async (names: string[], enabled: boolean) => {
     if (!settingsLoaded || savingTool) return;
     const rest = enabledTools.filter(n => !names.includes(n));
@@ -193,6 +198,22 @@ export const ToolboxScreen: React.FC = () => {
           onToggle={toggleBuiltIn}
           errorColor={errorColor}
         />
+        {/* Memory tools as one group: the memory is always in the prompt; these
+            let the model read history, propose changes and restore. */}
+        <Card mode="outlined" testID="toolbox-memory-tools">
+          <Card.Content>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8}}>
+              <Text variant="titleMedium" style={{flex: 1}}>Memory tools ({memoryTools.length})</Text>
+              <Switch
+                testID="toolbox-toggle-memory-tools"
+                disabled={!settingsLoaded || savingTool !== null}
+                value={memoryTools.length > 0 && memoryTools.every(t => enabledTools.includes(t.name))}
+                onValueChange={enabled => toggleGroup(memoryTools.map(t => t.name), enabled)}
+              />
+            </View>
+            <Text variant="bodyMedium">Let the model read its memory's history, propose changes (you approve each) and restore an older version. Your memory is always given to the model; these switches only decide whether it can change it.</Text>
+          </Card.Content>
+        </Card>
         {/* Phone actions as one group: a switch for all, each one on request. */}
         <Card mode="outlined" testID="toolbox-phone-actions">
           <Card.Content>
