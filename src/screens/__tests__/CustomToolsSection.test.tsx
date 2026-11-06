@@ -53,6 +53,9 @@ describe('custom tool editor text boxes', () => {
       />,
     );
     fireEvent.press(getByTestId('custom-tool-new'));
+    expect(getByTestId('custom-tool-no-timer').props.children).toMatch(
+      /Nothing runs on a timer: for an alarm, use Shortcut with set_alarm/,
+    );
     // The boxes keep their own text inside the dialog (the screen never
     // writes it back while typing, which arrived late through the dialog
     // layer and moved the cursor); saving still gets every box's text.

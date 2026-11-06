@@ -277,9 +277,10 @@ export class CustomToolEngine implements TalentEngine {
       function: {
         name: tool.name,
         description:
+          // Plain words for small models: what calling it does, then when.
           tool.kind === 'instructions'
-            ? `${tool.description} (Saved instructions: call it to read them, then follow them.)`
-            : `${tool.description} (Shortcut: runs ${tool.steps.map(s => s.tool).join(' → ')} after one approval.)`,
+            ? `Saved instructions "${tool.name}". Call this tool with no arguments to get the steps, then do them yourself with your other tools. Use it when: ${tool.description}`
+            : `Shortcut "${tool.name}": runs ${tool.steps.map(s => s.tool).join(' → ')} by itself after one approval; don't do these steps yourself. Use it when: ${tool.description}`,
         parameters: {
           type: 'object',
           properties: Object.fromEntries(

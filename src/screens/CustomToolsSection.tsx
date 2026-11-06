@@ -253,6 +253,7 @@ export const CustomToolsSection: React.FC<Props> = ({
                 key={`${session}-description`}
                 testID="custom-tool-description"
                 label="When should the model use it?"
+                placeholder="e.g. when I say good morning"
                 mode="outlined"
                 multiline
                 defaultValue={editing?.description ?? ''}
@@ -261,6 +262,11 @@ export const CustomToolsSection: React.FC<Props> = ({
                 }
                 style={{marginTop: 6}}
               />
+              <Text variant="bodySmall" testID="custom-tool-no-timer">
+                {editing?.kind === 'shortcut'
+                  ? 'Runs when you ask for it, never on a timer. An alarm step sets the alarm; it rings at its time.'
+                  : 'Instructions are text the model reads and then follows with your other tools. Nothing runs on a timer: for an alarm, use Shortcut with set_alarm.'}
+              </Text>
               {editing?.kind === 'shortcut' ? (
                 <>
                   <TextInput

@@ -256,7 +256,7 @@ Plan:
 - [x] How-to text for both kinds; tests.
 - [x] 2026-11-06: an Instructions tool "morning" ("Open Claude") works: "Run morning" read it, then open_app opened Claude (Gemini 3.1 Flash Lite; the first try it said it couldn't read the instructions).
 - [x] Fixed: typing in the custom tool editor moved the cursor (backspace deleted the wrong letter). The dialog layer delivered the screen's copy of the text late; the boxes now keep their own text.
-- [ ] Proposed: clearer editor wording ("When should the model use it? e.g. when I say good morning"; "Tools never run on a timer; for an alarm use Shortcut with set_alarm") and a plainer description for the model.
+- [x] Done: clearer editor wording ("When should the model use it? e.g. when I say good morning"; "Tools never run on a timer; for an alarm use Shortcut with set_alarm") and a plainer description for the model.
 - [ ] Phone check: make "morning" (alarm with `{{hour}}` + open an app) in Toolbox, turn it on, ask "run morning at 7"; ask a model to save a packing list as instructions, approve, turn it on, ask for it back; delete both.
 
 ### Share and scan tools by QR (planned, not started)

@@ -178,6 +178,10 @@ describe('running custom tools', () => {
       instructions: 'Socks, charger, passport.',
     });
     const engine = new CustomToolEngine(tool as any);
+    // Plain words for small models: what calling it does, then when.
+    expect(engine.toToolDefinition().function.description).toBe(
+      'Saved instructions "packing_list". Call this tool with no arguments to get the steps, then do them yourself with your other tools. Use it when: What to pack',
+    );
     expect(await engine.execute({})).toEqual({
       type: 'text',
       summary: 'Socks, charger, passport.',
@@ -198,6 +202,9 @@ describe('running custom tools', () => {
     expect(engine.toToolDefinition().function.parameters.required).toEqual([
       'hour',
     ]);
+    expect(engine.toToolDefinition().function.description).toBe(
+      'Shortcut "morning": runs set_alarm → open_app by itself after one approval; don\'t do these steps yourself. Use it when: Start the day',
+    );
     const result = await engine.execute({hour: 7});
     expect(approve).toHaveBeenCalledTimes(1);
     expect(approve.mock.calls[0][0].content).toBe(
