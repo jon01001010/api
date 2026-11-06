@@ -140,7 +140,7 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
     description:
       "Set a countdown timer in the phone's Clock app. " +
       'How: give the length as `minutes` and/or `seconds` (1 second to 24 hours) and an optional `label`. ' +
-      'Example: "tea timer for 4 minutes" → {"minutes": 4, "label": "Tea"}. The user approves it first.',
+      'Use only the length and label the user gave. The user approves it first.',
     parameters: {
       type: 'object',
       properties: {
@@ -269,19 +269,20 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
   open_app: {
     description:
       'Open an app installed on the phone, by its name. ' +
-      'How: `name` is the app name as the user says it ("Spotify", "maps"). ' +
+      'Use this when the user just wants an app opened ("open maps", "open the camera app"). ' +
+      'How: `name` is the app name exactly as the user said it. ' +
       'If several apps match, you get their names: ask the user which one, then call again with that exact name.',
     parameters: {
       type: 'object',
       properties: {
-        name: {type: 'string', description: 'The app name, e.g. "Spotify".'},
+        name: {type: 'string', description: 'The app name the user said.'},
       },
       required: ['name'],
     },
     plan: async args => {
       const name = text(args.name, 80);
       if (!name) {
-        return 'Give the app `name`, e.g. "Spotify".';
+        return 'Give the app `name` the user said.';
       }
       const apps = await listInstalledApps();
       if (!apps.length) {
@@ -309,7 +310,8 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
   navigate_to: {
     description:
       'Show a place or route in the maps app. ' +
-      'How: `destination` is an address or place name ("Eiffel Tower", "12 High St, Leeds", "nearest pharmacy"). ' +
+      'Only when the user names a place to go or see; to just open the maps app, use open_app instead. ' +
+      'How: `destination` is the address or place exactly as the user said it; never invent one. ' +
       'The maps app opens; the user starts the route there.',
     parameters: {
       type: 'object',
@@ -338,7 +340,8 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
   play_music: {
     description:
       "Play music in the phone's music app by searching for it. " +
-      'How: `query` is a song, artist, album or playlist ("Bohemian Rhapsody", "Taylor Swift", "my workout playlist"). ' +
+      'Only when the user names something to play; to just open a music app, use open_app. ' +
+      'How: `query` is the song, artist, album or playlist exactly as the user said it. ' +
       'Which app plays it depends on the phone.',
     parameters: {
       type: 'object',

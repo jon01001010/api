@@ -43,6 +43,16 @@ describe('phone action tools', () => {
     }
   });
 
+  it('gives no real places or songs as examples (small models copy them)', () => {
+    const all = PHONE_TOOL_NAMES.map(
+      n => new PhoneActionsEngine(n).toToolDefinition().function.description,
+    ).join(' ');
+    expect(all).not.toMatch(/Eiffel|Spotify|Bohemian|Leeds|Taylor Swift|Tea"/);
+    // "Open maps" is open_app, not a trip somewhere.
+    const nav = new PhoneActionsEngine('navigate_to').toToolDefinition();
+    expect(nav.function.description).toMatch(/use open_app/);
+  });
+
   it('formats durations for people', () => {
     expect(formatDuration(900)).toBe('15 min');
     expect(formatDuration(5400)).toBe('1 h 30 min');
