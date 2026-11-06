@@ -28,6 +28,10 @@ export const mockUiStore = {
   l10n: l10n.en,
   setValue: jest.fn(),
   displayMemUsage: false,
+  showDevSettings: false,
+  setShowDevSettings: jest.fn(function (value: boolean) {
+    mockUiStore.showDevSettings = value;
+  }),
   setAutoNavigateToChat: jest.fn(),
   setThemeStyle: jest.fn(),
   setPhosphorTint: jest.fn(),

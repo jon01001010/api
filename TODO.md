@@ -265,6 +265,15 @@ Toolbox → Custom tools gets **Share as QR** on each tool and a **Scan a tool**
 - [ ] Never run anything from a scan; a QR is data only (instructions or a shortcut of built-in tools).
 - [ ] Later, optional: the colour "mcode" from QR2D (8 colours, Reed–Solomon) for denser codes; only if plain QR is too small in practice.
 
+## Developer settings switch (built, needs phone check)
+
+Settings ends with **Show developer settings** (off by default, remembered). Off: what most people use. On: everything as before.
+
+- [x] Hidden while off: model loading options (GPU layers, threads, batch, memory cache, speculative, mmap/mlock), Memory (stream large models), local API sharing, old export, keep several models loaded, Benchmark and Hardware links, Toolbox test drafts and "Duplicate to draft".
+- [x] Hiding doesn't change a setting: e.g. keep-models-loaded stays as set.
+- [x] Dev Tools in the menu stays debug-builds only (its screen only exists there).
+- [ ] Phone check: switch off → short Settings; on → everything as before; reopen the app, the choice is kept.
+
 ## Mods ecosystem (write-up only, not started)
 
 Idea 2026-11-06: let people make and share small add-ons ("mods") for the app, listed on a website. Start free and simple.

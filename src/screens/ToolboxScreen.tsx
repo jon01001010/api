@@ -16,6 +16,8 @@ import {useTheme} from '../hooks';
 import {useIsFocused} from '@react-navigation/native';
 import {MemorySection} from '../components/PalsSheets/MemorySection';
 import {themeColor} from '../theme/phosphor';
+import {observer} from 'mobx-react';
+import {uiStore} from '../store';
 
 type Draft = {id: string; name: string; description: string; parameters: string; kind?: 'text_uppercase' | 'text_lowercase' | 'text_trim' | 'calculator' | 'http_get'};
 const STORAGE_KEY = '@pocketagent/toolbox/drafts/v1';
@@ -25,7 +27,7 @@ let draftCounter = 0;
  * Toolbox editor prototype: custom tool definitions are local screen drafts,
  * NOT executable plugins. Drafts are persisted on-device. Built-ins are protected.
  */
-export const ToolboxScreen: React.FC = () => {
+const ToolboxScreenBody: React.FC = () => {
   const tools = useMemo(() => {
     registerDefaultTalents();
     // Custom tools have their own section.
@@ -247,28 +249,33 @@ export const ToolboxScreen: React.FC = () => {
                 <Switch testID={'toolbox-toggle-' + tool.name} disabled={!settingsLoaded || savingTool !== null} value={enabledTools.includes(tool.name)} onValueChange={enabled => toggleBuiltIn(tool.name, enabled)} />
               </View>
               <Text variant="bodyMedium">{tool.description}</Text>
-              <Button onPress={() => newDraft(tool)}>Duplicate to draft</Button>
+              {uiStore.showDevSettings && <Button onPress={() => newDraft(tool)}>Duplicate to draft</Button>}
             </Card.Content>
           </Card>
         ))}
-        <Text variant="titleSmall">Test drafts (local tests only; the model can't call these: use Custom tools above)</Text>
-        <Button mode="outlined" disabled={!loaded} onPress={() => newDraft()}>Create test draft</Button>
-        {drafts.map(draft => (
-          <Card key={draft.id} mode="outlined">
-            <Card.Content>
-              <Text variant="titleMedium">{draft.name}</Text>
-              <Chip compact>Custom · local test only</Chip>
-              <Text variant="bodyMedium">{draft.description}</Text>
-              <View style={{flexDirection: 'row', gap: 8, flexWrap: 'wrap'}}>
-                <Button onPress={() => {setEditing({...draft}); setError('');}}>Edit</Button>
-                <Button onPress={() => newDraft({name: draft.name, description: draft.description, parameters: draft.parameters})}>Duplicate</Button>
-                <Button onPress={() => setDrafts(previous => previous.filter(t => t.id !== draft.id))}>Delete</Button>
-                <Button onPress={() => {setTestDraft(draft); setTestOutput(''); setNetworkConsent(false); setTestInput(draft.kind === 'http_get' ? 'https://api.github.com/zen' : '  Hello PocketAgent  ');}}>Test</Button>
-              </View>
-            </Card.Content>
-          </Card>
-        ))}
-        <Text variant="bodySmall">Drafts are stored on this device. Text tests run only when you tap Test. Agent execution, file access and network permissions are not enabled.</Text>
+        {/* Test drafts are a developer setting (Settings → Show developer settings). */}
+        {uiStore.showDevSettings && (
+          <>
+          <Text variant="titleSmall">Test drafts (local tests only; the model can't call these: use Custom tools above)</Text>
+          <Button mode="outlined" disabled={!loaded} onPress={() => newDraft()}>Create test draft</Button>
+          {drafts.map(draft => (
+            <Card key={draft.id} mode="outlined">
+              <Card.Content>
+                <Text variant="titleMedium">{draft.name}</Text>
+                <Chip compact>Custom · local test only</Chip>
+                <Text variant="bodyMedium">{draft.description}</Text>
+                <View style={{flexDirection: 'row', gap: 8, flexWrap: 'wrap'}}>
+                  <Button onPress={() => {setEditing({...draft}); setError('');}}>Edit</Button>
+                  <Button onPress={() => newDraft({name: draft.name, description: draft.description, parameters: draft.parameters})}>Duplicate</Button>
+                  <Button onPress={() => setDrafts(previous => previous.filter(t => t.id !== draft.id))}>Delete</Button>
+                  <Button onPress={() => {setTestDraft(draft); setTestOutput(''); setNetworkConsent(false); setTestInput(draft.kind === 'http_get' ? 'https://api.github.com/zen' : '  Hello PocketAgent  ');}}>Test</Button>
+                </View>
+              </Card.Content>
+            </Card>
+          ))}
+          <Text variant="bodySmall">Drafts are stored on this device. Text tests run only when you tap Test. Agent execution, file access and network permissions are not enabled.</Text>
+          </>
+        )}
       </ScrollView>
       <Portal>
         <Dialog visible={editing !== null} onDismiss={() => setEditing(null)}>
@@ -355,3 +362,6 @@ export const ToolboxScreen: React.FC = () => {
     </>
   );
 };
+
+// observer: the test drafts follow Settings → Show developer settings.
+export const ToolboxScreen = observer(ToolboxScreenBody);

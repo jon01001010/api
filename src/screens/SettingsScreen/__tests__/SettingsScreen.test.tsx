@@ -17,39 +17,43 @@ import {l10n} from '../../../locales';
 
 jest.useFakeTimers();
 
-// Advanced settings are folded away on screen; these tests cover them, so
-// each render opens the Advanced section first.
+// Most settings tests cover developer settings, so each render turns
+// "Show developer settings" on first; the tests below check it off.
 const render = (ui: React.ReactElement, options: any = {}) => {
-  const result = baseRender(ui, {withBottomSheetProvider: true, ...options});
-  const toggle = result.queryByTestId('settings-advanced-toggle');
-  if (toggle) {
-    fireEvent.press(toggle);
-  }
-  return result;
+  (uiStore as any).showDevSettings = true;
+  return baseRender(ui, {withBottomSheetProvider: true, ...options});
 };
 
 describe('SettingsScreen', () => {
-  it('folds the advanced settings away until opened', () => {
-    const {queryByTestId, getByTestId} = baseRender(<SettingsScreen />, {
+  it('hides developer settings until the switch is on', () => {
+    (uiStore as any).showDevSettings = false;
+    const opts = {
       withBottomSheetProvider: true,
       withSafeArea: true,
       withNavigation: true,
-    });
+    };
+    const {queryByTestId, getByTestId, unmount} = baseRender(
+      <SettingsScreen />,
+      opts,
+    );
     expect(queryByTestId('use-mmap-switch')).toBeNull();
-    fireEvent.press(getByTestId('settings-advanced-toggle'));
-    expect(getByTestId('use-mmap-switch')).toBeTruthy();
-  });
-
-  it('links to the screens moved out of the side menu', () => {
-    const {getByTestId} = baseRender(<SettingsScreen />, {
-      withBottomSheetProvider: true,
-      withSafeArea: true,
-      withNavigation: true,
-    });
+    expect(queryByTestId('keep-models-loaded-switch')).toBeNull();
+    expect(queryByTestId('settings-link-Benchmark')).toBeNull();
+    expect(queryByTestId('settings-link-PocketAgent Hardware')).toBeNull();
     expect(getByTestId('settings-link-Toolbox')).toBeTruthy();
-    expect(getByTestId('settings-link-PocketAgent Hardware')).toBeTruthy();
-    expect(getByTestId('settings-link-Benchmark')).toBeTruthy();
     expect(getByTestId('settings-link-App Info')).toBeTruthy();
+
+    fireEvent(getByTestId('dev-settings-switch'), 'valueChange', true);
+    expect(uiStore.setShowDevSettings).toHaveBeenCalledWith(true);
+    // The mock store isn't observable, so render again to see the change.
+    unmount();
+    const shown = baseRender(<SettingsScreen />, opts);
+    expect(shown.getByTestId('use-mmap-switch')).toBeTruthy();
+    expect(shown.getByTestId('keep-models-loaded-switch')).toBeTruthy();
+    expect(shown.getByTestId('settings-link-Benchmark')).toBeTruthy();
+    expect(
+      shown.getByTestId('settings-link-PocketAgent Hardware'),
+    ).toBeTruthy();
   });
 
   beforeEach(() => {

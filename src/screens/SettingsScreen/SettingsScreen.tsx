@@ -99,7 +99,6 @@ export const SettingsScreen: React.FC = observer(() => {
   const styles = createStyles(theme);
   const isFocused = useIsFocused();
   const [crashReportsOpen, setCrashReportsOpen] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const crashReports = useCrashReports(crashReportsOpen);
   const [contextSize, setContextSize] = useState(
     modelStore.contextInitParams.n_ctx.toString(),
@@ -625,55 +624,64 @@ export const SettingsScreen: React.FC = observer(() => {
                 </View>
                 <Divider />
 
-                {/* Multi-model: keep recently used models loaded (off by default). */}
-                <View style={styles.switchContainer}>
-                  <View style={styles.textContainer}>
-                    <Text variant="titleMedium" style={styles.textLabel}>
-                      {l10n.settings.multiModel.title}
-                    </Text>
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {l10n.settings.multiModel.description}
-                    </Text>
-                  </View>
-                  <Switch
-                    testID="keep-models-loaded-switch"
-                    value={modelStore.keepModelsLoaded}
-                    onValueChange={value =>
-                      modelStore.setKeepModelsLoaded(value)
-                    }
-                  />
-                </View>
-                {modelStore.keepModelsLoaded && (
-                  <View style={styles.settingItemContainer}>
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {l10n.settings.multiModel.howMany}
-                    </Text>
-                    <SegmentedButtons
-                      value={String(modelStore.maxLoadedModels)}
-                      onValueChange={value =>
-                        modelStore.setMaxLoadedModels(Number(value))
-                      }
-                      buttons={['2', '3', '4'].map(n => ({
-                        value: n,
-                        label: n,
-                        testID: `max-loaded-${n}`,
-                      }))}
-                    />
-                    {modelStore.parkedModels.length > 0 && (
-                      <Button
-                        mode="text"
-                        testID="unload-kept-models"
-                        onPress={() =>
-                          modelStore.releaseParkedModels().catch(() => {})
-                        }>
-                        {t(l10n.settings.multiModel.unloadKept, {
-                          count: modelStore.parkedModels.length,
-                        })}
-                      </Button>
+                {/* Multi-model: keep recently used models loaded (off by default;
+                    a developer setting). */}
+                {uiStore.showDevSettings && (
+                  <>
+                    <View style={styles.switchContainer}>
+                      <View style={styles.textContainer}>
+                        <Text variant="titleMedium" style={styles.textLabel}>
+                          {l10n.settings.multiModel.title}
+                        </Text>
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {l10n.settings.multiModel.description}
+                        </Text>
+                      </View>
+                      <Switch
+                        testID="keep-models-loaded-switch"
+                        value={modelStore.keepModelsLoaded}
+                        onValueChange={value =>
+                          modelStore.setKeepModelsLoaded(value)
+                        }
+                      />
+                    </View>
+                    {modelStore.keepModelsLoaded && (
+                      <View style={styles.settingItemContainer}>
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {l10n.settings.multiModel.howMany}
+                        </Text>
+                        <SegmentedButtons
+                          value={String(modelStore.maxLoadedModels)}
+                          onValueChange={value =>
+                            modelStore.setMaxLoadedModels(Number(value))
+                          }
+                          buttons={['2', '3', '4'].map(n => ({
+                            value: n,
+                            label: n,
+                            testID: `max-loaded-${n}`,
+                          }))}
+                        />
+                        {modelStore.parkedModels.length > 0 && (
+                          <Button
+                            mode="text"
+                            testID="unload-kept-models"
+                            onPress={() =>
+                              modelStore.releaseParkedModels().catch(() => {})
+                            }>
+                            {t(l10n.settings.multiModel.unloadKept, {
+                              count: modelStore.parkedModels.length,
+                            })}
+                          </Button>
+                        )}
+                      </View>
                     )}
-                  </View>
+                    <Divider />
+                  </>
                 )}
-                <Divider />
 
                 {/* Auto Navigate to Chat */}
                 <View style={styles.switchContainer}>
@@ -919,20 +927,29 @@ export const SettingsScreen: React.FC = observer(() => {
             </Card.Content>
           </Card>
 
-          {/* Advanced: expert model, memory and sharing options, folded away */}
-          <List.Item
-            testID="settings-advanced-toggle"
-            title="Advanced"
-            description="Performance, memory, local API sharing, legacy export"
-            onPress={() => setShowAdvanced(v => !v)}
-            right={props => (
-              <List.Icon
-                {...props}
-                icon={showAdvanced ? 'chevron-up' : 'chevron-down'}
-              />
-            )}
-          />
-          {showAdvanced && (
+          {/* Developer settings: one switch, off by default. Off shows what
+              most people use; on shows the expert options below as before. */}
+          <Card elevation={0} style={styles.card} testID="dev-settings-card">
+            <Card.Content>
+              <View style={styles.switchContainer}>
+                <View style={styles.textContainer}>
+                  <Text variant="titleMedium" style={styles.textLabel}>
+                    Show developer settings
+                  </Text>
+                  <Text variant="labelSmall" style={styles.textDescription}>
+                    Performance, memory, keeping several models loaded, local
+                    API sharing, benchmark, hardware, test drafts, old export
+                  </Text>
+                </View>
+                <Switch
+                  testID="dev-settings-switch"
+                  value={uiStore.showDevSettings}
+                  onValueChange={value => uiStore.setShowDevSettings(value)}
+                />
+              </View>
+            </Card.Content>
+          </Card>
+          {uiStore.showDevSettings && (
             <>
               <LocalApiCard />
               {/* Model Initialization Settings */}

@@ -62,6 +62,9 @@ export class UIStore {
 
   displayMemUsage = false;
 
+  /** Settings → "Show developer settings": expert options stay hidden until on. */
+  showDevSettings = false;
+
   iOSBackgroundDownloading = true;
 
   benchmarkShareDialog = {
@@ -167,6 +170,7 @@ export class UIStore {
         'phosphorTint',
         'autoNavigatetoChat',
         'displayMemUsage',
+        'showDevSettings',
         'benchmarkShareDialog',
         '_language',
         'toolCompatWarnedModels',
@@ -236,6 +240,12 @@ export class UIStore {
   setDisplayMemUsage(value: boolean) {
     runInAction(() => {
       this.displayMemUsage = value;
+    });
+  }
+
+  setShowDevSettings(value: boolean) {
+    runInAction(() => {
+      this.showDevSettings = value;
     });
   }
 

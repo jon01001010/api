@@ -44,3 +44,22 @@ describe('Toolbox: phone actions group', () => {
     expect(getByTestId('toolbox-toggle-set_timer')).toBeTruthy();
   });
 });
+
+describe('Toolbox: test drafts are a developer setting', () => {
+  const {uiStore} = require('../../store');
+  afterEach(() => {
+    uiStore.showDevSettings = false;
+  });
+
+  it('hides test drafts while developer settings are off', () => {
+    uiStore.showDevSettings = false;
+    const {queryByText} = render(<ToolboxScreen />, {withNavigation: true});
+    expect(queryByText('Create test draft')).toBeNull();
+  });
+
+  it('shows test drafts when developer settings are on', () => {
+    uiStore.showDevSettings = true;
+    const {getByText} = render(<ToolboxScreen />, {withNavigation: true});
+    expect(getByText('Create test draft')).toBeTruthy();
+  });
+});
