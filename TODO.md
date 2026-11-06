@@ -312,7 +312,11 @@ What exists (checked 2026-11-06):
 - Usual practice today: train on a PC or the cloud, then run the adapter on the phone.
 
 Plan (each step on its own; ask before each):
-1. [ ] **Data the user picks, never everything by default:** chats in PocketAgent, memory, workspace files; later, with a clear opt-in per source, exported messages or notes. A preview of every example before training; easy to remove items.
+1. [ ] **Data the user picks, never everything by default.** Order decided 2026-11-06, each source its own opt-in:
+   1. **Contacts:** names, nicknames, relationships the user adds (e.g. "Mack Attack = brother"). Uses READ_CONTACTS, which the app already has for name lookup; reading for training is a separate, clearly worded opt-in.
+   2. **Text conversations (SMS/MMS):** the user's own writing style and who they talk to. Needs READ_SMS (a new permission: update `SECURITY.md` and the permission test on purpose). Google Play only allows READ_SMS for default SMS apps; fine for GitHub / F-Droid / Accrescent builds, the main audience. Pick conversations one by one; never all by default.
+   3. **Later: files and photos.** Files through the Android file picker (no storage permission); photos only after picking, captioned locally by a vision model first.
+   Also usable without any permission: PocketAgent chats, memory, workspace files. A preview of every example before training; easy to remove items; the sources list shows exactly what was read.
 2. [ ] **Run adapters now:** load a LoRA (.gguf) on top of a local model (llama.rn supports it); switch per assistant. This also lets users bring adapters trained on a PC.
 3. [ ] **Train on a PC first (fallback):** export the chosen examples as a dataset file; a short guide/script to train a LoRA for the same base model; copy the adapter back. Nothing uploaded by the app.
 4. [ ] **Train on the phone (experiment):** when on-device training is in llama.cpp (or via the QVAC fork), small rank (8–16), 0.8B–2B base, only while charging and cool, pausable, with a progress screen. Measure time and heat on the 2023 Razr first.
@@ -321,7 +325,7 @@ Plan (each step on its own; ask before each):
 Privacy and safety:
 - [ ] Training data and adapters stay in the app's private storage; never sent anywhere; excluded from cloud backups.
 - [ ] An adapter is personal data: sharing it as a mod is blocked by default (it can leak what it was trained on).
-- [ ] No contacts, messages or photos are read without a per-source opt-in, and READ_CONTACTS stays limited to name lookup.
+- [ ] No contacts, messages or photos are read without a per-source opt-in; each source can be switched off and its examples deleted. Messages from other people are training data about them too: show that in the opt-in.
 
 ## Mods ecosystem (write-up only, not started)
 
