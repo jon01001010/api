@@ -35,6 +35,7 @@ class MainActivity : ReactActivity() {
       fixExternalDisplayDensity()
 
       WindowCompat.enableEdgeToEdge(window)  // enable E2E pre-Android 15
+      noteAssist(intent)
     // Optional: fully transparent nav bar (can reduce contrast on 3-button nav)
     // window.isNavigationBarContrastEnforced = false
   }
@@ -53,6 +54,15 @@ class MainActivity : ReactActivity() {
   override fun onNewIntent(intent: Intent) {
       super.onNewIntent(intent)
       setIntent(intent)
+      noteAssist(intent)
+  }
+
+  /** Opened as the phone's assistant: JS starts listening (PhoneActionsModule). */
+  private fun noteAssist(intent: Intent?) {
+      val action = intent?.action ?: return
+      if (action == Intent.ACTION_ASSIST || action == Intent.ACTION_VOICE_COMMAND) {
+          PhoneActionsModule.onAssistLaunch()
+      }
   }
 
   /**

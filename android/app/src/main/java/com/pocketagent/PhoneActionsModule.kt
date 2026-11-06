@@ -33,6 +33,49 @@ class PhoneActionsModule(private val context: ReactApplicationContext) :
     ReactContextBaseJavaModule(context) {
     override fun getName() = "PhoneActions"
 
+    override fun initialize() {
+        super.initialize()
+        instance = this
+    }
+
+    override fun invalidate() {
+        if (instance === this) instance = null
+        super.invalidate()
+    }
+
+    companion object {
+        @Volatile private var instance: PhoneActionsModule? = null
+        @Volatile private var assistPending = false
+
+        /** MainActivity was opened as the assistant (long-press power, …). */
+        fun onAssistLaunch() {
+            assistPending = true
+            instance?.emitAssist()
+        }
+    }
+
+    private fun emitAssist() {
+        try {
+            if (context.hasActiveReactInstance()) {
+                context
+                    .getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    .emit("PhoneActionsAssist", null)
+            }
+        } catch (_: Exception) {
+            // JS will pick it up with takeAssistLaunch()
+        }
+    }
+
+    @ReactMethod fun addListener(eventName: String) {}
+    @ReactMethod fun removeListeners(count: Int) {}
+
+    /** True once after an assistant launch (covers a cold start). */
+    @ReactMethod fun takeAssistLaunch(promise: Promise) {
+        val was = assistPending
+        assistPending = false
+        promise.resolve(was)
+    }
+
     /** Settings pages a model may open (read-only screens; the user acts). */
     private val settingsPages = mapOf(
         "main" to Settings.ACTION_SETTINGS,

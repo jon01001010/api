@@ -1,4 +1,5 @@
 import React, {useContext} from 'react';
+import {Linking, Platform} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {Card, List} from 'react-native-paper';
 
@@ -39,8 +40,27 @@ export const SettingsLinks: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
       icon: 'information-outline',
     },
   ];
+  // Android's own page for choosing the assistant (PocketAgent is listed
+  // there); the app can't pick itself.
+  const openAssistantSettings = () =>
+    Linking.sendIntent('android.settings.MANAGE_DEFAULT_APPS_SETTINGS').catch(
+      () =>
+        Linking.sendIntent('android.settings.VOICE_INPUT_SETTINGS').catch(() =>
+          Linking.openSettings(),
+        ),
+    );
   return (
     <Card elevation={0} style={cardStyle} testID="settings-links">
+      {Platform.OS === 'android' && (
+        <List.Item
+          testID="settings-link-assistant"
+          title="Use as your phone's assistant"
+          description="Pick PocketAgent under Digital assistant app; then long-press power opens it listening"
+          left={props => <List.Icon {...props} icon="microphone-message" />}
+          right={props => <List.Icon {...props} icon="open-in-new" />}
+          onPress={openAssistantSettings}
+        />
+      )}
       {links.map(link => (
         <List.Item
           key={link.route}

@@ -103,6 +103,17 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="pocketagent" android:host="hub" />
         </intent-filter>
+        <!-- Lets PocketAgent be chosen as the phone's assistant (Settings >
+             Apps > Default apps > Digital assistant app). Long-press power
+             or a corner swipe then opens it listening. -->
+        <intent-filter>
+            <action android:name="android.intent.action.ASSIST" />
+            <category android:name="android.intent.category.DEFAULT" />
+        </intent-filter>
+        <intent-filter>
+            <action android:name="android.intent.action.VOICE_COMMAND" />
+            <category android:name="android.intent.category.DEFAULT" />
+        </intent-filter>
       </activity>
 
         <service

@@ -57,6 +57,7 @@ import {ToolboxScreen} from './src/screens/ToolboxScreen';
 import {PocketAgentHardwareScreen} from './src/screens/PocketAgentHardwareScreen';
 import {OnboardingStack} from './src/screens/OnboardingScreens';
 import {ScanlineOverlay} from './src/components/ScanlineOverlay';
+import {useAssistLaunch} from './src/hooks/useAssistLaunch';
 import {buildNavigationTheme} from './src/theme/navigationTheme';
 
 // Check if app is in debug mode
@@ -73,6 +74,7 @@ const screenWidth = Dimensions.get('window').width;
 // Component that handles deep linking - must be inside NavigationContainer
 const DeepLinkHandler = () => {
   useDeepLinking();
+  useAssistLaunch();
   return null;
 };
 
@@ -187,7 +189,9 @@ const App = observer(() => {
                           />
                           <Drawer.Screen
                             name={ROUTES.POCKETAGENT_HARDWARE}
-                            component={gestureHandlerRootHOC(PocketAgentHardwareScreen)}
+                            component={gestureHandlerRootHOC(
+                              PocketAgentHardwareScreen,
+                            )}
                             options={{title: 'PocketAgent Hardware'}}
                           />
                           <Drawer.Screen
