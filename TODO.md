@@ -301,6 +301,28 @@ Settings ends with **Show developer settings** (off by default, remembered). Off
 - [x] Dev Tools in the menu stays debug-builds only (its screen only exists there).
 - [ ] Phone check: switch off → short Settings; on → everything as before; reopen the app, the choice is kept.
 
+## Personal model: LoRA trained on the phone (idea 2026-11-06, write-up only)
+
+Idea: a small LoRA adapter trained on what the user chooses from their phone, so a local model learns their style, names, routines and notes. Fully local: nothing leaves the phone.
+
+What exists (checked 2026-11-06):
+- Stock llama.cpp / llama.rn can **load** LoRA adapters (already usable for running one), but has no Android training path yet.
+- Tether's QVAC-fabric-llm.cpp (a llama.cpp fork) reports LoRA fine-tuning on phone GPUs (Adreno, Mali, Apple) for Qwen3 and Gemma3; planned for upstream, not merged; claims are self-reported.
+- Qualcomm documents running LoRA adapters on the NPU (Snapdragon 8 Elite, HTP), not training.
+- Usual practice today: train on a PC or the cloud, then run the adapter on the phone.
+
+Plan (each step on its own; ask before each):
+1. [ ] **Data the user picks, never everything by default:** chats in PocketAgent, memory, workspace files; later, with a clear opt-in per source, exported messages or notes. A preview of every example before training; easy to remove items.
+2. [ ] **Run adapters now:** load a LoRA (.gguf) on top of a local model (llama.rn supports it); switch per assistant. This also lets users bring adapters trained on a PC.
+3. [ ] **Train on a PC first (fallback):** export the chosen examples as a dataset file; a short guide/script to train a LoRA for the same base model; copy the adapter back. Nothing uploaded by the app.
+4. [ ] **Train on the phone (experiment):** when on-device training is in llama.cpp (or via the QVAC fork), small rank (8–16), 0.8B–2B base, only while charging and cool, pausable, with a progress screen. Measure time and heat on the 2023 Razr first.
+5. [ ] **Keep it honest:** a LoRA learns style and habits; facts that change (names, plans) still belong in memory. Show "trained on N examples, date"; one tap to switch off or delete the adapter.
+
+Privacy and safety:
+- [ ] Training data and adapters stay in the app's private storage; never sent anywhere; excluded from cloud backups.
+- [ ] An adapter is personal data: sharing it as a mod is blocked by default (it can leak what it was trained on).
+- [ ] No contacts, messages or photos are read without a per-source opt-in, and READ_CONTACTS stays limited to name lookup.
+
 ## Mods ecosystem (write-up only, not started)
 
 Idea 2026-11-06: let people make and share small add-ons ("mods") for the app, listed on a website. Start free and simple.
