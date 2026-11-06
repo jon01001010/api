@@ -8,6 +8,8 @@ import {safeMath} from '../services/talents/safeMath';
 import {isBackgroundInferenceEnabled, setBackgroundInferenceEnabled} from '../utils/backgroundInference';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
 import {PHONE_TOOL_NAMES} from '../services/talents/PhoneActionsEngine';
+import {CustomToolEngine} from '../services/talents/customTools';
+import {CustomToolsSection} from './CustomToolsSection';
 import {useTheme} from '../hooks';
 import {useIsFocused} from '@react-navigation/native';
 import {MemorySection} from '../components/PalsSheets/MemorySection';
@@ -24,7 +26,8 @@ let draftCounter = 0;
 export const ToolboxScreen: React.FC = () => {
   const tools = useMemo(() => {
     registerDefaultTalents();
-    return talentRegistry.getAll().map(engine => ({
+    // Custom tools have their own section.
+    return talentRegistry.getAll().filter(engine => !(engine instanceof CustomToolEngine)).map(engine => ({
       name: engine.name,
       description: engine.toToolDefinition().function.description,
       parameters: JSON.stringify(engine.toToolDefinition().function.parameters ?? {}, null, 2),
@@ -182,9 +185,14 @@ export const ToolboxScreen: React.FC = () => {
         <Button disabled={!settingsLoaded} onPress={async () => {try {await writeGlobalPrompt(globalPrompt); setToggleError(''); setNotice('Global prompt saved');} catch (e) {setNotice(''); setToggleError('Could not save prompt: ' + String(e));}}}>Save global prompt</Button>
         <Text variant="titleSmall">Generated tool instructions (read only)</Text>
         <Text selectable variant="bodySmall">{generatedToolPrompt(enabledTools) || 'No tools enabled.'}</Text>
-        <Button mode="contained" disabled={!loaded} onPress={() => newDraft()}>Create tool draft</Button>
-        {!loaded ? <Text>Loading saved drafts…</Text> : null}
+                {!loaded ? <Text>Loading saved drafts…</Text> : null}
         {storageError ? <Text style={{color: errorColor}}>{storageError}</Text> : null}
+        <CustomToolsSection
+          enabledTools={enabledTools}
+          disabled={!settingsLoaded || savingTool !== null}
+          onToggle={toggleBuiltIn}
+          errorColor={errorColor}
+        />
         {/* Phone actions as one group: a switch for all, each one on request. */}
         <Card mode="outlined" testID="toolbox-phone-actions">
           <Card.Content>
@@ -222,6 +230,8 @@ export const ToolboxScreen: React.FC = () => {
             </Card.Content>
           </Card>
         ))}
+        <Text variant="titleSmall">Test drafts (local tests only; the model can't call these: use Custom tools above)</Text>
+        <Button mode="outlined" disabled={!loaded} onPress={() => newDraft()}>Create test draft</Button>
         {drafts.map(draft => (
           <Card key={draft.id} mode="outlined">
             <Card.Content>
