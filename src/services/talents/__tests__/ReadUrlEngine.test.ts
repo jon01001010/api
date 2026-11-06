@@ -263,13 +263,11 @@ describe('ReadUrlEngine', () => {
     });
 
     const engineReading = (text: string) => {
-      const read = jest
-        .fn()
-        .mockResolvedValue({
-          url: 'https://e.com/p',
-          finalUrlVerified: true,
-          text,
-        });
+      const read = jest.fn().mockResolvedValue({
+        url: 'https://e.com/p',
+        finalUrlVerified: true,
+        text,
+      });
       const provider: SearchProvider = {id: 'exa', search: jest.fn(), read};
       return new ReadUrlEngine(makeAccess({getActiveProvider: () => provider}));
     };
@@ -440,7 +438,11 @@ describe('ReadUrlEngine', () => {
     });
 
     it.each([
-      ['the default reader', defaultReaderAccess, 'https://r.jina.ai/'],
+      [
+        'the default reader (the phone itself)',
+        defaultReaderAccess,
+        'https://e.com/p',
+      ],
       ['Exa native read', exaAccess, 'https://api.exa.ai/contents'],
     ])(
       'returns "cancelled" when the run aborts mid-read via %s',

@@ -13,7 +13,9 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [x] Save generated pages as `.html`: to the workspace or via the share sheet.
 - [x] Add sandbox restrictions, load/error timeouts, and regression tests for embedded HTML (PR #4).
 - [x] `read_url`: strict port matching for user-named sites, no https→http downgrade, redirect-escape tests.
-- [ ] `read_url`: readers must report a **verified final URL** (Firecrawl / Exa / default reader). Until then every read fails closed. Needs each provider's final-URL field confirmed against its docs.
+- [x] `read_url`: the default reader is now **the phone itself** (no r.jina.ai): it fetches the page directly, the final URL after redirects comes from the network layer (verified), and the HTML becomes plain text on the phone. Provider readers that can't attest the final URL fall back to it. Fail-closed checks unchanged (allowlist, no https→http downgrade).
+- [ ] Phone check: search, then "read the first result"; a page that redirects; a PDF / non-HTML link (refused cleanly).
+- [ ] The consent text in non-English locales still mentions r.jina.ai; English is updated.
 - [x] `read_url`: an http page and its https version count as the same page (https preferred when both are allowed).
 - [x] Workspace file operations: `file_append`, `file_patch`, `file_diff`, `file_history`, `file_undo`; per-file version history; diff shown in the approval dialog.
 - [x] Fix newline (`file_read_range`, `file_search`) and extension (`file_info`) matching bugs.

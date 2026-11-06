@@ -92,6 +92,11 @@ export class ReadUrlEngine implements TalentEngine {
       page = provider.read
         ? await provider.read(targetUrl, ctx?.signal)
         : await this.access.readWithDefaultReader(targetUrl, ctx?.signal);
+      // A provider's reader that can't attest where it landed: read the page
+      // on the phone instead, which can.
+      if (provider.read && !page?.finalUrlVerified) {
+        page = await this.access.readWithDefaultReader(targetUrl, ctx?.signal);
+      }
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
       return {

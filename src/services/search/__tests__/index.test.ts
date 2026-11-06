@@ -37,24 +37,53 @@ describe('createSearchProvider', () => {
   });
 });
 
-describe('readWithDefaultReader (r.jina.ai fallback)', () => {
+describe('readWithDefaultReader (the phone reads the page)', () => {
   beforeEach(() => {
     global.fetch = jest.fn();
   });
 
-  it('fetches via r.jina.ai and returns PageContent for the original url', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('clean page body'),
-    });
+  const response = (body: string, url: string, type = 'text/html') => ({
+    ok: true,
+    status: 200,
+    url,
+    headers: {get: (h: string) => (h === 'content-type' ? type : null)},
+    text: () => Promise.resolve(body),
+  });
+
+  it('fetches the page directly and verifies the final address', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(
+      response(
+        '<html><head><title>News &amp; more</title><script>x()</script></head><body><nav>menu</nav><main><h1>Hello</h1><p>World&nbsp;today</p></main></body></html>',
+        'https://example.com/article-final',
+      ),
+    );
     const page = await readWithDefaultReader('https://example.com/article');
-    const [calledUrl] = (global.fetch as jest.Mock).mock.calls[0];
-    expect(calledUrl).toBe('https://r.jina.ai/https://example.com/article');
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
+      'https://example.com/article',
+    );
     expect(page).toEqual({
-      url: 'https://example.com/article',
-      text: 'clean page body',
+      url: 'https://example.com/article-final',
+      finalUrlVerified: true,
+      title: 'News & more',
+      text: 'Hello\n\nWorld today',
     });
+  });
+
+  it('cannot verify without the final address, and refuses non-pages', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      response('plain words', '', 'text/plain'),
+    );
+    expect(await readWithDefaultReader('https://e.com/a.txt')).toEqual({
+      url: 'https://e.com/a.txt',
+      finalUrlVerified: false,
+      text: 'plain words',
+    });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      response('PK…', 'https://e.com/a.zip', 'application/zip'),
+    );
+    await expect(readWithDefaultReader('https://e.com/a.zip')).rejects.toThrow(
+      /not a readable page/,
+    );
   });
 
   it('throws on a non-ok reader response (never silent)', async () => {
@@ -66,5 +95,22 @@ describe('readWithDefaultReader (r.jina.ai fallback)', () => {
     await expect(
       readWithDefaultReader('https://example.com/x'),
     ).rejects.toThrow(/failed/i);
+  });
+});
+
+describe('htmlToText', () => {
+  const {htmlToText, decodeEntities} = require('../htmlToText');
+
+  it('keeps list items and paragraphs apart and drops page furniture', () => {
+    const {text} = htmlToText(
+      '<body><header><nav>Home | About</nav></header><article><h2>Steps</h2><ul><li>One</li><li>Two &#8212; done</li></ul><footer>© 2026</footer></article><form>login</form></body>',
+    );
+    expect(text).toBe('Steps\n\n• One\n• Two — done');
+  });
+
+  it('decodes common entities, leaves unknown ones', () => {
+    expect(decodeEntities('a&amp;b &lt;c&gt; &#x41; &bogus;')).toBe(
+      'a&b <c> A &bogus;',
+    );
   });
 });

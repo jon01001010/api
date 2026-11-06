@@ -92,3 +92,26 @@ export const fetchText = async (
   const text = await res.text();
   return text.length > MAX_BODY_BYTES ? text.slice(0, MAX_BODY_BYTES) : text;
 };
+
+/**
+ * A page fetched by the phone itself. `finalUrl` is where the request ended
+ * after redirects, as the network layer reports it (Response.url): the one
+ * answer read_url trusts. Empty when the platform didn't say.
+ */
+export const fetchPage = async (
+  input: string,
+  init: RequestInit,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<{finalUrl: string; contentType: string; body: string}> => {
+  const res = await withTimeout(input, init, timeoutMs);
+  if (!res.ok) {
+    throw new Error(`request failed (${res.status})`);
+  }
+  assertWithinDeclaredSize(res);
+  const body = await res.text();
+  return {
+    finalUrl: typeof res.url === 'string' ? res.url : '',
+    contentType: res.headers?.get?.('content-type') ?? '',
+    body: body.length > MAX_BODY_BYTES ? body.slice(0, MAX_BODY_BYTES) : body,
+  };
+};

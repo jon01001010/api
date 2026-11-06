@@ -1,5 +1,6 @@
 import type {SearchProvider, SearchProviderId, PageContent} from './types';
-import {fetchText} from './providers/http';
+import {fetchPage} from './providers/http';
+import {htmlToText} from './htmlToText';
 import {TavilyProvider} from './providers/tavily';
 import {BraveProvider} from './providers/brave';
 import {ExaProvider} from './providers/exa';
@@ -41,14 +42,32 @@ export const createSearchProvider = (
   }
 };
 
-/** Fallback reader for providers without native read(): r.jina.ai returns clean plain text, no key. */
+/**
+ * Default reader: the phone fetches the page itself (no third-party reader
+ * sees the URL) and turns the HTML into plain text. The final address after
+ * redirects comes from the network layer, so it is verified.
+ */
 export const readWithDefaultReader = async (
   url: string,
   signal?: AbortSignal,
 ): Promise<PageContent> => {
-  const text = await fetchText(`https://r.jina.ai/${encodeURI(url)}`, {
+  const page = await fetchPage(url, {
     method: 'GET',
     signal,
+    headers: {Accept: 'text/html, text/plain;q=0.9, */*;q=0.1'},
   });
-  return {url, text};
+  if (!/text\/html|text\/plain|xhtml|^$/i.test(page.contentType)) {
+    throw new Error(`not a readable page (${page.contentType.split(';')[0]})`);
+  }
+  const isHtml =
+    /html/i.test(page.contentType) || /^\s*<(!doctype|html)/i.test(page.body);
+  const {title, text} = isHtml
+    ? htmlToText(page.body)
+    : {title: undefined, text: page.body};
+  return {
+    url: page.finalUrl || url,
+    finalUrlVerified: !!page.finalUrl,
+    ...(title ? {title} : {}),
+    text,
+  };
 };
