@@ -19,6 +19,23 @@ export async function readGlobalTools(): Promise<string[]> {
   return [...new Set(parsed.filter(name => known.has(name)))];
 }
 
+/**
+ * Tools an assistant may use on its own, without a Toolbox switch: they only
+ * compute or show something (no files, memory, web, phone or custom tools).
+ */
+export const ASSISTANT_ONLY_TOOLS: readonly string[] = [
+  'render_html',
+  'calculate',
+  'datetime',
+];
+
+/** The part of an assistant's tool list it may use without a Toolbox switch. */
+export function assistantOnlyTools(talents: {name: string}[]): string[] {
+  return talents
+    .map(t => t.name)
+    .filter(name => ASSISTANT_ONLY_TOOLS.includes(name));
+}
+
 export async function writeGlobalTools(names: string[]): Promise<void> {
   deriveToolSchemas();
   await ensureCustomToolsLoaded();

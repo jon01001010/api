@@ -14,6 +14,13 @@ import {talentRegistry} from '../../services/talents';
 import type {AgentStep, AgentToolCall, MessageType} from '../../utils/types';
 import type {TalentEngine, TalentResult} from '../../services/talents/types';
 
+// An assistant can't switch web search on by itself: it is on in Toolbox.
+jest.mock('../../utils/globalToolSettings', () => ({
+  ...jest.requireActual('../../utils/globalToolSettings'),
+  readGlobalTools: () => Promise.resolve(['web_search']),
+  readGlobalPrompt: () => Promise.resolve(''),
+}));
+
 const mockAssistant = {id: 'h3o3lc5xj'};
 
 type ScriptedToken = string | {content?: string; reasoning: string};

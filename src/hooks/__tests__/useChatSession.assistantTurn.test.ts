@@ -413,6 +413,86 @@ describe('useChatSession — AssistantTurn integration', () => {
     errSpy.mockRestore();
   });
 
+  it('never runs a switched-off tool, even when the assistant lists it and the model calls it', async () => {
+    const execute = jest.fn(
+      async () => ({type: 'text', summary: 'alarm set'}) as TalentResult,
+    );
+    const offTool: TalentEngine = {
+      name: 'set_alarm',
+      execute,
+      toToolDefinition: () => ({
+        type: 'function',
+        function: {name: 'set_alarm', description: '', parameters: {}},
+      }),
+    };
+    talentRegistry.register(offTool);
+    // A downloaded assistant declares set_alarm; Toolbox has it switched off.
+    palStore.pals = [
+      {
+        id: 'pal-1',
+        type: 'local',
+        name: 'Alarm Pal',
+        systemPrompt: '',
+        parameters: {},
+        parameterSchema: [],
+        isSystemPromptChanged: false,
+        useAIPrompt: false,
+        source: 'local',
+        pact: {talents: [{name: 'set_alarm', necessity: 'optional'}]},
+      } as any,
+    ];
+    chatSessionStore.sessions = [
+      {
+        id: 'session-1',
+        title: '',
+        date: '',
+        messages: [],
+        completionSettings: {},
+        settingsSource: 'pal',
+        activePalId: 'pal-1',
+      } as any,
+    ];
+    chatSessionStore.activeSessionId = 'session-1';
+
+    const sentTools: any[] = [];
+    let turnIndex = 0;
+    if (modelStore.context) {
+      modelStore.context.completion = jest
+        .fn()
+        .mockImplementation(async (params: any) => {
+          sentTools.push(params?.tools ?? []);
+          turnIndex += 1;
+          if (turnIndex === 1) {
+            return {
+              text: '',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'c0',
+                  type: 'function',
+                  function: {name: 'set_alarm', arguments: '{"hour":7}'},
+                },
+              ],
+            };
+          }
+          return {text: 'ok', content: 'ok'};
+        });
+    }
+
+    const {result} = renderHook(() =>
+      useChatSession({current: null}, textMessage.author, mockAssistant),
+    );
+    await act(async () => {
+      await result.current.handleSendPress(textMessage);
+    });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(
+      sentTools.flat().some((t: any) => t?.function?.name === 'set_alarm'),
+    ).toBe(false);
+    (talentRegistry as any).engines.delete('set_alarm');
+  });
+
   it('#hookTest1 multi-step run with tool_call_finished: appendToolOutcome called for the active step', async () => {
     // Wire a fake talent into the registry so the runner's executeOne()
     // path finds it. Restore at end so other tests are not affected.

@@ -58,7 +58,7 @@ import {
 } from '../services/talents';
 import type {ToolDefinition} from '../services/talents/types';
 import {deriveToolSchemas} from '../services/talents';
-import {readGlobalTools, readGlobalPrompt, generatedToolPrompt, readAgentMaxTurns} from '../utils/globalToolSettings';
+import {readGlobalTools, readGlobalPrompt, generatedToolPrompt, readAgentMaxTurns, assistantOnlyTools} from '../utils/globalToolSettings';
 import {
   agentStateReducer,
   createTriggerMarkerCache,
@@ -799,7 +799,10 @@ export const useChatSession = (
       console.warn('[chat] global tool settings unavailable', e);
     }
     const palTalents = [...new Set([
-      ...(pal?.pact?.talents ?? []).map(t => t.name),
+      // An assistant (including one downloaded from PalsHub) may only add the
+      // harmless built-ins on its own; every other tool runs only when it is
+      // switched on in Toolbox. Off means off, whatever the assistant says.
+      ...assistantOnlyTools(pal?.pact?.talents ?? []),
       // Only tools the user switched on (or the assistant declares). Memory
       // tools too: the memory itself is always in the prompt below, but the
       // tools that read and change it are sent only when turned on.

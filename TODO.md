@@ -265,6 +265,16 @@ Toolbox → Custom tools gets **Share as QR** on each tool and a **Scan a tool**
 - [ ] Never run anything from a scan; a QR is data only (instructions or a shortcut of built-in tools).
 - [ ] Later, optional: the colour "mcode" from QR2D (8 colours, Reed–Solomon) for denser codes; only if plain QR is too small in practice.
 
+## Off means off: tool switch audit (done 2026-11-06)
+
+Checked every path that can run a tool. Only two exist: the chat loop (`AgentRunner`) and a shortcut run.
+
+- [x] A switched-off tool is never sent to the model, and if a model names it anyway the chat loop refuses it ("not enabled").
+- [x] **Fixed a gap:** an assistant (including one downloaded from PalsHub) could list its own tools and they ran even when switched off in Toolbox. Now an assistant may only add `calculate`, `datetime` and `render_html` by itself; every other tool (phone actions, web, files, memory, tool making, custom tools) needs its Toolbox switch. Test: an assistant listing `set_alarm`, a model calling it → never runs.
+- [x] Custom tools saved by the model or (later) scanned from a QR start switched off; tool_save itself needs its switch.
+- [ ] Note: a switched-on shortcut runs its built-in steps after one approval that shows every step, even if those step tools are off on their own. Option: also require each step's tool to be on.
+- [ ] The assistant editor still lists every tool; mark which ones need a Toolbox switch.
+
 ## Developer settings switch (built, needs phone check)
 
 Settings ends with **Show developer settings** (off by default, remembered). Off: what most people use. On: everything as before.
