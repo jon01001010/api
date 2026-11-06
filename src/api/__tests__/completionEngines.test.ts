@@ -175,6 +175,81 @@ describe('OpenAICompletionEngine', () => {
     engine = new OpenAICompletionEngine(ENDPOINT);
   });
 
+  it('a model that refuses tools is retried, and then asked, without them', async () => {
+    const tools = [{type: 'function', function: {name: 'datetime'}}];
+    mockedStreamChat
+      .mockRejectedValueOnce(
+        new RemoteHttpError(
+          'Server error: 400 — Function calling is not enabled for this model',
+          400,
+        ),
+      )
+      .mockResolvedValue({text: 'Hi', content: 'Hi'});
+    const params = {messages: [{role: 'user', content: 'Hi'}], tools} as any;
+
+    await expect(engine.completion(params)).resolves.toMatchObject({
+      content: 'Hi',
+    });
+    await engine.completion(params);
+
+    const calls = mockedStreamChat.mock.calls.map(c => c[0].tools);
+    expect(calls).toEqual([tools, undefined, undefined]);
+  });
+
+  describe('busy servers', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    const busy = () =>
+      new RemoteHttpError(
+        'Server error: 503 — This model is currently experiencing high demand',
+        503,
+      );
+
+    it('a 503 is retried after a wait, and the reply comes through', async () => {
+      mockedStreamChat
+        .mockRejectedValueOnce(busy())
+        .mockResolvedValueOnce({text: 'Hi', content: 'Hi'});
+      const reply = engine.completion({messages: []} as any);
+      await jest.advanceTimersByTimeAsync(2000);
+      await expect(reply).resolves.toMatchObject({content: 'Hi'});
+      expect(mockedStreamChat).toHaveBeenCalledTimes(2);
+    });
+
+    it('gives up after three retries and shows the error', async () => {
+      mockedStreamChat.mockRejectedValue(busy());
+      const reply = engine.completion({messages: []} as any);
+      const settled = expect(reply).rejects.toThrow('high demand');
+      await jest.advanceTimersByTimeAsync(2000 + 4000 + 8000);
+      await settled;
+      expect(mockedStreamChat).toHaveBeenCalledTimes(4);
+    });
+
+    it('never retries once part of the reply has streamed', async () => {
+      mockedStreamChat.mockImplementationOnce(async (_p, _e, _s, onToken) => {
+        onToken({content: 'Hel'});
+        throw busy();
+      });
+      await expect(
+        engine.completion({messages: []} as any, jest.fn()),
+      ).rejects.toThrow('high demand');
+      expect(mockedStreamChat).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('other 400s are not retried', async () => {
+    mockedStreamChat.mockRejectedValueOnce(
+      new RemoteHttpError('Server error: 400 — bad request', 400),
+    );
+    await expect(
+      engine.completion({
+        messages: [],
+        tools: [{type: 'function', function: {name: 'x'}}],
+      } as any),
+    ).rejects.toThrow('bad request');
+    expect(mockedStreamChat).toHaveBeenCalledTimes(1);
+  });
+
   it('calls streamChatCompletion with correct parameters', async () => {
     const mockResult = {
       text: 'Hello',
@@ -205,10 +280,13 @@ describe('OpenAICompletionEngine', () => {
       },
       ENDPOINT,
       expect.any(Object), // AbortSignal
-      onToken,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
 
     expect(result).toEqual(mockResult);
+    // The callback handed down still reaches the caller's.
+    mockedStreamChat.mock.calls[0][3]({content: 'x'});
+    expect(onToken).toHaveBeenCalledWith({content: 'x'});
   });
 
   // PACT support requires the engine to forward tools and tool_choice
@@ -245,7 +323,7 @@ describe('OpenAICompletionEngine', () => {
       }),
       ENDPOINT,
       expect.any(Object),
-      undefined,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 
@@ -273,7 +351,7 @@ describe('OpenAICompletionEngine', () => {
       expect.objectContaining({response_format: responseFormat}),
       ENDPOINT,
       expect.any(Object),
-      undefined,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 
@@ -305,7 +383,7 @@ describe('OpenAICompletionEngine', () => {
       expect.objectContaining({samplers}),
       ENDPOINT,
       expect.any(Object),
-      undefined,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 
@@ -331,7 +409,7 @@ describe('OpenAICompletionEngine', () => {
       }),
       ENDPOINT,
       expect.any(Object),
-      undefined,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 
@@ -376,7 +454,7 @@ describe('OpenAICompletionEngine', () => {
       expect.any(Object),
       timedEndpoint, // raw timeoutMs forwarded, not normalized
       expect.any(Object), // AbortSignal
-      undefined, // callback
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 
@@ -396,7 +474,7 @@ describe('OpenAICompletionEngine', () => {
       expect.any(Object),
       noKeyEndpoint,
       expect.any(Object),
-      undefined,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 
@@ -414,7 +492,7 @@ describe('OpenAICompletionEngine', () => {
       expect.objectContaining({reasoning: {enabled: false}}),
       typedEndpoint,
       expect.any(Object),
-      undefined,
+      expect.any(Function), // callback (wrapped to see if a reply has started)
     );
   });
 });
@@ -632,5 +710,46 @@ describe('OpenAICompletionEngine when the router has unloaded the model', () => 
       RemoteModelRequestWithdrawnError,
     );
     expect(mockedStreamChat).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('quota errors (429)', () => {
+  const {
+    isBusyError,
+    readableQuotaError,
+    retryAfterSeconds,
+  } = require('../completionEngines');
+  const geminiDaily = new RemoteHttpError(
+    'Server error: 429 — You exceeded your current quota. Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.6-flash, description: Generate content requests per day limit exceeded on Free Tier. Please retry in 14h29m47.992060539s.',
+    429,
+  );
+
+  it('reads the wait the server asks for', () => {
+    expect(Math.round(retryAfterSeconds(geminiDaily))).toBe(52188);
+    expect(retryAfterSeconds(new Error('... "retryDelay": "52s" ...'))).toBe(
+      52,
+    );
+    expect(retryAfterSeconds(new Error('nothing here'))).toBeUndefined();
+  });
+
+  it('does not retry a daily limit, but does retry a short rate limit', () => {
+    expect(isBusyError(geminiDaily)).toBe(false);
+    expect(
+      isBusyError(new RemoteHttpError('429 — Please retry in 5s.', 429)),
+    ).toBe(true);
+    expect(isBusyError(new RemoteHttpError('429 — slow down', 429))).toBe(true);
+  });
+
+  it('says a used-up daily limit in plain words', () => {
+    const readable = readableQuotaError(geminiDaily, 'gemini-3.6-flash');
+    expect(readable.message).toBe(
+      'Daily limit used up (free tier) for gemini-3.6-flash. Resets in about 14h 30m. Try another model meanwhile.',
+    );
+    expect(readable.status).toBe(429);
+  });
+
+  it('leaves other errors as they are', () => {
+    const other = new RemoteHttpError('Server error: 500', 500);
+    expect(readableQuotaError(other, 'm')).toBe(other);
   });
 });

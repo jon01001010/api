@@ -1,4 +1,9 @@
-import {fetchWithTimeout, normalizeUrl} from '../http';
+import {fetchWithTimeout, normalizeUrl, openAiApiUrl} from '../http';
+import {
+  CLOUD_PRESETS,
+  effectiveServerType,
+  presetForUrl,
+} from '../cloudPresets';
 
 function pendingFetch() {
   return jest.fn().mockImplementation(
@@ -114,5 +119,64 @@ describe('normalizeUrl', () => {
     inputs.forEach(u => {
       expect(normalizeUrl(u + '/v1')).toBe(normalizeUrl(u));
     });
+  });
+});
+
+describe('openAiApiUrl', () => {
+  it.each([
+    ['http://192.168.1.5:8080', 'http://192.168.1.5:8080/v1/models'],
+    ['http://192.168.1.5:8080/v1/', 'http://192.168.1.5:8080/v1/models'],
+    ['https://api.openai.com/v1', 'https://api.openai.com/v1/models'],
+    ['https://api.groq.com/openai/v1', 'https://api.groq.com/openai/v1/models'],
+    ['https://openrouter.ai/api/v1', 'https://openrouter.ai/api/v1/models'],
+    [
+      'https://generativelanguage.googleapis.com/v1beta/openai/',
+      'https://generativelanguage.googleapis.com/v1beta/openai/models',
+    ],
+  ])('%s -> %s', (base, expected) => {
+    expect(openAiApiUrl(base, '/models')).toBe(expected);
+  });
+});
+
+describe('cloud presets', () => {
+  it('ids are unique, keys pages are https, and each url finds itself', () => {
+    const ids = CLOUD_PRESETS.map(p => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const preset of CLOUD_PRESETS) {
+      expect(preset.keyUrl).toMatch(/^https:\/\//);
+      expect(presetForUrl(` ${preset.url}/ `)).toBe(preset);
+    }
+    expect(presetForUrl('http://192.168.1.5:8080')).toBeUndefined();
+  });
+
+  it('marks Gemini, Groq and OpenRouter as free', () => {
+    expect(
+      CLOUD_PRESETS.filter(p => p.free)
+        .map(p => p.id)
+        .sort(),
+    ).toEqual(['gemini', 'groq', 'openrouter']);
+  });
+});
+
+describe('effectiveServerType', () => {
+  const GEMINI = 'https://generativelanguage.googleapis.com/v1beta/openai';
+  it('a Claude server repointed at another API stops using the Claude engine', () => {
+    expect(effectiveServerType('Claude', GEMINI)).toBe('Gemini');
+    expect(effectiveServerType('Claude', 'https://openrouter.ai/api/v1')).toBe(
+      'OpenAI',
+    );
+    expect(effectiveServerType('Claude', 'http://192.168.1.5:8080')).toBe(
+      'unknown',
+    );
+  });
+
+  it('an Anthropic address is always Claude; other types are kept', () => {
+    expect(effectiveServerType('unknown', 'https://api.anthropic.com')).toBe(
+      'Claude',
+    );
+    expect(effectiveServerType('Gemini', GEMINI)).toBe('Gemini');
+    expect(effectiveServerType('llama.cpp', 'http://192.168.1.5:8080')).toBe(
+      'llama.cpp',
+    );
   });
 });

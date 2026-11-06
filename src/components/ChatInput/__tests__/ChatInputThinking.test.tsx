@@ -36,6 +36,8 @@ jest.mock('../../../store', () => ({
   modelStore: {
     visionModels: [],
     activeModel: null,
+    pickVisionTarget: () => undefined,
+    getModelVisionPreference: () => true,
   },
   palStore: {
     pals: [],
@@ -50,6 +52,11 @@ jest.mock('../../../store', () => ({
     playbackState: {mode: 'idle'},
     openSetupSheet: jest.fn(),
     setAutoSpeak: jest.fn(),
+  },
+  voiceStore: {
+    state: 'idle',
+    level: 0,
+    openSheet: jest.fn(),
   },
 }));
 

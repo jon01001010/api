@@ -39,6 +39,11 @@ class MockModelStore {
   max_threads = 4;
   MIN_CONTEXT_SIZE = 200;
   useAutoRelease = true;
+  keepModelsLoaded = false;
+  restoreModelOnStart = true;
+  lastSessionModelId: string | undefined = undefined;
+  maxLoadedModels = 2;
+  parkedModels: any[] = [];
   activeModelId: string | undefined;
   inferencing = false;
   isStreaming = false;
@@ -60,6 +65,13 @@ class MockModelStore {
   removeModelByFullPath: jest.Mock;
   setNContext: jest.Mock;
   updateUseAutoRelease: jest.Mock;
+  setKeepModelsLoaded: jest.Mock;
+  setRestoreModelOnStart: jest.Mock;
+  restoreLastModel: jest.Mock;
+  setMaxLoadedModels: jest.Mock;
+  releaseParkedModels: jest.Mock;
+  releaseParkedModel: jest.Mock;
+  isModelLoaded: jest.Mock;
   setNoGpuDevices: jest.Mock;
   setDevices: jest.Mock;
   setFlashAttnType: jest.Mock;
@@ -87,6 +99,7 @@ class MockModelStore {
   updateModelStopWords: jest.Mock;
   resetModelStopWords: jest.Mock;
   updateModelName: jest.Mock;
+  updateModelWakeWords: jest.Mock;
   resetModelName: jest.Mock;
   setImageMaxTokens: jest.Mock;
   setNThreads: jest.Mock;
@@ -125,6 +138,13 @@ class MockModelStore {
       removeModelByFullPath: false,
       setNContext: false,
       updateUseAutoRelease: false,
+      setKeepModelsLoaded: false,
+      setRestoreModelOnStart: false,
+      restoreLastModel: false,
+      setMaxLoadedModels: false,
+      releaseParkedModels: false,
+      releaseParkedModel: false,
+      isModelLoaded: false,
 
       setNGPULayers: false,
       resetModels: false,
@@ -150,6 +170,7 @@ class MockModelStore {
       updateModelStopWords: false,
       resetModelStopWords: false,
       updateModelName: false,
+      updateModelWakeWords: false,
       resetModelName: false,
       setImageMaxTokens: false,
       setNThreads: false,
@@ -193,6 +214,19 @@ class MockModelStore {
     this.removeModelByFullPath = jest.fn();
     this.setNContext = jest.fn();
     this.updateUseAutoRelease = jest.fn();
+    this.setRestoreModelOnStart = jest.fn((on: boolean) => {
+      this.restoreModelOnStart = on;
+    });
+    this.restoreLastModel = jest.fn().mockResolvedValue(false);
+    this.setKeepModelsLoaded = jest.fn((on: boolean) => {
+      this.keepModelsLoaded = on;
+    });
+    this.setMaxLoadedModels = jest.fn((n: number) => {
+      this.maxLoadedModels = n;
+    });
+    this.releaseParkedModels = jest.fn().mockResolvedValue(undefined);
+    this.releaseParkedModel = jest.fn().mockResolvedValue(undefined);
+    this.isModelLoaded = jest.fn(() => false);
     this.setNoGpuDevices = jest.fn();
     this.setDevices = jest.fn();
     this.setFlashAttnType = jest.fn();
@@ -240,6 +274,7 @@ class MockModelStore {
     this.updateModelStopWords = jest.fn();
     this.resetModelStopWords = jest.fn();
     this.updateModelName = jest.fn();
+    this.updateModelWakeWords = jest.fn();
     this.resetModelName = jest.fn();
     this.setImageMaxTokens = jest.fn();
     this.setNThreads = jest.fn();
@@ -391,6 +426,12 @@ class MockModelStore {
     () =>
       this.visionModels.find((m: any) => m.id === this.lastVisionModelId) ??
       this.visionModels[0],
+  );
+
+  pickCloudVisionModel = jest.fn((): any => undefined);
+
+  pickVisionTarget = jest.fn(
+    () => this.pickVisionModel() ?? this.pickCloudVisionModel(),
   );
 
   get effectiveDraftMode() {

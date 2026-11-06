@@ -323,3 +323,16 @@ describe('preview page colours', () => {
     expect(flat).toMatchObject({backgroundColor: '#ffffff'});
   });
 });
+
+describe('preview fit', () => {
+  it('fits the page before any page markup, and only scales a little', () => {
+    const doc = wrapDocument('<p>tall</p>');
+    const fit = doc.indexOf('data-preview-fit');
+    expect(fit).toBeGreaterThan(-1);
+    // In the head, after the policy, before the model's markup.
+    expect(fit).toBeGreaterThan(doc.indexOf('Content-Security-Policy'));
+    expect(fit).toBeLessThan(doc.indexOf('<p>tall</p>'));
+    // Never shrinks below half size: a long page scrolls instead.
+    expect(doc).toContain('s >= 0.5');
+  });
+});

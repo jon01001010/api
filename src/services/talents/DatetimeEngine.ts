@@ -56,14 +56,15 @@ export class DatetimeEngine implements TalentEngine {
       function: {
         name: 'datetime',
         description:
-          'Get the current date and time. Defaults to the device timezone.',
+          "Get the current date and time. Never guess today's date or the time: call this. " +
+          "How: call with no arguments for the phone's local time, or set `timezone` for another place.",
         parameters: {
           type: 'object',
           properties: {
             timezone: {
               type: 'string',
               description:
-                'Optional IANA timezone (e.g. "Asia/Tokyo"). Use the canonical zone for the country (Germany → "Europe/Berlin"). Omit to get device time.',
+                'Optional. IANA zone for another place, e.g. Japan → "Asia/Tokyo", Germany → "Europe/Berlin", New York → "America/New_York". Leave out for the phone\'s own time.',
             },
           },
         },

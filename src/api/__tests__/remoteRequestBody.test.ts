@@ -120,7 +120,11 @@ const MOVED_SAMPLERS = {
 
 const REASONING: ReasoningIntent = {enabled: true, effort: 'high'};
 
-describe.each(SERVER_TYPE_OPTIONS)('a turn to a %s server', serverType => {
+// Claude doesn't use the OpenAI-compatible transport (its own engine and
+// tests: src/api/claude).
+const OPENAI_WIRE_TYPES = SERVER_TYPE_OPTIONS.filter(t => t !== 'Claude');
+
+describe.each(OPENAI_WIRE_TYPES)('a turn to a %s server', serverType => {
   // Against the table rather than a restatement of it: the wire names and the
   // reasoning keys are pinned where the table is, and a turn that dropped the
   // samplers, the reasoning intent or the server type shows up here as a body
@@ -154,12 +158,36 @@ describe.each(SERVER_TYPE_OPTIONS)('a turn to a %s server', serverType => {
 });
 
 describe('the samplers a turn forwards', () => {
-  it('sends only the three that are always sent when every control is on its app default', async () => {
+  // The app default n_predict is -1 ("no limit"), which is left out: a cloud
+  // API rejects a non-positive max_tokens, and absent is the server default.
+  it('sends only temperature and top_p when every control is on its app default', async () => {
+    expect(defaultCompletionParams.n_predict).toBeLessThanOrEqual(0);
     expect(await extrasOf('llama.cpp', defaultCompletionParams)).toEqual({
       temperature: defaultCompletionParams.temperature,
       top_p: defaultCompletionParams.top_p,
-      max_completion_tokens: defaultCompletionParams.n_predict,
     });
+  });
+
+  it.each(SERVER_TYPE_OPTIONS)(
+    'never sends a non-positive token limit to %s',
+    async serverType => {
+      for (const n_predict of [-1, 0]) {
+        const extras = await extrasOf(serverType, {
+          ...defaultCompletionParams,
+          n_predict,
+        });
+        expect(extras.max_tokens).toBeUndefined();
+        expect(extras.max_completion_tokens).toBeUndefined();
+        expect(extras.n_predict).toBeUndefined();
+      }
+    },
+  );
+
+  it('sends a positive token limit under the profile name', async () => {
+    expect(
+      (await extrasOf('Gemini', {...defaultCompletionParams, n_predict: 512}))
+        .max_tokens,
+    ).toBe(512);
   });
 
   it('adds a control the user moved off the app default', async () => {
@@ -170,7 +198,6 @@ describe('the samplers a turn forwards', () => {
 
     expect(extras.top_k).toBe(defaultCompletionParams.top_k! + 1);
     expect(Object.keys(extras).sort()).toEqual([
-      'max_completion_tokens',
       'temperature',
       'top_k',
       'top_p',

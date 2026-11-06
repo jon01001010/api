@@ -9,8 +9,17 @@ import {defaultCompletionParams} from '../../../utils/completionSettingsVersions
 jest.mock('../../../screens/ModelsScreen/ModelSettings', () => {
   const {View} = require('react-native');
   return {
-    ModelSettings: ({onChange, onStopWordsChange, onModelNameChange}) => (
+    ModelSettings: ({
+      onChange,
+      onStopWordsChange,
+      onModelNameChange,
+      onWakeWordsChange,
+    }) => (
       <View testID="model-settings">
+        <View
+          testID="mock-wake-words-update"
+          onPress={() => onWakeWordsChange('Hey Jarvis, Jarvis')}
+        />
         <View
           testID="mock-settings-update"
           onPress={() => onChange('chatTemplate', 'new template')}
@@ -95,6 +104,24 @@ describe('ModelSettingsSheet', () => {
     jest.clearAllMocks();
   });
 
+  it('has a Vision switch for a vision model, same as the card', () => {
+    // MobX wraps the mock store's methods; check the call with a plain spy.
+    const calls: unknown[][] = [];
+    const original = modelStore.setModelVisionEnabled;
+    (modelStore as any).setModelVisionEnabled = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const {getByTestId} = render(
+      <ModelSettingsSheet
+        {...defaultProps}
+        model={{...mockModel, supportsMultimodal: true}}
+      />,
+    );
+    fireEvent(getByTestId('settings-vision-switch'), 'onValueChange', false);
+    expect(calls).toEqual([[mockModel.id, false]]);
+    (modelStore as any).setModelVisionEnabled = original;
+  });
+
   it('renders correctly when visible', () => {
     const {getByTestId} = render(<ModelSettingsSheet {...defaultProps} />);
 
@@ -135,6 +162,20 @@ describe('ModelSettingsSheet', () => {
       mockModel.stopWords,
     );
     expect(defaultProps.onClose).toHaveBeenCalled();
+  });
+
+  it('saves the wake words typed with the name', async () => {
+    const {getByText, getByTestId} = render(
+      <ModelSettingsSheet {...defaultProps} />,
+    );
+    fireEvent.press(getByTestId('mock-wake-words-update'));
+    await act(async () => {
+      fireEvent.press(getByText('Save Changes'));
+    });
+    expect(modelStore.updateModelWakeWords).toHaveBeenCalledWith(mockModel.id, [
+      'Hey Jarvis',
+      ' Jarvis',
+    ]);
   });
 
   it('handles cancel correctly', async () => {

@@ -100,7 +100,27 @@ const HEAD_INJECTION = `<meta http-equiv="Content-Security-Policy" content="${CS
   body > * { max-width: 100vw; box-sizing: border-box; }
   img, video, iframe, svg, canvas { max-width: 100%; height: auto; }
   table, pre, code { max-width: 100%; overflow-x: auto; }
-</style>`;
+</style>
+<script data-preview-fit>
+  /* Fit the page in the preview: a page up to twice the window's height is
+     scaled down so nothing is cut off at the bottom; a longer page keeps
+     its size and scrolls. Runs inside the page only (no bridge). */
+  (function () {
+    function fit() {
+      var b = document.body;
+      if (!b) { return; }
+      b.style.zoom = '';
+      var h = document.documentElement.scrollHeight;
+      var v = window.innerHeight;
+      if (v > 0 && h > v) {
+        var s = v / h;
+        if (s >= 0.5) { b.style.zoom = String(s); }
+      }
+    }
+    window.addEventListener('load', function () { fit(); setTimeout(fit, 400); });
+    window.addEventListener('resize', fit);
+  })();
+</script>`;
 
 // Generated pages are written for a normal white browser page, so the
 // preview always starts from one (white background, dark text), whatever
@@ -208,6 +228,9 @@ const SandboxedHtmlView: React.FC<SandboxedHtmlViewProps> = ({
       onRenderProcessGone={fail}
       onContentProcessDidTerminate={fail}
       scrollEnabled={true}
+      // Android: let the page scroll inside the chat list instead of the
+      // list taking the gesture (which left the bottom unreachable).
+      nestedScrollEnabled={true}
       // White behind the page too, so there is no dark flash while it loads.
       style={[style, {backgroundColor: PAGE_BACKGROUND}]}
       testID={testID}

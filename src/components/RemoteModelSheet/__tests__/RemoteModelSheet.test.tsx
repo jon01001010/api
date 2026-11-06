@@ -130,6 +130,75 @@ describe('RemoteModelSheet', () => {
     expect(getByTestId('remote-url-input')).toBeTruthy();
   });
 
+  it('the Claude button fills in Anthropic and waits for the key', async () => {
+    const {getByTestId} = render(
+      <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,
+    );
+    fireEvent.press(getByTestId('claude-api-preset'));
+    expect(getByTestId('remote-url-input').props.value).toBe(
+      'https://api.anthropic.com',
+    );
+    // The key field shows right away, and no probe runs without a key.
+    expect(getByTestId('remote-apikey-input')).toBeTruthy();
+    expect(getByTestId('remote-name-input').props.value).toBe('Claude');
+    expect(fetchModelsWithHeaders).not.toHaveBeenCalled();
+  });
+
+  it('the DeepSeek button fills in DeepSeek and waits for the key', () => {
+    const {getByTestId} = render(
+      <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,
+    );
+    fireEvent.press(getByTestId('deepseek-api-preset'));
+    expect(getByTestId('remote-url-input').props.value).toBe(
+      'https://api.deepseek.com',
+    );
+    expect(getByTestId('remote-name-input').props.value).toBe('DeepSeek');
+    expect(getByTestId('remote-apikey-input')).toBeTruthy();
+    expect(fetchModelsWithHeaders).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'gemini',
+      'https://generativelanguage.googleapis.com/v1beta/openai',
+      'Gemini',
+    ],
+    ['groq', 'https://api.groq.com/openai/v1', 'Groq'],
+    ['openrouter', 'https://openrouter.ai/api/v1', 'OpenRouter'],
+  ])(
+    'the free %s button fills it in, links the key page and waits',
+    (id, url, name) => {
+      const {Linking} = require('react-native');
+      const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+      const {getByTestId} = render(
+        <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,
+      );
+      fireEvent.press(getByTestId(`${id}-api-preset`));
+      expect(getByTestId('remote-url-input').props.value).toBe(url);
+      expect(getByTestId('remote-name-input').props.value).toBe(name);
+      expect(getByTestId('remote-apikey-input')).toBeTruthy();
+      expect(fetchModelsWithHeaders).not.toHaveBeenCalled();
+      fireEvent.press(getByTestId('cloud-api-key-link'));
+      expect(openURL).toHaveBeenCalledWith(
+        expect.stringMatching(/^https:\/\//),
+      );
+      openURL.mockRestore();
+    },
+  );
+
+  it('a typed cloud address sets its type, so Gemini is not saved as Claude', async () => {
+    const {getByTestId} = render(
+      <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,
+    );
+    fireEvent.press(getByTestId('claude-api-preset'));
+    fireEvent.changeText(
+      getByTestId('remote-url-input'),
+      'https://generativelanguage.googleapis.com/v1beta/openai',
+    );
+    expect(getByTestId('gemini-api-preset')).toBeTruthy();
+    expect(getByTestId('cloud-api-key-link')).toBeTruthy();
+  });
+
   it('renders the Add Model button', () => {
     const {getByTestId} = render(
       <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,

@@ -134,6 +134,9 @@ function toWireToolCall(
       name: call.function?.name ?? '',
       arguments: call.function?.arguments ?? '',
     },
+    ...(call.extra_content !== undefined && {
+      extra_content: call.extra_content,
+    }),
   } as NonNullable<ChatMessage['tool_calls']>[number];
 }
 

@@ -45,8 +45,14 @@ import {
   SearchProviderKeySheet,
   InputSlider,
 } from '../../components';
+import {
+  CrashReportNotice,
+  useCrashReports,
+} from '../../components/CrashReportNotice';
 import {AuthSheet} from '../../components/PalsHub';
 import {LocalApiCard} from './LocalApiCard';
+import {ChatSettingsCard} from './ChatSettingsCard';
+import {SettingsLinks} from './SettingsLinks';
 
 import {useTheme} from '../../hooks';
 
@@ -58,6 +64,7 @@ import {
   uiStore,
   hfStore,
   ttsStore,
+  voiceStore,
   searchProviderStore,
   purchaseStore,
 } from '../../store';
@@ -91,6 +98,9 @@ export const SettingsScreen: React.FC = observer(() => {
   const theme = useTheme();
   const styles = createStyles(theme);
   const isFocused = useIsFocused();
+  const [crashReportsOpen, setCrashReportsOpen] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const crashReports = useCrashReports(crashReportsOpen);
   const [contextSize, setContextSize] = useState(
     modelStore.contextInitParams.n_ctx.toString(),
   );
@@ -367,718 +377,12 @@ export const SettingsScreen: React.FC = observer(() => {
         <ScrollView
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled">
-          <LocalApiCard />
-          {Platform.OS === 'android' && (
-            <Card elevation={0} style={styles.card}>
-              <Card.Title title="PocketAgent Hardware" />
-              <Card.Content>
-                <Text variant="titleMedium">Detected inference backends</Text>
-                <Text variant="bodySmall" style={styles.textDescription}>
-                  {deviceOptions.map(option => option.label).join(', ') ||
-                    'Checking available backends...'}
-                </Text>
-                <Text variant="titleMedium">Configured backend</Text>
-                <Text variant="bodySmall" style={styles.textDescription}>
-                  {getCurrentDeviceId() === 'hexagon'
-                    ? 'Hexagon NPU (selected)'
-                    : getCurrentDeviceId() === 'gpu'
-                      ? 'GPU (selected)'
-                      : 'CPU (selected)'}
-                </Text>
-                <Text variant="bodySmall" style={styles.textDescription}>
-                  Selection applies when the model is next loaded. NPU execution
-                  is not verified until a compatible model runs successfully.
-                  If Hexagon is not listed below, the runtime has not detected
-                  an available NPU backend.
-                </Text>
-              </Card.Content>
-            </Card>
-          )}
-          {/* Model Initialization Settings */}
-          <Card elevation={0} style={styles.card}>
-            <Card.Title title={l10n.settings.modelInitializationSettings} />
-            <Card.Content>
-              {/* Device Selection */}
+          {/* Screens that used to be in the side menu */}
+          <SettingsLinks cardStyle={styles.card} />
 
-              <View style={styles.settingItemContainer}>
-                {/* Show full UI when multiple device options available */}
-                {deviceOptions.length > 1 ? (
-                  <>
-                    <Text variant="titleMedium" style={styles.textLabel}>
-                      {Platform.OS === 'ios'
-                        ? l10n.settings.deviceSelectionIOS
-                        : l10n.settings.deviceSelection}
-                    </Text>
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {Platform.OS === 'ios'
-                        ? l10n.settings.deviceSelectionIOSDescription
-                        : l10n.settings.deviceSelectionAndroidDescription}
-                    </Text>
-                    <SegmentedButtons
-                      value={getCurrentDeviceId()}
-                      onValueChange={deviceId => {
-                        const option = deviceOptions.find(
-                          opt => opt.id === deviceId,
-                        );
-                        if (option) {
-                          handleDeviceSelect(option);
-                        }
-                      }}
-                      density="medium"
-                      buttons={deviceOptions.map(option => ({
-                        value: option.id,
-                        label: option.label,
-                        labelStyle: {
-                          fontSize: 10,
-                        },
-                        testID: `device-option-${option.id}`,
-                      }))}
-                      style={styles.segmentedButtons}
-                    />
-
-                    {/* GPU Layers Slider */}
-                    <InputSlider
-                      testID="gpu-layers-slider"
-                      value={modelStore.contextInitParams.n_gpu_layers}
-                      onValueChange={value =>
-                        modelStore.setNGPULayers(Math.round(value))
-                      }
-                      min={0}
-                      max={99}
-                      step={1}
-                    />
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {t(l10n.settings.layersOnGPU, {
-                        gpuLayers:
-                          modelStore.contextInitParams.n_gpu_layers.toString(),
-                      })}
-                    </Text>
-                  </>
-                ) : (
-                  /* Simplified UI when only CPU available */
-                  <>
-                    <Text variant="titleMedium" style={styles.textLabel}>
-                      {l10n.settings.deviceSelection}
-                    </Text>
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {l10n.settings.cpuOnlyNoAccelerators}
-                    </Text>
-                  </>
-                )}
-
-                {/* OpenCL quantization note for Android */}
-                {Platform.OS === 'android' &&
-                  gpuSupported &&
-                  (modelStore.contextInitParams.n_gpu_layers ?? 0) > 0 && (
-                    <View>
-                      <Text variant="labelSmall" style={styles.textDescription}>
-                        {l10n.settings.openCLQuantizationNote}
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => Linking.openURL(OPENCL_DOCS_URL)}
-                        style={styles.linkContainer}>
-                        <Text
-                          variant="labelSmall"
-                          style={[
-                            styles.textDescription,
-                            {color: theme.colors.primary},
-                          ]}>
-                          {l10n.settings.openCLDocsLink}
-                        </Text>
-                        <LinkExternalIcon
-                          width={12}
-                          height={12}
-                          stroke={theme.colors.primary}
-                          style={styles.linkIcon}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  )}
-              </View>
-              <Divider />
-
-              {/* Context Size */}
-              <View style={styles.settingItemContainer}>
-                <Text variant="titleMedium" style={styles.textLabel}>
-                  {l10n.settings.contextSize}
-                </Text>
-                <TextInput
-                  ref={inputRef}
-                  testID="context-size-input"
-                  style={[
-                    styles.textInput,
-                    !isValidInput && styles.invalidInput,
-                  ]}
-                  keyboardType="numeric"
-                  value={contextSize}
-                  onChangeText={handleContextSizeChange}
-                  placeholder={t(l10n.settings.contextSizePlaceholder, {
-                    minContextSize: modelStore.MIN_CONTEXT_SIZE.toString(),
-                  })}
-                />
-                {!isValidInput && (
-                  <Text style={styles.errorText}>
-                    {t(l10n.settings.invalidContextSizeError, {
-                      minContextSize: modelStore.MIN_CONTEXT_SIZE.toString(),
-                    })}
-                  </Text>
-                )}
-                <Text variant="labelSmall" style={styles.textDescription}>
-                  {l10n.settings.modelReloadNotice}
-                </Text>
-              </View>
-
-              {/* Advanced Settings */}
-              <List.Accordion
-                testID="advanced-settings-accordion"
-                title={l10n.settings.advancedSettings}
-                titleStyle={styles.accordionTitle}
-                style={styles.advancedAccordion}
-                expanded={showAdvancedSettings}
-                onPress={() => setShowAdvancedSettings(!showAdvancedSettings)}>
-                <View style={styles.advancedSettingsContent}>
-                  {/* Batch Size Slider */}
-                  <View style={styles.settingItemContainer}>
-                    <InputSlider
-                      testID="batch-size-slider"
-                      label={l10n.settings.batchSize}
-                      value={modelStore.contextInitParams.n_batch}
-                      onValueChange={value =>
-                        modelStore.setNBatch(Math.round(value))
-                      }
-                      min={1}
-                      max={4096}
-                      step={1}
-                    />
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {t(l10n.settings.batchSizeDescription, {
-                        batchSize:
-                          modelStore.contextInitParams.n_batch.toString(),
-                        effectiveBatch:
-                          modelStore.contextInitParams.n_batch >
-                          modelStore.contextInitParams.n_ctx
-                            ? ` (${l10n.settings.effectiveLabel}: ${modelStore.contextInitParams.n_ctx})`
-                            : '',
-                      })}
-                    </Text>
-                  </View>
-                  <Divider />
-
-                  {/* Physical Batch Size Slider */}
-                  <View style={styles.settingItemContainer}>
-                    <InputSlider
-                      testID="ubatch-size-slider"
-                      label={l10n.settings.physicalBatchSize}
-                      value={modelStore.contextInitParams.n_ubatch}
-                      onValueChange={value =>
-                        modelStore.setNUBatch(Math.round(value))
-                      }
-                      min={1}
-                      max={4096}
-                      step={1}
-                    />
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {t(l10n.settings.physicalBatchSizeDescription, {
-                        physicalBatchSize:
-                          modelStore.contextInitParams.n_ubatch.toString(),
-                        effectivePhysicalBatch:
-                          modelStore.contextInitParams.n_ubatch >
-                          Math.min(
-                            modelStore.contextInitParams.n_batch,
-                            modelStore.contextInitParams.n_ctx,
-                          )
-                            ? ` (${l10n.settings.effectiveLabel}: ${Math.min(
-                                modelStore.contextInitParams.n_batch,
-                                modelStore.contextInitParams.n_ctx,
-                              )})`
-                            : '',
-                      })}
-                    </Text>
-                  </View>
-                  <Divider />
-
-                  {/* Thread Count Slider */}
-                  <View style={styles.settingItemContainer}>
-                    <InputSlider
-                      testID="thread-count-slider"
-                      label={l10n.settings.cpuThreads}
-                      value={modelStore.contextInitParams.n_threads}
-                      onValueChange={value =>
-                        modelStore.setNThreads(Math.round(value))
-                      }
-                      min={1}
-                      max={modelStore.max_threads}
-                      step={1}
-                    />
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {t(l10n.settings.cpuThreadsDescription, {
-                        threads:
-                          modelStore.contextInitParams.n_threads.toString(),
-                        maxThreads: modelStore.max_threads.toString(),
-                      })}
-                    </Text>
-                  </View>
-                  <Divider />
-
-                  {/* Image Max Tokens Slider */}
-                  <View style={styles.settingItemContainer}>
-                    <InputSlider
-                      testID="image-max-tokens-slider"
-                      label={l10n.settings.imageMaxTokens}
-                      value={
-                        modelStore.contextInitParams.image_max_tokens ?? 512
-                      }
-                      onValueChange={value =>
-                        modelStore.setImageMaxTokens(Math.round(value))
-                      }
-                      min={256}
-                      max={4096}
-                      step={1}
-                    />
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {t(l10n.settings.imageMaxTokensDescription, {
-                        tokens: (
-                          modelStore.contextInitParams.image_max_tokens ?? 512
-                        ).toString(),
-                        effectiveTokens:
-                          (modelStore.contextInitParams.image_max_tokens ??
-                            512) > modelStore.contextInitParams.n_ctx
-                            ? ` (${l10n.settings.effectiveLabel}: ${modelStore.contextInitParams.n_ctx})`
-                            : '',
-                      })}
-                    </Text>
-                  </View>
-                  <Divider />
-
-                  {/* Flash Attention Type */}
-                  <View style={styles.settingItemContainer}>
-                    <Text variant="titleMedium" style={styles.textLabel}>
-                      {l10n.settings.flashAttention}
-                    </Text>
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {Platform.OS === 'ios'
-                        ? l10n.settings.flashAttentionIOSDescription
-                        : l10n.settings.flashAttentionAndroidDescription}
-                    </Text>
-                    <SegmentedButtons
-                      value={
-                        modelStore.contextInitParams.flash_attn_type ??
-                        (Platform.OS === 'ios' ? 'auto' : 'off')
-                      }
-                      onValueChange={value =>
-                        modelStore.setFlashAttnType(
-                          value as 'auto' | 'on' | 'off',
-                        )
-                      }
-                      density="high"
-                      buttons={(() => {
-                        const currentDeviceId = getCurrentDeviceId();
-                        const currentDevice = deviceOptions.find(
-                          opt => opt.id === currentDeviceId,
-                        );
-                        const validTypes =
-                          currentDevice?.valid_flash_attn_types || [
-                            'auto',
-                            'on',
-                            'off',
-                          ];
-
-                        return [
-                          {
-                            value: 'auto',
-                            label: l10n.settings.flashAttentionAuto,
-                            disabled: !validTypes.includes('auto'),
-                          },
-                          {
-                            value: 'on',
-                            label: l10n.settings.flashAttentionOn,
-                            disabled: !validTypes.includes('on'),
-                          },
-                          {
-                            value: 'off',
-                            label: l10n.settings.flashAttentionOff,
-                            disabled: !validTypes.includes('off'),
-                          },
-                        ];
-                      })()}
-                      style={styles.segmentedButtons}
-                    />
-                  </View>
-                  <Divider />
-
-                  <CacheTypeMenuRow
-                    menu={keyCacheMenu}
-                    styles={styles}
-                    testID="key-cache-type-button"
-                    label={l10n.settings.keyCacheType}
-                    description={
-                      flashAttnOff
-                        ? l10n.settings.keyCacheTypeDisabledDescription
-                        : l10n.settings.keyCacheTypeDescription
-                    }
-                    value={modelStore.contextInitParams.cache_type_k}
-                    valueLabel={getCacheTypeLabel(
-                      modelStore.contextInitParams.cache_type_k,
-                      false,
-                    )}
-                    options={cacheTypeKOptions}
-                    disabled={flashAttnOff}
-                    onSelect={value => modelStore.setCacheTypeK(value)}
-                  />
-                  <Divider />
-
-                  <CacheTypeMenuRow
-                    menu={valueCacheMenu}
-                    styles={styles}
-                    testID="value-cache-type-button"
-                    label={l10n.settings.valueCacheType}
-                    description={
-                      flashAttnOff
-                        ? l10n.settings.valueCacheTypeDisabledDescription
-                        : l10n.settings.valueCacheTypeDescription
-                    }
-                    value={modelStore.contextInitParams.cache_type_v}
-                    valueLabel={getCacheTypeLabel(
-                      modelStore.contextInitParams.cache_type_v,
-                      true,
-                    )}
-                    options={cacheTypeVOptions}
-                    disabled={flashAttnOff}
-                    onSelect={value => modelStore.setCacheTypeV(value)}
-                  />
-                  <Divider />
-
-                  {/* Speculative Decoding (draft model) */}
-                  <View style={styles.settingItemContainer}>
-                    <View style={styles.switchContainer}>
-                      <View style={styles.textContainer}>
-                        <Text variant="titleMedium" style={styles.textLabel}>
-                          {l10n.settings.speculativeDecoding}
-                        </Text>
-                        <Text
-                          variant="labelSmall"
-                          style={styles.textDescription}>
-                          {l10n.settings.speculativeDecodingDescription}
-                        </Text>
-                      </View>
-                      <Switch
-                        testID="speculative-decoding-switch"
-                        value={speculativeEnabled}
-                        accessibilityLabel={l10n.settings.speculativeDecoding}
-                        accessibilityHint={
-                          l10n.settings.speculativeDecodingDescription
-                        }
-                        onValueChange={value =>
-                          modelStore.setSpeculativeEnabled(value)
-                        }
-                      />
-                    </View>
-                    {showSpeculativeNoEffectNote && (
-                      <Text
-                        variant="labelSmall"
-                        style={styles.textDescription}
-                        testID="speculative-no-effect-note">
-                        {l10n.settings.speculativeNotMTPCapable}
-                      </Text>
-                    )}
-                  </View>
-
-                  {speculativeEnabled && (
-                    <>
-                      <Divider />
-
-                      {/* Draft Model Picker: full-row control — model names
-                          are too long to share a row with the title. */}
-                      <View style={styles.settingItemContainer}>
-                        <Text variant="titleMedium" style={styles.textLabel}>
-                          {l10n.settings.speculativeDraftModel}
-                        </Text>
-                        <Text
-                          variant="labelSmall"
-                          style={styles.textDescription}>
-                          {l10n.settings.speculativeDraftModelDescription}
-                        </Text>
-                        <View style={styles.fullRowControl}>
-                          <View>
-                            <Button
-                              ref={draftModelButtonRef}
-                              mode="outlined"
-                              onPress={handleDraftModelPress}
-                              style={styles.menuButton}
-                              contentStyle={styles.buttonContent}
-                              testID="speculative-draft-model-picker"
-                              accessibilityLabel={`${
-                                l10n.settings.speculativeDraftModel
-                              }, ${
-                                selectedDraftModel?.name ??
-                                l10n.settings.speculativeDraftModelNone
-                              }`}
-                              accessibilityHint={
-                                l10n.settings.speculativeDraftModelDescription
-                              }
-                              icon={({size, color}) => (
-                                <Icon
-                                  source="chevron-down"
-                                  size={size}
-                                  color={color}
-                                />
-                              )}>
-                              {selectedDraftModel?.name ??
-                                l10n.settings.speculativeDraftModelNone}
-                            </Button>
-                            <Menu
-                              visible={showDraftModelMenu}
-                              onDismiss={() => setShowDraftModelMenu(false)}
-                              anchor={draftModelAnchor}
-                              selectable>
-                              <Menu.Item
-                                style={styles.menu}
-                                label={l10n.settings.speculativeDraftModelNone}
-                                selected={!selectedDraftModel}
-                                onPress={() => {
-                                  modelStore.setSelectedDraftModel(undefined);
-                                  setShowDraftModelMenu(false);
-                                }}
-                              />
-                              {eligibleDraftModels.map(model => (
-                                <Menu.Item
-                                  key={model.id}
-                                  style={styles.menu}
-                                  label={model.name}
-                                  selected={model.id === selectedDraftModel?.id}
-                                  onPress={() => {
-                                    modelStore.setSelectedDraftModel(model.id);
-                                    setShowDraftModelMenu(false);
-                                  }}
-                                />
-                              ))}
-                            </Menu>
-                          </View>
-                        </View>
-                        {draftPickIgnoredNote !== undefined && (
-                          <Text
-                            variant="labelSmall"
-                            style={styles.textDescription}
-                            testID="speculative-draft-model-ignored-note">
-                            {draftPickIgnoredNote}
-                          </Text>
-                        )}
-                      </View>
-                      <Divider />
-
-                      {/* Draft GPU Layers Slider */}
-                      <View style={styles.settingItemContainer}>
-                        <Text variant="titleMedium" style={styles.textLabel}>
-                          {l10n.settings.speculativeDraftNGpuLayers}
-                        </Text>
-                        <Text
-                          variant="labelSmall"
-                          style={styles.textDescription}>
-                          {l10n.settings.speculativeDraftNGpuLayersDescription}
-                        </Text>
-                        <InputSlider
-                          testID="speculative-draft-gpu-layers-slider"
-                          accessibilityLabel={
-                            l10n.settings.speculativeDraftNGpuLayers
-                          }
-                          value={
-                            modelStore.contextInitParams
-                              .spec_draft_n_gpu_layers ?? 99
-                          }
-                          onValueChange={value =>
-                            modelStore.setSpecDraftNGpuLayers(Math.round(value))
-                          }
-                          min={0}
-                          max={99}
-                          step={1}
-                        />
-                      </View>
-                      <Divider />
-
-                      <CacheTypeMenuRow
-                        menu={draftKeyCacheMenu}
-                        styles={styles}
-                        testID="speculative-draft-key-cache-button"
-                        label={l10n.settings.speculativeDraftKeyCacheType}
-                        description={
-                          draftMode === 'off'
-                            ? l10n.settings
-                                .speculativeDraftCacheTypeInactiveDescription
-                            : undefined
-                        }
-                        value={
-                          modelStore.contextInitParams.spec_draft_cache_type_k
-                        }
-                        valueLabel={getDraftCacheTypeLabel(
-                          modelStore.contextInitParams.spec_draft_cache_type_k,
-                          false,
-                        )}
-                        options={draftCacheTypeKOptions}
-                        disabled={draftMode === 'off'}
-                        onSelect={value =>
-                          modelStore.setSpecDraftCacheTypeK(value)
-                        }
-                      />
-                      <Divider />
-
-                      <CacheTypeMenuRow
-                        menu={draftValueCacheMenu}
-                        styles={styles}
-                        testID="speculative-draft-value-cache-button"
-                        label={l10n.settings.speculativeDraftValueCacheType}
-                        description={
-                          draftMode === 'off'
-                            ? l10n.settings
-                                .speculativeDraftCacheTypeInactiveDescription
-                            : undefined
-                        }
-                        value={
-                          modelStore.contextInitParams.spec_draft_cache_type_v
-                        }
-                        valueLabel={getDraftCacheTypeLabel(
-                          modelStore.contextInitParams.spec_draft_cache_type_v,
-                          true,
-                        )}
-                        options={draftCacheTypeVOptions}
-                        disabled={draftMode === 'off'}
-                        onSelect={value =>
-                          modelStore.setSpecDraftCacheTypeV(value)
-                        }
-                      />
-                    </>
-                  )}
-                </View>
-              </List.Accordion>
-            </Card.Content>
-          </Card>
-
-          {/* Memory Settings */}
-          <Card elevation={0} style={styles.card}>
-            <Card.Title title={l10n.settings.memorySettings} />
-            <Card.Content>
-              <View style={styles.settingItemContainer}>
-                {/* Use Memory Lock */}
-                <View style={styles.switchContainer}>
-                  <View style={styles.textContainer}>
-                    <Text variant="titleMedium" style={styles.textLabel}>
-                      {l10n.settings.useMlock}
-                    </Text>
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {l10n.settings.useMlockDescription}
-                    </Text>
-                  </View>
-                  <Switch
-                    testID="use-mlock-switch"
-                    value={modelStore.contextInitParams.use_mlock}
-                    onValueChange={value => modelStore.setUseMlock(value)}
-                  />
-                </View>
-              </View>
-              <Divider />
-
-              {/* Memory Mapping */}
-              <View style={styles.settingItemContainer}>
-                <View style={styles.switchContainer}>
-                  <View style={styles.textContainer}>
-                    <Text variant="titleMedium" style={styles.textLabel}>
-                      {l10n.settings.useMmap}
-                    </Text>
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {l10n.settings.useMmapDescription}
-                    </Text>
-                  </View>
-                  <Switch
-                    testID="use-mmap-switch"
-                    value={
-                      modelStore.contextInitParams.use_mmap !== 'false' &&
-                      modelStore.contextInitParams.use_mmap !== 'smart'
-                    }
-                    onValueChange={value =>
-                      modelStore.setUseMmap(value ? 'true' : 'false')
-                    }
-                  />
-                </View>
-              </View>
-              <Divider />
-
-              {/* Enable Weight Repacking (Android only) */}
-              {Platform.OS === 'android' && (
-                <View style={styles.settingItemContainer}>
-                  <View style={styles.switchContainer}>
-                    <View style={styles.textContainer}>
-                      <Text variant="titleMedium" style={styles.textLabel}>
-                        {l10n.settings.weightRepacking}
-                      </Text>
-                      <Text variant="labelSmall" style={styles.textDescription}>
-                        {l10n.settings.weightRepackingDescription}
-                      </Text>
-                    </View>
-                    <Switch
-                      testID="weight-repacking-switch"
-                      value={
-                        !(modelStore.contextInitParams.no_extra_bufts ?? false)
-                      }
-                      onValueChange={value =>
-                        modelStore.setNoExtraBufts(!value)
-                      }
-                    />
-                  </View>
-                </View>
-              )}
-              {Platform.OS === 'android' && <Divider />}
-
-              <Text variant="labelSmall" style={styles.textDescription}>
-                {l10n.settings.modelReloadNotice}
-              </Text>
-            </Card.Content>
-          </Card>
-
-          {/* Model Loading Settings */}
-          <Card elevation={0} style={styles.card}>
-            <Card.Title title={l10n.settings.modelLoadingSettings} />
-            <Card.Content>
-              <View style={styles.settingItemContainer}>
-                {/* Auto Offload/Load */}
-                <View style={styles.switchContainer}>
-                  <View style={styles.textContainer}>
-                    <Text variant="titleMedium" style={styles.textLabel}>
-                      {l10n.settings.autoOffloadLoad}
-                    </Text>
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {l10n.settings.autoOffloadLoadDescription}
-                    </Text>
-                  </View>
-                  <Switch
-                    testID="auto-offload-load-switch"
-                    value={modelStore.useAutoRelease}
-                    onValueChange={value =>
-                      modelStore.updateUseAutoRelease(value)
-                    }
-                  />
-                </View>
-                <Divider />
-
-                {/* Auto Navigate to Chat */}
-                <View style={styles.switchContainer}>
-                  <View style={styles.textContainer}>
-                    <Text variant="titleMedium" style={styles.textLabel}>
-                      {l10n.settings.autoNavigateToChat}
-                    </Text>
-                    <Text variant="labelSmall" style={styles.textDescription}>
-                      {l10n.settings.autoNavigateToChatDescription}
-                    </Text>
-                  </View>
-                  <Switch
-                    testID="auto-navigate-to-chat-switch"
-                    value={uiStore.autoNavigatetoChat}
-                    onValueChange={value =>
-                      uiStore.setAutoNavigateToChat(value)
-                    }
-                  />
-                </View>
-              </View>
-            </Card.Content>
-          </Card>
+          {/* Chat: generation settings and export/import (moved from the
+              chat screen's top-right menu). */}
+          <ChatSettingsCard cardStyle={styles.card} />
 
           {/* UI Settings */}
           <Card elevation={0} style={styles.card}>
@@ -1191,6 +495,54 @@ export const SettingsScreen: React.FC = observer(() => {
                   />
                 </View>
 
+                {/* Voice input and wake word (same sheet as long-pressing
+                    the mic in chat). */}
+                <Divider />
+                <View style={styles.switchContainer}>
+                  <View style={styles.textContainer}>
+                    <Text variant="titleMedium" style={styles.textLabel}>
+                      {l10n.voiceAndSpeech.voiceInput.settingsRow}
+                    </Text>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {voiceStore.wakeEnabled
+                        ? t(l10n.voiceAndSpeech.voiceInput.settingsWakeOn, {
+                            phrase: voiceStore.wakePhrase,
+                          })
+                        : l10n.voiceAndSpeech.voiceInput.settingsRowHint}
+                    </Text>
+                  </View>
+                  <Button
+                    mode="outlined"
+                    testID="voice-input-settings-button"
+                    onPress={() => voiceStore.openSheet()}>
+                    {l10n.voiceAndSpeech.voiceInput.settingsOpen}
+                  </Button>
+                </View>
+
+                {/* Why the app closed recently (Android 11+ and app errors). */}
+                <Divider />
+                <View style={styles.switchContainer}>
+                  <View style={styles.textContainer}>
+                    <Text variant="titleMedium" style={styles.textLabel}>
+                      {l10n.settings.crashReports.row}
+                    </Text>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {l10n.settings.crashReports.rowHint}
+                    </Text>
+                  </View>
+                  <Button
+                    mode="outlined"
+                    testID="crash-reports-button"
+                    onPress={() => setCrashReportsOpen(true)}>
+                    {l10n.settings.crashReports.open}
+                  </Button>
+                </View>
+                <CrashReportNotice
+                  reports={crashReports}
+                  visible={crashReportsOpen}
+                  onClose={() => setCrashReportsOpen(false)}
+                />
+
                 {/* Display Memory Usage (iOS only) */}
                 {Platform.OS === 'ios' && (
                   <>
@@ -1224,6 +576,123 @@ export const SettingsScreen: React.FC = observer(() => {
                     </View>
                   </>
                 )}
+              </View>
+            </Card.Content>
+          </Card>
+
+          {/* Model Loading Settings */}
+          <Card elevation={0} style={styles.card}>
+            <Card.Title title={l10n.settings.modelLoadingSettings} />
+            <Card.Content>
+              <View style={styles.settingItemContainer}>
+                {/* Auto Offload/Load */}
+                <View style={styles.switchContainer}>
+                  <View style={styles.textContainer}>
+                    <Text variant="titleMedium" style={styles.textLabel}>
+                      {l10n.settings.autoOffloadLoad}
+                    </Text>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {l10n.settings.autoOffloadLoadDescription}
+                    </Text>
+                  </View>
+                  <Switch
+                    testID="auto-offload-load-switch"
+                    value={modelStore.useAutoRelease}
+                    onValueChange={value =>
+                      modelStore.updateUseAutoRelease(value)
+                    }
+                  />
+                </View>
+                <Divider />
+
+                {/* Bring back the model in use when the app starts. */}
+                <View style={styles.switchContainer}>
+                  <View style={styles.textContainer}>
+                    <Text variant="titleMedium" style={styles.textLabel}>
+                      {l10n.settings.restoreModel.title}
+                    </Text>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {l10n.settings.restoreModel.description}
+                    </Text>
+                  </View>
+                  <Switch
+                    testID="restore-model-switch"
+                    value={modelStore.restoreModelOnStart}
+                    onValueChange={value =>
+                      modelStore.setRestoreModelOnStart(value)
+                    }
+                  />
+                </View>
+                <Divider />
+
+                {/* Multi-model: keep recently used models loaded (off by default). */}
+                <View style={styles.switchContainer}>
+                  <View style={styles.textContainer}>
+                    <Text variant="titleMedium" style={styles.textLabel}>
+                      {l10n.settings.multiModel.title}
+                    </Text>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {l10n.settings.multiModel.description}
+                    </Text>
+                  </View>
+                  <Switch
+                    testID="keep-models-loaded-switch"
+                    value={modelStore.keepModelsLoaded}
+                    onValueChange={value =>
+                      modelStore.setKeepModelsLoaded(value)
+                    }
+                  />
+                </View>
+                {modelStore.keepModelsLoaded && (
+                  <View style={styles.settingItemContainer}>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {l10n.settings.multiModel.howMany}
+                    </Text>
+                    <SegmentedButtons
+                      value={String(modelStore.maxLoadedModels)}
+                      onValueChange={value =>
+                        modelStore.setMaxLoadedModels(Number(value))
+                      }
+                      buttons={['2', '3', '4'].map(n => ({
+                        value: n,
+                        label: n,
+                        testID: `max-loaded-${n}`,
+                      }))}
+                    />
+                    {modelStore.parkedModels.length > 0 && (
+                      <Button
+                        mode="text"
+                        testID="unload-kept-models"
+                        onPress={() =>
+                          modelStore.releaseParkedModels().catch(() => {})
+                        }>
+                        {t(l10n.settings.multiModel.unloadKept, {
+                          count: modelStore.parkedModels.length,
+                        })}
+                      </Button>
+                    )}
+                  </View>
+                )}
+                <Divider />
+
+                {/* Auto Navigate to Chat */}
+                <View style={styles.switchContainer}>
+                  <View style={styles.textContainer}>
+                    <Text variant="titleMedium" style={styles.textLabel}>
+                      {l10n.settings.autoNavigateToChat}
+                    </Text>
+                    <Text variant="labelSmall" style={styles.textDescription}>
+                      {l10n.settings.autoNavigateToChatDescription}
+                    </Text>
+                  </View>
+                  <Switch
+                    testID="auto-navigate-to-chat-switch"
+                    value={uiStore.autoNavigatetoChat}
+                    onValueChange={value =>
+                      uiStore.setAutoNavigateToChat(value)
+                    }
+                  />
+                </View>
               </View>
             </Card.Content>
           </Card>
@@ -1440,143 +909,861 @@ export const SettingsScreen: React.FC = observer(() => {
             </Card.Content>
           </Card>
 
-          {/* Cache & Storage Settings - iOS only (for Shortcuts) */}
-          {Platform.OS === 'ios' && (
-            <Card elevation={0} style={styles.card}>
-              <Card.Title title={l10n.settings.cacheStorageTitle} />
-              <Card.Content>
-                <View style={styles.settingItemContainer}>
-                  {/* Clear Shortcuts Caches */}
-                  <View style={styles.switchContainer}>
-                    <View style={styles.textContainer}>
-                      <Text variant="titleMedium" style={styles.textLabel}>
-                        {l10n.settings.clearPalCaches}
-                      </Text>
-                      <Text variant="labelSmall" style={styles.textDescription}>
-                        {l10n.settings.clearPalCachesDescription}
-                      </Text>
-                    </View>
-                    <Button
-                      mode="outlined"
-                      onPress={async () => {
-                        try {
-                          const cacheInfo = await getSessionCacheInfo();
+          {/* Advanced: expert model, memory and sharing options, folded away */}
+          <List.Item
+            testID="settings-advanced-toggle"
+            title="Advanced"
+            description="Performance, memory, local API sharing, legacy export"
+            onPress={() => setShowAdvanced(v => !v)}
+            right={props => (
+              <List.Icon
+                {...props}
+                icon={showAdvanced ? 'chevron-up' : 'chevron-down'}
+              />
+            )}
+          />
+          {showAdvanced && (
+            <>
+              <LocalApiCard />
+              {/* Model Initialization Settings */}
+              <Card elevation={0} style={styles.card}>
+                <Card.Title title={l10n.settings.modelInitializationSettings} />
+                <Card.Content>
+                  {/* Device Selection */}
 
-                          if (cacheInfo.fileCount === 0) {
-                            Alert.alert(
-                              l10n.settings.clearPalCaches,
-                              l10n.settings.noCachesToClear,
+                  <View style={styles.settingItemContainer}>
+                    {/* Show full UI when multiple device options available */}
+                    {deviceOptions.length > 1 ? (
+                      <>
+                        <Text variant="titleMedium" style={styles.textLabel}>
+                          {Platform.OS === 'ios'
+                            ? l10n.settings.deviceSelectionIOS
+                            : l10n.settings.deviceSelection}
+                        </Text>
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {Platform.OS === 'ios'
+                            ? l10n.settings.deviceSelectionIOSDescription
+                            : l10n.settings.deviceSelectionAndroidDescription}
+                        </Text>
+                        <SegmentedButtons
+                          value={getCurrentDeviceId()}
+                          onValueChange={deviceId => {
+                            const option = deviceOptions.find(
+                              opt => opt.id === deviceId,
                             );
-                            return;
-                          }
-
-                          const formattedSize = formatBytes(
-                            cacheInfo.totalSizeBytes,
-                          );
-                          const confirmMessage = t(
-                            l10n.settings.clearCachesConfirmMessage,
-                            {
-                              fileCount: cacheInfo.fileCount.toString(),
-                              size: formattedSize,
+                            if (option) {
+                              handleDeviceSelect(option);
+                            }
+                          }}
+                          density="medium"
+                          buttons={deviceOptions.map(option => ({
+                            value: option.id,
+                            label: option.label,
+                            labelStyle: {
+                              fontSize: 10,
                             },
-                          );
+                            testID: `device-option-${option.id}`,
+                          }))}
+                          style={styles.segmentedButtons}
+                        />
 
-                          Alert.alert(
-                            l10n.settings.clearCachesConfirmTitle,
-                            confirmMessage,
-                            [
-                              {
-                                text: l10n.common.cancel,
-                                style: 'cancel',
-                              },
-                              {
-                                text: l10n.settings.clearCachesButton,
-                                style: 'destructive',
-                                onPress: async () => {
-                                  try {
-                                    const deletedCount =
-                                      await clearAllSessionCaches();
-                                    const successMessage = t(
-                                      l10n.settings.clearCachesSuccess,
-                                      {count: deletedCount.toString()},
-                                    );
-                                    Alert.alert(
-                                      l10n.settings.clearPalCaches,
-                                      successMessage,
-                                    );
-                                  } catch (error) {
-                                    console.error(
-                                      'Failed to clear caches:',
-                                      error,
-                                    );
-                                    Alert.alert(
-                                      l10n.settings.clearPalCaches,
-                                      l10n.settings.clearCachesError,
-                                    );
-                                  }
-                                },
-                              },
-                            ],
-                          );
-                        } catch (error) {
-                          console.error('Failed to get cache info:', error);
-                          Alert.alert(
-                            l10n.settings.clearPalCaches,
-                            l10n.settings.clearCachesError,
-                          );
-                        }
-                      }}
-                      style={styles.menuButton}>
-                      {l10n.settings.clearCachesButton}
-                    </Button>
+                        {/* GPU Layers Slider */}
+                        <InputSlider
+                          testID="gpu-layers-slider"
+                          value={modelStore.contextInitParams.n_gpu_layers}
+                          onValueChange={value =>
+                            modelStore.setNGPULayers(Math.round(value))
+                          }
+                          min={0}
+                          max={99}
+                          step={1}
+                        />
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {t(l10n.settings.layersOnGPU, {
+                            gpuLayers:
+                              modelStore.contextInitParams.n_gpu_layers.toString(),
+                          })}
+                        </Text>
+                      </>
+                    ) : (
+                      /* Simplified UI when only CPU available */
+                      <>
+                        <Text variant="titleMedium" style={styles.textLabel}>
+                          {l10n.settings.deviceSelection}
+                        </Text>
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {l10n.settings.cpuOnlyNoAccelerators}
+                        </Text>
+                      </>
+                    )}
+
+                    {/* OpenCL quantization note for Android */}
+                    {Platform.OS === 'android' &&
+                      gpuSupported &&
+                      (modelStore.contextInitParams.n_gpu_layers ?? 0) > 0 && (
+                        <View>
+                          <Text
+                            variant="labelSmall"
+                            style={styles.textDescription}>
+                            {l10n.settings.openCLQuantizationNote}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() => Linking.openURL(OPENCL_DOCS_URL)}
+                            style={styles.linkContainer}>
+                            <Text
+                              variant="labelSmall"
+                              style={[
+                                styles.textDescription,
+                                {color: theme.colors.primary},
+                              ]}>
+                              {l10n.settings.openCLDocsLink}
+                            </Text>
+                            <LinkExternalIcon
+                              width={12}
+                              height={12}
+                              stroke={theme.colors.primary}
+                              style={styles.linkIcon}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      )}
                   </View>
-                </View>
-              </Card.Content>
-            </Card>
-          )}
+                  <Divider />
 
-          {/* Export Options */}
-          <Card elevation={0} style={styles.card}>
-            <Card.Title title={l10n.settings.exportOptions} />
-            <Card.Content>
-              <View style={styles.settingItemContainer}>
-                {/* Legacy Export */}
-                <View style={styles.switchContainer}>
-                  <View style={styles.textContainer}>
-                    <View style={styles.labelWithIconContainer}>
-                      <ShareIcon
-                        width={20}
-                        height={20}
-                        style={styles.settingIcon}
-                        stroke={theme.colors.onSurface}
-                      />
-                      <Text variant="titleMedium" style={styles.textLabel}>
-                        {l10n.settings.exportLegacyChats}
+                  {/* Context Size */}
+                  <View style={styles.settingItemContainer}>
+                    <Text variant="titleMedium" style={styles.textLabel}>
+                      {l10n.settings.contextSize}
+                    </Text>
+                    <TextInput
+                      ref={inputRef}
+                      testID="context-size-input"
+                      style={[
+                        styles.textInput,
+                        !isValidInput && styles.invalidInput,
+                      ]}
+                      keyboardType="numeric"
+                      value={contextSize}
+                      onChangeText={handleContextSizeChange}
+                      placeholder={t(l10n.settings.contextSizePlaceholder, {
+                        minContextSize: modelStore.MIN_CONTEXT_SIZE.toString(),
+                      })}
+                    />
+                    {!isValidInput && (
+                      <Text style={styles.errorText}>
+                        {t(l10n.settings.invalidContextSizeError, {
+                          minContextSize:
+                            modelStore.MIN_CONTEXT_SIZE.toString(),
+                        })}
                       </Text>
-                    </View>
+                    )}
                     <Text variant="labelSmall" style={styles.textDescription}>
-                      {l10n.settings.exportLegacyChatsDescription}
+                      {l10n.settings.modelReloadNotice}
                     </Text>
                   </View>
-                  <Button
-                    mode="outlined"
-                    onPress={async () => {
-                      try {
-                        await exportLegacyChatSessions();
-                      } catch {
-                        Alert.alert(
-                          'Export Error',
-                          'Failed to export legacy chat sessions. The file may not exist.',
-                        );
-                      }
-                    }}
-                    style={styles.menuButton}>
-                    {l10n.settings.exportButton}
-                  </Button>
-                </View>
-              </View>
-            </Card.Content>
-          </Card>
+
+                  {/* Advanced Settings */}
+                  <List.Accordion
+                    testID="advanced-settings-accordion"
+                    title={l10n.settings.advancedSettings}
+                    titleStyle={styles.accordionTitle}
+                    style={styles.advancedAccordion}
+                    expanded={showAdvancedSettings}
+                    onPress={() =>
+                      setShowAdvancedSettings(!showAdvancedSettings)
+                    }>
+                    <View style={styles.advancedSettingsContent}>
+                      {/* Batch Size Slider */}
+                      <View style={styles.settingItemContainer}>
+                        <InputSlider
+                          testID="batch-size-slider"
+                          label={l10n.settings.batchSize}
+                          value={modelStore.contextInitParams.n_batch}
+                          onValueChange={value =>
+                            modelStore.setNBatch(Math.round(value))
+                          }
+                          min={1}
+                          max={4096}
+                          step={1}
+                        />
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {t(l10n.settings.batchSizeDescription, {
+                            batchSize:
+                              modelStore.contextInitParams.n_batch.toString(),
+                            effectiveBatch:
+                              modelStore.contextInitParams.n_batch >
+                              modelStore.contextInitParams.n_ctx
+                                ? ` (${l10n.settings.effectiveLabel}: ${modelStore.contextInitParams.n_ctx})`
+                                : '',
+                          })}
+                        </Text>
+                      </View>
+                      <Divider />
+
+                      {/* Physical Batch Size Slider */}
+                      <View style={styles.settingItemContainer}>
+                        <InputSlider
+                          testID="ubatch-size-slider"
+                          label={l10n.settings.physicalBatchSize}
+                          value={modelStore.contextInitParams.n_ubatch}
+                          onValueChange={value =>
+                            modelStore.setNUBatch(Math.round(value))
+                          }
+                          min={1}
+                          max={4096}
+                          step={1}
+                        />
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {t(l10n.settings.physicalBatchSizeDescription, {
+                            physicalBatchSize:
+                              modelStore.contextInitParams.n_ubatch.toString(),
+                            effectivePhysicalBatch:
+                              modelStore.contextInitParams.n_ubatch >
+                              Math.min(
+                                modelStore.contextInitParams.n_batch,
+                                modelStore.contextInitParams.n_ctx,
+                              )
+                                ? ` (${l10n.settings.effectiveLabel}: ${Math.min(
+                                    modelStore.contextInitParams.n_batch,
+                                    modelStore.contextInitParams.n_ctx,
+                                  )})`
+                                : '',
+                          })}
+                        </Text>
+                      </View>
+                      <Divider />
+
+                      {/* Thread Count Slider */}
+                      <View style={styles.settingItemContainer}>
+                        <InputSlider
+                          testID="thread-count-slider"
+                          label={l10n.settings.cpuThreads}
+                          value={modelStore.contextInitParams.n_threads}
+                          onValueChange={value =>
+                            modelStore.setNThreads(Math.round(value))
+                          }
+                          min={1}
+                          max={modelStore.max_threads}
+                          step={1}
+                        />
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {t(l10n.settings.cpuThreadsDescription, {
+                            threads:
+                              modelStore.contextInitParams.n_threads.toString(),
+                            maxThreads: modelStore.max_threads.toString(),
+                          })}
+                        </Text>
+                      </View>
+                      <Divider />
+
+                      {/* Image Max Tokens Slider */}
+                      <View style={styles.settingItemContainer}>
+                        <InputSlider
+                          testID="image-max-tokens-slider"
+                          label={l10n.settings.imageMaxTokens}
+                          value={
+                            modelStore.contextInitParams.image_max_tokens ?? 512
+                          }
+                          onValueChange={value =>
+                            modelStore.setImageMaxTokens(Math.round(value))
+                          }
+                          min={256}
+                          max={4096}
+                          step={1}
+                        />
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {t(l10n.settings.imageMaxTokensDescription, {
+                            tokens: (
+                              modelStore.contextInitParams.image_max_tokens ??
+                              512
+                            ).toString(),
+                            effectiveTokens:
+                              (modelStore.contextInitParams.image_max_tokens ??
+                                512) > modelStore.contextInitParams.n_ctx
+                                ? ` (${l10n.settings.effectiveLabel}: ${modelStore.contextInitParams.n_ctx})`
+                                : '',
+                          })}
+                        </Text>
+                      </View>
+                      <Divider />
+
+                      {/* Flash Attention Type */}
+                      <View style={styles.settingItemContainer}>
+                        <Text variant="titleMedium" style={styles.textLabel}>
+                          {l10n.settings.flashAttention}
+                        </Text>
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {Platform.OS === 'ios'
+                            ? l10n.settings.flashAttentionIOSDescription
+                            : l10n.settings.flashAttentionAndroidDescription}
+                        </Text>
+                        <SegmentedButtons
+                          value={
+                            modelStore.contextInitParams.flash_attn_type ??
+                            (Platform.OS === 'ios' ? 'auto' : 'off')
+                          }
+                          onValueChange={value =>
+                            modelStore.setFlashAttnType(
+                              value as 'auto' | 'on' | 'off',
+                            )
+                          }
+                          density="high"
+                          buttons={(() => {
+                            const currentDeviceId = getCurrentDeviceId();
+                            const currentDevice = deviceOptions.find(
+                              opt => opt.id === currentDeviceId,
+                            );
+                            const validTypes =
+                              currentDevice?.valid_flash_attn_types || [
+                                'auto',
+                                'on',
+                                'off',
+                              ];
+
+                            return [
+                              {
+                                value: 'auto',
+                                label: l10n.settings.flashAttentionAuto,
+                                disabled: !validTypes.includes('auto'),
+                              },
+                              {
+                                value: 'on',
+                                label: l10n.settings.flashAttentionOn,
+                                disabled: !validTypes.includes('on'),
+                              },
+                              {
+                                value: 'off',
+                                label: l10n.settings.flashAttentionOff,
+                                disabled: !validTypes.includes('off'),
+                              },
+                            ];
+                          })()}
+                          style={styles.segmentedButtons}
+                        />
+                      </View>
+                      <Divider />
+
+                      <CacheTypeMenuRow
+                        menu={keyCacheMenu}
+                        styles={styles}
+                        testID="key-cache-type-button"
+                        label={l10n.settings.keyCacheType}
+                        description={
+                          flashAttnOff
+                            ? l10n.settings.keyCacheTypeDisabledDescription
+                            : l10n.settings.keyCacheTypeDescription
+                        }
+                        value={modelStore.contextInitParams.cache_type_k}
+                        valueLabel={getCacheTypeLabel(
+                          modelStore.contextInitParams.cache_type_k,
+                          false,
+                        )}
+                        options={cacheTypeKOptions}
+                        disabled={flashAttnOff}
+                        onSelect={value => modelStore.setCacheTypeK(value)}
+                      />
+                      <Divider />
+
+                      <CacheTypeMenuRow
+                        menu={valueCacheMenu}
+                        styles={styles}
+                        testID="value-cache-type-button"
+                        label={l10n.settings.valueCacheType}
+                        description={
+                          flashAttnOff
+                            ? l10n.settings.valueCacheTypeDisabledDescription
+                            : l10n.settings.valueCacheTypeDescription
+                        }
+                        value={modelStore.contextInitParams.cache_type_v}
+                        valueLabel={getCacheTypeLabel(
+                          modelStore.contextInitParams.cache_type_v,
+                          true,
+                        )}
+                        options={cacheTypeVOptions}
+                        disabled={flashAttnOff}
+                        onSelect={value => modelStore.setCacheTypeV(value)}
+                      />
+                      <Divider />
+
+                      {/* Speculative Decoding (draft model) */}
+                      <View style={styles.settingItemContainer}>
+                        <View style={styles.switchContainer}>
+                          <View style={styles.textContainer}>
+                            <Text
+                              variant="titleMedium"
+                              style={styles.textLabel}>
+                              {l10n.settings.speculativeDecoding}
+                            </Text>
+                            <Text
+                              variant="labelSmall"
+                              style={styles.textDescription}>
+                              {l10n.settings.speculativeDecodingDescription}
+                            </Text>
+                          </View>
+                          <Switch
+                            testID="speculative-decoding-switch"
+                            value={speculativeEnabled}
+                            accessibilityLabel={
+                              l10n.settings.speculativeDecoding
+                            }
+                            accessibilityHint={
+                              l10n.settings.speculativeDecodingDescription
+                            }
+                            onValueChange={value =>
+                              modelStore.setSpeculativeEnabled(value)
+                            }
+                          />
+                        </View>
+                        {showSpeculativeNoEffectNote && (
+                          <Text
+                            variant="labelSmall"
+                            style={styles.textDescription}
+                            testID="speculative-no-effect-note">
+                            {l10n.settings.speculativeNotMTPCapable}
+                          </Text>
+                        )}
+                      </View>
+
+                      {speculativeEnabled && (
+                        <>
+                          <Divider />
+
+                          {/* Draft Model Picker: full-row control — model names
+                          are too long to share a row with the title. */}
+                          <View style={styles.settingItemContainer}>
+                            <Text
+                              variant="titleMedium"
+                              style={styles.textLabel}>
+                              {l10n.settings.speculativeDraftModel}
+                            </Text>
+                            <Text
+                              variant="labelSmall"
+                              style={styles.textDescription}>
+                              {l10n.settings.speculativeDraftModelDescription}
+                            </Text>
+                            <View style={styles.fullRowControl}>
+                              <View>
+                                <Button
+                                  ref={draftModelButtonRef}
+                                  mode="outlined"
+                                  onPress={handleDraftModelPress}
+                                  style={styles.menuButton}
+                                  contentStyle={styles.buttonContent}
+                                  testID="speculative-draft-model-picker"
+                                  accessibilityLabel={`${
+                                    l10n.settings.speculativeDraftModel
+                                  }, ${
+                                    selectedDraftModel?.name ??
+                                    l10n.settings.speculativeDraftModelNone
+                                  }`}
+                                  accessibilityHint={
+                                    l10n.settings
+                                      .speculativeDraftModelDescription
+                                  }
+                                  icon={({size, color}) => (
+                                    <Icon
+                                      source="chevron-down"
+                                      size={size}
+                                      color={color}
+                                    />
+                                  )}>
+                                  {selectedDraftModel?.name ??
+                                    l10n.settings.speculativeDraftModelNone}
+                                </Button>
+                                <Menu
+                                  visible={showDraftModelMenu}
+                                  onDismiss={() => setShowDraftModelMenu(false)}
+                                  anchor={draftModelAnchor}
+                                  selectable>
+                                  <Menu.Item
+                                    style={styles.menu}
+                                    label={
+                                      l10n.settings.speculativeDraftModelNone
+                                    }
+                                    selected={!selectedDraftModel}
+                                    onPress={() => {
+                                      modelStore.setSelectedDraftModel(
+                                        undefined,
+                                      );
+                                      setShowDraftModelMenu(false);
+                                    }}
+                                  />
+                                  {eligibleDraftModels.map(model => (
+                                    <Menu.Item
+                                      key={model.id}
+                                      style={styles.menu}
+                                      label={model.name}
+                                      selected={
+                                        model.id === selectedDraftModel?.id
+                                      }
+                                      onPress={() => {
+                                        modelStore.setSelectedDraftModel(
+                                          model.id,
+                                        );
+                                        setShowDraftModelMenu(false);
+                                      }}
+                                    />
+                                  ))}
+                                </Menu>
+                              </View>
+                            </View>
+                            {draftPickIgnoredNote !== undefined && (
+                              <Text
+                                variant="labelSmall"
+                                style={styles.textDescription}
+                                testID="speculative-draft-model-ignored-note">
+                                {draftPickIgnoredNote}
+                              </Text>
+                            )}
+                          </View>
+                          <Divider />
+
+                          {/* Draft GPU Layers Slider */}
+                          <View style={styles.settingItemContainer}>
+                            <Text
+                              variant="titleMedium"
+                              style={styles.textLabel}>
+                              {l10n.settings.speculativeDraftNGpuLayers}
+                            </Text>
+                            <Text
+                              variant="labelSmall"
+                              style={styles.textDescription}>
+                              {
+                                l10n.settings
+                                  .speculativeDraftNGpuLayersDescription
+                              }
+                            </Text>
+                            <InputSlider
+                              testID="speculative-draft-gpu-layers-slider"
+                              accessibilityLabel={
+                                l10n.settings.speculativeDraftNGpuLayers
+                              }
+                              value={
+                                modelStore.contextInitParams
+                                  .spec_draft_n_gpu_layers ?? 99
+                              }
+                              onValueChange={value =>
+                                modelStore.setSpecDraftNGpuLayers(
+                                  Math.round(value),
+                                )
+                              }
+                              min={0}
+                              max={99}
+                              step={1}
+                            />
+                          </View>
+                          <Divider />
+
+                          <CacheTypeMenuRow
+                            menu={draftKeyCacheMenu}
+                            styles={styles}
+                            testID="speculative-draft-key-cache-button"
+                            label={l10n.settings.speculativeDraftKeyCacheType}
+                            description={
+                              draftMode === 'off'
+                                ? l10n.settings
+                                    .speculativeDraftCacheTypeInactiveDescription
+                                : undefined
+                            }
+                            value={
+                              modelStore.contextInitParams
+                                .spec_draft_cache_type_k
+                            }
+                            valueLabel={getDraftCacheTypeLabel(
+                              modelStore.contextInitParams
+                                .spec_draft_cache_type_k,
+                              false,
+                            )}
+                            options={draftCacheTypeKOptions}
+                            disabled={draftMode === 'off'}
+                            onSelect={value =>
+                              modelStore.setSpecDraftCacheTypeK(value)
+                            }
+                          />
+                          <Divider />
+
+                          <CacheTypeMenuRow
+                            menu={draftValueCacheMenu}
+                            styles={styles}
+                            testID="speculative-draft-value-cache-button"
+                            label={l10n.settings.speculativeDraftValueCacheType}
+                            description={
+                              draftMode === 'off'
+                                ? l10n.settings
+                                    .speculativeDraftCacheTypeInactiveDescription
+                                : undefined
+                            }
+                            value={
+                              modelStore.contextInitParams
+                                .spec_draft_cache_type_v
+                            }
+                            valueLabel={getDraftCacheTypeLabel(
+                              modelStore.contextInitParams
+                                .spec_draft_cache_type_v,
+                              true,
+                            )}
+                            options={draftCacheTypeVOptions}
+                            disabled={draftMode === 'off'}
+                            onSelect={value =>
+                              modelStore.setSpecDraftCacheTypeV(value)
+                            }
+                          />
+                        </>
+                      )}
+                    </View>
+                  </List.Accordion>
+                </Card.Content>
+              </Card>
+
+              {/* Memory Settings */}
+              <Card elevation={0} style={styles.card}>
+                <Card.Title title={l10n.settings.memorySettings} />
+                <Card.Content>
+                  <View style={styles.settingItemContainer}>
+                    {/* Use Memory Lock */}
+                    <View style={styles.switchContainer}>
+                      <View style={styles.textContainer}>
+                        <Text variant="titleMedium" style={styles.textLabel}>
+                          {l10n.settings.useMlock}
+                        </Text>
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {l10n.settings.useMlockDescription}
+                        </Text>
+                      </View>
+                      <Switch
+                        testID="use-mlock-switch"
+                        value={modelStore.contextInitParams.use_mlock}
+                        onValueChange={value => modelStore.setUseMlock(value)}
+                      />
+                    </View>
+                  </View>
+                  <Divider />
+
+                  {/* Memory Mapping */}
+                  <View style={styles.settingItemContainer}>
+                    <View style={styles.switchContainer}>
+                      <View style={styles.textContainer}>
+                        <Text variant="titleMedium" style={styles.textLabel}>
+                          {l10n.settings.useMmap}
+                        </Text>
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {l10n.settings.useMmapDescription}
+                        </Text>
+                      </View>
+                      <Switch
+                        testID="use-mmap-switch"
+                        value={
+                          modelStore.contextInitParams.use_mmap !== 'false' &&
+                          modelStore.contextInitParams.use_mmap !== 'smart'
+                        }
+                        onValueChange={value =>
+                          modelStore.setUseMmap(value ? 'true' : 'false')
+                        }
+                      />
+                    </View>
+                  </View>
+                  <Divider />
+
+                  {/* Enable Weight Repacking (Android only) */}
+                  {Platform.OS === 'android' && (
+                    <View style={styles.settingItemContainer}>
+                      <View style={styles.switchContainer}>
+                        <View style={styles.textContainer}>
+                          <Text variant="titleMedium" style={styles.textLabel}>
+                            {l10n.settings.weightRepacking}
+                          </Text>
+                          <Text
+                            variant="labelSmall"
+                            style={styles.textDescription}>
+                            {l10n.settings.weightRepackingDescription}
+                          </Text>
+                        </View>
+                        <Switch
+                          testID="weight-repacking-switch"
+                          value={
+                            !(
+                              modelStore.contextInitParams.no_extra_bufts ??
+                              false
+                            )
+                          }
+                          onValueChange={value =>
+                            modelStore.setNoExtraBufts(!value)
+                          }
+                        />
+                      </View>
+                    </View>
+                  )}
+                  {Platform.OS === 'android' && <Divider />}
+
+                  <Text variant="labelSmall" style={styles.textDescription}>
+                    {l10n.settings.modelReloadNotice}
+                  </Text>
+                </Card.Content>
+              </Card>
+
+              {/* Cache & Storage Settings - iOS only (for Shortcuts) */}
+              {Platform.OS === 'ios' && (
+                <Card elevation={0} style={styles.card}>
+                  <Card.Title title={l10n.settings.cacheStorageTitle} />
+                  <Card.Content>
+                    <View style={styles.settingItemContainer}>
+                      {/* Clear Shortcuts Caches */}
+                      <View style={styles.switchContainer}>
+                        <View style={styles.textContainer}>
+                          <Text variant="titleMedium" style={styles.textLabel}>
+                            {l10n.settings.clearPalCaches}
+                          </Text>
+                          <Text
+                            variant="labelSmall"
+                            style={styles.textDescription}>
+                            {l10n.settings.clearPalCachesDescription}
+                          </Text>
+                        </View>
+                        <Button
+                          mode="outlined"
+                          onPress={async () => {
+                            try {
+                              const cacheInfo = await getSessionCacheInfo();
+
+                              if (cacheInfo.fileCount === 0) {
+                                Alert.alert(
+                                  l10n.settings.clearPalCaches,
+                                  l10n.settings.noCachesToClear,
+                                );
+                                return;
+                              }
+
+                              const formattedSize = formatBytes(
+                                cacheInfo.totalSizeBytes,
+                              );
+                              const confirmMessage = t(
+                                l10n.settings.clearCachesConfirmMessage,
+                                {
+                                  fileCount: cacheInfo.fileCount.toString(),
+                                  size: formattedSize,
+                                },
+                              );
+
+                              Alert.alert(
+                                l10n.settings.clearCachesConfirmTitle,
+                                confirmMessage,
+                                [
+                                  {
+                                    text: l10n.common.cancel,
+                                    style: 'cancel',
+                                  },
+                                  {
+                                    text: l10n.settings.clearCachesButton,
+                                    style: 'destructive',
+                                    onPress: async () => {
+                                      try {
+                                        const deletedCount =
+                                          await clearAllSessionCaches();
+                                        const successMessage = t(
+                                          l10n.settings.clearCachesSuccess,
+                                          {count: deletedCount.toString()},
+                                        );
+                                        Alert.alert(
+                                          l10n.settings.clearPalCaches,
+                                          successMessage,
+                                        );
+                                      } catch (error) {
+                                        console.error(
+                                          'Failed to clear caches:',
+                                          error,
+                                        );
+                                        Alert.alert(
+                                          l10n.settings.clearPalCaches,
+                                          l10n.settings.clearCachesError,
+                                        );
+                                      }
+                                    },
+                                  },
+                                ],
+                              );
+                            } catch (error) {
+                              console.error('Failed to get cache info:', error);
+                              Alert.alert(
+                                l10n.settings.clearPalCaches,
+                                l10n.settings.clearCachesError,
+                              );
+                            }
+                          }}
+                          style={styles.menuButton}>
+                          {l10n.settings.clearCachesButton}
+                        </Button>
+                      </View>
+                    </View>
+                  </Card.Content>
+                </Card>
+              )}
+
+              {/* Export Options */}
+              <Card elevation={0} style={styles.card}>
+                <Card.Title title={l10n.settings.exportOptions} />
+                <Card.Content>
+                  <View style={styles.settingItemContainer}>
+                    {/* Legacy Export */}
+                    <View style={styles.switchContainer}>
+                      <View style={styles.textContainer}>
+                        <View style={styles.labelWithIconContainer}>
+                          <ShareIcon
+                            width={20}
+                            height={20}
+                            style={styles.settingIcon}
+                            stroke={theme.colors.onSurface}
+                          />
+                          <Text variant="titleMedium" style={styles.textLabel}>
+                            {l10n.settings.exportLegacyChats}
+                          </Text>
+                        </View>
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          {l10n.settings.exportLegacyChatsDescription}
+                        </Text>
+                      </View>
+                      <Button
+                        mode="outlined"
+                        onPress={async () => {
+                          try {
+                            await exportLegacyChatSessions();
+                          } catch {
+                            Alert.alert(
+                              'Export Error',
+                              'Failed to export legacy chat sessions. The file may not exist.',
+                            );
+                          }
+                        }}
+                        style={styles.menuButton}>
+                        {l10n.settings.exportButton}
+                      </Button>
+                    </View>
+                  </View>
+                </Card.Content>
+              </Card>
+            </>
+          )}
         </ScrollView>
       </TouchableWithoutFeedback>
       <HFTokenSheet

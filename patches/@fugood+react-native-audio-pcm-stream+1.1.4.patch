@@ -1,0 +1,115 @@
+diff --git a/node_modules/@fugood/react-native-audio-pcm-stream/android/src/main/java/com/imxiqi/rnliveaudiostream/RNLiveAudioStreamModule.java b/node_modules/@fugood/react-native-audio-pcm-stream/android/src/main/java/com/imxiqi/rnliveaudiostream/RNLiveAudioStreamModule.java
+--- a/node_modules/@fugood/react-native-audio-pcm-stream/android/src/main/java/com/imxiqi/rnliveaudiostream/RNLiveAudioStreamModule.java
++++ b/node_modules/@fugood/react-native-audio-pcm-stream/android/src/main/java/com/imxiqi/rnliveaudiostream/RNLiveAudioStreamModule.java
+@@ -27,7 +27,14 @@
+ 
+     private AudioRecord recorder = null;
+     private int bufferSize;
+-    private boolean isRecording;
++    private volatile boolean isRecording;
++    // PocketAgent patch: each recording owns its AudioRecord. Before, the
++    // recording thread used the shared field, so stop() followed quickly by
++    // init()/start() made the old thread stop and release the NEW recorder:
++    // the mic went silent, or the new thread hit a released recorder and
++    // crashed the app ("PocketAgent keeps stopping").
++    private volatile int session = 0;
++    private Thread recordingThread = null;
+ 
+     public RNLiveAudioStreamModule(ReactApplicationContext reactContext) {
+         super(reactContext);
+@@ -65,7 +72,27 @@
+             audioSource = options.getInt("audioSource");
+         }
+ 
++        // End any recording still running and wait for its thread to let go
++        // of the microphone before opening a new one.
+         isRecording = false;
++        session++;
++        Thread previous = recordingThread;
++        if (previous != null && previous.isAlive() && previous != Thread.currentThread()) {
++            try {
++                previous.join(1500);
++            } catch (InterruptedException ignored) {
++                Thread.currentThread().interrupt();
++            }
++        }
++        recordingThread = null;
++        // A recorder that was initialized but never started.
++        if (recorder != null) {
++            try {
++                recorder.release();
++            } catch (Exception ignored) {
++            }
++            recorder = null;
++        }
+         eventEmitter = reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class);
+ 
+         bufferSize = AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat);
+@@ -88,10 +115,23 @@
+     @ReactMethod
+     public void start() {
+         if (recorder == null || isRecording) return;
++        final AudioRecord rec = recorder;
++        // The recording thread owns it from here; init() won't release it.
++        recorder = null;
++        final int mySession = session;
++        try {
++            rec.startRecording();
++        } catch (Exception e) {
++            Log.w("RNLiveAudioStream", "startRecording failed", e);
++            try {
++                rec.release();
++            } catch (Exception ignored) {
++            }
++            return;
++        }
+         isRecording = true;
+-        recorder.startRecording();
+ 
+-        Thread recordingThread = new Thread(new Runnable() {
++        Thread thread = new Thread(new Runnable() {
+             public void run() {
+                 try {
+                     int bytesRead;
+@@ -99,26 +139,31 @@
+                     String base64Data;
+                     byte[] buffer = new byte[bufferSize];
+ 
+-                    while (isRecording) {
+-                        bytesRead = recorder.read(buffer, 0, buffer.length);
++                    while (isRecording && mySession == session) {
++                        bytesRead = rec.read(buffer, 0, buffer.length);
+ 
+                         // skip first 2 buffers to eliminate "click sound"
+                         if (bytesRead > 0 && ++count > 2) {
+-                            base64Data = Base64.encodeToString(buffer, Base64.NO_WRAP);
++                            base64Data = Base64.encodeToString(buffer, 0, bytesRead, Base64.NO_WRAP);
+                             eventEmitter.emit("data", base64Data);
+                         }
+                     }
+-                    recorder.stop();
+-                } catch (Exception e) {
+-                    e.printStackTrace();
++                } catch (Throwable e) {
++                    Log.w("RNLiveAudioStream", "recording stopped by error", e);
+                 } finally {
+-                    recorder.release();
+-                    recorder = null;
++                    try {
++                        rec.stop();
++                    } catch (Throwable ignored) {
++                    }
++                    try {
++                        rec.release();
++                    } catch (Throwable ignored) {
++                    }
+                 }
+             }
+         });
+-
+-        recordingThread.start();
++        recordingThread = thread;
++        thread.start();
+     }
+ 
+     @ReactMethod

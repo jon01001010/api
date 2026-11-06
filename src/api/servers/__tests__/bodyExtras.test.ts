@@ -175,6 +175,61 @@ const vllmRows: Row[] = [
   ],
 ];
 
+/** Gemini: reasoning_effort up to high, `none` for off. */
+const geminiRows: Row[] = [
+  NO_INTENT,
+  ['off', {enabled: false}, {reasoning_effort: 'none'}],
+  ['on, no effort', {enabled: true}, {}],
+  [
+    'minimal',
+    {enabled: true, effort: 'minimal'},
+    {reasoning_effort: 'minimal'},
+  ],
+  ['medium', {enabled: true, effort: 'medium'}, {reasoning_effort: 'medium'}],
+  [
+    'xhigh folded to high',
+    {enabled: true, effort: 'xhigh'},
+    {reasoning_effort: 'high'},
+  ],
+  [
+    'max folded to high',
+    {enabled: true, effort: 'max'},
+    {reasoning_effort: 'high'},
+  ],
+];
+
+/** DeepSeek: its own thinking switch, efforts folded onto low/high/max. */
+const DEEPSEEK_EFFORT: Record<string, string> = {
+  minimal: 'low',
+  low: 'low',
+  medium: 'high',
+  high: 'high',
+  xhigh: 'max',
+  max: 'max',
+};
+const deepseekRows: Row[] = [
+  NO_INTENT,
+  ['off', {enabled: false}, {thinking: {type: 'disabled'}}],
+  [
+    'off, an effort still stored',
+    {enabled: false, effort: 'high'},
+    {thinking: {type: 'disabled'}},
+  ],
+  ['on, no effort', {enabled: true}, {thinking: {type: 'enabled'}}],
+  ...EFFORT_LEVELS.map(
+    (effort): Row => [
+      `on at ${effort}`,
+      {enabled: true, effort},
+      {thinking: {type: 'enabled'}, reasoning_effort: DEEPSEEK_EFFORT[effort]},
+    ],
+  ),
+  [
+    'on at an effort that is not a level',
+    {enabled: true, effort: NOT_A_LEVEL},
+    {thinking: {type: 'enabled'}},
+  ],
+];
+
 /** Nothing, whatever the intent: the base speaks no reasoning at all. */
 const silentRows: Row[] = [
   NO_INTENT,
@@ -196,6 +251,10 @@ const REASONING_ROWS: Record<ServerType, Row[]> = {
   'LM Studio': lmStudioRows,
   Ollama: ollamaRows,
   OpenAI: openaiRows,
+  // Claude has its own engine: nothing goes through the OpenAI body.
+  Claude: silentRows,
+  DeepSeek: deepseekRows,
+  Gemini: geminiRows,
   vLLM: vllmRows,
   unknown: silentRows,
 };

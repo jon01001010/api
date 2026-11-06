@@ -12,15 +12,46 @@ import {
 
 import {SettingsScreen} from '../SettingsScreen';
 
-import {modelStore, uiStore, ttsStore} from '../../../store';
+import {modelStore, uiStore, ttsStore, voiceStore} from '../../../store';
 import {l10n} from '../../../locales';
 
 jest.useFakeTimers();
 
-const render = (ui: React.ReactElement, options: any = {}) =>
-  baseRender(ui, {withBottomSheetProvider: true, ...options});
+// Advanced settings are folded away on screen; these tests cover them, so
+// each render opens the Advanced section first.
+const render = (ui: React.ReactElement, options: any = {}) => {
+  const result = baseRender(ui, {withBottomSheetProvider: true, ...options});
+  const toggle = result.queryByTestId('settings-advanced-toggle');
+  if (toggle) {
+    fireEvent.press(toggle);
+  }
+  return result;
+};
 
 describe('SettingsScreen', () => {
+  it('folds the advanced settings away until opened', () => {
+    const {queryByTestId, getByTestId} = baseRender(<SettingsScreen />, {
+      withBottomSheetProvider: true,
+      withSafeArea: true,
+      withNavigation: true,
+    });
+    expect(queryByTestId('use-mmap-switch')).toBeNull();
+    fireEvent.press(getByTestId('settings-advanced-toggle'));
+    expect(getByTestId('use-mmap-switch')).toBeTruthy();
+  });
+
+  it('links to the screens moved out of the side menu', () => {
+    const {getByTestId} = baseRender(<SettingsScreen />, {
+      withBottomSheetProvider: true,
+      withSafeArea: true,
+      withNavigation: true,
+    });
+    expect(getByTestId('settings-link-Toolbox')).toBeTruthy();
+    expect(getByTestId('settings-link-PocketAgent Hardware')).toBeTruthy();
+    expect(getByTestId('settings-link-Benchmark')).toBeTruthy();
+    expect(getByTestId('settings-link-App Info')).toBeTruthy();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Keyboard, 'dismiss');
@@ -1319,6 +1350,87 @@ describe('SettingsScreen', () => {
     await waitFor(() => {
       // Should show effective value clamped to n_ctx (2048)
       expect(getByText(/effective: 2048/)).toBeTruthy();
+    });
+  });
+
+  describe('Voice input & wake word row', () => {
+    afterEach(() => {
+      runInAction(() => {
+        voiceStore.wakeEnabled = false;
+        voiceStore.isSheetOpen = false;
+      });
+    });
+
+    it('opens the Voice input settings', () => {
+      const {getByTestId, getByText} = render(<SettingsScreen />, {
+        withSafeArea: true,
+        withNavigation: true,
+      });
+      expect(
+        getByText(l10n.en.voiceAndSpeech.voiceInput.settingsRowHint),
+      ).toBeTruthy();
+      fireEvent.press(getByTestId('voice-input-settings-button'));
+      expect(voiceStore.isSheetOpen).toBe(true);
+    });
+
+    it('says when the wake word is listening', () => {
+      runInAction(() => {
+        voiceStore.wakeEnabled = true;
+        voiceStore.wakePhrase = 'Hey Agent';
+      });
+      const {getByText} = render(<SettingsScreen />, {
+        withSafeArea: true,
+        withNavigation: true,
+      });
+      expect(getByText(/Wake word on: listening for "Hey Agent"/)).toBeTruthy();
+    });
+  });
+
+  describe('Keep models loaded (multi-model)', () => {
+    afterEach(() => {
+      runInAction(() => {
+        modelStore.keepModelsLoaded = false;
+        (modelStore as any).parkedModels = [];
+      });
+    });
+
+    it('restore-on-start is on by default and can be turned off', () => {
+      const {getByTestId} = render(<SettingsScreen />, {
+        withSafeArea: true,
+        withNavigation: true,
+      });
+      expect(getByTestId('restore-model-switch').props.value).toBe(true);
+      fireEvent(getByTestId('restore-model-switch'), 'valueChange', false);
+      expect(modelStore.setRestoreModelOnStart).toHaveBeenCalledWith(false);
+      runInAction(() => {
+        (modelStore as any).restoreModelOnStart = true;
+      });
+    });
+
+    it('is off by default and turns on', () => {
+      const {getByTestId, queryByTestId} = render(<SettingsScreen />, {
+        withSafeArea: true,
+        withNavigation: true,
+      });
+      expect(getByTestId('keep-models-loaded-switch').props.value).toBe(false);
+      expect(queryByTestId('max-loaded-3')).toBeNull();
+      fireEvent(getByTestId('keep-models-loaded-switch'), 'valueChange', true);
+      expect(modelStore.setKeepModelsLoaded).toHaveBeenCalledWith(true);
+    });
+
+    it('sets how many, and unloads kept models', () => {
+      runInAction(() => {
+        modelStore.keepModelsLoaded = true;
+        (modelStore as any).parkedModels = [{modelId: 'a'}];
+      });
+      const {getByTestId, getByText} = render(<SettingsScreen />, {
+        withSafeArea: true,
+        withNavigation: true,
+      });
+      fireEvent.press(getByTestId('max-loaded-3'));
+      expect(modelStore.setMaxLoadedModels).toHaveBeenCalledWith(3);
+      fireEvent.press(getByText('Unload 1 kept model(s)'));
+      expect(modelStore.releaseParkedModels).toHaveBeenCalled();
     });
   });
 });

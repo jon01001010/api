@@ -24,6 +24,21 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [ ] HTML preview: a generated clock ticks in chat and fullscreen; code view, copy, fullscreen, Save to workspace, and Share work.
 - [ ] Workspace tools: append / patch / undo through chat, with the diff in the approval dialog.
 
+## Confirmed on the phone (2026-11-05)
+
+- [x] Claude: chat, tools, memory, file_create, HTML preview.
+- [x] Gemini (free): chat, tool calls (HTML clock, cat drawing), Live/TTS models hidden, the 400s fixed (`max_tokens -1`, Claude engine on a Gemini address).
+- [x] Switching from a cloud model to a local one releases the server.
+- [x] Granite 3.0 1B-A400M (MoE) runs (~6.7 tok/s); too small for tool calls.
+- [x] memory_replace with approval.
+- [x] Pictures: SmolVLM with Vision on describes a photo; a text model switches to SmolVLM and back; a photo picked through Files attaches as a picture.
+- [x] HTML preview no longer cut off (fit / inner scroll / fullscreen).
+- [x] Declutter: 4-item side menu; Settings links, Chat section and Advanced fold; + Add model at the top; Save button visible.
+- [x] Hugging Face search: "Granite moe" finds the Granite a400m / a800m MoE repos.
+- [x] Phone actions: approval dialog, then Maps opens (navigate_to).
+- [x] Phone actions: "text Mack Attack hello mack" finds the contact and opens Messages with the words unchanged; one call, one short confirmation (Gemini 3.1 Flash Lite).
+- [ ] Next build (not yet on the phone): Vision switch in the ⚙ sheet, a picture turns a switched-off vision model on, readable daily-quota (429) error with no retries, Attach to chat from the Workspace list.
+
 ## Context summary ("Summarize & continue")
 
 When a chat fills the model's memory, older messages are replaced, for the model only, by a short summary the model writes. This frees up context without starting a new chat.
@@ -93,7 +108,53 @@ Goal: when you attach a picture while a text-only model is loaded, the app switc
 - Automatic, with a status line and Undo (no confirmation first; the memory check still asks if needed).
 - No fixed/recommended vision model: use what the app already knows can see; if none, say so.
 
-## Phone actions via built-in Android intents (planned, not implemented)
+## Claude as a remote model (built, needs phone check)
+
+Add remote model → **Configure Claude API**: paste an Anthropic API key, pick from the Claude models the key can use (live list from Anthropic's Models API).
+
+- [x] Official Anthropic SDK (`@anthropic-ai/sdk` 1.1.0), its own engine (`src/api/claude`), not the OpenAI-compatible path.
+- [x] Word-by-word streaming on the phone: a small XHR-based `fetch` the SDK reads as a stream (React Native's fetch can't stream), plus UTF-8 codecs if the engine lacks them.
+- [x] Pictures, system prompt, memory and the app's tools converted to Claude's format and back; all tool results of a turn in one message.
+- [x] Thinking toggle and effort map to Claude's per model (e.g. Opus 5.5 can't turn thinking off, so "off" = low effort; Sonnet 5.5 off = `between_tools`); reasoning summary shown in the reasoning panel; no sampling settings sent (newer models reject them).
+- [x] Claude's own replies (with thinking) kept in memory and sent back unchanged; `drop_block` on models that tie thinking to the conversation, since the app edits history (memory, summaries).
+- [x] Server-side refusal fallback (`fallbacks: "default"`) on the models that support it.
+- [ ] Phone check: add Claude with a real key, chat (streaming, Stop), a picture, a tool (web search / files), thinking on/off, a wrong key.
+- Not yet: prompt caching markers (a cost saver for long chats), counting Claude's usage in the context meter.
+
+## Multi-model: keep models loaded (built, off by default, needs phone check)
+
+For future phones with plenty of memory. Settings → Model Loading → **Keep models loaded**.
+
+- [x] Switching parks the current local model (still loaded) instead of releasing it; switching back is instant, no reload and no memory prompt.
+- [x] Up to 2 models loaded at once by default (the one in use included), adjustable to 3 or 4; the oldest kept model is unloaded beyond that, or when the next load wouldn't fit in memory.
+- [x] In the background kept models stay only while the wake word is on (decision 2026-11-05); otherwise they're unloaded. The active model follows the existing auto-offload setting.
+- [x] Remote models keep the local one parked; deleting a kept model unloads it first; benchmarks unload everything; turning the setting off unloads the kept ones. "Unload N kept models" button.
+- [x] Benefits: instant vision switch-back after a picture, instant "Hey <name>" switching between named models.
+- [ ] Phone check (needs a phone with enough memory): load A, switch to B, back to A (instant), picture with a text model and back, a third model with the limit at 2.
+- [x] Restore last model on start (decision 2026-11-05; Settings → Model Loading, on by default): Claude/remote reconnects instantly, a local model loads with the usual memory check. Unloading a model yourself stops it coming back.
+- [x] Fix: coming back to the app no longer reloads an earlier offloaded model over the one in use (it had unloaded Claude).
+- [ ] Phone check: use Claude, close the app fully, reopen → Claude is back; same with a local model; unload manually → stays unloaded after restart.
+- Later: show a "Loaded" badge on model cards; free kept models when Android reports memory pressure.
+
+## DeepSeek as a remote model (built, needs phone check)
+
+Add remote model → **Configure DeepSeek API** (`https://api.deepseek.com`), paste a DeepSeek API key, pick a model from the live list (e.g. `deepseek-v4-flash`, `deepseek-v4-pro`).
+
+- [x] Uses the existing OpenAI-compatible connector with a DeepSeek profile: `max_tokens`; thinking via `thinking: {type: enabled|disabled}` (on by default at DeepSeek, so "off" is sent explicitly); effort mapped onto DeepSeek's low / high / max.
+- [x] Thinking text (`reasoning_content`) is kept in the history and in tool loops, as DeepSeek requires with tools (else HTTP 400).
+- [x] The app never forces a tool choice (DeepSeek's thinking mode rejects that).
+- [ ] Phone check: add DeepSeek with a real key, chat, thinking on/off and effort, a tool (web search / files) across two turns, a wrong key.
+
+## Free cloud APIs: Gemini, Groq, OpenRouter (built, needs phone check)
+
+Add remote model → **Cloud chat API** now shows one button per provider: OpenAI, Claude, DeepSeek, Gemini (free), Groq (free), OpenRouter (free). Tapping one fills the address and type; **Get a … API key** opens that provider's key page.
+
+- [x] One preset list (`src/api/cloudPresets.ts`) drives the buttons, the key link and the "wait for the key before connecting" rule.
+- [x] Gemini through Google's OpenAI-compatible endpoint (`…/v1beta/openai`, no `/v1` added); its own profile: `max_tokens`, `reasoning_effort` up to high, `none` for thinking off; `models/` stripped from listed ids.
+- [x] Groq (`api.groq.com/openai/v1`) and OpenRouter (`openrouter.ai/api/v1`) use the OpenAI profile. On OpenRouter, free models end in `:free`.
+- [ ] Phone check: each with a real free key, chat, a tool across two turns, a wrong key. Free-tier limits change; check each provider's page.
+
+## Phone actions via built-in Android intents (phase 1 built, needs phone check)
 
 Replaces the earlier "ARTEMIS-inspired automation" batch. Research done 2026-11-03; **write-up only, nothing implemented yet.**
 
@@ -136,21 +197,21 @@ Not every phone has an app for every intent (e.g. no Clock app that handles `SET
 
 **Phase 1: intent actions (no accessibility).**
 
-- [ ] Kotlin `PhoneActions` module: send an allow-listed set of intents with typed extras; list launchable apps (label + package); `resolveActivity` check; nothing else.
-- [ ] Manifest: `SET_ALARM` permission; `<queries>` for MAIN/LAUNCHER and the intents above.
-- [ ] Model tools, all **off by default** in Toolbox like other tools:
+- [x] Kotlin `PhoneActions` module: send an allow-listed set of intents with typed extras; list launchable apps (label + package); `resolveActivity` check; nothing else. (First compiled in the next APK build.)
+- [x] Manifest: `SET_ALARM` permission; `<queries>` for MAIN/LAUNCHER and the intents above.
+- [x] Model tools, all **off by default**, grouped in Toolbox as **Phone actions** (one switch for all, "Show each" for single ones):
   - `set_timer`, `show_timers`
   - `set_alarm`, `show_alarms`
   - `add_reminder` (opens the Calendar screen pre-filled)
   - `open_app` (match by app name; ask when more than one matches)
   - `navigate_to`, `play_music`, `open_camera`, `open_settings`
   - `compose_message` (dial / SMS / email screens, user sends)
-- [ ] Safety:
+- [x] Safety:
   - Every action shows an approval prompt in chat first (like file writes), naming exactly what will happen ("Set a 15-minute timer named Tea?").
   - Nothing places calls, sends messages, pays, or changes settings by itself.
   - No `CALL_PHONE`, `SEND_SMS` or `QUERY_ALL_PACKAGES`.
 - [ ] Voice: spoken requests ("Set a timer for 15 minutes") go through the existing chat and voice input to the same tools. Time parsing is in the tool arguments, which are validated (timer 1 s–24 h; alarm hour 0–23 / minute 0–59).
-- [ ] Tests: JS tool tests (argument validation, approval required, denied → nothing sent, unknown app → clear message). The Kotlin side can only be verified on the phone APK.
+- [x] Tests: JS tool tests (argument validation, approval required, denied → nothing sent, unknown app → clear message). The Kotlin side can only be verified on the phone APK.
 - [ ] Phone checks on the test phone: timer, alarm, reminder, open app, navigation, music, camera, settings, and a "no app can handle this" case.
 
 **Phase 2: cross-app workflows (still intents only).**
@@ -169,6 +230,112 @@ Not every phone has an app for every intent (e.g. no Clock app that handles `SET
 **Dropped from the old list:**
 
 - "Evaluate ARTEMIS MCP integration": that is for driving a phone from a computer IDE, not for PocketAgent on the phone.
+
+## Custom tools: made and saved by you or the model (planned, after phone actions)
+
+Decided 2026-11-05. Today Toolbox has tool drafts that only run as local tests; the model can neither call nor make them.
+
+Two kinds of custom tool (no code execution, no new network access):
+
+- **Saved instructions:** a named how-to (steps or a prompt). Calling it returns the stored text, so a model can keep and reuse a skill.
+- **Shortcut of tools:** a saved chain of existing tools with fill-in values, e.g. `morning` = `set_alarm` 07:00 + `open_app` Spotify. Each step still asks for approval as usual; the run stops at the first denial or failure. This also covers phone-actions phase 2 (chaining).
+
+Plan:
+
+- [ ] Toolbox: create / edit / delete both kinds by hand; a switch per tool to let the model use it (off by default, like every global tool).
+- [ ] Model tools `tool_save` and `tool_delete`: the model proposes a tool; you see the full definition in an approval dialog; once approved it is saved **switched off**, and you turn it on in Toolbox.
+- [ ] Checks: names can't clash with built-in tools; a shortcut may only use built-in tools (no shortcut inside a shortcut); a step limit; fill-in values are checked by the step's own tool.
+- [ ] How-to text for both kinds; tests; phone check.
+
+## Voice assistant: wake word and voice control (phase 1 built, needs phone check)
+
+Goal: an Alexa-style assistant. Say a wake phrase, speak a request, and PocketAgent answers out loud and, for phone tasks, acts. Everything runs offline on the phone. Research done 2026-11-04; nothing built yet.
+
+### What the app has today
+- Spoken replies (text-to-speech): system voice, Kitten and Supertonic voices, auto-speak. This covers the "answer out loud" part.
+- No microphone input, no wake word, no voice commands.
+
+### Research findings
+- **Android limits on "always listening".**
+  - Listening in the background needs a foreground service of type `microphone`, which shows a permanent notification. It also needs `RECORD_AUDIO`, `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MICROPHONE`.
+  - On Android 14+, a microphone service must be started while the app is visible (or from a notification, a widget, or by the default assistant app). It can't simply start itself at boot and listen.
+  - Source: developer.android.com, "Restrictions on starting a foreground service from the background".
+- **True Alexa/Google-style hotwords (screen off, very low power) are not available to normal apps.** Android's `HotwordDetectionService` and its permissions are limited to preinstalled or system apps. So PocketAgent can only listen through its own foreground service, using the phone's main processor, which costs battery.
+- **Default assistant app.** Android lets the user pick a third-party "digital assistant" app (Settings → Apps → Default apps). Being that app (`VoiceInteractionService`) means:
+  - the assist gesture or power-button long-press opens PocketAgent;
+  - its microphone service is allowed to start from the background.
+
+  This is the most reliable, battery-friendly way to call it up, even without a wake word.
+- **Wake-word engines (offline):**
+  - **sherpa-onnx keyword spotting:** Apache-2.0, Android support. It reportedly lets you type custom keywords without training a model. The same library also does speech-to-text, voice detection and text-to-speech.
+    - React Native: only a young wrapper exists (`@siteed/sherpa-onnx.rn`, "in development"); the likely route is our own small Kotlin module using sherpa-onnx's Kotlin API.
+    - Its docs site (k2-fsa.github.io) is blocked in this session's network, so the custom-keyword claim and model sizes still need confirming.
+  - **openWakeWord:** Apache-2.0 base models; Android ports exist (Kotlin). Custom words need a trained model (training is Python, done off the phone). Check the licence of any training voices or data.
+  - **Picovoice Porcupine:** high quality, but needs an online-validated access key. Forum reports say free-tier keys were stopped after 2026-06-30. **Not recommended:** it conflicts with offline use and costs money.
+- **Speech-to-text (after the wake word):**
+  - **whisper.rn:** by mybigday, the same people as llama.rn, which the app already uses. Offline Whisper with a `RealtimeTranscriber`, Silero voice detection (knows when you stop talking), and Parakeet support. It needs `@fugood/react-native-audio-pcm-stream` for mic audio.
+  - **Android on-device recognizer** (`createOnDeviceSpeechRecognizer`, Android 12+): no model download, but availability varies by phone and some ROMs remove it. Check `isOnDeviceRecognitionAvailable` first.
+  - **sherpa-onnx streaming speech-to-text:** this would put wake word and speech-to-text in one library.
+- **Memory:** Whisper (or the wake-word model) has to share memory with the chat model, and on today's test phone only one large model fits well. A small speech-to-text model (Whisper tiny/base) is fine; the target is future phones.
+
+### Finding voice models (no fixed model)
+Like vision models, the app finds what's available instead of being tied to one model. The user can pick any compatible wake-word or speech-to-text model from Hugging Face.
+- **Models screen: a "Voice" search** next to the chat-model search. Today's search is limited to `gguf,conversational` (`HFStore.queryFilter`), so voice models never show.
+- **Compatibility is checked by the files in the repo; only models the app can run are offered:**
+  - Wake word, sherpa-onnx keyword spotter: encoder, decoder and joiner `.onnx` files plus `tokens.txt`.
+  - Wake word, openWakeWord: one classifier `.onnx` (the shared melspectrogram and embedding models ship with the app).
+  - Speech-to-text, whisper.rn: Whisper `ggml-*.bin` files.
+- **Tags in the list,** like today's Vision tag: **Wake word** and **Speech to text**. Also the size, and the language when the model card says.
+- **Settings → Voice** lists downloaded voice models; the user picks one for wake word and one for speech-to-text. A recommended default is suggested (the k2-fsa keyword spotter, Whisper base) but not forced.
+- **Unknown uploaders:** ONNX and GGML files are data, not code, but show the author and download count, and warn on new or unknown repos (like any download).
+- [ ] Confirm the file layouts above against real repos (needs `huggingface.co` allowed in this session's network settings).
+
+### Plan (each phase usable on its own; ask before each)
+1. **Mic button and conversation mode.**
+   - Tap the mic and speak; text appears in the input (whisper.rn plus voice detection), then it sends.
+   - With auto-speak on, the answer is read out and the mic reopens ("conversation mode") until you stop it.
+   - No background listening; the app must be open.
+   - Picks: whisper.rn plus the Whisper base model as an optional download, with the Android recognizer as fallback.
+2. **Voice control (phone actions phase 1, see the section below).** Timers, alarms, opening apps, navigation and music through Android intents. Spoken requests go to the same tools, and anything that acts is confirmed.
+3. **Call it up like an assistant.** Register PocketAgent as a selectable default digital assistant: the assist gesture or power-button long-press opens a listening screen. No wake word and no constant mic, so no extra battery.
+4. **Wake word ("Hey Agent"), built early (see status below).**
+   - Off by default. A foreground microphone service with a visible "listening" notification and a Stop action. The user turns it on while the app is open.
+   - Choice: sherpa-onnx keyword spotting (custom phrase, no training) if confirmed; otherwise openWakeWord.
+   - On wake: a chime, then speech-to-text, the model answers and speaks.
+   - Measure battery and false wakes on the phone before turning it on for anyone.
+
+### Phase 1 status (built 2026-11-04)
+- [x] Mic button in the chat input: tap to speak, tap again to stop early, long-press for Voice input settings.
+- [x] Speech-to-text on the phone with whisper.rn; any Whisper GGML model from Hugging Face (search, download, pick). Recommended default: `ggerganov/whisper.cpp` / `ggml-base.en.bin`.
+- [x] End of speech detected from loudness (no extra model); stops after a pause, when nothing is said, or at 30 s.
+- [x] Conversation mode: after the answer (and its speech, with auto-speak) listen again.
+- [x] Whisper model loaded only while in use.
+- [ ] Phone check: download the recommended model, speak a message, conversation mode with auto-speak on, mic permission prompt, a noisy room.
+- [ ] Measure Whisper speed and memory with a chat model loaded on the test phone.
+- Not yet: the Android built-in recognizer as a fallback (only Whisper for now).
+
+### Wake word status (built 2026-11-04, decisions: reuse Whisper, background from the start)
+- [x] Detected with the same Whisper model: the mic stays open, each utterance (speech then a pause) is written down and checked for the phrase. Any phrase, default "Hey Agent"; loose matching for Whisper's spelling ("Hey, agent", "a gent").
+- [x] "Hey Agent, what time is it?" sends the request directly. "Hey Agent" alone vibrates and listens for the request.
+- [x] Background: `WakeListenService`, a microphone-type foreground service, with a "Listening for …" notification and Stop. Started only while the app is visible (Android 14 rule); turned back on when the app opens if it was left on.
+- [x] The mic is released while voice input listens, a reply runs, or the app is speaking, so it never hears itself.
+- [x] Steady background noise (fan, traffic) is learned and ignored.
+- [x] Per-model wake words: a **Wake words** field next to the model's name in its settings ("Hey Jarvis, Jarvis"). Saying one picks that model and loads it if it isn't loaded. The general phrase ("Hey Agent") uses the loaded model, or the last used one.
+- [ ] Phone check: turn it on, close the app, say the phrase (with and without a request), screen off, the notification's Stop, a noisy room, TV talking.
+- [ ] Phone check: give two models wake words, wake each by name with no model loaded and with the other loaded (loading in the background; check the memory warning doesn't block it).
+- [ ] Measure battery over a day and false wakes (it runs Whisper on any speech it hears).
+- Later: a dedicated low-power wake engine (sherpa-onnx) if battery is a problem; opening as the default assistant (phase 3).
+
+### Safety and privacy
+- The mic is never on without a visible indicator (the app screen or the listening notification). Stop is always one tap away.
+- Audio stays on the phone and isn't saved, except a transcript the user can see in the chat.
+- Wake word and assistant mode are off by default. Phone actions keep their per-action confirmation.
+
+### To confirm before building
+- [ ] sherpa-onnx custom-keyword support, model size and accuracy (allow `k2-fsa.github.io` in the network settings).
+- [ ] whisper.rn on the test phone: Whisper tiny/base speed, and memory with a chat model loaded.
+- [ ] Default digital assistant registration on a recent Android (which screens and permissions are needed).
+- [ ] The battery cost of an always-on wake-word service over a day.
 
 ## Deferred — NPU acceleration (on hold)
 

@@ -165,6 +165,34 @@ describe('model memory tools', () => {
     expect(mockApproval).not.toHaveBeenCalled();
   });
 
+  it('memory_replace accepts expected_previous with flattened line breaks', async () => {
+    mockApproval.mockResolvedValue(true);
+    await memoryReplace(
+      '01 this is your memory\n02 you are named phosphor\n03 user is named jon',
+      DEFAULT_MEMORY,
+    );
+    const result = await new MemoryToolsEngine('memory_replace').execute({
+      content:
+        '01 this is your memory\n02 you are named bob\n03 user is named jon',
+      // What a small model sent on the phone: one line, extra spaces.
+      expected_previous:
+        '01 this is your memory 02 you are named phosphor  03 user is named jon ',
+    });
+    expect(result.type).toBe('text');
+    expect(await memoryGet()).toContain('named bob');
+  });
+
+  it('memory_replace still refuses different words, and shows the current memory', async () => {
+    await memoryReplace('01 a\n02 you are named phosphor', DEFAULT_MEMORY);
+    const result = await new MemoryToolsEngine('memory_replace').execute({
+      content: 'x',
+      expected_previous: '01 a 02 you are named bob',
+    });
+    expect(result.type).toBe('error');
+    expect(result.summary).toContain('01 a\n02 you are named phosphor');
+    expect(mockApproval).not.toHaveBeenCalled();
+  });
+
   it('memory_get returns model memory only', async () => {
     await userMemoryReplace('private', '');
     const result = await new MemoryToolsEngine('memory_get').execute({});

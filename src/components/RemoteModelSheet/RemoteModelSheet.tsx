@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useRef,
 } from 'react';
-import {Alert, Keyboard, TouchableOpacity, View} from 'react-native';
+import {Alert, Keyboard, Linking, TouchableOpacity, View} from 'react-native';
 import {
   Text,
   Button,
@@ -35,6 +35,10 @@ import {
 } from '../../utils/serverTypes';
 import {RemoteModelInfo, ServerConfig} from '../../utils/types';
 import {fetchModelsWithHeaders} from '../../api/openai';
+import {isAnthropicUrl} from '../../api/claude/client';
+import {CLOUD_PRESETS, presetForUrl} from '../../api/cloudPresets';
+
+/** DeepSeek's OpenAI-compatible API (the app adds /v1/...). */
 import {detectServerType} from '../../api/servers/detect';
 import {deriveListCaps} from '../../api/servers';
 import {profileFor} from '../../api/servers';
@@ -155,7 +159,10 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
           if (models.length === 1) {
             setSelectedModelId(models[0].id);
           }
-          const detected = await detectServerType(trimmedUrl, models, headers);
+          // Anthropic's API is identified by its address (no probing).
+          const detected = isAnthropicUrl(trimmedUrl)
+            ? 'Claude'
+            : await detectServerType(trimmedUrl, models, headers);
           setServerType(seedServerType(detected, trimmedUrl));
           setServerName(prev => {
             if (prev) {
@@ -187,7 +194,9 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
     // Trigger probe on url change (only when not using a known server chip)
     useEffect(() => {
       if (!selectedServerId) {
-        if (!(url.trim() === 'https://api.openai.com/v1' && !apiKeyRef.current.trim())) {
+        // Cloud APIs need the key first: wait for Connect.
+        const isCloud = !!presetForUrl(url) || isAnthropicUrl(url);
+        if (!(isCloud && !apiKeyRef.current.trim())) {
           debouncedProbe(url);
         }
       }
@@ -350,8 +359,9 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
     const showPostConnection = probeResult?.ok === true;
     // Show API key + server name fields when probe attempted (success OR auth failure)
     // This lets users enter an API key after a 401, then retry
+    const activePreset = presetForUrl(url);
     const showServerFields =
-      (probeResult !== null || url.trim() === 'https://api.openai.com/v1') &&
+      (probeResult !== null || !!activePreset || isAnthropicUrl(url)) &&
       !isProbing &&
       !selectedServerId;
 
@@ -433,31 +443,55 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
             </View>
           )}
 
-          {/* OpenAI uses the existing OpenAI-compatible remote backend.
-              Claude needs its own Messages API adapter; do not route it here. */}
+          {/* Cloud APIs: one tap fills the address and type. Claude has its
+              own Messages API engine (src/api/claude); the rest speak the
+              OpenAI-compatible wire. */}
           {!selectedServerId && (
             <View style={{marginBottom: 12}}>
               <Text variant="titleSmall">Cloud chat API</Text>
               <Text variant="bodySmall">
-                OpenAI can use the existing remote chat connector. An API key is required and usage is billed separately. Claude support is coming in a separate adapter.
+                Each needs an API key. Gemini, Groq and OpenRouter have free
+                tiers with daily limits; the others bill usage.
               </Text>
-              <Button
-                mode="outlined"
-                testID="openai-api-preset"
-                onPress={() => {
-                  setApiKey('');
-                  apiKeyRef.current = '';
-                  setUrl('https://api.openai.com/v1');
-                  setServerName('OpenAI');
-                  setServerType('OpenAI');
-                  setSelectedServerId(null);
-                  setProbeResult(null);
-                  setAvailableModels([]);
-                  setUrlError('');
-                }}>
-                Configure OpenAI API
-              </Button>
-              <Text variant="bodySmall">Enter your API key below, then connect to list available models. Keys are stored using Android secure storage.</Text>
+              <View style={styles.cloudPresetRow}>
+                {CLOUD_PRESETS.map(preset => (
+                  <Button
+                    key={preset.id}
+                    compact
+                    mode={
+                      activePreset?.id === preset.id ? 'contained' : 'outlined'
+                    }
+                    testID={`${preset.id}-api-preset`}
+                    onPress={() => {
+                      setApiKey('');
+                      apiKeyRef.current = '';
+                      setUrl(preset.url);
+                      setServerName(preset.label);
+                      setServerType(preset.serverType);
+                      setSelectedServerId(null);
+                      setProbeResult(null);
+                      setAvailableModels([]);
+                      setUrlError('');
+                    }}>
+                    {preset.free ? `${preset.label} (free)` : preset.label}
+                  </Button>
+                ))}
+              </View>
+              {activePreset && (
+                <Button
+                  mode="text"
+                  compact
+                  icon="open-in-new"
+                  testID="cloud-api-key-link"
+                  style={styles.cloudKeyLink}
+                  onPress={() => Linking.openURL(activePreset.keyUrl)}>
+                  {`Get a ${activePreset.label} API key`}
+                </Button>
+              )}
+              <Text variant="bodySmall">
+                Enter your API key below, then connect to list available models.
+                Keys are stored using Android secure storage.
+              </Text>
             </View>
           )}
 
@@ -546,6 +580,20 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
                   value={url}
                   onChangeText={text => {
                     setUrl(text);
+                    // A new address is a new server, not the selected chip's.
+                    if (selectedServerId) {
+                      setSelectedServerId(null);
+                      setProbeResult(null);
+                      setAvailableModels([]);
+                      setSelectedModelId(null);
+                      setServerName('');
+                      setApiKey('');
+                      apiKeyRef.current = '';
+                    }
+                    const preset = presetForUrl(text);
+                    if (preset) {
+                      setServerType(preset.serverType);
+                    }
                     if (urlError) {
                       setUrlError('');
                     }

@@ -82,3 +82,16 @@ export function buildHeaders(apiKey?: string): Record<string, string> {
 export function normalizeUrl(serverUrl: string): string {
   return serverUrl.replace(/\/+$/, '').replace(/\/v1$/, '').replace(/\/+$/, '');
 }
+
+/**
+ * An OpenAI-compatible endpoint. Most servers serve it under /v1 (whether
+ * or not the stored address ends in /v1). A base that already names its own
+ * versioned path, like Gemini's /v1beta/openai, is used as given.
+ */
+export function openAiApiUrl(serverUrl: string, path: string): string {
+  const base = serverUrl.trim().replace(/\/+$/, '');
+  if (/\/v\d+[a-z]*\/openai$/i.test(base)) {
+    return base + path;
+  }
+  return `${normalizeUrl(base)}/v1${path}`;
+}

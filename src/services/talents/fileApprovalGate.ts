@@ -6,7 +6,10 @@ export type FileProposal = {
     | 'file_edit'
     | 'file_append'
     | 'file_patch'
-    | 'file_undo';
+    | 'file_undo'
+    // A phone action (timer, alarm, …): `filename` is the one-line question,
+    // `content` any details.
+    | 'phone_action';
   filename: string;
   content: string;
   previous?: string;

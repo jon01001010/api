@@ -15,6 +15,31 @@ import {
 } from '../../utils/reasoningCapability';
 
 import {styles} from './styles';
+import {observer} from 'mobx-react';
+
+/**
+ * The Vision switch, here as well as on the model card (⌄), since this sheet
+ * is where people look for it. Same store call as the card's switch.
+ */
+const VisionSwitchRow = observer(({model}: {model: Model}) => {
+  const l10n = useContext(L10nContext);
+  const on = modelStore.getModelVisionPreference(model);
+  const canTurnOn = modelStore.getProjectionModelStatus(model).isAvailable;
+  return (
+    <View style={styles.reasoningRow}>
+      <Text>{l10n.models.modelCard.labels.vision}</Text>
+      <Switch
+        testID="settings-vision-switch"
+        accessibilityLabel={l10n.models.modelCard.labels.vision}
+        value={on}
+        disabled={!on && !canTurnOn}
+        onValueChange={enabled => {
+          modelStore.setModelVisionEnabled(model.id, enabled).catch(() => {});
+        }}
+      />
+    </View>
+  );
+});
 import {View} from 'react-native';
 import {L10nContext} from '../../utils';
 
@@ -27,6 +52,9 @@ interface ModelSettingsSheetProps {
 export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
   ({isVisible, onClose, model}) => {
     const [tempModelName, setTempModelName] = useState(model?.name || '');
+    const [tempWakeWords, setTempWakeWords] = useState(
+      (model?.wakeWords ?? []).join(', '),
+    );
     const [tempChatTemplate, setTempChatTemplate] = useState(
       model?.chatTemplate || chatTemplates.default,
     );
@@ -87,6 +115,7 @@ export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
     useEffect(() => {
       if (model) {
         setTempModelName(model.name);
+        setTempWakeWords((model.wakeWords ?? []).join(', '));
         setTempChatTemplate(model.chatTemplate);
         setTempStopWords(model.stopWords || []);
         const cap = resolveReasoningCapability(
@@ -116,6 +145,7 @@ export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
       if (model) {
         if (!isRemote) {
           modelStore.updateModelName(model.id, tempModelName);
+          modelStore.updateModelWakeWords(model.id, tempWakeWords.split(','));
           modelStore.updateModelChatTemplate(model.id, tempChatTemplate);
           modelStore.updateModelStopWords(model.id, tempStopWords);
         }
@@ -141,6 +171,7 @@ export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
       if (model) {
         // Reset to store values
         setTempModelName(model.name);
+        setTempWakeWords((model.wakeWords ?? []).join(', '));
         setTempChatTemplate(model.chatTemplate);
         setTempStopWords(model.stopWords || []);
       }
@@ -181,6 +212,8 @@ export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
               onChange={handleSettingsUpdate}
               onStopWordsChange={value => setTempStopWords(value || [])}
               onModelNameChange={handleModelNameChange}
+              wakeWords={tempWakeWords}
+              onWakeWordsChange={setTempWakeWords}
             />
           )}
 
@@ -191,6 +224,7 @@ export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
               <Text style={styles.multimodalSectionTitle}>
                 {l10n.models.multimodal.settings}
               </Text>
+              <VisionSwitchRow model={model} />
               <ProjectionModelSelector
                 model={model}
                 onProjectionModelSelect={projectionModelId => {

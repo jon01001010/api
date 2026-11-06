@@ -6,10 +6,56 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <!-- Phone actions (PhoneActionsModule): which apps can handle each.
+             No QUERY_ALL_PACKAGES: launchable apps only. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent><action android:name="android.intent.action.SET_TIMER" /></intent>
+        <intent><action android:name="android.intent.action.SHOW_TIMERS" /></intent>
+        <intent><action android:name="android.intent.action.SET_ALARM" /></intent>
+        <intent><action android:name="android.intent.action.SHOW_ALARMS" /></intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <intent><action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" /></intent>
+        <intent><action android:name="android.media.action.STILL_IMAGE_CAMERA" /></intent>
+        <intent>
+            <action android:name="android.intent.action.INSERT" />
+            <data android:mimeType="vnd.android.cursor.dir/event" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent><action android:name="android.intent.action.WEB_SEARCH" /></intent>
+        <intent><action android:name="android.intent.action.SEARCH" /></intent>
     </queries>
 
+    <!-- Lets PocketAgent ask the Clock app to set timers and alarms (a normal
+         permission, granted at install). -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- Phone actions: find the number for "text Mack" (asked at first use;
+         only the matched contact is used, the list never reaches a model). -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -74,6 +120,10 @@
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="User-initiated on-device chat inference with a visible notification" />
         </service>
+        <!-- Wake word: holds the microphone while listening in the background,
+             with a visible notification and a Stop action. -->
+        <service android:name="com.pocketagent.WakeListenService"
+            android:exported="false" android:foregroundServiceType="microphone" />
         <!-- Optional native library for OpenCL (GPU acceleration) -->
         <uses-native-library
             android:name="libOpenCL.so"

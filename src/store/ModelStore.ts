@@ -6,7 +6,14 @@ import {v4 as uuidv4} from 'uuid';
 import 'react-native-get-random-values';
 import {makePersistable} from 'mobx-persist-store';
 import * as RNFS from '@dr.pogodin/react-native-fs';
-import {comparer, computed, makeAutoObservable, runInAction, toJS} from 'mobx';
+import {
+  comparer,
+  computed,
+  makeAutoObservable,
+  observable,
+  runInAction,
+  toJS,
+} from 'mobx';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ContextParams, LlamaContext, initLlama} from 'llama.rn';
 import {
@@ -21,6 +28,10 @@ import {
   LocalCompletionEngine,
   OpenAICompletionEngine,
 } from '../api/completionEngines';
+import {ClaudeCompletionEngine} from '../api/claude/engine';
+import {effectiveServerType} from '../api/cloudPresets';
+import {claudeFeatures} from '../api/claude/models';
+import {voiceStore} from './VoiceStore';
 
 import {uiStore, hfStore} from '.';
 import {serverStore} from './ServerStore';
@@ -173,6 +184,21 @@ const answersSession = (
 const pairedDraftModel = (config?: DraftConfig): Model | undefined =>
   config?.mode === 'paired' ? config.draftModel : undefined;
 
+/**
+ * A model kept loaded while another one is active (multi-model). Switching
+ * back swaps these in instead of loading again.
+ */
+export interface ParkedModel {
+  modelId: string;
+  context: LlamaContext;
+  engine: CompletionEngine;
+  isMultimodalActive: boolean;
+  activeProjectionModelId: string | undefined;
+  activeContextSettings: ContextInitParams | undefined;
+  /** Estimated memory it holds, bytes. */
+  estimateBytes: number;
+}
+
 class ModelStore {
   models: Model[] = [];
   version: number | undefined = undefined; // Persisted version
@@ -188,6 +214,21 @@ class ModelStore {
 
   appState: AppStateStatus = AppState.currentState;
   useAutoRelease: boolean = true;
+  /**
+   * Multi-model (off by default; for phones with plenty of memory): keep
+   * recently used local models loaded so switching back is instant.
+   */
+  keepModelsLoaded: boolean = false;
+  /** Most local models loaded at once, the active one included (2-4). */
+  maxLoadedModels: number = 2;
+  /** Bring back the model in use (local or remote) when the app starts. */
+  restoreModelOnStart: boolean = true;
+  /** The model in use when the app last ran, local or remote. */
+  lastSessionModelId: string | undefined = undefined;
+  /** Loaded but not active, oldest first. Not persisted. */
+  parkedModels: ParkedModel[] = [];
+  /** Estimated memory of each loaded model, from its last load. */
+  private loadEstimates: Record<string, number> = {};
   // UI loading state - true during model load/release transitions
   isContextLoading: boolean = false;
   loadingModel: Model | undefined = undefined;
@@ -272,8 +313,13 @@ class ModelStore {
   constructor() {
     makeAutoObservable<
       ModelStore,
-      'postCompletionProbeFor' | 'generationSlot' | 'isReleasingContext'
+      | 'postCompletionProbeFor'
+      | 'generationSlot'
+      | 'isReleasingContext'
+      | 'loadEstimates'
     >(this, {
+      parkedModels: observable.shallow,
+      loadEstimates: false,
       postCompletionProbeFor: false,
       generationSlot: false,
       isReleasingContext: false,
@@ -294,6 +340,10 @@ class ModelStore {
         'deviceTier',
         'rulesVersion',
         'useAutoRelease',
+        'keepModelsLoaded',
+        'maxLoadedModels',
+        'restoreModelOnStart',
+        'lastSessionModelId',
         'contextInitParams',
         'lastUsedModelId',
         'lastVisionModelId',
@@ -306,7 +356,10 @@ class ModelStore {
       storage: AsyncStorage,
     }).then(async () => {
       await this.initializeThreadCount();
-      this.initializeStore();
+      this.initializeStore()
+        // Then bring back the model that was in use (setting, on by default).
+        .then(() => this.restoreLastModel())
+        .catch(() => {});
     });
 
     this.setupAppStateListener();
@@ -1152,6 +1205,12 @@ class ModelStore {
   };
 
   checkAndReloadAutoReleasedModel = async () => {
+    // Only bring back an offloaded model when nothing else was picked since:
+    // reloading it over a model in use (e.g. Claude) would unload that one.
+    if (this.wasAutoReleased && (this.engine || this.isContextLoading)) {
+      this.clearAutoReleaseFlags();
+      return;
+    }
     if (this.wasAutoReleased && this.lastAutoReleasedModelId) {
       // Skip if the auto-released model ID refers to a remote model
       if (this.lastAutoReleasedModelId.includes('/')) {
@@ -1176,6 +1235,17 @@ class ModelStore {
 
   handleAppStateChange = async (nextAppState: AppStateStatus) => {
     console.log(`App state change: ${this.appState} → ${nextAppState}`);
+
+    // Multi-model: in the background, kept models stay only while the wake
+    // word is on (it may switch to one); otherwise free their memory, since
+    // Android is quicker to close a background app that holds a lot.
+    if (
+      nextAppState === 'background' &&
+      this.parkedModels.length > 0 &&
+      !voiceStore.wakeEnabled
+    ) {
+      this.releaseParkedModels().catch(() => {});
+    }
 
     if (
       this.appState.match(/inactive|background/) &&
@@ -1738,6 +1808,12 @@ class ModelStore {
   };
 
   deleteModel = async (model: Model) => {
+    await this.releaseParkedModel(model.id);
+    if (this.lastSessionModelId === model.id) {
+      runInAction(() => {
+        this.lastSessionModelId = undefined;
+      });
+    }
     // id should work as well, as long as we are differentiating between models by origin.
     const modelIndex = this.models.findIndex(
       m => m.id === model.id && m.origin === model.origin,
@@ -2172,6 +2248,13 @@ class ModelStore {
       // auto-load on cold launch). clearActiveModel:true so the queued
       // post-mutex callers see a clean slate if they ever run.
       await this._releaseContextInternal(true);
+      const slots = this.parkedModels;
+      runInAction(() => {
+        this.parkedModels = [];
+      });
+      for (const slot of slots) {
+        await this.releaseSlot(slot);
+      }
     });
     this.contextOperationMutex = op.then(() => {}).catch(() => {});
     await op;
@@ -2221,6 +2304,17 @@ class ModelStore {
     // pendingModelId will overwrite ours and we'll detect it later
     this.pendingModelId = model.id;
 
+    // Switching from a remote model: stop using its server right away, so
+    // nothing is sent there while the local model loads.
+    if (!this.context && this.activeRemoteBinding) {
+      const remote = this.engine;
+      remote?.stopCompletion().catch(() => {});
+      runInAction(() => {
+        this.engine = undefined;
+        this.activeRemoteBinding = undefined;
+      });
+    }
+
     // Set loading state immediately for UI feedback
     runInAction(() => {
       this.isContextLoading = true;
@@ -2234,13 +2328,17 @@ class ModelStore {
 
       const draftConfig = await this.resolveDraftConfig(model);
 
-      // Check memory and get user confirmation if needed (no mutex - UI interaction)
-      const shouldProceed = await this.checkMemoryAndConfirm(
-        model,
-        isMultimodalInit,
-        projectionModel,
-        pairedDraftModel(draftConfig),
-      );
+      // Check memory and get user confirmation if needed (no mutex - UI interaction).
+      // A model that is still loaded (kept) needs no memory check.
+      const isKept = this.parkedModels.some(p => p.modelId === model.id);
+      const shouldProceed =
+        isKept ||
+        (await this.checkMemoryAndConfirm(
+          model,
+          isMultimodalInit,
+          projectionModel,
+          pairedDraftModel(draftConfig),
+        ));
 
       if (!shouldProceed) {
         throw new Error('Model loading cancelled by user');
@@ -2285,8 +2383,25 @@ class ModelStore {
           return this.context;
         }
 
-        // Release existing context
-        await this._releaseContextInternal();
+        // Kept loaded (multi-model): switch instantly, no reload.
+        if (this.parkedModels.some(p => p.modelId === model.id)) {
+          if (!(await this.parkActiveInternal())) {
+            await this._releaseContextInternal();
+          }
+          this.unparkInternal(model.id);
+          await this.trimParkedInternal();
+          return this.context;
+        }
+
+        // Keep the current model loaded (multi-model on), or release it.
+        const kept = await this.parkActiveInternal();
+        if (!kept) {
+          await this._releaseContextInternal();
+        }
+        // Unload the oldest kept models if over the limit or short of memory.
+        await this.trimParkedInternal(
+          this.estimateNewLoad(model, projectionModel, draftConfig),
+        );
 
         // Small delay for native cleanup before loading next model
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -2409,11 +2524,13 @@ class ModelStore {
         this.activeRemoteBinding = undefined;
         this.activeContextSettings = contextInitParams;
         this.setActiveModel(model.id);
+        this.lastSessionModelId = model.id;
         this.pendingModelId = null;
         if (this.isMultimodalActive) {
           this.lastVisionModelId = model.id;
         }
       });
+      this.warnIfVisionOff(model);
 
       // Update largestSuccessfulLoad using GGUF estimator
       try {
@@ -2423,6 +2540,7 @@ class ModelStore {
           {...contextInitParams, state_cache_budget_mb: 0},
           pairedDraftModel(draftConfig),
         );
+        this.loadEstimates[model.id] = estimated;
         runInAction(() => {
           if (
             this.largestSuccessfulLoad === undefined ||
@@ -2571,6 +2689,178 @@ class ModelStore {
   };
 
   /** Acquires mutex before releasing context. */
+  // ===== Multi-model: keep recently used models loaded =====
+
+  setKeepModelsLoaded = (on: boolean) => {
+    runInAction(() => {
+      this.keepModelsLoaded = on;
+    });
+    if (!on) {
+      this.releaseParkedModels().catch(() => {});
+    }
+  };
+
+  setMaxLoadedModels = (count: number) => {
+    runInAction(() => {
+      this.maxLoadedModels = Math.min(4, Math.max(2, Math.round(count)));
+    });
+    this.withContextMutex(() => this.trimParkedInternal()).catch(() => {});
+  };
+
+  /** Loaded right now, active or kept. */
+  isModelLoaded = (modelId: string): boolean =>
+    (this.activeModelId === modelId && !!this.context) ||
+    this.parkedModels.some(p => p.modelId === modelId);
+
+  private withContextMutex = <T>(op: () => Promise<T>): Promise<T> => {
+    const operation = this.contextOperationMutex.then(op);
+    this.contextOperationMutex = operation.then(() => {}).catch(() => {});
+    return operation;
+  };
+
+  /**
+   * Move the active local model aside, still loaded, instead of releasing
+   * it. Caller holds the mutex. Returns false when there was nothing to keep
+   * (setting off, remote or no model): then release as usual.
+   */
+  private parkActiveInternal = async (): Promise<boolean> => {
+    if (
+      !this.keepModelsLoaded ||
+      this.benchmarkActive ||
+      !this.context ||
+      !this.engine ||
+      !this.activeModelId
+    ) {
+      return false;
+    }
+    chatSessionStore.exitEditMode();
+    await this.generationSlot.abortActive();
+    const model = this.models.find(m => m.id === this.activeModelId);
+    const slot: ParkedModel = {
+      modelId: this.activeModelId,
+      context: this.context,
+      engine: this.engine,
+      isMultimodalActive: this.isMultimodalActive,
+      activeProjectionModelId: this.activeProjectionModelId,
+      activeContextSettings: this.activeContextSettings,
+      estimateBytes: this.loadEstimates[this.activeModelId] ?? model?.size ?? 0,
+    };
+    runInAction(() => {
+      this.parkedModels = [
+        ...this.parkedModels.filter(p => p.modelId !== slot.modelId),
+        slot,
+      ];
+      this.context = undefined;
+      this.engine = undefined;
+      this.activeContextSettings = undefined;
+      this.isMultimodalActive = false;
+      this.activeProjectionModelId = undefined;
+    });
+    return true;
+  };
+
+  /** Make a kept model active again, instantly. Caller holds the mutex. */
+  private unparkInternal = (modelId: string): boolean => {
+    const slot = this.parkedModels.find(p => p.modelId === modelId);
+    if (!slot) {
+      return false;
+    }
+    runInAction(() => {
+      this.parkedModels = this.parkedModels.filter(p => p !== slot);
+      this.context = slot.context;
+      this.engine = slot.engine;
+      this.activeRemoteBinding = undefined;
+      this.activeContextSettings = slot.activeContextSettings;
+      this.isMultimodalActive = slot.isMultimodalActive;
+      this.activeProjectionModelId = slot.activeProjectionModelId;
+      this.setActiveModel(modelId);
+      this.lastSessionModelId = modelId;
+      this.pendingModelId = null;
+      this.lastUsedModelId = modelId;
+      if (slot.isMultimodalActive) {
+        this.lastVisionModelId = modelId;
+      }
+    });
+    return true;
+  };
+
+  private releaseSlot = async (slot: ParkedModel) => {
+    try {
+      if (slot.isMultimodalActive) {
+        await slot.context.releaseMultimodal();
+      }
+      await slot.context.release();
+    } catch (error) {
+      console.warn('[ModelStore] Failed to release a kept model:', error);
+    }
+  };
+
+  /**
+   * Unload kept models, oldest first, until the count limit holds and (when
+   * `neededBytes` is given) the next load is estimated to fit.
+   */
+  private trimParkedInternal = async (neededBytes?: number) => {
+    const keepAtMost = Math.max(0, this.maxLoadedModels - 1);
+    const ceiling = this.availableMemoryCeiling;
+    const overBudget = () =>
+      neededBytes !== undefined &&
+      ceiling !== undefined &&
+      this.parkedModels.reduce((sum, p) => sum + p.estimateBytes, 0) +
+        neededBytes >
+        ceiling;
+    while (
+      this.parkedModels.length > 0 &&
+      (this.parkedModels.length > keepAtMost || overBudget())
+    ) {
+      const oldest = this.parkedModels[0];
+      runInAction(() => {
+        this.parkedModels = this.parkedModels.slice(1);
+      });
+      await this.releaseSlot(oldest);
+    }
+  };
+
+  /** Unload every kept model (the active one stays). */
+  releaseParkedModels = (): Promise<void> =>
+    this.withContextMutex(async () => {
+      const slots = this.parkedModels;
+      runInAction(() => {
+        this.parkedModels = [];
+      });
+      for (const slot of slots) {
+        await this.releaseSlot(slot);
+      }
+    });
+
+  /** Unload one kept model (e.g. before deleting its file). */
+  releaseParkedModel = (modelId: string): Promise<void> =>
+    this.withContextMutex(async () => {
+      const slot = this.parkedModels.find(p => p.modelId === modelId);
+      if (slot) {
+        runInAction(() => {
+          this.parkedModels = this.parkedModels.filter(p => p !== slot);
+        });
+        await this.releaseSlot(slot);
+      }
+    });
+
+  private estimateNewLoad = (
+    model: Model,
+    projectionModel?: Model,
+    draftConfig?: DraftConfig,
+  ): number => {
+    try {
+      return getModelMemoryRequirement(
+        model,
+        projectionModel,
+        {...this.contextInitParams, state_cache_budget_mb: 0},
+        pairedDraftModel(draftConfig),
+      );
+    } catch {
+      return model.size ?? 0;
+    }
+  };
+
   releaseContext = async (clearActiveModel: boolean = false) => {
     const operationPromise = this.contextOperationMutex.then(async () => {
       return this._releaseContextInternal(clearActiveModel);
@@ -2585,7 +2875,51 @@ class ModelStore {
   };
 
   manualReleaseContext = async () => {
+    // Unloaded on purpose: don't bring it back on the next start.
+    runInAction(() => {
+      this.lastSessionModelId = undefined;
+    });
     await this.releaseContext(true); // Clear active model for manual release
+  };
+
+  setRestoreModelOnStart = (on: boolean) => {
+    runInAction(() => {
+      this.restoreModelOnStart = on;
+    });
+  };
+
+  /**
+   * App start: bring back the model that was in use. A remote one (Claude)
+   * reconnects instantly; a local one loads with the usual memory check.
+   * Remote servers load their saved list a moment after start, so wait for
+   * it briefly. Does nothing once the user has picked a model.
+   */
+  restoreLastModel = async (): Promise<boolean> => {
+    const id = this.lastSessionModelId;
+    if (!this.restoreModelOnStart || !id || this.benchmarkActive) {
+      return false;
+    }
+    for (let attempt = 0; attempt < 12; attempt++) {
+      if (this.engine || this.isContextLoading) {
+        return false;
+      }
+      const local = this.models.find(m => m.id === id && m.isDownloaded);
+      if (local) {
+        await this.initContext(local).catch(error =>
+          console.warn('[ModelStore] restore failed:', error),
+        );
+        return this.activeModelId === id;
+      }
+      const remote = this.remoteModels.find(m => m.id === id);
+      if (remote) {
+        await this.setRemoteModel(remote).catch(error =>
+          console.warn('[ModelStore] restore failed:', error),
+        );
+        return this.activeModelId === id;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    return false;
   };
 
   get activeModel(): Model | undefined {
@@ -2637,12 +2971,71 @@ class ModelStore {
    * likely to fit in memory). Undefined when no downloaded model can see.
    */
   pickVisionModel = (): Model | undefined => {
-    const candidates = this.visionModels;
-    return (
+    const pick = (candidates: Model[]) =>
       candidates.find(m => m.id === this.lastVisionModelId) ??
-      [...candidates].sort((a, b) => (a.size ?? 0) - (b.size ?? 0))[0]
+      [...candidates].sort((a, b) => (a.size ?? 0) - (b.size ?? 0))[0];
+    // Then a vision model whose projector is on the phone but whose Vision
+    // switch is off: sending a picture turns it on (see visionSwitch).
+    return pick(this.visionModels) ?? pick(this.switchedOffVisionModels);
+  };
+
+  /** Downloaded vision models, projector downloaded, Vision switched off. */
+  get switchedOffVisionModels(): Model[] {
+    return this.availableModels.filter(
+      m =>
+        m.origin !== ModelOrigin.REMOTE &&
+        m.isDownloaded &&
+        m.supportsMultimodal &&
+        !this.getModelVisionPreference(m) &&
+        this.getProjectionModelStatus(m).state === 'downloaded',
+    );
+  }
+
+  /**
+   * A vision model that loaded without vision (projector missing, still
+   * downloading, failed to start, or vision switched off) can't see pictures
+   * and used to say nothing; say why, so the fix is one tap away.
+   */
+  private warnIfVisionOff = (model: Model) => {
+    if (!model.supportsMultimodal || this.isMultimodalActive) {
+      return;
+    }
+    const status = this.getProjectionModelStatus(model);
+    // The projector comes first: with it missing, the Vision switch on the
+    // card is greyed out, so "switch it on" would be no help.
+    const fix =
+      status.state === 'downloading'
+        ? 'its vision file (projector) is still downloading. Try again when it finishes.'
+        : status.state === 'missing' || !status.projectionModel?.isDownloaded
+          ? "its vision file (projector) isn't downloaded. Open Models, tap ⌄ on its card and download the projector."
+          : !this.getModelVisionPreference(model)
+            ? 'vision is switched off. Open Models, tap ⌄ on its card and turn on Vision.'
+            : 'its vision file (projector) failed to start. Try loading it again.';
+    uiStore.setChatWarning({
+      code: 'multimodal',
+      message: `${model.name} loaded without pictures: ${fix}`,
+      context: 'chat',
+      recoverable: true,
+      severity: 'warning',
+    });
+  };
+
+  /**
+   * When no local model can see: a configured cloud model whose list says it
+   * reads images (Claude, Gemini, …). The last one used wins, else the first.
+   */
+  pickCloudVisionModel = (): Model | undefined => {
+    const candidates = this.remoteModels.filter(
+      m => this.capsFor(m).vision === 'yes',
+    );
+    return (
+      candidates.find(m => m.id === this.lastVisionModelId) ?? candidates[0]
     );
   };
+
+  /** Where a picture goes: a local vision model first, then a cloud one. */
+  pickVisionTarget = (): Model | undefined =>
+    this.pickVisionModel() ?? this.pickCloudVisionModel();
 
   /** Capabilities of the live session — chat's entry point. */
   get activeModelCaps(): ModelCapabilityView {
@@ -2721,54 +3114,104 @@ class ModelStore {
    * Releases any active local context first.
    */
   setRemoteModel = async (model: Model): Promise<void> => {
+    // A model picked now replaces any pending reload of an offloaded one.
+    this.clearAutoReleaseFlags();
     if (!model.serverId || !model.remoteModelId) {
       throw new Error('Model is missing remote configuration');
     }
+    // Last pick wins, local or remote: a local load queued before this one
+    // sees the change and skips; a later pick makes this one stop.
+    this.pendingModelId = model.id;
 
-    // Release any existing context (local or remote)
-    await this.releaseContext();
+    const picked = await this.withContextMutex(async () => {
+      if (this.pendingModelId !== model.id) {
+        return null;
+      }
+      // Multi-model keeps the local model loaded; otherwise release it (and
+      // any previous remote engine).
+      if (!(await this.parkActiveInternal())) {
+        await this._releaseContextInternal();
+      }
 
-    const apiKey = await serverStore.getApiKey(model.serverId);
-    const server = serverStore.servers.find(s => s.id === model.serverId);
-    if (!server) {
-      throw new Error('Server not found');
-    }
+      const apiKey = await serverStore.getApiKey(model.serverId!);
+      const server = serverStore.servers.find(s => s.id === model.serverId);
+      if (!server) {
+        throw new Error('Server not found');
+      }
+      if (this.pendingModelId !== model.id) {
+        return null;
+      }
 
-    const serverType = toServerType(server.serverType);
-    const hasRouter = profileFor(serverType).hasRouter;
-    const binding = {
-      modelId: model.id,
-      serverId: model.serverId,
-      remoteModelId: model.remoteModelId,
-      url: server.url,
-      serverType,
-    };
-    const endpoint = {
-      url: server.url,
-      remoteModelId: model.remoteModelId,
-      apiKey,
-      timeoutMs: server.requestTimeoutMs,
-      serverType,
-    };
+      const type = effectiveServerType(
+        toServerType(server.serverType),
+        server.url,
+      );
+      const hasRouter = profileFor(type).hasRouter;
+      const binding = {
+        modelId: model.id,
+        serverId: model.serverId!,
+        remoteModelId: model.remoteModelId!,
+        url: server.url,
+        serverType: type,
+      };
+      const endpoint = {
+        url: server.url,
+        remoteModelId: model.remoteModelId!,
+        apiKey,
+        timeoutMs: server.requestTimeoutMs,
+        serverType: type,
+      };
 
-    runInAction(() => {
-      this.engine = hasRouter
-        ? new OpenAICompletionEngine(endpoint, {
-            ensureReady: (signal, options) =>
-              routerStore.ensureReady(binding, signal, options),
-          })
-        : new OpenAICompletionEngine(endpoint);
-      this.activeRemoteBinding = binding;
-      this.setActiveModel(model.id);
-      // Do NOT set lastUsedModelId for remote models -- server may be offline on next launch
+      runInAction(() => {
+        this.engine =
+          type === 'Claude'
+            ? new ClaudeCompletionEngine(endpoint)
+            : hasRouter
+              ? new OpenAICompletionEngine(endpoint, {
+                  ensureReady: (signal, options) =>
+                    routerStore.ensureReady(binding, signal, options),
+                })
+              : new OpenAICompletionEngine(endpoint);
+        this.activeRemoteBinding = binding;
+        this.setActiveModel(model.id);
+        this.lastSessionModelId = model.id;
+        this.pendingModelId = null;
+        // Do NOT set lastUsedModelId for remote models -- server may be offline on next launch
+      });
+      return {serverType: type, apiKey, hasRouter};
     });
+    if (!picked) {
+      return;
+    }
+    const {serverType, apiKey, hasRouter} = picked;
 
+    if (serverType === 'DeepSeek') {
+      // DeepSeek models think (on by default there) at low, high or max.
+      serverStore.recordRemoteReasoningDetected(model.id, {
+        isReasoning: 'yes',
+        source: 'detected',
+        supportsEffort: true,
+        effortValues: ['low', 'high', 'max'],
+        effortSource: 'detected',
+      });
+    }
+    if (serverType === 'Claude') {
+      // Thinking and effort levels come from the Claude model's rules.
+      const f = claudeFeatures(model.remoteModelId);
+      serverStore.recordRemoteReasoningDetected(model.id, {
+        isReasoning: f.adaptive ? 'yes' : 'no',
+        source: 'detected',
+        supportsEffort: f.efforts.length > 0,
+        effortValues: f.efforts,
+        effortSource: f.efforts.length > 0 ? 'detected' : 'none',
+      });
+    }
     serverStore
-      .fetchRemoteModelCaps(model.serverId, model.remoteModelId, apiKey)
+      .fetchRemoteModelCaps(model.serverId!, model.remoteModelId!, apiKey)
       .catch(() => {});
     if (hasRouter) {
       routerStore
-        .ensureLoaded(model.serverId, model.remoteModelId)
+        .ensureLoaded(model.serverId!, model.remoteModelId!)
         .catch(() => {});
     }
   };
@@ -3080,6 +3523,16 @@ class ModelStore {
     if (model) {
       runInAction(() => {
         model.name = newName;
+      });
+    }
+  };
+
+  /** Voice wake words for this model (blank entries dropped). */
+  updateModelWakeWords = (modelId: string, wakeWords: string[]) => {
+    const model = this.models.find(m => m.id === modelId);
+    if (model) {
+      runInAction(() => {
+        model.wakeWords = wakeWords.map(w => w.trim()).filter(Boolean);
       });
     }
   };
@@ -3460,8 +3913,21 @@ class ModelStore {
     return this.generationSlot.isBusy;
   }
 
-  private grantableEngine = (): CompletionEngine | null =>
-    this.isReleasingContext ? null : (this.engine ?? null);
+  /**
+   * The engine to generate with, or null. A remote engine is only handed out
+   * for the remote model it was made for: never while another model is the
+   * active one (a switch in progress, or one that went wrong).
+   */
+  private grantableEngine = (): CompletionEngine | null => {
+    if (this.isReleasingContext || !this.engine) {
+      return null;
+    }
+    const binding = this.activeRemoteBinding;
+    if (binding && (this.context || binding.modelId !== this.activeModelId)) {
+      return null;
+    }
+    return this.engine;
+  };
 
   /**
    * Get compatible projection models for a given LLM

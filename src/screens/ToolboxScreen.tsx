@@ -7,6 +7,7 @@ import {readGlobalTools, writeGlobalTools, readGlobalPrompt, writeGlobalPrompt, 
 import {safeMath} from '../services/talents/safeMath';
 import {isBackgroundInferenceEnabled, setBackgroundInferenceEnabled} from '../utils/backgroundInference';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
+import {PHONE_TOOL_NAMES} from '../services/talents/PhoneActionsEngine';
 import {useTheme} from '../hooks';
 import {useIsFocused} from '@react-navigation/native';
 import {MemorySection} from '../components/PalsSheets/MemorySection';
@@ -49,6 +50,24 @@ export const ToolboxScreen: React.FC = () => {
     return () => {mounted = false;};
   }, []);
   useEffect(() => {isBackgroundInferenceEnabled().then(setBackgroundEnabled).catch(() => {});}, []);
+  const [showPhoneTools, setShowPhoneTools] = useState(false);
+  const phoneTools = tools.filter(t => PHONE_TOOL_NAMES.includes(t.name));
+  const otherTools = tools.filter(t => !PHONE_TOOL_NAMES.includes(t.name));
+  const toggleGroup = async (names: string[], enabled: boolean) => {
+    if (!settingsLoaded || savingTool) return;
+    const rest = enabledTools.filter(n => !names.includes(n));
+    const next = enabled ? [...rest, ...names] : rest;
+    setSavingTool(names[0]);
+    setToggleError('');
+    try {
+      await writeGlobalTools(next);
+      setEnabledTools(next);
+    } catch (e) {
+      setToggleError('Could not save tool setting: ' + String(e));
+    } finally {
+      setSavingTool(null);
+    }
+  };
   const toggleBuiltIn = async (name: string, enabled: boolean) => {
     if (!settingsLoaded || savingTool) return;
     const next = enabled ? [...enabledTools.filter(n => n !== name), name] : enabledTools.filter(n => n !== name);
@@ -166,7 +185,31 @@ export const ToolboxScreen: React.FC = () => {
         <Button mode="contained" disabled={!loaded} onPress={() => newDraft()}>Create tool draft</Button>
         {!loaded ? <Text>Loading saved drafts…</Text> : null}
         {storageError ? <Text style={{color: errorColor}}>{storageError}</Text> : null}
-        {tools.map(tool => (
+        {/* Phone actions as one group: a switch for all, each one on request. */}
+        <Card mode="outlined" testID="toolbox-phone-actions">
+          <Card.Content>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8}}>
+              <Text variant="titleMedium" style={{flex: 1}}>Phone actions ({PHONE_TOOL_NAMES.length})</Text>
+              <Switch
+                testID="toolbox-toggle-phone-actions"
+                disabled={!settingsLoaded || savingTool !== null}
+                value={PHONE_TOOL_NAMES.every(n => enabledTools.includes(n))}
+                onValueChange={enabled => toggleGroup(PHONE_TOOL_NAMES, enabled)}
+              />
+            </View>
+            <Text variant="bodyMedium">Timers, alarms, opening apps, maps, music, camera, Settings pages, calendar reminders and pre-filled calls, texts and e-mails. Each action asks you first; nothing is called, sent or changed by itself.</Text>
+            <Button testID="toolbox-phone-actions-each" onPress={() => setShowPhoneTools(v => !v)}>
+              {showPhoneTools ? 'Hide each' : 'Show each'}
+            </Button>
+            {showPhoneTools && phoneTools.map(tool => (
+              <View key={tool.name} style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingVertical: 4}}>
+                <Text variant="bodyMedium" style={{flex: 1}}>{tool.name}</Text>
+                <Switch testID={'toolbox-toggle-' + tool.name} disabled={!settingsLoaded || savingTool !== null} value={enabledTools.includes(tool.name)} onValueChange={enabled => toggleBuiltIn(tool.name, enabled)} />
+              </View>
+            ))}
+          </Card.Content>
+        </Card>
+        {otherTools.map(tool => (
           <Card key={tool.name} mode="outlined">
             <Card.Content>
               <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8}}>

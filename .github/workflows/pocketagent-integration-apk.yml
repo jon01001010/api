@@ -206,7 +206,8 @@ jobs:
             native-variants.txt
             android/app/build/outputs/api-helper-npu-payload.txt
           if-no-files-found: warn
-          retention-days: 14
+          # Small, but 14 days of them added up; 3 days is enough to debug.
+          retention-days: 3
       - name: Keep verified APK
         if: success() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
         uses: actions/upload-artifact@v4
@@ -214,7 +215,10 @@ jobs:
           name: pocketagent-integration-apk-${{ github.run_id }}-${{ github.run_attempt }}
           path: android/app/build/outputs/apk/prod/debug/app-prod-debug.apk
           if-no-files-found: error
-          retention-days: 14
+          # Only the release job below needs this copy (minutes later); the
+          # APK to install lives on the release. 14-day copies (~80 MB each)
+          # filled the free Actions storage.
+          retention-days: 1
 
   # Publishes the verified APK as a pre-release so it can be downloaded and
   # installed directly on the phone (artifacts need a signed-in browser and

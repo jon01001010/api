@@ -65,7 +65,7 @@ export const createStyles = (
       paddingVertical: 2,
     },
     collapsedWebView: {
-      height: 250,
+      height: 320,
       width: '100%',
       backgroundColor: colors.background,
     },

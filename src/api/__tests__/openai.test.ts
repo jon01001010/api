@@ -185,6 +185,54 @@ describe('fetchModelsWithHeaders', () => {
     expect(result.headers.server).toBe('llama.cpp');
   });
 
+  it('lists Gemini under its own path with bare model ids', async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      headers: mockHeaders(),
+      json: () =>
+        Promise.resolve({
+          data: [{id: 'models/gemini-2.5-flash', object: 'model'}],
+        }),
+    });
+
+    const result = await fetchModelsWithHeaders(
+      'https://generativelanguage.googleapis.com/v1beta/openai',
+      'key',
+    );
+
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/openai/models',
+    );
+    expect(result.models[0].id).toBe('gemini-2.5-flash');
+  });
+
+  it('leaves Gemini models out that cannot chat (Live, speech, embeddings)', async () => {
+    const ids = [
+      'gemini-2.5-flash',
+      'gemini-3.8-live-extended-thinking',
+      'gemini-2.5-flash-preview-tts',
+      'gemini-embedding-001',
+      'imagen-4.0-generate-001',
+      'veo-3.0-generate-preview',
+      'gemma-4-31b-it',
+      'gemini-2.5-flash-native-audio-latest',
+    ];
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      headers: mockHeaders(),
+      json: () =>
+        Promise.resolve({data: ids.map(id => ({id: `models/${id}`}))}),
+    });
+    const result = await fetchModelsWithHeaders(
+      'https://generativelanguage.googleapis.com/v1beta/openai',
+      'key',
+    );
+    expect(result.models.map(m => m.id)).toEqual([
+      'gemini-2.5-flash',
+      'gemma-4-31b-it',
+    ]);
+  });
+
   // An undefined timeoutMs (e.g. a persisted ServerConfig from a prior version
   // with no requestTimeoutMs) is forwarded raw and must not crash; it behaves
   // identically to today (default applies).
@@ -1742,6 +1790,44 @@ describe('streamChatCompletion', () => {
         id: 'call_abc',
         function: {name: 'calculate', arguments: '+2"}'},
       });
+    });
+
+    // Gemini's OpenAI-compatible stream sends each call whole, without an
+    // index, and Gemini 3 adds a thought signature that must be sent back.
+    it('keeps Gemini tool calls that carry no index, with their signature', async () => {
+      const resultPromise = streamChatCompletion(
+        {
+          samplers: {},
+          messages: [{role: 'user', content: 'Time?'}],
+          model: 'gemini-3.1-flash-lite',
+          tools: [calculateTool],
+        },
+        endpointFor(),
+      );
+      const xhr = MockXHR.instances[0];
+      xhr.simulateHeaders(200);
+      xhr.simulateProgress(
+        'data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"id":"fc_1","type":"function","function":{"name":"calculate","arguments":"{\\"expression\\":\\"1+1\\"}"},"extra_content":{"google":{"thought_signature":"sig1"}}}]},"finish_reason":null}]}\n\n',
+      );
+      xhr.simulateProgress(
+        'data: {"choices":[{"delta":{"tool_calls":[{"id":"fc_2","type":"function","function":{"name":"calculate","arguments":"{\\"expression\\":\\"2+2\\"}"}}]},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n',
+      );
+      xhr.simulateLoad();
+
+      const result = await resultPromise;
+      expect(result.tool_calls).toEqual([
+        {
+          id: 'fc_1',
+          type: 'function',
+          function: {name: 'calculate', arguments: '{"expression":"1+1"}'},
+          extra_content: {google: {thought_signature: 'sig1'}},
+        },
+        {
+          id: 'fc_2',
+          type: 'function',
+          function: {name: 'calculate', arguments: '{"expression":"2+2"}'},
+        },
+      ]);
     });
 
     it('handles parallel tool_calls indexed across chunks', async () => {

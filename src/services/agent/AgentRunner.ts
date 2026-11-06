@@ -110,14 +110,18 @@ function normalizeToolCallIds(
   raw: NonNullable<CompletionResult['tool_calls']>,
   seed: number,
 ): AgentToolCall[] {
-  return raw.map((tc, i) => ({
-    id: tc.id || `call_${seed}_${i}`,
-    type: 'function',
-    function: {
-      name: tc.function?.name ?? '',
-      arguments: tc.function?.arguments ?? '',
-    },
-  }));
+  return raw.map((tc, i) => {
+    const extra = (tc as {extra_content?: unknown}).extra_content;
+    return {
+      id: tc.id || `call_${seed}_${i}`,
+      type: 'function',
+      function: {
+        name: tc.function?.name ?? '',
+        arguments: tc.function?.arguments ?? '',
+      },
+      ...(extra !== undefined && {extra_content: extra}),
+    };
+  });
 }
 
 /**
@@ -215,6 +219,7 @@ function buildNextTurnMessages(
         name: tc.function.name,
         arguments: tc.function.arguments,
       },
+      ...(tc.extra_content !== undefined && {extra_content: tc.extra_content}),
     })) as NonNullable<ChatMessage['tool_calls']>,
   };
   if (reasoningContent && reasoningContent.length > 0) {

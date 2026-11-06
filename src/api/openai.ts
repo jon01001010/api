@@ -15,10 +15,12 @@ import {
   IDLE_TIMEOUT_MS,
   buildHeaders,
   fetchWithTimeout,
-  normalizeUrl,
+  openAiApiUrl,
   resolveTimeout,
 } from './http';
 import {bodyExtras, readFinish} from './servers';
+import {isAnthropicUrl} from './claude/client';
+import {listClaudeModels} from './claude/list';
 import type {FinishRead, RemoteEndpoint} from './servers';
 import type {Samplers} from '../utils/samplerParams';
 
@@ -92,6 +94,8 @@ type ToolCallAccumulator = Map<
     id: string;
     type: 'function';
     function: {name: string; argsFragments: string[]};
+    /** Provider data to send back with the call (Gemini thought signature). */
+    extra_content?: unknown;
   }
 >;
 
@@ -104,10 +108,20 @@ function applyToolCallDelta(
   // assembled from the accumulator at xhr.onload.
   const result: ToolCall[] = [];
   for (const delta of deltaCalls) {
-    if (typeof delta?.index !== 'number') {
+    if (!delta || typeof delta !== 'object') {
       continue;
     }
-    const idx = delta.index;
+    // OpenAI indexes each streamed call. Gemini sends every call whole in one
+    // chunk with no index: match it by id, else it is the next call.
+    let idx: number;
+    if (typeof delta.index === 'number') {
+      idx = delta.index;
+    } else {
+      const byId = delta.id
+        ? [...acc.entries()].find(([, e]) => e.id === delta.id)?.[0]
+        : undefined;
+      idx = byId ?? (acc.size === 0 ? 0 : Math.max(...acc.keys()) + 1);
+    }
     const existing = acc.get(idx) ?? {
       id: '',
       type: 'function' as const,
@@ -118,6 +132,9 @@ function applyToolCallDelta(
     }
     if (delta.function?.name) {
       existing.function.name = delta.function.name;
+    }
+    if (delta.extra_content !== undefined) {
+      existing.extra_content = delta.extra_content;
     }
     const argsDelta: string = delta.function?.arguments ?? '';
     if (argsDelta) {
@@ -153,6 +170,9 @@ function assembleFinalToolCalls(
         name: entry.function.name,
         arguments: entry.function.argsFragments.join(''),
       },
+      ...(entry.extra_content !== undefined && {
+        extra_content: entry.extra_content,
+      }),
     }));
 }
 
@@ -216,12 +236,27 @@ function liftModelEntryCapabilities(
  * Fetch available models and response headers from an OpenAI-compatible server.
  * GET /v1/models
  */
+const isGeminiUrl = (url: string) =>
+  /^https:\/\/generativelanguage\.googleapis\.com\//i.test(url.trim());
+
+/**
+ * Gemini lists every model, including ones its chat endpoint cannot serve:
+ * Live (WebSocket only), speech, embeddings, image/video generation and
+ * the like. They are left out of the list.
+ */
+const GEMINI_NOT_CHAT =
+  /(^|-)(live|tts|embedding|imagen|veo|aqa|native-audio|lyria|image-generation|robotics|computer-use)(-|$)/i;
+
 export async function fetchModelsWithHeaders(
   serverUrl: string,
   apiKey?: string,
   timeoutMs?: number,
 ): Promise<FetchModelsResult> {
-  const url = `${normalizeUrl(serverUrl)}/v1/models`;
+  // Anthropic's API isn't OpenAI-compatible: list models through its SDK.
+  if (isAnthropicUrl(serverUrl)) {
+    return {models: await listClaudeModels(apiKey, timeoutMs), headers: {}};
+  }
+  const url = openAiApiUrl(serverUrl, '/models');
   const response = await fetchWithTimeout(
     url,
     {method: 'GET', headers: buildHeaders(apiKey)},
@@ -241,11 +276,17 @@ export async function fetchModelsWithHeaders(
   });
 
   const data = await response.json();
+  // Gemini lists ids as `models/gemini-…`; its chat endpoint takes the bare id.
+  let rows = ((data.data || []) as RemoteModelInfo[]).map(row =>
+    typeof row?.id === 'string' && row.id.startsWith('models/')
+      ? {...row, id: row.id.slice('models/'.length)}
+      : row,
+  );
+  if (isGeminiUrl(serverUrl)) {
+    rows = rows.filter(row => !GEMINI_NOT_CHAT.test(row?.id ?? ''));
+  }
   return {
-    models: liftModelEntryCapabilities(
-      (data.data || []) as RemoteModelInfo[],
-      data.models,
-    ),
+    models: liftModelEntryCapabilities(rows, data.models),
     headers: responseHeaders,
     ...(isObject(data) && 'models' in data && {hasModelsKey: true}),
   };
@@ -292,7 +333,9 @@ function isLocalImageUrl(url: string | undefined): url is string {
 }
 
 /** True when any message carries a local-path image that must be encoded. */
-function hasLocalImageAttachment(messages: OpenAIChatMessage[]): boolean {
+export function hasLocalImageAttachment(
+  messages: OpenAIChatMessage[],
+): boolean {
   return messages.some(
     m =>
       Array.isArray(m.content) &&
@@ -411,7 +454,7 @@ async function encodeImagePart(part: {
  * Encodes sequentially (outer messages and inner parts) so peak heap is one
  * base64 buffer at a time on a long or multi-image history.
  */
-async function encodeMessagesForRemote(
+export async function encodeMessagesForRemote(
   messages: OpenAIChatMessage[],
 ): Promise<OpenAIChatMessage[]> {
   const encoded: OpenAIChatMessage[] = [];
@@ -461,7 +504,7 @@ export async function streamChatCompletion(
   onToken?: (data: CompletionStreamData) => void,
 ): Promise<CompletionResult> {
   const {apiKey, serverType, timeoutMs} = endpoint;
-  const url = `${normalizeUrl(endpoint.url)}/v1/chat/completions`;
+  const url = openAiApiUrl(endpoint.url, '/chat/completions');
   const connectionTimeoutMs = resolveTimeout(timeoutMs, CONNECTION_TIMEOUT_MS);
   const idleTimeoutMs = resolveTimeout(timeoutMs, IDLE_TIMEOUT_MS);
   // Only pay the async encode when a local image is actually attached; the

@@ -1,13 +1,14 @@
 import {modelStore, uiStore} from '../store';
+import {runInAction} from 'mobx';
 import {ModelOrigin} from '../utils/types';
 
 /**
  * What happened when a picture was about to be sent:
  * - `ready`: the loaded model can already see pictures.
  * - `switched`: switched to a vision model; the picture can be sent.
- * - `none`: no downloaded model can see pictures.
+ * - `none`: no local or cloud model can see pictures.
  * - `cancelled`: the switch didn't happen (e.g. memory warning declined).
- * - `remote`: the loaded model runs on a server; left as before.
+ * - `remote`: kept for callers; no longer returned (cloud models switch too).
  */
 export type VisionSwitchResult =
   | 'ready'
@@ -26,16 +27,39 @@ export async function ensureVisionForPictures(): Promise<VisionSwitchResult> {
   if (modelStore.activeModelCaps.visionActive) {
     return 'ready';
   }
-  if (modelStore.activeModel?.origin === ModelOrigin.REMOTE) {
-    return 'remote';
-  }
-  const target = modelStore.pickVisionModel();
+  // A local vision model first; only when there is none, a cloud one.
+  const target = modelStore.pickVisionTarget();
   if (!target) {
     return 'none';
   }
+  // A local vision model with its projector but the Vision switch off: the
+  // picture is a clear ask, so turn it on (as the card's switch would).
+  const switchedOff =
+    target.origin !== ModelOrigin.REMOTE &&
+    !modelStore.getModelVisionPreference(target);
+  if (switchedOff) {
+    await modelStore.setModelVisionEnabled(target.id, true).catch(() => {});
+  }
+  if (target.id === modelStore.activeModelId) {
+    if (!switchedOff) {
+      return 'none';
+    }
+    // Already loaded without vision: turning it on may have reloaded it;
+    // if not, load it again, now with vision.
+    if (modelStore.activeModelCaps.visionActive) {
+      return 'ready';
+    }
+    try {
+      await modelStore.releaseContext();
+      await modelStore.initContext(target);
+    } catch {
+      return 'cancelled';
+    }
+    return modelStore.activeModelCaps.visionActive ? 'ready' : 'cancelled';
+  }
   const previousModelId = modelStore.activeModelId;
   try {
-    await modelStore.initContext(target);
+    await modelStore.selectModel(target);
   } catch {
     return 'cancelled';
   }
@@ -45,6 +69,9 @@ export async function ensureVisionForPictures(): Promise<VisionSwitchResult> {
   ) {
     return 'cancelled';
   }
+  runInAction(() => {
+    modelStore.lastVisionModelId = target.id;
+  });
   uiStore.setVisionSwitchNotice({
     previousModelId,
     modelId: target.id,
@@ -55,6 +82,13 @@ export async function ensureVisionForPictures(): Promise<VisionSwitchResult> {
     : null;
   return 'switched';
 }
+
+/** A model by id, local or cloud. */
+const findModel = (id: string | undefined) =>
+  id
+    ? (modelStore.models.find(m => m.id === id) ??
+      modelStore.remoteModels.find(m => m.id === id))
+    : undefined;
 
 /**
  * The model to go back to once the picture has been answered. Kept here,
@@ -73,9 +107,7 @@ export async function returnFromVision(): Promise<void> {
   if (!pending || modelStore.activeModelId !== pending.visionModelId) {
     return;
   }
-  const previous = modelStore.models.find(
-    m => m.id === pending.previousModelId,
-  );
+  const previous = findModel(pending.previousModelId);
   if (!previous) {
     return;
   }
@@ -88,9 +120,7 @@ export async function undoVisionSwitch(): Promise<void> {
   pendingReturn = null;
   const notice = uiStore.visionSwitchNotice;
   uiStore.setVisionSwitchNotice(null);
-  const previous = notice?.previousModelId
-    ? modelStore.models.find(m => m.id === notice.previousModelId)
-    : undefined;
+  const previous = findModel(notice?.previousModelId);
   if (previous) {
     await modelStore.selectModel(previous);
   }

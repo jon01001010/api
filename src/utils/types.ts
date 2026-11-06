@@ -47,6 +47,11 @@ export interface AgentToolCall {
   type?: 'function';
   function: {name: string; arguments: string};
   metrics?: AgentToolCallMetrics;
+  /**
+   * Provider data that must go back with the call on the next turn, as
+   * given (Gemini 3: `{google: {thought_signature}}`, else a 400).
+   */
+  extra_content?: unknown;
 }
 
 /**
@@ -589,6 +594,8 @@ export interface Model {
   author: string;
   repo?: string; // Repository name (e.g., "gemma-2-2b-it-GGUF")
   name: string;
+  /** Phrases that wake this model by voice, e.g. ["Hey Jarvis"]. */
+  wakeWords?: string[];
   type?: string;
   capabilities?: SkillKey[]; // Array of capability keys
   size: number; // Size in bytes

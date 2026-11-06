@@ -25,6 +25,9 @@ interface ModelSettingsProps {
   onChange: (name: string, value: any) => void;
   onStopWordsChange: (stopWords: CompletionParams['stop']) => void;
   onModelNameChange: (name: string) => void;
+  /** Wake words as typed (comma-separated). Shown when provided. */
+  wakeWords?: string;
+  onWakeWordsChange?: (text: string) => void;
 }
 
 export const ModelSettings: React.FC<ModelSettingsProps> = ({
@@ -34,6 +37,8 @@ export const ModelSettings: React.FC<ModelSettingsProps> = ({
   onChange,
   onStopWordsChange,
   onModelNameChange,
+  wakeWords,
+  onWakeWordsChange,
 }) => {
   const l10n = useContext(L10nContext);
   const [isDialogVisible, setDialogVisible] = useState<boolean>(false);
@@ -205,6 +210,23 @@ export const ModelSettings: React.FC<ModelSettingsProps> = ({
           value={modelName}
           onChangeText={text => onModelNameChange(text)}
         />
+        {onWakeWordsChange ? (
+          <>
+            <Text style={[styles.modelNameLabel, styles.wakeWordsLabel]}>
+              {l10n.models.modelSettings.wakeWords}
+            </Text>
+            <TextInput
+              testID="wake-words-input"
+              value={wakeWords ?? ''}
+              onChangeText={onWakeWordsChange}
+              placeholder={l10n.models.modelSettings.wakeWordsPlaceholder}
+              autoCorrect={false}
+            />
+            <Text style={styles.wakeWordsHint}>
+              {l10n.models.modelSettings.wakeWordsHint}
+            </Text>
+          </>
+        ) : null}
       </View>
 
       {/* Token Settings Section */}

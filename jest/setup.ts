@@ -128,6 +128,10 @@ jest.mock('../src/store', () => {
     ttsStore: mockTTSStore,
     searchProviderStore: mockSearchProviderStore,
     purchaseStore: mockPurchaseStore,
+    // Loaded on first use so a test's own mocks (e.g. of api/hf) apply.
+    get voiceStore() {
+      return require('../__mocks__/stores/voiceStore').mockVoiceStore;
+    },
     defaultCompletionSettings: mockDefaultCompletionSettings,
     NEW_SESSION_TITLE: 'New Session',
   };

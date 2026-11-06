@@ -156,6 +156,69 @@ function openaiReasoningExtras(
 }
 
 /**
+ * DeepSeek (api.deepseek.com): thinking is its own switch,
+ * `thinking: {type: 'enabled' | 'disabled'}`, with `reasoning_effort` low,
+ * high or max. Thinking is on by default there, so "off" is sent explicitly.
+ */
+const DEEPSEEK_EFFORT: Record<string, string> = {
+  minimal: 'low',
+  low: 'low',
+  medium: 'high',
+  high: 'high',
+  xhigh: 'max',
+  max: 'max',
+};
+function deepseekReasoningExtras(
+  reasoning: ReasoningIntent | undefined,
+): Record<string, unknown> {
+  if (!reasoning) {
+    return {};
+  }
+  if (!reasoning.enabled) {
+    return {thinking: {type: 'disabled'}};
+  }
+  const effort = reasoning.effort
+    ? DEEPSEEK_EFFORT[reasoning.effort]
+    : undefined;
+  return {
+    thinking: {type: 'enabled'},
+    ...(effort ? {reasoning_effort: effort} : {}),
+  };
+}
+
+/**
+ * Gemini's OpenAI-compatible endpoint takes `reasoning_effort` minimal, low,
+ * medium or high (no xhigh/max), and `none` to turn thinking off.
+ */
+const GEMINI_EFFORT: Record<string, string> = {
+  minimal: 'minimal',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'high',
+  max: 'high',
+};
+function geminiReasoningExtras(
+  reasoning: ReasoningIntent | undefined,
+): Record<string, unknown> {
+  if (!reasoning) {
+    return {};
+  }
+  if (!reasoning.enabled) {
+    return {reasoning_effort: 'none'};
+  }
+  const effort = reasoning.effort ? GEMINI_EFFORT[reasoning.effort] : undefined;
+  return effort ? {reasoning_effort: effort} : {};
+}
+
+/** DeepSeek takes `max_tokens`, not OpenAI's newer `max_completion_tokens`. */
+const DEEPSEEK_SEND_NAMES = {
+  temperature: 'temperature',
+  top_p: 'top_p',
+  n_predict: 'max_tokens',
+} as const;
+
+/**
  * Modern vLLM ignores an unknown `chat_template_kwargs` entry, so both keys are
  * safe. Its sampler names are its own (`repetition_penalty`, not
  * `repeat_penalty`), so none is forwarded until one has been read back off a
@@ -217,6 +280,32 @@ const contextFromArgs = (args: unknown): number | undefined => {
   }
   return found;
 };
+
+/**
+ * Gemini rows (OpenAI-compatible list, ids without `models/`): Gemini and
+ * Gemma 3+ models read images; the list says nothing more.
+ */
+function readGeminiListRow(row: RemoteModelInfo | undefined): ListDerivedCaps {
+  const caps: ListDerivedCaps = {tier: 'list'};
+  if (row?.id && /^(gemini-|gemma-[3-9])/i.test(row.id)) {
+    caps.supportsVision = true;
+  }
+  return caps;
+}
+
+/** Claude rows: every current model reads images; context from the list. */
+function readClaudeListRow(row: RemoteModelInfo | undefined): ListDerivedCaps {
+  const caps: ListDerivedCaps = {tier: 'list'};
+  if (!row) {
+    return caps;
+  }
+  caps.supportsVision = true;
+  const n = row.meta?.n_ctx;
+  if (typeof n === 'number' && Number.isSafeInteger(n) && n > 0) {
+    caps.contextLength = n;
+  }
+  return caps;
+}
 
 function readLlamaCppListRow(
   row: RemoteModelInfo | undefined,
@@ -282,6 +371,30 @@ export const SERVER_PROFILES = {
     hasProps: false,
     hasRouter: false,
   },
+  // OpenAI-compatible wire; thinking via its own `thinking` switch.
+  DeepSeek: {
+    sendNames: DEEPSEEK_SEND_NAMES,
+    reasoningExtras: deepseekReasoningExtras,
+    hasProps: false,
+    hasRouter: false,
+  },
+  // Google Gemini through its OpenAI-compatible endpoint (free tier).
+  Gemini: {
+    sendNames: DEEPSEEK_SEND_NAMES,
+    reasoningExtras: geminiReasoningExtras,
+    hasProps: false,
+    hasRouter: false,
+    readListRow: readGeminiListRow,
+  },
+  // Claude (Anthropic API) has its own engine and request format; nothing
+  // here is sent. Kept so the type is total and the list rows read right.
+  Claude: {
+    sendNames: {},
+    reasoningExtras: noReasoningExtras,
+    hasProps: false,
+    hasRouter: false,
+    readListRow: readClaudeListRow,
+  },
   vLLM: {
     sendNames: BASE_SEND_NAMES,
     reasoningExtras: vllmReasoningExtras,
@@ -312,6 +425,11 @@ function sendSamplers(
   const body: Record<string, number> = {};
   for (const [param, wireName] of Object.entries(sendNames)) {
     const value = finiteNumber(samplers[param as SamplerParam]);
+    // n_predict -1 (or 0) is our "no limit". Cloud APIs reject a non-positive
+    // max_tokens (Gemini: 400), and leaving it out means the server default.
+    if (param === 'n_predict' && value !== undefined && value <= 0) {
+      continue;
+    }
     if (value !== undefined) {
       body[wireName] = value;
     }

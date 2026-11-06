@@ -10,6 +10,9 @@ export const SERVER_TYPE_OPTIONS = [
   'LM Studio',
   'Ollama',
   'OpenAI',
+  'Claude',
+  'DeepSeek',
+  'Gemini',
   'vLLM',
   'unknown',
 ] as const;
@@ -54,6 +57,19 @@ export function seedServerType(
   }
   try {
     if (new URL(url).hostname.endsWith('api.openai.com')) {
+      return 'OpenAI';
+    }
+    if (new URL(url).hostname === 'api.anthropic.com') {
+      return 'Claude';
+    }
+    const host = new URL(url).hostname;
+    if (host === 'api.deepseek.com') {
+      return 'DeepSeek';
+    }
+    if (host === 'generativelanguage.googleapis.com') {
+      return 'Gemini';
+    }
+    if (host === 'api.groq.com' || host === 'openrouter.ai') {
       return 'OpenAI';
     }
   } catch {

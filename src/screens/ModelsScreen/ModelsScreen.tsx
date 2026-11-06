@@ -11,7 +11,7 @@ import {Portal, Snackbar} from 'react-native-paper';
 
 import {useTheme} from '../../hooks';
 
-import {FABGroup} from './FABGroup';
+import {AddModelBar} from './AddModelBar';
 import {ModelCard} from './ModelCard';
 import {createStyles} from './styles';
 import {HFModelSearch} from './HFModelSearch';
@@ -26,6 +26,7 @@ import {
 } from '../../components';
 
 import {uiStore, modelStore, hfStore, UIStore, serverStore} from '../../store';
+import {downloadManager} from '../../services/downloads';
 
 import {L10nContext} from '../../utils';
 import {Model, ModelOrigin} from '../../utils/types';
@@ -273,7 +274,16 @@ export const ModelsScreen: React.FC = observer(() => {
   // so we use computed instead for deep comparison
   // (model state changes not-downloaded -> downloaded)
   const filteredAndSortedModels = computed(() => {
-    let result = models;
+    // The app's suggested models (legacy PRESET, or rule-resolved and marked
+    // isRulePreset) are not offered for download here; one already downloaded
+    // (or downloading) still shows. Models added from Hugging Face are
+    // unaffected.
+    let result = models.filter(
+      model =>
+        (model.origin !== ModelOrigin.PRESET && !model.isRulePreset) ||
+        model.isDownloaded ||
+        downloadManager.isDownloading(model.id),
+    );
     if (filters.includes('downloaded')) {
       result = result.filter(model => model.isDownloaded);
     }
@@ -403,6 +413,15 @@ export const ModelsScreen: React.FC = observer(() => {
         keyExtractor={item => item.type}
         extraData={activeModelId}
         renderItem={renderGroupHeader}
+        ListHeaderComponent={
+          <AddModelBar
+            onAddHFModel={() => setHFSearchVisible(true)}
+            onAddLocalModel={handleAddLocalModel}
+            onAddRemoteModel={handleAddRemoteModel}
+            onManageServers={handleManageServers}
+            hasServers={serverStore.servers.length > 0}
+          />
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -442,13 +461,6 @@ export const ModelsScreen: React.FC = observer(() => {
         duration={86400000}>
         {l10n.models.fileManagement.copyingModel}
       </Snackbar>
-      <FABGroup
-        onAddHFModel={() => setHFSearchVisible(true)}
-        onAddLocalModel={handleAddLocalModel}
-        onAddRemoteModel={handleAddRemoteModel}
-        onManageServers={handleManageServers}
-        hasServers={serverStore.servers.length > 0}
-      />
       <ModelSettingsSheet
         isVisible={settingsVisible}
         onClose={handleCloseSettings}
