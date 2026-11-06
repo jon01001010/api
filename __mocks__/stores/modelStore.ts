@@ -430,6 +430,11 @@ class MockModelStore {
 
   pickCloudVisionModel = jest.fn((): any => undefined);
 
+  streamLargeModels = false;
+  setStreamLargeModels = jest.fn((on: boolean) => {
+    this.streamLargeModels = on;
+  });
+
   pickVisionTarget = jest.fn(
     () => this.pickVisionModel() ?? this.pickCloudVisionModel(),
   );

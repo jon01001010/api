@@ -249,6 +249,15 @@ Plan:
 - [x] How-to text for both kinds; tests.
 - [ ] Phone check: make "morning" (alarm with `{{hour}}` + open an app) in Toolbox, turn it on, ask "run morning at 7"; ask a model to save a packing list as instructions, approve, turn it on, ask for it back; delete both.
 
+## Stream large MoE models from storage (built, experiment, needs phone check)
+
+Idea from Colibrì (a C engine running a 744B MoE model in ~25 GB of RAM by reading experts from SSD). On a phone, keep to about 16B total.
+
+- [x] Settings → Advanced → **Stream large models from storage**, off by default.
+- [x] For a mixture-of-experts model (name carries the active size: `1b-a400m`, `30B-A3B`, `8B-A1B`): the file is memory-mapped and not locked, and the memory check counts about twice the active share of the weights (between 1/4 and all of them). When the whole model wouldn't fit, a "Stream this model from storage?" warning explains it will be slower and Android may close the app.
+- [x] Ordinary (dense) models and everything with the switch off are unchanged.
+- [ ] Phone check: Granite 1B-A400M with the switch on (should behave as before), then a larger MoE (e.g. LFM2-8B-A1B, Qwen3-30B-A3B is over the 16B advice); speed, and whether Android closes the app.
+
 ## Voice assistant: wake word and voice control (phase 1 built, needs phone check)
 
 Goal: an Alexa-style assistant. Say a wake phrase, speak a request, and PocketAgent answers out loud and, for phone tasks, acts. Everything runs offline on the phone. Research done 2026-11-04; nothing built yet.

@@ -1584,6 +1584,30 @@ export const SettingsScreen: React.FC = observer(() => {
                   </View>
                   <Divider />
 
+                  {/* Stream large MoE models from storage (experiment) */}
+                  <View style={styles.settingItemContainer}>
+                    <View style={styles.switchContainer}>
+                      <View style={styles.textContainer}>
+                        <Text variant="titleMedium" style={styles.textLabel}>
+                          Stream large models from storage
+                        </Text>
+                        <Text
+                          variant="labelSmall"
+                          style={styles.textDescription}>
+                          Experiment, off by default. Lets a mixture-of-experts model (names like 1b-a400m, 30B-A3B) load when it is bigger than free memory: the file is read from storage while it runs. Slower, and Android may close the app. Ordinary models are not affected.
+                        </Text>
+                      </View>
+                      <Switch
+                        testID="stream-large-models-switch"
+                        value={modelStore.streamLargeModels}
+                        onValueChange={value =>
+                          modelStore.setStreamLargeModels(value)
+                        }
+                      />
+                    </View>
+                  </View>
+                  <Divider />
+
                   {/* Enable Weight Repacking (Android only) */}
                   {Platform.OS === 'android' && (
                     <View style={styles.settingItemContainer}>

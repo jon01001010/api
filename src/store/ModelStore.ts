@@ -1,3 +1,4 @@
+import {moeActiveFraction, streamingSizeFactor} from '../utils/moeStreaming';
 import {localApiState} from '../services/localApi/state';
 import {AppState, AppStateStatus, Platform, Alert} from 'react-native';
 import DeviceInfo from 'react-native-device-info';
@@ -219,6 +220,12 @@ class ModelStore {
    * recently used local models loaded so switching back is instant.
    */
   keepModelsLoaded: boolean = false;
+  /**
+   * Stream large MoE models from storage (off by default; an experiment):
+   * memory-map the file and count only about the active share of the
+   * weights against free memory. See utils/moeStreaming.
+   */
+  streamLargeModels: boolean = false;
   /** Most local models loaded at once, the active one included (2-4). */
   maxLoadedModels: number = 2;
   /** Bring back the model in use (local or remote) when the app starts. */
@@ -341,6 +348,7 @@ class ModelStore {
         'rulesVersion',
         'useAutoRelease',
         'keepModelsLoaded',
+        'streamLargeModels',
         'maxLoadedModels',
         'restoreModelOnStart',
         'lastSessionModelId',
@@ -637,6 +645,15 @@ class ModelStore {
       // Default fallback
       effectiveUseMmap = true;
     }
+    // Streaming an MoE model needs the file memory-mapped (and not locked),
+    // so Android can drop the experts not in use and read them back.
+    const streaming =
+      this.streamLargeModels &&
+      !!filePath &&
+      moeActiveFraction(filePath.split('/').pop() ?? '') !== undefined;
+    if (streaming) {
+      effectiveUseMmap = true;
+    }
 
     const mode = draftConfig?.mode ?? 'off';
     const speculative = mode !== 'off';
@@ -666,7 +683,7 @@ class ModelStore {
       devices: this.contextInitParams.devices?.slice(),
       kv_unified: this.contextInitParams.kv_unified ?? true, // NEW (default true!)
       n_parallel: this.contextInitParams.n_parallel ?? 1, // NEW (1 for blocking mode only)
-      use_mlock: this.contextInitParams.use_mlock,
+      use_mlock: streaming ? false : this.contextInitParams.use_mlock,
       use_mmap: effectiveUseMmap,
       no_extra_bufts: this.contextInitParams.no_extra_bufts,
       state_cache_budget_mb: stateCacheBudgetMb(this.deviceTier),
@@ -2186,6 +2203,42 @@ class ModelStore {
       return false;
     }
 
+    // Too big as a whole, but an MoE model the user lets stream: check the
+    // share it keeps in memory, and say plainly what streaming costs.
+    const moeName = model.filename || model.name || '';
+    if (
+      !hasMemory &&
+      this.streamLargeModels &&
+      moeActiveFraction(moeName) !== undefined
+    ) {
+      let fitsStreaming = false;
+      try {
+        fitsStreaming = await hasEnoughMemory(
+          {...model, size: model.size * streamingSizeFactor(moeName)},
+          projectionModel,
+          draftModel,
+        );
+      } catch {
+        fitsStreaming = false;
+      }
+      if (fitsStreaming) {
+        return new Promise<boolean>(resolve => {
+          Alert.alert(
+            'Stream this model from storage?',
+            `${model.name} is bigger than the free memory. As a mixture-of-experts model it can be read from storage while it runs: replies will be slower, and Android may close the app if memory runs out.`,
+            [
+              {
+                text: uiStore.l10n.memory.alerts.cancel,
+                style: 'cancel',
+                onPress: () => resolve(false),
+              },
+              {text: 'Stream it', onPress: () => resolve(true)},
+            ],
+          );
+        });
+      }
+    }
+
     const isCapable = isMultimodalInit ? await isHighEndDevice() : true;
     const hasMemoryIssue = !hasMemory;
     const hasCapabilityIssue = isMultimodalInit && !isCapable;
@@ -2690,6 +2743,12 @@ class ModelStore {
 
   /** Acquires mutex before releasing context. */
   // ===== Multi-model: keep recently used models loaded =====
+
+  setStreamLargeModels = (on: boolean) => {
+    runInAction(() => {
+      this.streamLargeModels = on;
+    });
+  };
 
   setKeepModelsLoaded = (on: boolean) => {
     runInAction(() => {
