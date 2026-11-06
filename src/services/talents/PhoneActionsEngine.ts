@@ -16,6 +16,7 @@ import type {
 } from './types';
 import {
   describeFailure,
+  findContacts,
   listInstalledApps,
   performPhoneAction,
   type InstalledApp,
@@ -107,6 +108,55 @@ const SETTINGS_LABEL: Record<(typeof SETTINGS_PAGES)[number], string> = {
   notifications: 'Notification',
   airplane: 'Airplane mode',
 };
+
+/**
+ * Numbers and addresses small models invent when the user gave a name:
+ * 1234567890, 555-0101-style, all one digit, example.com.
+ */
+/**
+ * The one contact a name means: an exact name wins, else the only person
+ * whose name contains it. Several people: a message naming them for the
+ * model to ask which (names only, never numbers). None: undefined, and the
+ * user picks in the app. One person with several numbers: the first.
+ */
+export function pickContact(
+  name: string,
+  contacts: {name: string; number: string}[],
+): {name: string; number: string} | string | undefined {
+  const q = squash(name);
+  const exact = contacts.filter(c => squash(c.name) === q);
+  const pool = exact.length ? exact : contacts;
+  const people = [...new Set(pool.map(c => c.name))];
+  if (!people.length) {
+    return undefined;
+  }
+  if (people.length > 1) {
+    return `Several contacts match "${name}": ${people
+      .slice(0, 6)
+      .map(p => `"${p}"`)
+      .join(
+        ', ',
+      )}. Ask the user which one, then call again with that exact name.`;
+  }
+  return pool[0];
+}
+
+export function looksMadeUp(to: string): boolean {
+  const digits = to.replace(/\D/g, '');
+  if (/@example\.(com|org|net)$/i.test(to)) {
+    return true;
+  }
+  if (digits.length < 3) {
+    return false;
+  }
+  return (
+    '01234567890'.includes(digits) ||
+    '9876543210'.includes(digits) ||
+    /^(\d)\1+$/.test(digits) ||
+    /^(1)?555\d{4}$/.test(digits) ||
+    /^(1)?\d{3}555\d{4}$/.test(digits)
+  );
+}
 
 const squash = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '');
 
@@ -474,54 +524,88 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
   compose_message: {
     description:
       'Open a call, text or e-mail screen filled in for the user, who presses call or send. Nothing is sent by this tool. ' +
-      'How: `kind` is "call", "text" or "email"; `to` is the phone number or e-mail address; for text and email an optional `body`, for email an optional `subject`.',
+      'How: `kind` is "call", "text" or "email". ' +
+      '`to` only if the user said the phone number or e-mail address itself; never make one up. ' +
+      "If they gave a person's name instead, put it in `name` and leave `to` out: the user picks the contact. " +
+      '`body` is exactly the words the user asked to send, unchanged (no greeting, signature or rewording); for email an optional `subject`.',
     parameters: {
       type: 'object',
       properties: {
         kind: {type: 'string', enum: ['call', 'text', 'email']},
         to: {
           type: 'string',
-          description: 'Phone number, or e-mail address for email.',
+          description:
+            'Phone number or e-mail address, only as the user said it.',
+        },
+        name: {
+          type: 'string',
+          description:
+            "The person's name, when the user gave a name instead of a number.",
         },
         subject: {type: 'string', description: 'E-mail subject (email only).'},
-        body: {type: 'string', description: 'Message text (text and email).'},
+        body: {
+          type: 'string',
+          description: "The user's own words to send, unchanged.",
+        },
       },
       required: ['kind'],
     },
-    plan: args => {
+    plan: async args => {
       const kind = text(args.kind, 10)?.toLowerCase();
-      const to = text(args.to, 120);
+      let to = text(args.to, 120);
+      let name = text(args.name, 80);
       const body = text(args.body, 2000);
       const subject = text(args.subject, 200);
       const phoneOk = (v?: string) => !!v && /^\+?[\d\s().-]{3,20}$/.test(v);
+      if (to && looksMadeUp(to)) {
+        return `"${to}" looks made up. Use a number only if the user said it; for a name, put it in \`name\` and leave \`to\` out.`;
+      }
+      // A name for a call or text: look it up in the user's contacts.
+      if (!to && name && (kind === 'call' || kind === 'text')) {
+        const found = pickContact(name, await findContacts(name));
+        if (typeof found === 'string') {
+          return found;
+        }
+        if (found) {
+          name = found.name;
+          to = found.number;
+        }
+      }
+      const whom = to
+        ? name
+          ? `${name} (${to})`
+          : to
+        : name
+          ? `${name} (pick the contact)`
+          : undefined;
       if (kind === 'call') {
-        if (!phoneOk(to)) {
-          return 'For a call, `to` must be a phone number.';
+        if (to && !phoneOk(to)) {
+          return 'For a call, `to` must be a phone number (or leave it out and give `name`).';
         }
         return {
           action: 'dial',
-          args: {number: to},
-          ask: `Open the dialer with ${to}? You press call.`,
-          done: `The dialer opened with ${to}. The user presses call.`,
+          args: {number: to ?? ''},
+          ask: `Open the dialer${whom ? ` for ${whom}` : ''}? You press call.`,
+          done: `The dialer opened${to ? ` with ${to}` : ''}. The user ${to ? 'presses call' : 'picks the contact and presses call'}.`,
           what: 'open the dialer',
         };
       }
       if (kind === 'text') {
         if (to && !phoneOk(to)) {
-          return 'For a text, `to` must be a phone number (or leave it out).';
+          return 'For a text, `to` must be a phone number (or leave it out and give `name`).';
         }
         return {
           action: 'sms',
           args: {...(to ? {number: to} : {}), ...(body ? {body} : {})},
-          ask: `Open a text${to ? ` to ${to}` : ''}? You press send.`,
+          ask: `Open a text${whom ? ` to ${whom}` : ''}? You press send.`,
           details: body,
-          done: `The messages app opened with the text filled in. The user presses send.`,
+          done: `The messages app opened with the text filled in. The user ${to ? 'presses send' : 'picks the contact and presses send'}.`,
           what: 'open a text message',
         };
       }
       if (kind === 'email') {
         if (to && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-          return 'For an email, `to` must be an e-mail address (or leave it out).';
+          return 'For an email, `to` must be an e-mail address (or leave it out and give `name`).';
         }
         return {
           action: 'email',
@@ -530,7 +614,7 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
             ...(subject ? {subject} : {}),
             ...(body ? {body} : {}),
           },
-          ask: `Open an e-mail${to ? ` to ${to}` : ''}${subject ? ` about "${subject}"` : ''}? You press send.`,
+          ask: `Open an e-mail${whom ? ` to ${whom}` : ''}${subject ? ` about "${subject}"` : ''}? You press send.`,
           details: body,
           done: 'The e-mail app opened with the message filled in. The user presses send.',
           what: 'open an e-mail',

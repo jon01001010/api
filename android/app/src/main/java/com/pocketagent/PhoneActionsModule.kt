@@ -115,9 +115,8 @@ class PhoneActionsModule(private val context: ReactApplicationContext) :
             }
         }
         // Pre-filled screens only: the user presses call / send.
-        "dial" -> str(args, "number")?.let {
-            Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(it, "+")))
-        }
+        // No number: the dialer opens empty and the user picks the contact.
+        "dial" -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(str(args, "number") ?: "", "+")))
         "sms" -> Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(str(args, "number") ?: "", "+"))).apply {
             str(args, "body")?.let { putExtra("sms_body", it) }
         }
@@ -183,6 +182,47 @@ class PhoneActionsModule(private val context: ReactApplicationContext) :
             promise.resolve(result(true))
         } catch (e: Exception) {
             promise.resolve(result(false, "failed"))
+        }
+    }
+
+    /**
+     * Contacts whose name contains `query` (case ignored), with their phone
+     * numbers, at most 10. Only for filling in a call or text the user asked
+     * for; the JS side checks READ_CONTACTS first and never hands the list to
+     * the model. Resolves [] without the permission.
+     */
+    @ReactMethod fun findContacts(query: String, promise: Promise) {
+        val out = Arguments.createArray()
+        if (context.checkSelfPermission(android.Manifest.permission.READ_CONTACTS)
+            != PackageManager.PERMISSION_GRANTED || query.isBlank()) {
+            promise.resolve(out)
+            return
+        }
+        try {
+            val uri = android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+            val nameCol = android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
+            val numberCol = android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+            context.contentResolver.query(
+                uri,
+                arrayOf(nameCol, numberCol),
+                "$nameCol LIKE ?",
+                arrayOf("%" + query.trim() + "%"),
+                "$nameCol ASC",
+            )?.use { cursor ->
+                val seen = HashSet<String>()
+                while (cursor.moveToNext() && out.size() < 10) {
+                    val name = cursor.getString(0) ?: continue
+                    val number = cursor.getString(1) ?: continue
+                    if (!seen.add(name + "|" + number.filter { it.isDigit() || it == '+' })) continue
+                    out.pushMap(Arguments.createMap().apply {
+                        putString("name", name)
+                        putString("number", number)
+                    })
+                }
+            }
+            promise.resolve(out)
+        } catch (e: Exception) {
+            promise.resolve(out)
         }
     }
 

@@ -8,7 +8,8 @@ import {
 } from '../PhoneActionsEngine';
 import {requestFileApproval} from '../fileApprovalGate';
 import {listInstalledApps, performPhoneAction} from '../../phoneActions/native';
-import {matchApps} from '../PhoneActionsEngine';
+import {matchApps, pickContact} from '../PhoneActionsEngine';
+import {findContacts} from '../../phoneActions/native';
 
 jest.mock('../fileApprovalGate', () => ({
   requestFileApproval: jest.fn(),
@@ -16,6 +17,7 @@ jest.mock('../fileApprovalGate', () => ({
 jest.mock('../../phoneActions/native', () => ({
   performPhoneAction: jest.fn(),
   listInstalledApps: jest.fn(),
+  findContacts: jest.fn().mockResolvedValue([]),
   describeFailure: jest.requireActual('../../phoneActions/native')
     .describeFailure,
 }));
@@ -294,26 +296,30 @@ describe('reminders and messages', () => {
     expect(perform).toHaveBeenLastCalledWith('dial', {
       number: '+44 20 7946 0958',
     });
-    await run('compose_message', {kind: 'text', to: '555-0101', body: 'Hi'});
+    await run('compose_message', {
+      kind: 'text',
+      to: '07700 900123',
+      body: 'Hi',
+    });
     expect(perform).toHaveBeenLastCalledWith('sms', {
-      number: '555-0101',
+      number: '07700 900123',
       body: 'Hi',
     });
     await run('compose_message', {
       kind: 'email',
-      to: 'jon@example.com',
+      to: 'jon@pocket.dev',
       subject: 'Plans',
       body: 'See you',
     });
     expect(perform).toHaveBeenLastCalledWith('email', {
-      to: 'jon@example.com',
+      to: 'jon@pocket.dev',
       subject: 'Plans',
       body: 'See you',
     });
     expect(approve).toHaveBeenLastCalledWith(
       expect.objectContaining({
         filename:
-          'Open an e-mail to jon@example.com about "Plans"? You press send.',
+          'Open an e-mail to jon@pocket.dev about "Plans"? You press send.',
       }),
       undefined,
     );
@@ -321,7 +327,6 @@ describe('reminders and messages', () => {
 
   it('compose_message refuses bad numbers, addresses and kinds', async () => {
     for (const args of [
-      {kind: 'call'},
       {kind: 'call', to: 'mum'},
       {kind: 'email', to: 'not-an-address'},
       {kind: 'fax', to: '123'},
@@ -417,5 +422,91 @@ describe('feedback loop', () => {
         .description;
       expect(d).toMatch(/only when the user asks to see them/);
     }
+  });
+});
+
+describe('messages to a person by name', () => {
+  it('a name, not a number: Messages opens for the user to pick the contact', async () => {
+    const result = await run('compose_message', {
+      kind: 'text',
+      name: 'Mack Frost',
+      body: 'hello',
+    });
+    expect(approve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filename:
+          'Open a text to Mack Frost (pick the contact)? You press send.',
+        content: 'hello',
+      }),
+      undefined,
+    );
+    expect(perform).toHaveBeenCalledWith('sms', {body: 'hello'});
+    expect(result.summary).toMatch(/picks the contact/);
+  });
+
+  it('refuses invented numbers and addresses', async () => {
+    for (const to of [
+      '+1234567890',
+      '123-456-7890',
+      '555-0101',
+      '(212) 555-0199',
+      '0000000',
+      'mack@example.com',
+    ]) {
+      const kind = to.includes('@') ? 'email' : 'text';
+      const result = await run('compose_message', {kind, to, body: 'hello'});
+      expect(result.summary).toMatch(/looks made up/);
+    }
+    expect(perform).not.toHaveBeenCalled();
+  });
+
+  it("the how-to says to keep the user's words and never invent a number", () => {
+    const d = new PhoneActionsEngine('compose_message').toToolDefinition()
+      .function.description;
+    expect(d).toMatch(/never make one up/);
+    expect(d).toMatch(/unchanged/);
+  });
+});
+
+describe('finding the contact for a name', () => {
+  const CONTACTS = [
+    {name: 'Mack Attack', number: '+44 7700 900123'},
+    {name: 'Mack Attack', number: '+44 20 7946 0000'},
+    {name: 'Mackenzie Ford', number: '07700 900456'},
+  ];
+
+  it('an exact name wins; several people are named for the user to choose', () => {
+    expect(pickContact('mack attack', CONTACTS)).toEqual(CONTACTS[0]);
+    expect(pickContact('mack', CONTACTS)).toMatch(
+      /Several contacts match "mack": "Mack Attack", "Mackenzie Ford"/,
+    );
+    expect(pickContact('mack', CONTACTS)).not.toMatch(/7700/);
+    expect(pickContact('Zed', [])).toBeUndefined();
+  });
+
+  it("text by name fills in the contact's number", async () => {
+    (findContacts as jest.Mock).mockResolvedValueOnce(CONTACTS);
+    await run('compose_message', {
+      kind: 'text',
+      name: 'Mack Attack',
+      body: 'hello mack',
+    });
+    expect(approve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filename:
+          'Open a text to Mack Attack (+44 7700 900123)? You press send.',
+      }),
+      undefined,
+    );
+    expect(perform).toHaveBeenCalledWith('sms', {
+      number: '+44 7700 900123',
+      body: 'hello mack',
+    });
+  });
+
+  it('no match (or no permission): the user picks the contact in Messages', async () => {
+    (findContacts as jest.Mock).mockResolvedValueOnce([]);
+    await run('compose_message', {kind: 'text', name: 'Nobody', body: 'hi'});
+    expect(perform).toHaveBeenCalledWith('sms', {body: 'hi'});
   });
 });

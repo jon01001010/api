@@ -4,7 +4,7 @@
  * settings pages, calendar events and pre-filled call / text / e-mail
  * screens. Approval is asked by the tools before anything here runs.
  */
-import {NativeModules, Platform} from 'react-native';
+import {NativeModules, PermissionsAndroid, Platform} from 'react-native';
 
 export type PhoneAction =
   | 'set_timer'
@@ -36,6 +36,12 @@ interface NativePhoneActions {
   perform(action: PhoneAction, args: object): Promise<PhoneActionResult>;
   canPerform(action: PhoneAction, args: object): Promise<boolean>;
   listApps(): Promise<InstalledApp[]>;
+  findContacts(query: string): Promise<Contact[]>;
+}
+
+export interface Contact {
+  name: string;
+  number: string;
 }
 
 const native = (): NativePhoneActions | undefined =>
@@ -91,5 +97,32 @@ export function describeFailure(
       return 'Phone actions need the Android app.';
     default:
       return `Could not ${what}.`;
+  }
+}
+
+/**
+ * Contacts whose name contains `query`, with numbers. Asks for the Contacts
+ * permission the first time; [] if refused or unavailable. Used only to fill
+ * in a call or text the user asked for.
+ */
+export async function findContacts(query: string): Promise<Contact[]> {
+  const mod = native();
+  if (!mod?.findContacts || !query.trim()) {
+    return [];
+  }
+  try {
+    const permission = PermissionsAndroid.PERMISSIONS.READ_CONTACTS;
+    const granted =
+      (await PermissionsAndroid.check(permission)) ||
+      (await PermissionsAndroid.request(permission, {
+        title: 'Find a contact',
+        message:
+          'PocketAgent looks up the person you named to fill in the number. Your contacts are not shared with the model.',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Not now',
+      })) === PermissionsAndroid.RESULTS.GRANTED;
+    return granted ? await mod.findContacts(query.trim()) : [];
+  } catch {
+    return [];
   }
 }
