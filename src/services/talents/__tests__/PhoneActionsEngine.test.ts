@@ -1,7 +1,10 @@
+import {AppState} from 'react-native';
+
 import {
   PhoneActionsEngine,
   PHONE_TOOL_NAMES,
   formatDuration,
+  resetRecentPhoneActions,
 } from '../PhoneActionsEngine';
 import {requestFileApproval} from '../fileApprovalGate';
 import {listInstalledApps, performPhoneAction} from '../../phoneActions/native';
@@ -24,6 +27,8 @@ const run = (name: string, args: Record<string, unknown>) =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetRecentPhoneActions();
+  (AppState as any).currentState = 'active';
   approve.mockResolvedValue(true);
   perform.mockResolvedValue({ok: true});
 });
@@ -78,10 +83,10 @@ describe('phone action tools', () => {
         label: 'Tea',
         skipUi: false,
       });
-      expect(result).toEqual({
-        type: 'text',
-        summary: 'Timer set for 15 min (Tea). It runs in the Clock app.',
-      });
+      expect(result.type).toBe('text');
+      expect(result.summary).toMatch(
+        /^Done: Timer set for 15 min \(Tea\)\. It runs in the Clock app\. This request is complete/,
+      );
     });
 
     it('accepts numbers sent as text, and minutes plus seconds', async () => {
@@ -105,7 +110,7 @@ describe('phone action tools', () => {
       approve.mockResolvedValue(false);
       const result = await run('set_timer', {minutes: 5});
       expect(perform).not.toHaveBeenCalled();
-      expect(result.summary).toMatch(/did not approve/);
+      expect(result.summary).toMatch(/said no/);
     });
 
     it('says so when no app on the phone can do it', async () => {
@@ -193,7 +198,7 @@ describe('open_app', () => {
     expect(perform).toHaveBeenCalledWith('open_app', {
       package: 'com.spotify.music',
     });
-    expect(result).toEqual({type: 'text', summary: 'Opened Spotify.'});
+    expect(result.summary).toMatch(/^Done: Opened Spotify\./);
   });
 
   it('lists the choices when several match, without asking or opening', async () => {
@@ -375,5 +380,42 @@ describe('text into apps', () => {
     await run('search_in_app', {query: 'weather'});
     expect(perform).toHaveBeenLastCalledWith('search', {query: 'weather'});
     expect((await run('search_in_app', {})).type).toBe('error');
+  });
+});
+
+describe('feedback loop', () => {
+  it('a success tells the model the request is finished', async () => {
+    const result = await run('set_alarm', {hour: 10, minute: 30});
+    expect(result.summary).toMatch(/This request is complete/);
+    expect(result.summary).toMatch(/call no other tool/);
+  });
+
+  it('the same action again within a minute is not repeated or asked', async () => {
+    await run('set_alarm', {hour: 10, minute: 30});
+    approve.mockClear();
+    perform.mockClear();
+    const again = await run('set_alarm', {hour: 10, minute: 30});
+    expect(again.summary).toMatch(/Already done a moment ago/);
+    expect(approve).not.toHaveBeenCalled();
+    expect(perform).not.toHaveBeenCalled();
+    // A different time is a new request.
+    await run('set_alarm', {hour: 11, minute: 0});
+    expect(perform).toHaveBeenCalledTimes(1);
+  });
+
+  it('with another app on screen it stops instead of reporting a refusal', async () => {
+    (AppState as any).currentState = 'background';
+    const result = await run('show_alarms', {});
+    expect(result.summary).toMatch(/another app is on screen/);
+    expect(result.summary).not.toMatch(/said no/);
+    expect(approve).not.toHaveBeenCalled();
+  });
+
+  it('show_alarms and show_timers say set_* already shows them', () => {
+    for (const name of ['show_alarms', 'show_timers']) {
+      const d = new PhoneActionsEngine(name).toToolDefinition().function
+        .description;
+      expect(d).toMatch(/only when the user asks to see them/);
+    }
   });
 });

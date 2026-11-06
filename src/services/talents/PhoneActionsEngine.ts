@@ -5,6 +5,8 @@
  * exactly what will happen, and only then sends an Android intent through
  * PhoneActionsModule. Nothing calls, sends or pays by itself.
  */
+import {AppState} from 'react-native';
+
 import {requestFileApproval} from './fileApprovalGate';
 import type {
   TalentEngine,
@@ -178,7 +180,7 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
   },
   show_timers: {
     description:
-      "Open the Clock app's timers, so the user can see or stop running timers. How: no arguments.",
+      "Open the Clock app's timers, only when the user asks to see them (set_timer already shows the new timer). How: no arguments.",
     parameters: {type: 'object', properties: {}},
     plan: () => ({
       action: 'show_timers',
@@ -256,7 +258,8 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
     },
   },
   show_alarms: {
-    description: "Open the Clock app's alarms. How: no arguments.",
+    description:
+      "Open the Clock app's alarms, only when the user asks to see them (set_alarm already opens the Clock app). How: no arguments.",
     parameters: {type: 'object', properties: {}},
     plan: () => ({
       action: 'show_alarms',
@@ -640,6 +643,19 @@ export const PHONE_TOOLS: Record<string, PhoneTool> = {
 
 export const PHONE_TOOL_NAMES = Object.keys(PHONE_TOOLS);
 
+/** What every finished action tells the model, so it stops there. */
+const STOP =
+  'This request is complete: confirm it to the user in one short sentence and call no other tool for it unless they ask for more.';
+
+/** Same action, same details, within this window: not done again. */
+const REPEAT_WINDOW_MS = 60_000;
+const recentlyDone = new Map<string, number>();
+
+/** Test helper. */
+export function resetRecentPhoneActions(): void {
+  recentlyDone.clear();
+}
+
 export class PhoneActionsEngine implements TalentEngine {
   constructor(readonly name: string) {
     if (!PHONE_TOOLS[name]) {
@@ -659,6 +675,24 @@ export class PhoneActionsEngine implements TalentEngine {
         errorMessage: plan,
       };
     }
+    // Asked twice for the same thing within a minute: a small model looping
+    // after a success. Don't do it (or ask) again.
+    const key = `${plan.action}:${JSON.stringify(plan.args)}`;
+    const last = recentlyDone.get(key);
+    if (last !== undefined && Date.now() - last < REPEAT_WINDOW_MS) {
+      return {
+        type: 'text',
+        summary: `Already done a moment ago (${plan.what}); not repeated. ${STOP}`,
+      };
+    }
+    // Approval needs PocketAgent on screen. After an action opens another
+    // app it is not, and that is not the user saying no.
+    if (AppState.currentState !== 'active') {
+      return {
+        type: 'text',
+        summary: `Not done: another app is on screen, so the user could not be asked (${plan.what}). Stop here; the user can ask again when they are back.`,
+      };
+    }
     const approved = await requestFileApproval(
       {
         action: 'phone_action',
@@ -670,7 +704,7 @@ export class PhoneActionsEngine implements TalentEngine {
     if (!approved || ctx?.signal?.aborted) {
       return {
         type: 'text',
-        summary: `The user did not approve this (${plan.what}). Nothing was done.`,
+        summary: `The user said no (${plan.what}). Nothing was done. Do not try it again unless they ask.`,
       };
     }
     const result = await performPhoneAction(plan.action, plan.args);
@@ -682,7 +716,8 @@ export class PhoneActionsEngine implements TalentEngine {
         errorMessage: why,
       };
     }
-    return {type: 'text', summary: plan.done};
+    recentlyDone.set(key, Date.now());
+    return {type: 'text', summary: `Done: ${plan.done} ${STOP}`};
   }
 
   toToolDefinition(): ToolDefinition {
