@@ -253,6 +253,47 @@ Plan:
 - [x] How-to text for both kinds; tests.
 - [ ] Phone check: make "morning" (alarm with `{{hour}}` + open an app) in Toolbox, turn it on, ask "run morning at 7"; ask a model to save a packing list as instructions, approve, turn it on, ask for it back; delete both.
 
+### Share and scan tools by QR (planned, not started)
+
+Toolbox → Custom tools gets **Share as QR** on each tool and a **Scan a tool** button. Uses the scheme from the user's QR2D page (`qr2d-v0_27.html`):
+
+- [ ] Pack: the tool's JSON → deflate (pako) → base64, with a short tag and version in front (e.g. `PA1:`), so the app knows it's a PocketAgent tool and which format it is. Keep plain JSON when it is smaller.
+- [ ] Size check: one standard QR holds about 2,331 characters (version 40, medium error correction); most tools fit. If a tool is too big, offer **Share as file** instead (no multi-QR for now).
+- [ ] Draw the QR with `qrcode-generator` + `react-native-svg` (already in the app). Share the QR as a picture too.
+- [ ] Scan with the camera (the existing vision-camera code scanner) or **from a picture** (jsQR on the image), so a QR in a screenshot or chat works.
+- [ ] After scanning: run the same checks as `tool_save`, show the **full definition** (every step and fill-in), then install **switched off**. Name clash → rename or replace (asks).
+- [ ] Never run anything from a scan; a QR is data only (instructions or a shortcut of built-in tools).
+- [ ] Later, optional: the colour "mcode" from QR2D (8 colours, Reed–Solomon) for denser codes; only if plain QR is too small in practice.
+
+## Mods ecosystem (write-up only, not started)
+
+Idea 2026-11-06: let people make and share small add-ons ("mods") for the app, then maybe sell some. Start free and simple.
+
+Mod types (all **data, not code**):
+
+- Custom tools (instructions and shortcuts); the first mod type, shared by QR (see Custom tools above).
+- Assistants / Pals: a system prompt, starter questions, which tools they use.
+- Phone-action packs: shortcuts for one app or routine (e.g. "drive mode").
+- Prompt / skill packs: sets of saved instructions.
+- Model recipes: a Hugging Face model plus its best settings (context, template, sampling, vision projector).
+- HTML mini apps: pages shown in the HTML preview (no network, sandboxed).
+- Knowledge packs: notes or documents for memory.
+- Themes, voices and wake words.
+
+Safety rules for every mod:
+
+- [ ] Data only, never code that runs outside the HTML preview sandbox.
+- [ ] A mod lists every tool it uses; the install screen shows them and the full contents.
+- [ ] Installs **switched off**; phone actions still ask for approval as today.
+- [ ] Versioned format with a tag (`PA1:` …); the app rejects formats it doesn't know.
+- [ ] Later: signed mods (author key) and a way to report a bad one.
+
+Steps:
+
+1. [ ] **Free sharing:** QR, file and link for custom tools first, then assistants and model recipes.
+2. [ ] **Community catalog:** a public list (e.g. a GitHub repo with an index file) the app can browse; each entry still goes through the same install review.
+3. [ ] **Paid mods (maybe):** small price, the app takes a small cut. Needs Google Play billing (Play takes 15%), payouts and tax handling for makers, and a store outside Play for GrapheneOS users (e.g. Accrescent). Only worth it once step 2 has real users.
+
 ## Stream large MoE models from storage (built, experiment, needs phone check)
 
 Idea from Colibrì (a C engine running a 744B MoE model in ~25 GB of RAM by reading experts from SSD). On a phone, keep to about 16B total.
