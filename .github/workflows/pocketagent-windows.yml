@@ -67,7 +67,8 @@ jobs:
           curl -sSfL -o "$LLAMA_ZIP" \
             "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/${LLAMA_ZIP}"
           echo "${LLAMA_SHA256}  ${LLAMA_ZIP}" | sha256sum -c -
-          unzip -q -o "$LLAMA_ZIP" -d src-tauri/llama
+          # Windows' own unzip (Git Bash may not have unzip).
+          powershell -NoProfile -Command "Expand-Archive -Path '${LLAMA_ZIP}' -DestinationPath 'src-tauri/llama' -Force"
           test -f src-tauri/llama/llama-server.exe
       - name: Rust tests (native side)
         if: github.event_name == 'push' || inputs.stage == 'exe'

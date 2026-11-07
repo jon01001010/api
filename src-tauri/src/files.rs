@@ -230,17 +230,28 @@ mod tests {
         assert!(locate(&root(), "/pocketagent\\..\\x").is_err());
     }
 
+    /// An absolute path outside the app, in this system's style.
+    fn outside(rest: &str) -> String {
+        if cfg!(windows) {
+            format!("C:/{rest}")
+        } else {
+            format!("/{rest}")
+        }
+    }
+
     #[test]
     fn look_alike_prefixes_are_outside_the_app() {
-        // "/pocketagentX" is not the app's folder: it needs a prompt.
-        let found = locate(&root(), "/pocketagentX/file").unwrap();
-        assert!(!found.own);
+        // "/pocketagentX" is not the app's folder: never treated as its own.
+        let mapped = locate(&root(), "/pocketagentX/file");
+        assert!(mapped.map(|f| !f.own).unwrap_or(true));
+        assert!(!locate(&root(), &outside("pocketagentX/file")).unwrap().own);
     }
 
     #[test]
     fn other_absolute_paths_are_outside_and_need_a_prompt() {
-        let found = locate(&root(), "/home/user/Desktop/notes.txt").unwrap();
+        let found = locate(&root(), &outside("Users/me/Desktop/notes.txt")).unwrap();
         assert!(!found.own);
+        assert!(locate(&root(), &outside("Users/me/../x")).is_err());
         assert!(locate(&root(), "relative/path").is_err());
         assert!(locate(&root(), "").is_err());
     }

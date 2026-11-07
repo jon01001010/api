@@ -16,9 +16,11 @@ const release = process.argv.includes('--release');
 fs.rmSync(out, {recursive: true, force: true});
 fs.mkdirSync(out, {recursive: true});
 execFileSync(
-  'npx',
+  // Node runs React Native's CLI directly: no npx (on Windows that is
+  // npx.cmd, which Node can't start this way).
+  process.execPath,
   [
-    'react-native',
+    require.resolve('react-native/cli.js'),
     'bundle',
     '--platform',
     'web',
