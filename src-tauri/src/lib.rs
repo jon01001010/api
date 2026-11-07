@@ -10,6 +10,7 @@ mod model_server;
 mod net;
 mod secrets;
 mod system;
+mod timing;
 
 use tauri::Manager;
 
@@ -17,6 +18,11 @@ use tauri::Manager;
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(timing::Timing::new())
+        .on_page_load(|webview, payload| {
+            let finished = matches!(payload.event(), tauri::webview::PageLoadEvent::Finished);
+            webview.state::<timing::Timing>().mark(finished);
+        })
         .manage(net::Requests::default())
         .manage(model_server::ModelServer::default())
         .manage(download::Downloads::default())
@@ -41,6 +47,7 @@ pub fn run() {
             model_server::model_server_start,
             model_server::model_server_stop,
             system::system_info,
+            timing::startup_timing,
         ])
         .build(tauri::generate_context!())
         .expect("error while building PocketAgent");

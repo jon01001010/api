@@ -54,6 +54,7 @@ import {LocalApiCard} from './LocalApiCard';
 import {ChatSettingsCard} from './ChatSettingsCard';
 import {SettingsLinks} from './SettingsLinks';
 import {ThisPcModelCard} from './ThisPcModelCard';
+import {StartupTimingCard} from './StartupTimingCard';
 
 import {useTheme} from '../../hooks';
 
@@ -382,6 +383,7 @@ export const SettingsScreen: React.FC = observer(() => {
 
           {/* Windows app only: run a model with the bundled llama.cpp server. */}
           <ThisPcModelCard cardStyle={styles.card} />
+          <StartupTimingCard cardStyle={styles.card} />
 
           {/* Chat: generation settings and export/import (moved from the
               chat screen's top-right menu). */}

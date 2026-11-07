@@ -26,6 +26,7 @@
     "allow-pick-model-file",
     "allow-model-server-start",
     "allow-model-server-stop",
-    "allow-system-info"
+    "allow-system-info",
+    "allow-startup-timing"
   ]
 }

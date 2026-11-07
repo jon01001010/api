@@ -215,6 +215,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'model_server_start',
         'model_server_stop',
         'system_info',
+        'startup_timing',
       ].sort(),
     );
     // The window is allowed exactly those, plus Tauri's core basics.
