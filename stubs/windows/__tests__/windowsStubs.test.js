@@ -16,7 +16,7 @@ describe('which modules are stubbed on Windows', () => {
     );
     expect(windowsStubFor('react-native-reanimated-carousel')).toBeNull();
     expect(windowsStubFor('react-native')).toBeNull();
-    expect(windowsStubFor('@dr.pogodin/react-native-fs')).toBeNull();
+    expect(windowsStubFor('react-native-webview')).toBeNull();
   });
 
   it('every stub file exists and loads', () => {
@@ -143,5 +143,61 @@ describe('every native package is ready for Windows', () => {
       );
     });
     expect(uncovered).toEqual([]);
+  });
+});
+
+describe('in-memory storage on Windows', () => {
+  it('app storage keeps values while the app is open', async () => {
+    const storage = jest.requireActual('../memory-storage.js').default;
+    await storage.setItem('a', '1');
+    await storage.mergeItem('o', JSON.stringify({x: 1}));
+    await storage.mergeItem('o', JSON.stringify({y: 2}));
+    expect(await storage.getItem('a')).toBe('1');
+    expect(JSON.parse(await storage.getItem('o'))).toEqual({x: 1, y: 2});
+    expect(await storage.multiGet(['a', 'none'])).toEqual([
+      ['a', '1'],
+      ['none', null],
+    ]);
+  });
+
+  it('files: write, read, list, stat, delete, like the phone', async () => {
+    const fs = jest.requireActual('../memory-fs.js').default;
+    const dir = fs.DocumentDirectoryPath + '/ws';
+    await fs.mkdir(dir);
+    await fs.writeFile(dir + '/a.txt', 'hello');
+    expect(await fs.exists(dir + '/a.txt')).toBe(true);
+    expect(await fs.readFile(dir + '/a.txt')).toBe('hello');
+    const listed = await fs.readDir(dir);
+    expect(listed.map(e => e.name)).toEqual(['a.txt']);
+    expect((await fs.stat(dir + '/a.txt')).isFile()).toBe(true);
+    await fs.unlink(dir);
+    expect(await fs.exists(dir + '/a.txt')).toBe(false);
+    await expect(fs.readFile(dir + '/a.txt')).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.downloadFile({}).promise).rejects.toThrow(
+      /not available on this device/,
+    );
+  });
+});
+
+describe('packages unlinked on Windows are stubbed', () => {
+  it('every package switched off for Windows in react-native.config.js has a stub', () => {
+    const config = jest.requireActual('../../../react-native.config.js');
+    const unlinked = Object.entries(config.dependencies)
+      .filter(([, c]) => c.platforms && c.platforms.windows === null)
+      .map(([name]) => name);
+    // WatermelonDB uses its own JavaScript database on Windows instead.
+    const handledElsewhere = ['@nozbe/watermelondb'];
+    expect(
+      unlinked.filter(
+        name => !(name in STUBS) && !handledElsewhere.includes(name),
+      ),
+    ).toEqual([]);
+    expect(
+      fs.existsSync(
+        path.join(__dirname, '../../../src/database/adapter.windows.ts'),
+      ),
+    ).toBe(true);
   });
 });

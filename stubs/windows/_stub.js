@@ -4,7 +4,8 @@
  * A stub module answers any name the app (or a library) asks for:
  * - Names in `overrides` are used as given.
  * - Capitalised names (Camera, KeyboardProvider…) are components that just
- *   render their children, so layouts keep working.
+ *   render their children (or, with components: 'view', a plain View that
+ *   keeps its style), so layouts keep working.
  * - `use…` names are hooks that return `hookValue` (default undefined).
  * - Anything else is a function. "native" stubs: calling it fails with
  *   "not available on this device" (a rejected promise, so `await` and
@@ -60,7 +61,7 @@ function chain() {
 
 function makeStub(
   packageName,
-  {mode = 'native', overrides = {}, hookValue} = {},
+  {mode = 'native', overrides = {}, hookValue, components = 'passthrough'} = {},
 ) {
   const made = {};
   const answer = key => {
@@ -72,7 +73,12 @@ function makeStub(
     }
     let value;
     if (/^[A-Z]/.test(key)) {
-      value = passthrough(`${packageName}.${key}`);
+      // 'view': a plain View that keeps its style (layout containers);
+      // 'passthrough': just the children.
+      value =
+        components === 'view'
+          ? require('react-native').View
+          : passthrough(`${packageName}.${key}`);
     } else if (/^use[A-Z]/.test(key)) {
       value = () => hookValue;
     } else if (mode === 'ui') {

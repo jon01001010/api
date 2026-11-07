@@ -1,5 +1,5 @@
 import {Database} from '@nozbe/watermelondb';
-import SQLiteAdapter from '@nozbe/watermelondb/adapters/sqlite';
+import {createAdapter} from './adapter';
 import schema from './schema';
 import migrations from './migrations';
 import {
@@ -13,15 +13,8 @@ import {
   LocalPal,
 } from './models';
 
-const adapter = new SQLiteAdapter({
-  schema,
-  migrations,
-  dbName: 'pocketpalai',
-  jsi: true, // enable JSI for better performance if available
-  onSetUpError: error => {
-    console.error('Database setup error:', error);
-  },
-});
+// SQLite on the phone; a JavaScript database on Windows (adapter.windows.ts).
+const adapter = createAdapter(schema, migrations);
 
 export const database = new Database({
   adapter,

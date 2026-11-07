@@ -347,7 +347,10 @@ Plan (each step on its own; ask before each):
 - [x] The whole app bundles for Windows (`yarn bundle:windows`).
 - [x] Tests: every stub loads; native calls fail clearly; animation maths; and a guard that fails if a new native package has neither Windows code nor a stub.
 - [x] CI: `.github/workflows/pocketagent-windows.yml`, run only on request: `bundle` (cheap checks) or `exe` (full build).
-- [ ] First Windows CI run: see which linked packages (fs, storage, web view, svg, screens, clipboard, slider, picker, device info, gradients, config) build on the new architecture; stub the ones that don't.
+- [x] First Windows build (run 42319633707) failed: 11 packages only have old-style Windows code (react-native-windows 0.82 is new-architecture only), which also pulled react-native-windows in from source and broke its link. Fixed by not linking them on Windows and stubbing them: app storage and files work **in memory** (lost on close), the chat database uses WatermelonDB's JavaScript mode (LokiJS, in memory), device info gives fixed values, clipboard does nothing yet, screens/gradients/slider/picker are plain views. The web view and SVG stay linked. Android unchanged (checked: SQLite, no stubs).
+- [ ] **Windows storage module** (the one real piece of Windows code needed first): save app storage, files and the database to the user's AppData so nothing is lost on close.
+- [ ] Next Windows build: confirm it compiles and links.
+- [ ] (was) First Windows CI run: see which linked packages (fs, storage, web view, svg, screens, clipboard, slider, picker, device info, gradients, config) build on the new architecture; stub the ones that don't.
 - [ ] Icon fonts (react-native-vector-icons) added to the Windows app's assets.
 - [ ] A real secure random source on Windows before pairing keys (the stub is fine for record IDs only).
 - [ ] API keys on Windows: Windows Credential Manager instead of the keychain stub.
