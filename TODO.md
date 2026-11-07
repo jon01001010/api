@@ -438,7 +438,9 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [x] Windows card (2026-11-07, every launch alike): page starts loading 0.9 s, code loads 0.6 s, **code running → first screen 37 s**, page fully loaded 38.5 s. Here the same step takes 0.4 s, and slowing every file by 10 s did not delay it, so not file serving. The "fully loaded" mark landing with the first screen points at the window's main thread being blocked: Tauri runs plain (non-`async`) commands on it, and several ran at start (saved keys from Windows Credential Manager, the PC's memory).
 - [x] Fix: every native command now runs off the main thread (`#[tauri::command(async)]`), pinned by a Rust test and a rule test.
 - [x] The card now also lists the slowest native calls at start-up (0.25 s or more), so the next build shows if one still holds things up.
-- [ ] Check on Windows: start-up time after this fix.
+- [x] Checked on Windows (build 42356860678): still 41 s, and no slow native calls listed. So not the main thread / native side. "Page fully loaded" lands exactly with the first screen.
+- [x] The card now also shows: when all start-up code has run, when React put the first screen together, when it was drawn, the page's own "loaded" event, long tasks (the page busy without a break), when the window was hidden/shown, and the slowest files. Next Windows card tells "code busy" from "window waiting".
+- [x] HTML preview checked on Windows: a model-made clock runs live in chat.
 
 **"Always allow this file" for models (user, 2026-11-07):**
 - [x] Running a model from outside the app folder: Allow once / Always allow this file / Don't allow. "Always" is kept in Windows Credential Manager (names the screens can't write) for that exact file (path, size, time). Checked in the real Linux app: Always → runs; same file again → no question, also after reopening the app; file changed → asked again; Don't allow → nothing runs.

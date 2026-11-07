@@ -7,6 +7,43 @@ import {installTauriNetwork} from './tauriNet';
 // has loaded and started running. Shown in Settings → Start-up time.
 globalThis.__paBoot = {codeRunning: performance.now(), slowCalls: []};
 
+// Finer start-up marks, to tell "the code is busy" from "the window waits":
+// long tasks (the page busy without a break), when the window was hidden or
+// shown, and the slowest files the page loaded.
+(function watchStart() {
+  const boot = globalThis.__paBoot;
+  boot.longTasks = [];
+  boot.visibility = [
+    {
+      state: typeof document !== 'undefined' ? document.visibilityState : '?',
+      at: performance.now(),
+    },
+  ];
+  try {
+    new PerformanceObserver(list => {
+      for (const e of list.getEntries()) {
+        boot.longTasks.push({start: e.startTime, ms: e.duration});
+      }
+    }).observe({type: 'longtask', buffered: true});
+  } catch (e) {}
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      boot.visibility.push({
+        state: document.visibilityState,
+        at: performance.now(),
+      });
+    });
+    document.addEventListener('DOMContentLoaded', () => {
+      boot.domReady = performance.now();
+    });
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('load', () => {
+      boot.pageLoad = performance.now();
+    });
+  }
+})();
+
 // The slowest native calls in the first two minutes (also in the card), to
 // see if one of them holds up the start.
 const internals = typeof window !== 'undefined' && window.__TAURI_INTERNALS__;

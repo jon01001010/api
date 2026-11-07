@@ -33,6 +33,10 @@ document.addEventListener('contextmenu', event => {
 
 function FirstScreenTimer() {
   React.useEffect(() => {
+    // React has put the first screen together (drawing comes next).
+    if (globalThis.__paBoot && !globalThis.__paBoot.firstCommit) {
+      globalThis.__paBoot.firstCommit = performance.now();
+    }
     // After the first screen is drawn.
     requestAnimationFrame(() => {
       if (globalThis.__paBoot && !globalThis.__paBoot.firstScreen) {
@@ -54,3 +58,7 @@ AppRegistry.registerComponent(DESKTOP_APP, () => () => (
 AppRegistry.runApplication(DESKTOP_APP, {
   rootTag: document.getElementById('root'),
 });
+// All the app's start-up code has run (the first screen is drawn later).
+if (globalThis.__paBoot) {
+  globalThis.__paBoot.codeDone = performance.now();
+}
