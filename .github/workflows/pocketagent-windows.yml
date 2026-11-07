@@ -1,6 +1,8 @@
 # PocketAgent for Windows: builds the same app as a Windows .exe.
-# Runs ONLY when asked (workflow_dispatch), never on push: GitHub counts
-# Windows runner minutes at 2x Linux. See TODO.md "PocketAgent for Windows".
+# Runs ONLY when asked: a manual run, or a change to
+# .github/windows-build-request on the windows branch. Ordinary pushes never
+# start it: GitHub counts Windows runner minutes at 2x Linux.
+# See TODO.md "PocketAgent for Windows".
 name: PocketAgent Windows
 on:
   # Manual runs need this file on the default branch; until it is there,
