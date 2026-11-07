@@ -22,8 +22,8 @@ import {
 import {useTheme} from '../../hooks';
 import {PHOSPHOR} from '../../theme/phosphor';
 
-const BASE = require('../../assets/pocketagent-logo-base.png');
-const GLOW = require('../../assets/pocketagent-logo-glow.png');
+// Phone: PocketAgent; desktop app: DesktopAgent (logoLayers.web.ts).
+import {BASE, GLOW} from './logoLayers';
 
 interface PocketAgentLogoProps {
   /** Picture used in the default (non-Phosphor) style. */

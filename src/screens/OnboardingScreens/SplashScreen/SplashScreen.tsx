@@ -1,6 +1,7 @@
 import React, {useContext} from 'react';
 import {Image, View} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
+import {appLogo} from '../../../assets/appLogo';
 
 import {useTheme} from '../../../hooks';
 import {L10nContext} from '../../../utils';
@@ -29,7 +30,7 @@ export const SplashScreen: React.FC = () => {
 
   return (
     <View testID="onboarding-splash" style={styles.root}>
-      <Image source={{uri: 'pocketagent_logo'}} style={{width: 112, height: 112}} resizeMode="contain" accessibilityLabel="PocketAgent" accessibilityRole="image" />
+      <Image source={appLogo} style={{width: 112, height: 112}} resizeMode="contain" accessibilityLabel="PocketAgent" accessibilityRole="image" />
     </View>
   );
 };

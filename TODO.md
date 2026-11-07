@@ -398,6 +398,14 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [ ] Fix: an invalid colour `rgba(…)30` in the app's styles (Android ignores it; the web warns).
 - [ ] Fix: `pocketagent_logo` is an Android-only image name; give the web its file.
 
+**DesktopAgent name, logo, Linux (2026-11-07):**
+- [x] The desktop app is called DesktopAgent: window, installer, page title, and the app's texts ("PocketAgent" → "DesktopAgent", "your phone" → "your PC"; desktop only, `src/locales/forPlatform.web.ts`).
+- [x] Logo: the PocketAgent robot saying "DesktopAgent" (`src-tauri/icon-source/desktopagent-logo.png`, made from the 1536px logo), for the app icons, welcome screens and chat; Phosphor versions of its layers too, so the logo follows the Phosphor colour.
+- [x] Phosphor style checked on the desktop: works.
+- [x] Linux: `tauri.linux.conf.json` (AppImage + .deb), pinned llama.cpp Linux build (Vulkan + CPU, checksum), on-request job `.github/workflows/pocketagent-linux.yml` (start: change `.github/linux-build-request`). Built and run here: the AppImage opens and starts its bundled llama-server.
+- [ ] No GitHub builds until asked (user, 2026-11-07). Next Windows build will include: layout fix, DesktopAgent name and logo.
+- [ ] Later for Linux: Flatpak / Flathub (what many privacy-minded Linux users prefer).
+
 **Access rule (decided 2026-11-07): broad access, never automatic.**
 - [ ] The app may reach the whole drive, run programs, open apps and links, use the clipboard; **every** such action asks first, showing exactly what will happen; no means nothing happens.
 - [ ] The approval dialog is shown by Tauri's native (Rust) side, not by the web screens, so even a bad page or a bug in the screens can't skip it.
@@ -588,7 +596,7 @@ Like vision models, the app finds what's available instead of being tied to one 
 
 ## Platforms
 
-Decided 2026-11-07: **Android only** for the phone app (GrapheneOS-friendly), **Windows only** for the desktop companion. **No Apple at all:** no iPhone builds, no Mac. The iOS code inherited from PocketPal stays in the repo (don't delete) but is not built, tested or planned for.
+Decided 2026-11-07 (updated): phone app **Android only** (GrapheneOS-friendly). Desktop app, called **DesktopAgent**: **Windows and Linux** from the same Tauri code (most GrapheneOS users run Linux). **No Apple at all:** no iPhone, no Mac. The iOS code inherited from PocketPal stays in the repo (don't delete) but is not built, tested or planned for.
 
 ## Future hardware & GrapheneOS readiness (write-up only, not started)
 

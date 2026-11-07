@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "PocketAgent",
+  "productName": "DesktopAgent",
   "version": "0.1.0",
   "identifier": "app.pocketagent.desktop",
   "build": {
@@ -10,7 +10,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "PocketAgent",
+        "title": "DesktopAgent",
         "width": 1200,
         "height": 820,
         "minWidth": 420,

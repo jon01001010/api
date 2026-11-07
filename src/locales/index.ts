@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import enData from './en.json';
 
 import type {Translations} from './types';
+import {forPlatform} from './forPlatform';
 
 // ─── Language Registry (single source of truth) ──────────────────────
 // To add a language: 1) add entry here, 2) place JSON in src/locales/,
@@ -55,8 +56,9 @@ export const languageDisplayNames: Record<AvailableLanguage, string> = {
 };
 
 // ─── Lazy Loading ────────────────────────────────────────────────────
+// The desktop app renames itself (forPlatform.web.ts); the phone app doesn't.
 const cache: Partial<Record<AvailableLanguage, Translations>> = {
-  en: enData,
+  en: forPlatform(enData),
 };
 
 // Metro bundles these at build time, but JS doesn't parse them until require() is called
@@ -100,9 +102,9 @@ function getTranslations(lang: AvailableLanguage): Translations {
     return cache[lang]!;
   }
   const langData = requireLanguageData(lang);
-  const merged: Translations = langData
-    ? _.merge({}, enData, langData)
-    : enData;
+  const merged: Translations = forPlatform(
+    langData ? _.merge({}, enData, langData) : enData,
+  );
   cache[lang] = merged;
   return merged;
 }
@@ -117,7 +119,7 @@ export function _testGetCacheKeys(): string[] {
 // non-en languages on first property access.
 export const l10n = {
   get en(): Translations {
-    return enData;
+    return cache.en!;
   },
   get es(): Translations {
     return getTranslations('es');

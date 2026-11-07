@@ -1,6 +1,7 @@
 import React from 'react';
 import {Image} from 'react-native';
 import {observer} from 'mobx-react';
+import {appLogo} from '../../assets/appLogo';
 
 
 import {OnboardingScaffold} from './components/OnboardingScaffold';
@@ -16,7 +17,7 @@ export const Onboarding1Screen: React.FC = observer(() => {
   return (
     <OnboardingScaffold
       step={1}
-      illustration={<Image source={{uri: 'pocketagent_logo'}} style={{width: 112, height: 112}} resizeMode="contain" />}
+      illustration={<Image source={appLogo} style={{width: 112, height: 112}} resizeMode="contain" />}
       content={
         <OnboardingContent
           eyebrow={t.screen1.eyebrow}

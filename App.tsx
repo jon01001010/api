@@ -128,7 +128,11 @@ const App = observer(() => {
             <L10nContext.Provider value={currentL10n}>
               <FileApprovalHost />
               <MarkdownProvider>
-                <NavigationContainer theme={navigationTheme}>
+                <NavigationContainer
+                  theme={navigationTheme}
+                  // Web/desktop: keep the page title (DesktopAgent) instead of
+                  // naming it after each screen. No effect on the phone.
+                  documentTitle={{enabled: false}}>
                   <DeepLinkHandler />
                   <BottomSheetModalProvider>
                     <SwitchPoint

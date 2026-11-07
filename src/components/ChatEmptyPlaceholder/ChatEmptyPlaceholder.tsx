@@ -1,7 +1,8 @@
 import React, {useContext} from 'react';
-import {Platform, View} from 'react-native';
+import {View} from 'react-native';
 import {Button, Text} from 'react-native-paper';
 import {observer} from 'mobx-react';
+import {appLogo} from '../../assets/appLogo';
 
 import {useTheme} from '../../hooks';
 import {createStyles} from './styles';
@@ -85,14 +86,7 @@ export const ChatEmptyPlaceholder = observer(
     return (
       <View
         style={[styles.container, {marginBottom: bottomComponentHeight + 100}]}>
-        <PocketAgentLogo
-          source={
-            Platform.OS === 'android'
-              ? {uri: 'pocketagent_logo'}
-              : require('../../assets/pocketagent-dark-v2.png')
-          }
-          style={styles.logo}
-        />
+        <PocketAgentLogo source={appLogo} style={styles.logo} />
         <View>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.description}>{description}</Text>

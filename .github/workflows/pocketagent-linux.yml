@@ -1,0 +1,118 @@
+# DesktopAgent for Linux: the same Tauri app as Windows (src-tauri), as an
+# AppImage (runs on most Linux systems) and a .deb, with the pinned llama.cpp
+# server (Vulkan + CPU) for local models.
+# Runs ONLY when asked: a manual run, or a change to
+# .github/linux-build-request on the windows branch.
+name: DesktopAgent Linux
+on:
+  push:
+    branches: [windows]
+    paths:
+      - '.github/linux-build-request'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: desktopagent-linux-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  # Pinned llama.cpp release (15 Oct 2026), Linux build, and its checksum.
+  LLAMA_TAG: b11662
+  LLAMA_TAR: llama-b11662-bin-ubuntu-vulkan-x64.tar.gz
+  LLAMA_SHA256: f1f99964b67e3f8ca8efc9564db7c12d038862d1ca22b9311fc971544ccac446
+jobs:
+  linux:
+    # 22.04: the oldest supported base, so the app runs on more systems.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+      - name: Install system libraries for the app window
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev libssl-dev file
+      - name: Install locked dependencies and patches
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          npm install --global yarn@1.22.22
+          yarn install --frozen-lockfile --non-interactive
+      - name: TypeScript validation
+        run: yarn typecheck
+      - name: Desktop and safety rule tests
+        run: yarn jest --runInBand --coverage=false stubs src/__tests__/securityRules.test.ts
+      - name: Build the web app (release)
+        run: node scripts/web/build.js --release
+      - name: Add the pinned llama.cpp server (checksum checked)
+        run: |
+          set -euo pipefail
+          curl -sSfL -o "$LLAMA_TAR" \
+            "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/${LLAMA_TAR}"
+          echo "${LLAMA_SHA256}  ${LLAMA_TAR}" | sha256sum -c -
+          tar -xzf "$LLAMA_TAR" --strip-components=1 -C src-tauri/llama
+          test -x src-tauri/llama/llama-server
+      - name: Rust tests (native side)
+        working-directory: src-tauri
+        run: cargo test --locked
+      - name: Build the Linux packages
+        timeout-minutes: 40
+        run: npx tauri build --bundles appimage,deb 2>&1 | tee linux-build.log
+      - name: Upload the packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktopagent-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktopagent-linux-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: linux-build.log
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # Publishes the packages as a pre-release with direct download links.
+  release:
+    needs: linux
+    if: success()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the packages
+        uses: actions/download-artifact@v4
+        with:
+          name: desktopagent-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: pkg
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          safe_branch=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')
+          tag="linux-${safe_branch}-${RUN_ID}-${RUN_ATTEMPT}"
+          files=$(find pkg -type f \( -name '*.AppImage' -o -name '*.deb' \))
+          gh release create "$tag" $files \
+            --target "$SHA" \
+            --prerelease \
+            --title "DesktopAgent for Linux test build: ${BRANCH} (${SHA:0:7})" \
+            --notes "Test build from branch \`${BRANCH}\`, commit ${SHA}, workflow run ${RUN_ID}. Not a release. AppImage: make it executable (chmod +x) and run it. .deb: Debian/Ubuntu."
+          echo "Release: https://github.com/${GH_REPO}/releases/tag/${tag}" >> "$GITHUB_STEP_SUMMARY"

@@ -144,11 +144,11 @@ jobs:
           safe_branch=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')
           tag="exe-${safe_branch}-${RUN_ID}-${RUN_ATTEMPT}"
           src=$(ls exe/*.exe | head -1)
-          asset="PocketAgent-Windows-${safe_branch}-${RUN_ID}-setup.exe"
+          asset="DesktopAgent-Windows-${safe_branch}-${RUN_ID}-setup.exe"
           mv "$src" "exe/${asset}"
           gh release create "$tag" "exe/${asset}" \
             --target "$SHA" \
             --prerelease \
-            --title "PocketAgent for Windows test build: ${BRANCH} (${SHA:0:7})" \
+            --title "DesktopAgent for Windows test build: ${BRANCH} (${SHA:0:7})" \
             --notes "Test build from branch \`${BRANCH}\`, commit ${SHA}, workflow run ${RUN_ID}. Not a release, not code-signed: Windows SmartScreen will warn 'unknown publisher' (More info, Run anyway). Installs for your user only."
           echo "Release: https://github.com/${GH_REPO}/releases/tag/${tag}" >> "$GITHUB_STEP_SUMMARY"
