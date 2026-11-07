@@ -455,6 +455,50 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [ ] A test pins the Tauri permissions: adding a door without its approval step fails until decided on purpose and written into SECURITY.md.
 - [x] Model-made HTML previews run in a locked-down frame with no way to reach the app's doors (2026-11-07). The native side serves the page from its own address `pa-preview` with the no-network policy + `sandbox allow-scripts`; the frame is sandboxed to scripts only; the window allows frames from `pa-preview` only. Checked against 24 ways out, in Chromium (Windows' engine) and in the real Linux app (WebKitGTK + the real Tauri bridge): page scripts run (clock); fetch, XHR, beacon, WebSocket, EventSource, images, CSS, prefetch, scripts from outside, workers, forms, pop-ups, downloads, added frames, top and self navigation, storage, cookies and WebRTC all blocked; the app's page and the Tauri bridge unreachable; nothing reached an outside listener (a loosened control run did leak, so the check catches leaks). End to end: a model's render_html reply shows a live clock in chat and fullscreen.
 
+## DesktopAgent tools: what a PC can do that the phone can't (idea 2026-11-07, write-up only)
+
+No Android sandbox on the PC: the native side (Rust) can use Windows directly (and Linux where it makes sense). More memory and a graphics card too. Same rules as everywhere (SECURITY.md 2 and 6): **every tool starts off** (Toolbox switch), and every action outside the app's own folder shows **exactly** what will happen in a native dialog; no means nothing happens. Dangerous kinds (run a command, delete, send) always ask, with no "always allow". Every action is written to a log the user can read.
+
+**Files and documents**
+- [ ] Folder grants: the user picks folders (Documents, a project…) the assistant may read; each grant can be removed; reading inside a grant needs no prompt, writing always asks.
+- [ ] Search files by name and content in granted folders (Windows Search index where it's on; Linux: plain search).
+- [ ] Read Word, Excel, PowerPoint and PDF files as text (converted on the native side, nothing uploaded).
+- [ ] Write or change a file with a before/after view; nothing is saved until the user presses Save.
+- [ ] Tidy up: rename / move many files from one list the user checks and approves at once.
+- [ ] Drag and drop files into the chat.
+- [ ] Ask your documents: a local search index (embeddings on this PC) over granted folders, so the model can answer from your own files.
+
+**Apps and the system**
+- [ ] Open an app, file or web page (asks each time, shows what opens).
+- [ ] Run a PowerShell / shell command: shown in full, asks every time, output shown in the chat; a short list of read-only commands (e.g. disk space, IP address) can be allowed once.
+- [ ] Read the system: battery, disk space, memory, graphics card (to pick the right model size), running programs (read-only).
+- [ ] Clipboard: copy is the user's button (done); reading the clipboard asks.
+- [ ] Screenshot + a vision model: "what's on my screen?" (asks each time, shows the picture first).
+- [ ] Windows notifications and reminders ("remind me at 3"); timers.
+- [ ] Media keys: play / pause / next.
+- [ ] Open Windows settings pages (Wi-Fi, Bluetooth, display, sound), like the phone's settings tool.
+- [ ] Print a document or a made page.
+- [ ] Email and calendar: draft only (opens the mail app with the text filled in); never sends by itself.
+
+**Web**
+- [ ] Web pages and search from the native side (no browser limits), same tool as the phone's.
+- [ ] Read pages that need JavaScript with a hidden, locked-down web view.
+
+**Models and voice**
+- [ ] Use the graphics card fully (Vulkan now; check CUDA / ROCm builds), bigger context, two models at once (a small fast one and a big one).
+- [ ] Voice: whisper.cpp for listening, a local voice (Piper or Windows' own) for speaking; push-to-talk key.
+- [ ] Quick chat: a global hotkey (e.g. Ctrl+Space) opens a small chat window over anything; tray icon; "start with Windows" (off by default).
+
+**Automation and coding**
+- [ ] Custom tools / shortcuts on the desktop too (built-in tools only, same review as the phone's).
+- [ ] Scheduled tasks ("every morning: weather + calendar"), run only while the app is open, each run listed.
+- [ ] Run small Python scripts for maths, charts and data, in a locked folder, asking first; the result is shown before anything is saved.
+- [ ] Code helper for a chosen project folder: read files, explain, propose changes as a diff the user applies.
+
+**Together with the phone (home link)**
+- [ ] The phone uses the PC's tools too (not only the model): each PC tool still asks on the PC, or on the phone with the PC's dialog mirrored; off by default.
+- [ ] Hand off: start a task on the phone, finish it on the PC (and back).
+
 ## Home link: use your home PC's model from your phone, anywhere (started 2026-11-07)
 
 Research (2026-11-07): **iroh 1.x** (Rust, MIT/Apache, 1.0 in June 2026; we pin 1.4.1). Devices dial each other by public key; direct connection first (hole punching through home routers and mobile networks), else a relay that only passes encrypted bytes. Official Kotlin bindings exist (`computer.iroh:iroh`), but one report says their async calls hang on Android. Compared: plain WireGuard needs port forwarding / a public IP (often impossible behind the provider's shared address, CGNAT); Tailscale needs an outside account (Headscale: your own server); Tor onion services in Rust (Arti) work but lack DoS protection and are slower. n0's 4 public relays are free but rate-limited, "for development"; they can't read the traffic. Self-hosting `iroh-relay` is one binary.
