@@ -329,6 +329,33 @@ Privacy and safety:
 - [ ] An adapter is personal data: sharing it as a mod is blocked by default (it can leak what it was trained on).
 - [ ] No contacts, messages or photos are read without a per-source opt-in; each source can be switched off and its examples deleted. Messages from other people are training data about them too: show that in the opt-in.
 
+## PocketAgent for Windows: the same app as an .exe (idea 2026-11-07, write-up only)
+
+Goal: one codebase. On the phone it's the Android app; on a PC the same app is a Windows .exe, with the desktop jobs (bigger models, LoRA training, serving the phone) built in. That makes the "PocketAgent Desktop" companion below just the Windows build of this app.
+
+Findings (2026-11-07):
+- Microsoft's **React Native for Windows 0.82** is stable (March 2026) and matches this app's React Native 0.82.1. It supports only the new architecture, which RN 0.82 already uses.
+- The JS/TS app (screens, stores, tools, settings, safety rules) carries over as is.
+- **Native parts that have no Windows version** and need a Windows replacement: llama.rn (local models), whisper.rn (voice), vision-camera (QR / camera), image-picker, audio stream, speech, share, haptics, phone actions.
+
+Plan (each step on its own; ask before each):
+1. [ ] **Windows shell:** add a react-native-windows project; the app opens on Windows; parts without Windows support are hidden (same switch pattern as Android-only features).
+2. [ ] **Local models on Windows without a new native module:** bundle llama.cpp's prebuilt `llama-server.exe` (CUDA for NVIDIA, Vulkan for AMD/Intel) and start it on 127.0.0.1; the app talks to it with the remote engine it already has. Same idea for voice (whisper.cpp server).
+3. [ ] **Platform list per tool:** each tool says where it runs. Phone actions stay Android-only; Windows gets its own small set later (open an app, open a file or folder, a notification). Approvals and switches work the same on both.
+4. [ ] **Desktop features in the Windows build:** "Share this PC's model with my phone" (QR pairing), LoRA training, heavy jobs. Shown on Windows only.
+5. [ ] **One installer:** a signed .exe / MSIX, no admin rights where possible; Windows Firewall: private networks only.
+6. [ ] **CI:** a Windows build job. GitHub counts Windows runner minutes at 2× Linux, so build Windows only on request, like the APK.
+
+Not planned: Mac, iPhone, Linux (see Platforms).
+
+## Remove Google libraries from the Android build (found 2026-11-07)
+
+Firebase, Google Sign-In and Apple sign-in are left over from PocketPal. They are **not switched on** (no `google-services.json`, the Google Services plugin isn't applied), but the APK still ships Google's Firebase App Check and Play Integrity libraries (`android/app/build.gradle`). GrapheneOS users check APKs for exactly this (e.g. Exodus Privacy).
+
+- [ ] Take Firebase / Play Integrity / Google Sign-In / Apple sign-in / in-app purchases out of the Android build (keep the code in the repo, not built, per "don't delete"); the PalsHub sign-in that uses them stays off.
+- [ ] Add a test that fails if a `com.google.firebase` / `com.google.android.gms` library is in the build again (with the other security rules).
+- [ ] Check the APK with Exodus Privacy: aim for zero trackers.
+
 ## PocketAgent Desktop: companion app and phone ↔ desktop link (idea 2026-11-06, write-up only)
 
 A desktop app that pairs with the phone: trains the personal LoRA, runs bigger models (14B–30B) for the phone, and takes heavy jobs. **Platforms (decided 2026-11-07): Windows first; Linux not planned; no Apple at all (no Mac, no iPhone).** Open source, no Google, no account, no cloud.
