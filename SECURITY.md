@@ -45,7 +45,7 @@ The Windows app (`src-tauri`, branch `windows`) is the same app in Windows' web 
 - Network, files, keys, previews and the model server are commands on the native side, each listed in `src-tauri/build.rs` and allowed in `src-tauri/capabilities/default.json`. Nothing else is allowed.
 - Every native command runs off the window's main thread (`async`), so a slow one can't freeze the window.
 - Files: the app's own folder (AppData) needs no prompt. Anywhere else, every read, write, list or delete shows an "Allow?" dialog **from the native side**, so the web screens can't skip it. `..` is refused everywhere.
-- Models: the bundled llama.cpp server (pinned release, checksum checked) listens on this PC only with a random password. Running a model file from outside the app folder asks first.
+- Models: the bundled llama.cpp server (pinned release, checksum checked) listens on this PC only with a random password. Running a model file from outside the app folder asks first: Allow once, Always allow this file, or Don't allow (closing the dialog is Don't allow). "Always" is only ever set by that button, and is kept in Windows Credential Manager under names the screens can't write (their key command always adds "PocketAgent:"). It covers that exact file (path, size, last-changed time): a changed or replaced file is asked about again.
 - Keys: Windows Credential Manager, never plain files. In a plain browser, saving keys is not available.
 - Network from the native side is http and https only.
 - Downloads (models) stream straight to disk through the native side: http/https only, the app's own folder needs no prompt, anywhere else asks; a half-finished download stays a `.part` file and never looks like a model.

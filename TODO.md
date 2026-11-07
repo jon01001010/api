@@ -440,6 +440,10 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [x] The card now also lists the slowest native calls at start-up (0.25 s or more), so the next build shows if one still holds things up.
 - [ ] Check on Windows: start-up time after this fix.
 
+**"Always allow this file" for models (user, 2026-11-07):**
+- [x] Running a model from outside the app folder: Allow once / Always allow this file / Don't allow. "Always" is kept in Windows Credential Manager (names the screens can't write) for that exact file (path, size, time). Checked in the real Linux app: Always → runs; same file again → no question, also after reopening the app; file changed → asked again; Don't allow → nothing runs.
+- [ ] A Settings list of always-allowed files with "Forget" (for now: Windows Credential Manager, entries starting "DesktopAgent-model:").
+
 **Access rule (decided 2026-11-07): broad access, never automatic.**
 - [ ] The app may reach the whole drive, run programs, open apps and links, use the clipboard; **every** such action asks first, showing exactly what will happen; no means nothing happens.
 - [ ] The approval dialog is shown by Tauri's native (Rust) side, not by the web screens, so even a bad page or a bug in the screens can't skip it.

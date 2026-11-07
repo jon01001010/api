@@ -266,7 +266,24 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
 
   it('running a model from outside the app folder asks first; the server is private', () => {
     const server = tauri('src/model_server.rs');
-    expect(server).toMatch(/if !own_models \{[\s\S]*?approval::ask/);
+    expect(server).toMatch(
+      /if !own_models && !remembered \{[\s\S]*?approval::ask_with_always/,
+    );
+    // "Always" only from its own button, and kept where the screens can't
+    // write: their key command always adds "PocketAgent:".
+    const approval = tauri('src/approval.rs');
+    expect(approval).toContain(
+      'R::Custom(label) if label == ALWAYS => Answer::Always',
+    );
+    expect(approval.match(/[=]> Answer::Always/g)).toHaveLength(1);
+    const remembered = tauri('src/remembered.rs');
+    expect(remembered).toContain('const PREFIX: &str = "DesktopAgent-model:";');
+    expect(tauri('src/secrets.rs')).toContain('format!("{PREFIX}:{service}")');
+    expect(tauri('src/secrets.rs')).toContain(
+      'const PREFIX: &str = "PocketAgent";',
+    );
+    // The exact file: path, size and time must all match.
+    expect(remembered).toContain('.map(|saved| &saved == now)');
     expect(server).toContain('"127.0.0.1".into()');
     expect(server).toContain('"--api-key".into()');
   });

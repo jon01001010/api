@@ -9,6 +9,7 @@ mod files;
 mod model_server;
 mod net;
 mod preview;
+mod remembered;
 mod secrets;
 mod system;
 mod timing;

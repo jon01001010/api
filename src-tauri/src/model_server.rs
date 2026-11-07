@@ -109,13 +109,25 @@ pub async fn model_server_start(
         .app_data_dir()
         .map(|d| model.starts_with(d))
         .unwrap_or(false);
-    if !own_models {
+    // Outside the app folder: ask, unless the user chose "Always allow this
+    // file" for this exact file before (same path, size and time).
+    let now = crate::remembered::fingerprint(&model);
+    let remembered = now.as_ref().map(crate::remembered::is_remembered).unwrap_or(false);
+    if !own_models && !remembered {
         let question = format!(
             "DesktopAgent wants to run this model on your PC:\n\n{}",
             model.display()
         );
-        if !crate::approval::ask(&app, &question).await {
-            return Err("The user said no. Nothing was done.".into());
+        match crate::approval::ask_with_always(&app, &question).await {
+            crate::approval::Answer::Once => {}
+            crate::approval::Answer::Always => {
+                if let Some(now) = &now {
+                    crate::remembered::remember(now);
+                }
+            }
+            crate::approval::Answer::No => {
+                return Err("The user said no. Nothing was done.".into());
+            }
         }
     }
     model_server_stop(server.clone());
