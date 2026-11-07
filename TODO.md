@@ -335,6 +335,10 @@ Plan (each step on its own; ask before each):
 - [ ] **Delete after training** (setting on the PC, on by default): once the new adapter is made and checked, the day's examples are deleted from the PC, so it holds nothing but the adapter (private, and saves space). Turned off, the PC keeps the examples so it can retrain from scratch later (e.g. for a new or bigger base model); the settings show how much space they use, with **Delete all training examples now**.
 - [ ] The phone keeps its queue only until the PC confirms the new adapter, then deletes it too (same choice on the phone: keep a copy or not).
 - [ ] Old adapter versions: keep the last 7 by default (each a few MB to tens of MB), with the space shown and a **Delete old versions** button.
+- [ ] **"The model is the memory"** (user's idea 2026-11-07): the user can delete all raw data (examples on phone and PC) and keep only the adapter. Explain plainly when they choose it:
+  - It keeps habits, style and often-used names well; exact facts (dates, addresses, numbers) only roughly, and it may fill gaps wrongly. Exact facts stay in the memory notes.
+  - Forgetting one thing later: no examples to retrain without it, so only by going back to an older adapter version (from before it learned it) or training a correction on top. Hence the kept versions.
+  - The adapter is still personal data (a model can repeat bits of what it learned): private storage only, never shared, one tap to delete.
 - [ ] Never trained on: passwords, one-time codes, bank and card numbers, anything marked private, anything from a conversation the user excluded (filters run on the phone before anything is sent).
 - [ ] Without the PC: the phone keeps collecting and waits; on-device training (step 4) is the later fallback.
 
