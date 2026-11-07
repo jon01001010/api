@@ -3,6 +3,13 @@
 # Windows runner minutes at 2x Linux. See TODO.md "PocketAgent for Windows".
 name: PocketAgent Windows
 on:
+  # Manual runs need this file on the default branch; until it is there,
+  # a change to .github/windows-build-request on the windows branch starts
+  # a full (exe) build. Nothing else starts it.
+  push:
+    branches: [windows]
+    paths:
+      - '.github/windows-build-request'
   workflow_dispatch:
     inputs:
       stage:
@@ -50,14 +57,14 @@ jobs:
             --bundle-output windows-bundle/index.windows.bundle \
             --assets-dest windows-bundle/assets
       - name: Build the Windows app
-        if: inputs.stage == 'exe'
+        if: github.event_name == 'push' || inputs.stage == 'exe'
         timeout-minutes: 60
         run: |
           set -euo pipefail
           npx @react-native-community/cli run-windows --release --arch x64 \
             --no-launch --no-deploy --no-packager --logging 2>&1 | tee windows-build.log
       - name: Upload the Windows app
-        if: success() && inputs.stage == 'exe'
+        if: success() && (github.event_name == 'push' || inputs.stage == 'exe')
         uses: actions/upload-artifact@v4
         with:
           name: pocketagent-windows-${{ github.run_id }}-${{ github.run_attempt }}
