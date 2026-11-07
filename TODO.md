@@ -332,7 +332,9 @@ Plan (each step on its own; ask before each):
 - [ ] Before using it, the PC checks the new version against a small fixed set of the user's own test questions (style and facts it should keep); if it got worse, it keeps yesterday's and says so.
 - [ ] The adapter goes back to the phone; the phone loads it on top of its local model. The PC can use the same adapter with a bigger copy of the base model.
 - [ ] Morning note on both devices: "Learned from N new examples (date). Undo." Every version is kept for a while: one tap to go back to any day, or switch the personal adapter off.
-- [ ] Training examples are deleted from the PC once the new adapter is made (only the adapter stays); the phone keeps its queue only until the PC confirms.
+- [ ] **Delete after training** (setting on the PC, on by default): once the new adapter is made and checked, the day's examples are deleted from the PC, so it holds nothing but the adapter (private, and saves space). Turned off, the PC keeps the examples so it can retrain from scratch later (e.g. for a new or bigger base model); the settings show how much space they use, with **Delete all training examples now**.
+- [ ] The phone keeps its queue only until the PC confirms the new adapter, then deletes it too (same choice on the phone: keep a copy or not).
+- [ ] Old adapter versions: keep the last 7 by default (each a few MB to tens of MB), with the space shown and a **Delete old versions** button.
 - [ ] Never trained on: passwords, one-time codes, bank and card numbers, anything marked private, anything from a conversation the user excluded (filters run on the phone before anything is sent).
 - [ ] Without the PC: the phone keeps collecting and waits; on-device training (step 4) is the later fallback.
 
