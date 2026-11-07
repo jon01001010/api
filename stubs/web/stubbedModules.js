@@ -38,7 +38,8 @@ const STUBS = {
   // No web version: in memory or plain stand-ins until Tauri plugins.
   // Inside the .exe: real files via the native side; in a browser: memory.
   '@dr.pogodin/react-native-fs': path.join(__dirname, 'fs.js'),
-  'react-native-device-info': W('device-info.js'),
+  // Inside the .exe: the PC's real memory (stubs/web/device-info.js).
+  'react-native-device-info': path.join(__dirname, 'device-info.js'),
   'react-native-config': W('config.js'),
   'react-native-linear-gradient': W('linear-gradient.js'),
   'react-native-keyboard-controller': W('keyboard-controller.js'),

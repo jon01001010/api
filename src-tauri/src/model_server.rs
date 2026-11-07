@@ -64,6 +64,10 @@ pub fn server_args(model: &str, port: u16, key: &str, context: u32) -> Vec<Strin
         "--ctx-size".into(),
         context.clamp(512, 131_072).to_string(),
         "--jinja".into(),
+        // Use the graphics card for every layer when there is one (Vulkan);
+        // without one llama.cpp runs on the processor.
+        "--n-gpu-layers".into(),
+        "999".into(),
     ]
 }
 
@@ -123,7 +127,7 @@ pub async fn model_server_start(
     if let Some(dir) = exe.parent() {
         command.current_dir(dir);
     }
-    command.args(server_args(&model_path, port, &key, context.unwrap_or(4096)));
+    command.args(server_args(&model_path, port, &key, context.unwrap_or(8192)));
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

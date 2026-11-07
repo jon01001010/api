@@ -4,10 +4,12 @@
 //! Anything outside the app's own folder asks the user first (approval.rs).
 
 mod approval;
+mod download;
 mod files;
 mod model_server;
 mod net;
 mod secrets;
+mod system;
 
 use tauri::Manager;
 
@@ -17,6 +19,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(net::Requests::default())
         .manage(model_server::ModelServer::default())
+        .manage(download::Downloads::default())
         .invoke_handler(tauri::generate_handler![
             files::fs_exists,
             files::fs_read,
@@ -27,6 +30,8 @@ pub fn run() {
             files::fs_remove,
             files::fs_copy,
             files::fs_move,
+            download::fs_download,
+            download::fs_download_cancel,
             secrets::secret_get,
             secrets::secret_set,
             secrets::secret_delete,
@@ -35,6 +40,7 @@ pub fn run() {
             model_server::pick_model_file,
             model_server::model_server_start,
             model_server::model_server_stop,
+            system::system_info,
         ])
         .build(tauri::generate_context!())
         .expect("error while building PocketAgent");

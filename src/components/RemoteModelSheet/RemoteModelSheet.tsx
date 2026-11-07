@@ -490,7 +490,7 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
               )}
               <Text variant="bodySmall">
                 Enter your API key below, then connect to list available models.
-                Keys are stored using Android secure storage.
+                Keys are stored securely on this device.
               </Text>
             </View>
           )}

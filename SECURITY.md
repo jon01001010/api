@@ -45,6 +45,8 @@ The Windows app (`src-tauri`, branch `windows`) is the same app in Windows' web 
 - Models: the bundled llama.cpp server (pinned release, checksum checked) listens on this PC only with a random password. Running a model file from outside the app folder asks first.
 - Keys: Windows Credential Manager, never plain files. In a plain browser, saving keys is not available.
 - Network from the native side is http and https only.
+- Downloads (models) stream straight to disk through the native side: http/https only, the app's own folder needs no prompt, anywhere else asks; a half-finished download stays a `.part` file and never looks like a model.
+- The desktop app makes no network calls at start-up (the phone's device-rules fetch from PocketPal's CDN is off on the desktop).
 - Tauri's script nonces stay on; its style nonces are off (`dangerousDisableAssetCspModification: ["style-src"]`), because the app's styles are added at run time. Styles can't run code, and the policy stops them loading anything from outside.
 
 ## For mods (planned)

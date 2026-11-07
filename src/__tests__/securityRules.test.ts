@@ -204,6 +204,8 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'fs_remove',
         'fs_copy',
         'fs_move',
+        'fs_download',
+        'fs_download_cancel',
         'secret_get',
         'secret_set',
         'secret_delete',
@@ -212,6 +214,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'pick_model_file',
         'model_server_start',
         'model_server_stop',
+        'system_info',
       ].sort(),
     );
     // The window is allowed exactly those, plus Tauri's core basics.
@@ -247,6 +250,12 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     }
     expect(files).toMatch(/if !located\.own \{[\s\S]*?ask\(app, &question\)/);
     expect(tauri('src/approval.rs')).toContain('blocking_show()');
+    // Downloads use the same rule (own folder free, elsewhere ask), only
+    // http/https, and never leave a half file looking like a finished one.
+    const download = tauri('src/download.rs');
+    expect(download).toMatch(/files::allowed_path\(&app, &path/);
+    expect(download).toContain('net::check_url(&url)');
+    expect(download).toContain('part_path(&target)');
   });
 
   it('running a model from outside the app folder asks first; the server is private', () => {

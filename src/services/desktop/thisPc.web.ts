@@ -47,7 +47,7 @@ export async function runModelOnThisPc(): Promise<{
   }
   const {url, apiKey} = await invoke<{url: string; apiKey: string}>(
     'model_server_start',
-    {modelPath, context: 4096},
+    {modelPath, context: 8192},
   );
   if (!(await waitUntilReady(url, apiKey))) {
     await stopModelOnThisPc();
@@ -56,11 +56,24 @@ export async function runModelOnThisPc(): Promise<{
       message: 'The model did not start. Is it a valid .gguf file?',
     };
   }
+  // A model on this PC reads the whole prompt before it starts answering;
+  // with tools that can take minutes on a slow PC, so wait up to 10 minutes
+  // (cloud servers keep the usual 30 seconds).
+  const requestTimeoutMs = 10 * 60 * 1000;
   const existing = serverStore.servers.find(s => s.name === THIS_PC);
   const serverId = existing
-    ? (serverStore.updateServer(existing.id, {url, serverType: 'llama.cpp'}),
+    ? (serverStore.updateServer(existing.id, {
+        url,
+        serverType: 'llama.cpp',
+        requestTimeoutMs,
+      }),
       existing.id)
-    : serverStore.addServer({name: THIS_PC, url, serverType: 'llama.cpp'});
+    : serverStore.addServer({
+        name: THIS_PC,
+        url,
+        serverType: 'llama.cpp',
+        requestTimeoutMs,
+      });
   await serverStore.setApiKey(serverId, apiKey);
   await serverStore.fetchModelsForServer(serverId);
   const models = serverStore.serverModels.get(serverId) || [];

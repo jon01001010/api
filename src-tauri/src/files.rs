@@ -60,6 +60,10 @@ fn app_root(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 /// Finds a path and, outside the app's folder, asks the user first.
+pub async fn allowed_path(app: &AppHandle, input: &str, what: &str) -> Result<PathBuf, String> {
+    allowed(app, input, what).await
+}
+
 async fn allowed(app: &AppHandle, input: &str, what: &str) -> Result<PathBuf, String> {
     let located = locate(&app_root(app)?, input)?;
     if !located.own {

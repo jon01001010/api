@@ -1,0 +1,16 @@
+diff --git a/node_modules/@gorhom/bottom-sheet/lib/module/utilities/findNodeHandle.web.js b/node_modules/@gorhom/bottom-sheet/lib/module/utilities/findNodeHandle.web.js
+index 3ec8e0b..e7e2c7f 100644
+--- a/node_modules/@gorhom/bottom-sheet/lib/module/utilities/findNodeHandle.web.js
++++ b/node_modules/@gorhom/bottom-sheet/lib/module/utilities/findNodeHandle.web.js
+@@ -2,6 +2,11 @@
+ 
+ import { findNodeHandle as _findNodeHandle } from 'react-native';
+ export function findNodeHandle(componentOrHandle) {
++  // PocketAgent desktop: nothing focused (e.g. on blur) means no node,
++  // instead of crashing on null._scrollRef.
++  if (componentOrHandle == null) {
++    return null;
++  }
+   let nodeHandle;
+   try {
+     nodeHandle = _findNodeHandle(componentOrHandle);

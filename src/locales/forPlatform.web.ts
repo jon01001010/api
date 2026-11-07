@@ -4,6 +4,7 @@
  * are untouched (forPlatform.ts).
  */
 const SWAPS: [RegExp, string][] = [
+  [/Android secure storage/g, "your system's secure key store"],
   [/PocketAgent AI/g, 'DesktopAgent'],
   [/PocketAgent/g, 'DesktopAgent'],
   [/\bon your phone\b/g, 'on your PC'],

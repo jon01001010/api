@@ -310,7 +310,9 @@ export class DownloadManager {
       throw err;
     }
 
-    if (Platform.OS === 'ios') {
+    // The desktop app (web build) downloads like iOS: RNFS.downloadFile,
+    // which the desktop's native side implements.
+    if (Platform.OS === 'ios' || Platform.OS === 'web') {
       await this.startIOSDownload(model, destinationPath, effectiveAuthToken);
     } else {
       await this.startAndroidDownload(
@@ -556,7 +558,7 @@ export class DownloadManager {
       // recognised as a cancel, not surfaced as a "Download Failed" error.
       this.cancelledModelIds.add(modelId);
       try {
-        if (Platform.OS === 'ios') {
+        if (Platform.OS === 'ios' || Platform.OS === 'web') {
           console.log(
             `${TAG}: Cancelling iOS download for ID: ${modelId}, jobId: ${job.jobId}`,
           );

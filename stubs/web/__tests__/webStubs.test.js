@@ -45,3 +45,55 @@ describe('which modules are stubbed on the web', () => {
     expect(webStubFor('react-native-webview')).toMatch(/native\.js$/);
   });
 });
+
+describe('downloads in the desktop app', () => {
+  it('downloadFile streams through the native side with begin and progress', async () => {
+    jest.resetModules();
+    const calls = [];
+    jest.doMock('../tauri', () => {
+      class Channel {
+        constructor(onMessage) {
+          this.onMessage = onMessage;
+        }
+      }
+      return {
+        isTauri: () => true,
+        Channel,
+        invoke: async (cmd, args) => {
+          calls.push([cmd, args && args.path]);
+          if (cmd === 'fs_download') {
+            const send = args.onEvent.onMessage;
+            send({type: 'begin', statusCode: 200, contentLength: 10});
+            send({type: 'progress', bytesWritten: 5, contentLength: 10});
+            send({type: 'done', statusCode: 200, bytesWritten: 10});
+          }
+          return null;
+        },
+      };
+    });
+    const fsModule = jest.requireActual('../fs.js').default;
+    const seen = [];
+    const job = fsModule.downloadFile({
+      fromUrl: 'https://huggingface.co/x/resolve/main/m.gguf',
+      toFile: '/pocketagent/Documents/models/m.gguf',
+      headers: {Authorization: 'Bearer t'},
+      begin: r => seen.push(['begin', r.contentLength]),
+      progress: r => seen.push(['progress', r.bytesWritten]),
+    });
+    await expect(job.promise).resolves.toMatchObject({
+      statusCode: 200,
+      bytesWritten: 10,
+    });
+    expect(seen).toEqual([
+      ['begin', 10],
+      ['progress', 5],
+    ]);
+    expect(calls[0]).toEqual([
+      'fs_download',
+      '/pocketagent/Documents/models/m.gguf',
+    ]);
+    fsModule.stopDownload(job.jobId);
+    expect(calls.map(c => c[0])).toContain('fs_download_cancel');
+    jest.dontMock('../tauri');
+  });
+});

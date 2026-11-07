@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "What the PocketAgent window may ask the native side to do. Every door is listed; anything outside the app's own folder asks the user first (see SECURITY.md).",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "allow-fs-exists",
@@ -14,6 +16,8 @@
     "allow-fs-remove",
     "allow-fs-copy",
     "allow-fs-move",
+    "allow-fs-download",
+    "allow-fs-download-cancel",
     "allow-secret-get",
     "allow-secret-set",
     "allow-secret-delete",
@@ -21,6 +25,7 @@
     "allow-http-abort",
     "allow-pick-model-file",
     "allow-model-server-start",
-    "allow-model-server-stop"
+    "allow-model-server-stop",
+    "allow-system-info"
   ]
 }

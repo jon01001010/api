@@ -10,6 +10,8 @@ const COMMANDS: &[&str] = &[
     "fs_remove",
     "fs_copy",
     "fs_move",
+    "fs_download",
+    "fs_download_cancel",
     "secret_get",
     "secret_set",
     "secret_delete",
@@ -18,6 +20,7 @@ const COMMANDS: &[&str] = &[
     "pick_model_file",
     "model_server_start",
     "model_server_stop",
+    "system_info",
 ];
 
 fn main() {

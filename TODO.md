@@ -406,6 +406,16 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [ ] No GitHub builds until asked (user, 2026-11-07). Next Windows build will include: layout fix, DesktopAgent name and logo.
 - [ ] Later for Linux: Flatpak / Flathub (what many privacy-minded Linux users prefer).
 
+**First Windows test on a real PC (2026-11-07), and fixes:**
+- [x] A real model ran: Qwen3 1B (IQ4_XS) through "Run a model on this PC" in Phosphor mode, 8.8 tokens/s.
+- [x] Fixed: every API / server screen went black. Two desktop-only crashes in the sheets: `TextInput.State.currentlyFocusedInput` missing in react-native-web (aliased), and the bottom-sheet library's web `findNodeHandle(null)` (patched: `patches/@gorhom+bottom-sheet+5.2.8.patch`). Checked in the real app: Gemini preset, key typed, reached Google (400 for a made-up key).
+- [x] Fixed: any future screen crash shows the error with Copy details / Reload instead of a black window (`web/ErrorScreen.js`).
+- [x] Fixed: "Connection timed out" on the local model: "This PC" now waits up to 10 minutes for the first word (a slow PC reads long prompts with tools for minutes); the server uses the graphics card for all layers (Vulkan) and 8192 tokens of context.
+- [x] Fixed: in-app Hugging Face downloads failed (`startDownload` of null): the desktop now downloads through the native side, straight to disk with progress, cancellable, `.part` until complete (tested byte for byte against a local server).
+- [x] Fixed: "Memory Warning" on a 2B: the desktop used a placeholder 8 GB; it now reads the PC's real total and available memory (`system_info`).
+- [x] Desktop start-up makes no network calls (device-rules fetch off). The app itself starts in ~1.5 s (browser) / ~8 s (real app here, software drawing); the 45 s seen on Windows is likely first launch (Defender scanning the new unsigned app, web view setup) - check the second launch.
+- [ ] Each build gets its own version (0.1.<build number>) so installs upgrade cleanly.
+
 **Access rule (decided 2026-11-07): broad access, never automatic.**
 - [ ] The app may reach the whole drive, run programs, open apps and links, use the clipboard; **every** such action asks first, showing exactly what will happen; no means nothing happens.
 - [ ] The approval dialog is shown by Tauri's native (Rust) side, not by the web screens, so even a bad page or a bug in the screens can't skip it.
