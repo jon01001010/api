@@ -9,6 +9,7 @@ import {
   Image,
   Modal,
   FlatList,
+  Platform,
 } from 'react-native';
 import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
 import {pick, keepLocalCopy, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
@@ -808,6 +809,24 @@ export const ChatInput = observer(
                 isVideoCapable && styles.inputWithLabel,
               ]}
               onChangeText={handleChangeText}
+              // Desktop: Enter sends, Shift+Enter starts a new line (the
+              // phone keyboard has its own send button).
+              onKeyPress={
+                Platform.OS === 'web'
+                  ? (e: any) => {
+                      const key = e?.nativeEvent;
+                      if (
+                        key?.key === 'Enter' &&
+                        !key.shiftKey &&
+                        !key.isComposing &&
+                        !isStreaming
+                      ) {
+                        e.preventDefault?.();
+                        handleSendRef.current?.();
+                      }
+                    }
+                  : undefined
+              }
               value={value}
               editable={
                 isVideoCapable

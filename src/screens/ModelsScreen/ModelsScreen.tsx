@@ -5,6 +5,7 @@ import {reaction, computed} from 'mobx';
 import {v4 as uuidv4} from 'uuid';
 import 'react-native-get-random-values';
 import {observer} from 'mobx-react-lite';
+import {useFocusEffect} from '@react-navigation/native';
 import * as RNFS from '@dr.pogodin/react-native-fs';
 import {pick, types} from '@react-native-documents/picker';
 import {Portal, Snackbar} from 'react-native-paper';
@@ -109,6 +110,16 @@ export const ModelsScreen: React.FC = observer(() => {
     await modelStore.refreshDownloadStatuses();
     setRefreshing(false);
   };
+
+  // Desktop: there is no pull-down to refresh with a mouse, so the list
+  // checks its downloads each time the screen is opened.
+  useFocusEffect(
+    React.useCallback(() => {
+      if (Platform.OS === 'web') {
+        modelStore.refreshDownloadStatuses();
+      }
+    }, []),
+  );
 
   const handleOpenSettings = (model: Model) => {
     setSelectedModel(model);

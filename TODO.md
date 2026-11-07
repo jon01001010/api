@@ -419,6 +419,22 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [x] Fixed: "Network error" on a This PC model after reopening the app (its server stops with the app; the list still pointed at it). Load now starts the server for that model file again (same Allow dialog) and points This PC at it.
 - [ ] Each build gets its own version (0.1.<build number>) so installs upgrade cleanly.
 
+**Phone gestures → desktop controls (2026-11-07, checked in Chromium here):**
+- [x] Right-click does what a long-press does on the phone (holding the mouse still works too): chat in the side menu → Pin / Rename / Duplicate / Export / Delete (Delete asks first, then the chat is gone); message → Copy / Edit; mic → voice settings. React Native Web's Touchables overwrite a plain `onContextMenu`, so `stubs/web/react-native.js` listens on the element itself. The browser's own right-click menu is hidden except in text boxes and on selected text.
+- [x] Enter sends, Shift+Enter makes a new line.
+- [x] Escape closes the top sheet (phones swipe sheets down).
+- [x] Copy works: the clipboard was a do-nothing stand-in; now the browser clipboard (`stubs/web/clipboard.js`), only when the user presses Copy.
+- [x] Haptic taps quietly do nothing on a PC (they were throwing "not available").
+- [x] Models list: there is no pull-down-to-refresh with a mouse, so it checks downloads each time the screen opens.
+- [ ] Wide windows: keep the side menu open beside the chat instead of sliding over it.
+- [ ] Voice settings still say "on this phone" / "Android shows…"; voice input is not on the desktop yet (stubbed).
+- [ ] "Add local model" uses the phone's file picker (stubbed); on the desktop use "Run a model on this PC" or give it the native picker.
+
+**Start-up time (45 s on Windows, 2026-11-07):**
+- [x] Settings → "Start-up time" card shows where the time goes: app opened → page starts loading, loading the app's code, code running → first screen, page fully loaded (native marks from `startup_timing` + the page's own). Here (real Linux app): 1 s, 0.7 s, 0.4 s, 1.7 s.
+- [x] A "Loading DesktopAgent…" text shows while the code loads, instead of a blank window.
+- [ ] After the next Windows build, read the card. If "loading the app's code" is the slow part, it is likely WebView2's slow custom-protocol file serving for the 11 MB release bundle (tauri-apps/tauri#8920): split or shrink the bundle and/or serve it differently.
+
 **Access rule (decided 2026-11-07): broad access, never automatic.**
 - [ ] The app may reach the whole drive, run programs, open apps and links, use the clipboard; **every** such action asks first, showing exactly what will happen; no means nothing happens.
 - [ ] The approval dialog is shown by Tauri's native (Rust) side, not by the web screens, so even a bad page or a bug in the screens can't skip it.

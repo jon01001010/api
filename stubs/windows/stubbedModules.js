@@ -32,7 +32,7 @@ const STUBS = {
   'react-native-worklets-core': 'native.js',
   'react-native-image-picker': 'native.js',
   'react-native-share': 'native.js',
-  'react-native-haptic-feedback': 'native.js',
+  'react-native-haptic-feedback': 'haptics.js',
   '@react-native-documents/picker': 'native.js',
   // Secrets: Windows needs Credential Manager (TODO); until then saving an
   // API key says "not available" rather than storing it unprotected.

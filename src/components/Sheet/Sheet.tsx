@@ -10,6 +10,7 @@ import {
 } from 'react-native-safe-area-context';
 import {BottomSheetModalMethods} from '@gorhom/bottom-sheet/lib/typescript/types';
 import {Text} from 'react-native-paper';
+import {useEscapeToClose} from './escapeToClose';
 import {CloseIcon} from '../../assets/icons';
 import {useTheme} from '../../hooks';
 import {styles} from './styles';
@@ -82,6 +83,9 @@ export const Sheet = forwardRef(
       activeRef?.current?.close();
       onClose?.();
     };
+
+    // Desktop: Escape closes the top sheet (phones swipe it down).
+    useEscapeToClose(isVisible, onDismiss);
 
     const {height: containerHeight} = useSafeAreaFrame();
     const snapPoints = useMemo(() => {

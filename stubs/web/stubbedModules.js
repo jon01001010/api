@@ -25,7 +25,7 @@ const STUBS = {
   'react-native-worklets-core': W('native.js'),
   'react-native-image-picker': W('native.js'),
   'react-native-share': W('native.js'),
-  'react-native-haptic-feedback': W('native.js'),
+  'react-native-haptic-feedback': W('haptics.js'),
   '@react-native-documents/picker': W('native.js'),
   // Inside the .exe: Windows Credential Manager (stubs/web/keychain.js).
   'react-native-keychain': path.join(__dirname, 'keychain.js'),
@@ -44,7 +44,7 @@ const STUBS = {
   'react-native-linear-gradient': W('linear-gradient.js'),
   'react-native-keyboard-controller': W('keyboard-controller.js'),
   '@react-native-masked-view/masked-view': W('masked-view.js'),
-  '@react-native-clipboard/clipboard': W('clipboard.js'),
+  '@react-native-clipboard/clipboard': path.join(__dirname, 'clipboard.js'),
   // The HTML preview needs a locked-down frame on the web (TODO: built and
   // checked like the WebRTC lock before it is trusted). Until then: off.
   'react-native-webview': W('native.js'),

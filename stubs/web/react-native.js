@@ -94,8 +94,61 @@ const Alert = {
   prompt: () => {},
 };
 
+// Phone long-presses (chat: delete / rename; message: copy / edit; mic:
+// voice settings) become a right-click on the desktop too. Holding the
+// mouse button still works as a long-press.
+const React = require('react');
+// React Native Web's Touchables put their own onContextMenu over ours, so the
+// right-click is caught with a plain DOM listener on the element instead.
+function withRightClick(Component, name) {
+  const Wrapped = React.forwardRef((props, ref) => {
+    const latest = React.useRef(props);
+    latest.current = props;
+    const nodeRef = React.useRef(null);
+    const onContextMenu = React.useCallback(event => {
+      const p = latest.current;
+      if (typeof p.onLongPress !== 'function' || p.disabled) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      p.onLongPress({nativeEvent: event, preventDefault() {}});
+    }, []);
+    const setRef = React.useCallback(
+      node => {
+        if (nodeRef.current && nodeRef.current.removeEventListener) {
+          nodeRef.current.removeEventListener('contextmenu', onContextMenu);
+        }
+        nodeRef.current = node;
+        if (node && node.addEventListener) {
+          node.addEventListener('contextmenu', onContextMenu);
+        }
+        if (typeof ref === 'function') {
+          ref(node);
+        } else if (ref) {
+          ref.current = node;
+        }
+      },
+      [ref, onContextMenu],
+    );
+    return React.createElement(Component, {...props, ref: setRef});
+  });
+  Wrapped.displayName = name;
+  return Wrapped;
+}
+
 module.exports = {
   ...RNW,
+  Pressable: withRightClick(RNW.Pressable, 'Pressable'),
+  TouchableOpacity: withRightClick(RNW.TouchableOpacity, 'TouchableOpacity'),
+  TouchableHighlight: withRightClick(
+    RNW.TouchableHighlight,
+    'TouchableHighlight',
+  ),
+  TouchableWithoutFeedback: withRightClick(
+    RNW.TouchableWithoutFeedback,
+    'TouchableWithoutFeedback',
+  ),
   Alert,
   TurboModuleRegistry,
   NativeModules,
