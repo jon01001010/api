@@ -303,7 +303,7 @@ Settings ends with **Show developer settings** (off by default, remembered). Off
 - [x] Dev Tools in the menu stays debug-builds only (its screen only exists there).
 - [ ] Phone check: switch off → short Settings; on → everything as before; reopen the app, the choice is kept.
 
-## Personal model: LoRA trained on the phone (idea 2026-11-06, write-up only)
+## Personal model: LoRA trained for the user, daily with DesktopAgent (idea 2026-11-06, write-up only)
 
 Idea: a small LoRA adapter trained on what the user chooses from their phone, so a local model learns their style, names, routines and notes. Fully local: nothing leaves the phone.
 
@@ -323,6 +323,18 @@ Plan (each step on its own; ask before each):
 3. [ ] **Train on a PC first (fallback):** export the chosen examples as a dataset file; a short guide/script to train a LoRA for the same base model; copy the adapter back. Nothing uploaded by the app.
 4. [ ] **Train on the phone (experiment):** when on-device training is in llama.cpp (or via the QVAC fork), small rank (8–16), 0.8B–2B base, only while charging and cool, pausable, with a progress screen. Measure time and heat on the 2023 Razr first.
 5. [ ] **Keep it honest:** a LoRA learns style and habits; facts that change (names, plans) still belong in memory. Show "trained on N examples, date"; one tap to switch off or delete the adapter.
+
+**Daily training with DesktopAgent (idea 2026-11-07): the PC does the heavy work, the phone learns.**
+- [ ] Off until the user switches it on, on both devices. Needs the home link (paired phone and PC).
+- [ ] During the day the phone collects new examples only from the sources the user opted into (step 1), into its private training queue. The user can look at the queue and remove items any time.
+- [ ] Once a day (default: at night, PC on, phone on the charger or anytime the PC is reachable), the phone sends the day's new examples to the PC over the home link (encrypted from phone to PC; nothing goes anywhere else).
+- [ ] The PC trains a new LoRA version for the same base model as the phone's (small rank, a few minutes on the graphics card), starting from yesterday's adapter, so it learns a little each day instead of from scratch. Training tool: llama.cpp's own fine-tuning if good enough, else a bundled trainer; pinned and checksum-checked like llama-server.
+- [ ] Before using it, the PC checks the new version against a small fixed set of the user's own test questions (style and facts it should keep); if it got worse, it keeps yesterday's and says so.
+- [ ] The adapter goes back to the phone; the phone loads it on top of its local model. The PC can use the same adapter with a bigger copy of the base model.
+- [ ] Morning note on both devices: "Learned from N new examples (date). Undo." Every version is kept for a while: one tap to go back to any day, or switch the personal adapter off.
+- [ ] Training examples are deleted from the PC once the new adapter is made (only the adapter stays); the phone keeps its queue only until the PC confirms.
+- [ ] Never trained on: passwords, one-time codes, bank and card numbers, anything marked private, anything from a conversation the user excluded (filters run on the phone before anything is sent).
+- [ ] Without the PC: the phone keeps collecting and waits; on-device training (step 4) is the later fallback.
 
 Privacy and safety:
 - [ ] Training data and adapters stay in the app's private storage; never sent anywhere; excluded from cloud backups.
