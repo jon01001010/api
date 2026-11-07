@@ -373,6 +373,17 @@ Firebase, Google Sign-In and Apple sign-in are left over from PocketPal. They ar
 - [ ] Add a test that fails if a `com.google.firebase` / `com.google.android.gms` library is in the build again (with the other security rules).
 - [ ] Check the APK with Exodus Privacy: aim for zero trackers.
 
+## Windows route change proposed: react-native-web + Tauri (2026-11-07, waiting for go-ahead)
+
+Instead of react-native-windows (most native libraries need stubs there, and nothing can be run or checked without a 40-minute Windows build): run the same app as a web app (react-native-web, which most of the app's libraries officially support) wrapped in a small Tauri .exe (Windows' own WebView2). Tauri bundles and starts `llama-server.exe` as a "sidecar", has file / clipboard / notification plugins, and builds the installer. The web version can be run and screenshot here; Windows builds are only for packaging. The react-native-windows work stays on the branch (don't delete).
+
+**Access rule (decided 2026-11-07): broad access, never automatic.**
+- [ ] The app may reach the whole drive, run programs, open apps and links, use the clipboard; **every** such action asks first, showing exactly what will happen; no means nothing happens.
+- [ ] The approval dialog is shown by Tauri's native (Rust) side, not by the web screens, so even a bad page or a bug in the screens can't skip it.
+- [ ] No prompt only for the app looking after itself: its own AppData folder (settings, chats, models) and starting the bundled llama-server (this PC only, random password).
+- [ ] A test pins the Tauri permissions: adding a door without its approval step fails until decided on purpose and written into SECURITY.md.
+- [ ] Model-made HTML previews run in a locked-down frame with no way to reach the app's doors; checked in a browser here (like the WebRTC check) before trusting it.
+
 ## PocketAgent Desktop: companion app and phone ↔ desktop link (idea 2026-11-06, write-up only)
 
 A desktop app that pairs with the phone: trains the personal LoRA, runs bigger models (14B–30B) for the phone, and takes heavy jobs. **Platforms (decided 2026-11-07): Windows first; Linux not planned; no Apple at all (no Mac, no iPhone).** Open source, no Google, no account, no cloud.
