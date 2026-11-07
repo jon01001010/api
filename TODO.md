@@ -331,7 +331,7 @@ Privacy and safety:
 
 ## PocketAgent Desktop: companion app and phone ↔ desktop link (idea 2026-11-06, write-up only)
 
-A desktop app that pairs with the phone: trains the personal LoRA, runs bigger models (14B–30B) for the phone, and takes heavy jobs. Linux first, then Windows and Mac. Open source, no Google, no account, no cloud.
+A desktop app that pairs with the phone: trains the personal LoRA, runs bigger models (14B–30B) for the phone, and takes heavy jobs. **Platforms (decided 2026-11-07): Windows first; Linux not planned; no Apple at all (no Mac, no iPhone).** Open source, no Google, no account, no cloud.
 
 ### How they talk (the link)
 
@@ -340,6 +340,7 @@ A desktop app that pairs with the phone: trains the personal LoRA, runs bigger m
 - [ ] **Encrypted both ways:** every connection is mutually authenticated with the saved keys (TLS with pinned keys, or the Noise protocol); nothing in clear text, even at home. Unknown devices are refused.
 - [ ] **Away from home (later, optional):** the user's own WireGuard VPN or a self-hosted relay; never a PocketAgent-run server.
 - [ ] **USB fallback:** works over a cable too (adb reverse), for no-Wi-Fi setups.
+- [ ] **Windows notes:** one installer, no admin rights needed where possible; asks Windows Firewall to allow the local network only (private networks, not public); GPU training on NVIDIA (CUDA) first, AMD/Intel later (Vulkan / DirectML); runs in the tray so the phone can reach it.
 - [ ] **One small protocol, three kinds of message:**
   1. *Model:* the OpenAI-style chat API the app already speaks (the desktop runs llama-server or similar), so "use the desktop's model" is just a paired server.
   2. *Files:* send a dataset to the desktop, get an adapter back; checked by hash, resumable.
@@ -355,7 +356,7 @@ A desktop app that pairs with the phone: trains the personal LoRA, runs bigger m
 ### Steps (each on its own; ask before each)
 
 1. [ ] **Use a desktop model:** QR pairing + the encrypted link to a llama-server on the PC; appears as a server in the app.
-2. [ ] **Desktop training:** dataset upload, LoRA training on the PC's GPU (llama.cpp's own or the usual Python tools, whichever works best per GPU), adapter sent back, data deleted.
+2. [ ] **Desktop training (Windows):** dataset upload, LoRA training on the PC's GPU (llama.cpp's own or the usual Python tools, whichever works best per GPU), adapter sent back, data deleted.
 3. [ ] **Phone dataset export** in the order decided: contacts → texts → later files and photos.
 4. [ ] **Heavy jobs:** long transcriptions, photo captioning for training.
 5. [ ] **Later:** away-from-home link (own VPN / relay).
@@ -497,6 +498,10 @@ Like vision models, the app finds what's available instead of being tied to one 
 - [ ] whisper.rn on the test phone: Whisper tiny/base speed, and memory with a chat model loaded.
 - [ ] Default digital assistant registration on a recent Android (which screens and permissions are needed).
 - [ ] The battery cost of an always-on wake-word service over a day.
+
+## Platforms
+
+Decided 2026-11-07: **Android only** for the phone app (GrapheneOS-friendly), **Windows only** for the desktop companion. **No Apple at all:** no iPhone builds, no Mac. The iOS code inherited from PocketPal stays in the repo (don't delete) but is not built, tested or planned for.
 
 ## Future hardware & GrapheneOS readiness (write-up only, not started)
 
