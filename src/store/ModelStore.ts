@@ -36,6 +36,7 @@ import {voiceStore} from './VoiceStore';
 
 import {uiStore, hfStore} from '.';
 import {serverStore} from './ServerStore';
+import {prepareThisPcModel} from '../services/desktop/thisPc';
 import {routerStore} from './RouterStore';
 import {chatSessionStore} from './ChatSessionStore';
 import {GenerationSlot, type GenerationLease} from './generationLease';
@@ -3192,6 +3193,9 @@ class ModelStore {
         await this._releaseContextInternal();
       }
 
+      // Desktop app: a "This PC" model starts its local server on Load
+      // (src/services/desktop/thisPc.web.ts). Nothing on the phone.
+      await prepareThisPcModel(model.serverId!, model.remoteModelId!);
       const apiKey = await serverStore.getApiKey(model.serverId!);
       const server = serverStore.servers.find(s => s.id === model.serverId);
       if (!server) {

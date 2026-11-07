@@ -81,8 +81,22 @@ const PermissionsAndroid = {
   requestMultiple: async () => ({}),
 };
 
+// Alert.alert is empty in react-native-web: show it as a desktop dialog
+// (web/AlertHost.js), so confirmations like "Delete this model?" work.
+const Alert = {
+  alert: (title, message, buttons, options) =>
+    require('../../web/AlertHost').showDesktopAlert(
+      title,
+      message,
+      buttons,
+      options,
+    ),
+  prompt: () => {},
+};
+
 module.exports = {
   ...RNW,
+  Alert,
   TurboModuleRegistry,
   NativeModules,
   PermissionsAndroid,

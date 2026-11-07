@@ -414,6 +414,9 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [x] Fixed: in-app Hugging Face downloads failed (`startDownload` of null): the desktop now downloads through the native side, straight to disk with progress, cancellable, `.part` until complete (tested byte for byte against a local server).
 - [x] Fixed: "Memory Warning" on a 2B: the desktop used a placeholder 8 GB; it now reads the PC's real total and available memory (`system_info`).
 - [x] Desktop start-up makes no network calls (device-rules fetch off). The app itself starts in ~1.5 s (browser) / ~8 s (real app here, software drawing); the 45 s seen on Windows is likely first launch (Defender scanning the new unsigned app, web view setup) - check the second launch.
+- [x] Second Windows test: Gemini works; a 2B runs on the PC (12.4 tok/s).
+- [x] Fixed: delete / remove did nothing. React Native Web's Alert.alert is empty, so every confirmation was silently skipped; the desktop now shows them as dialogs with all their buttons (`web/AlertHost.js`). Checked: delete a model → "Remove …?" → Delete → gone.
+- [x] Fixed: "Network error" on a This PC model after reopening the app (its server stops with the app; the list still pointed at it). Load now starts the server for that model file again (same Allow dialog) and points This PC at it.
 - [ ] Each build gets its own version (0.1.<build number>) so installs upgrade cleanly.
 
 **Access rule (decided 2026-11-07): broad access, never automatic.**

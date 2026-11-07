@@ -6,7 +6,7 @@
  */
 import {invoke} from '@tauri-apps/api/core';
 
-import {serverStore} from '../../store';
+import {serverStore} from '../../store/ServerStore';
 
 export const THIS_PC = 'This PC';
 
@@ -91,4 +91,54 @@ export async function stopModelOnThisPc(): Promise<void> {
   if (isDesktopApp()) {
     await invoke('model_server_stop');
   }
+}
+
+/** True when the "This PC" server at `url` is serving `modelPath` right now. */
+async function isServing(
+  url: string,
+  apiKey: string | undefined,
+  modelPath: string,
+) {
+  try {
+    const r = await fetch(`${url}/v1/models`, {
+      headers: apiKey ? {Authorization: `Bearer ${apiKey}`} : {},
+    });
+    if (!r.ok) {
+      return false;
+    }
+    const body = await r.json();
+    return (body.data || []).some((m: {id: string}) => m.id === modelPath);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Called when a "This PC" model is loaded: the model server stops when the
+ * app closes (nothing keeps running behind the user's back), so start it for
+ * this model file if it isn't already serving it (the Allow dialog still
+ * asks for files outside the app folder). Other servers: nothing to do.
+ */
+export async function prepareThisPcModel(
+  serverId: string,
+  modelPath: string,
+): Promise<void> {
+  const server = serverStore.servers.find(s => s.id === serverId);
+  if (!isDesktopApp() || !server || server.name !== THIS_PC) {
+    return;
+  }
+  const currentKey = await serverStore.getApiKey(serverId);
+  if (await isServing(server.url, currentKey, modelPath)) {
+    return;
+  }
+  const {url, apiKey} = await invoke<{url: string; apiKey: string}>(
+    'model_server_start',
+    {modelPath, context: 8192},
+  );
+  if (!(await waitUntilReady(url, apiKey))) {
+    await stopModelOnThisPc();
+    throw new Error('The model did not start. Is it a valid .gguf file?');
+  }
+  serverStore.updateServer(serverId, {url});
+  await serverStore.setApiKey(serverId, apiKey);
 }

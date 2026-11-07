@@ -12,3 +12,9 @@ export async function runModelOnThisPc(): Promise<{
 }
 
 export async function stopModelOnThisPc(): Promise<void> {}
+
+/** Phone: models run with llama.rn; nothing to start. */
+export async function prepareThisPcModel(
+  _serverId: string,
+  _modelPath: string,
+): Promise<void> {}

@@ -10,12 +10,15 @@ import {AppRegistry} from 'react-native';
 import '../index';
 import App from '../App';
 import {ErrorScreen} from './ErrorScreen';
+import {AlertHost} from './AlertHost';
 
 const DESKTOP_APP = 'DesktopAgent';
 
 AppRegistry.registerComponent(DESKTOP_APP, () => () => (
   <ErrorScreen>
     <App />
+    {/* Alert.alert dialogs (empty in react-native-web otherwise). */}
+    <AlertHost />
   </ErrorScreen>
 ));
 AppRegistry.runApplication(DESKTOP_APP, {
