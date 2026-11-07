@@ -6,6 +6,11 @@
 mod approval;
 mod download;
 mod files;
+#[cfg(feature = "link")]
+mod link;
+#[cfg(not(feature = "link"))]
+#[path = "link_unavailable.rs"]
+mod link;
 mod model_server;
 mod net;
 mod preview;
@@ -15,6 +20,13 @@ mod system;
 mod timing;
 
 use tauri::Manager;
+
+#[cfg(feature = "link")]
+fn link_state() -> link::Link {
+    link::Link::default()
+}
+#[cfg(not(feature = "link"))]
+fn link_state() {}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -30,6 +42,8 @@ pub fn run() {
         .manage(download::Downloads::default())
         // HTML previews: their own address, sandboxed, no network (rule 3).
         .manage(preview::Previews::default())
+        // Home link: off until the user switches it on (link.rs).
+        .manage(link_state())
         .register_uri_scheme_protocol(preview::SCHEME, |ctx, request| {
             preview::respond(&ctx.app_handle().state::<preview::Previews>(), &request)
         })
@@ -56,20 +70,25 @@ pub fn run() {
             system::system_info,
             timing::startup_timing,
             preview::preview_put,
+            link::link_pair,
+            link::link_on,
+            link::link_off,
+            link::link_status,
+            link::link_forget,
         ])
         .build(tauri::generate_context!())
         .expect("error while building PocketAgent");
     app.run(|handle, event| {
         // Never leave the model server running after the app closes.
         if let tauri::RunEvent::Exit = event {
-            if let Some(mut child) = handle
+            if let Some(mut running) = handle
                 .state::<model_server::ModelServer>()
                 .0
                 .lock()
                 .unwrap()
                 .take()
             {
-                let _ = child.kill();
+                let _ = running.child.kill();
             }
         }
     });
@@ -91,6 +110,8 @@ mod tests {
             include_str!("system.rs"),
             include_str!("timing.rs"),
             include_str!("preview.rs"),
+            include_str!("link.rs"),
+            include_str!("link_unavailable.rs"),
         ];
         for source in sources {
             let lines: Vec<&str> = source.lines().collect();

@@ -28,6 +28,11 @@
     "allow-model-server-stop",
     "allow-system-info",
     "allow-startup-timing",
-    "allow-preview-put"
+    "allow-preview-put",
+    "allow-link-pair",
+    "allow-link-on",
+    "allow-link-off",
+    "allow-link-status",
+    "allow-link-forget"
   ]
 }

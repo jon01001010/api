@@ -217,6 +217,11 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'system_info',
         'startup_timing',
         'preview_put',
+        'link_pair',
+        'link_on',
+        'link_off',
+        'link_status',
+        'link_forget',
       ].sort(),
     );
     // The window is allowed exactly those, plus Tauri's core basics.
@@ -342,6 +347,8 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'system',
       'timing',
       'preview',
+      'link',
+      'link_unavailable',
     ]) {
       const src = tauri(`src/${file}.rs`).replace(/\r\n/g, '\n');
       expect([
@@ -349,6 +356,39 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         /#\[tauri::command\]\n(#\[[^\n]*\n)*pub fn/.test(src),
       ]).toEqual([file, false]);
     }
+  });
+
+  it('home link: paired phones reach only the model server, pairing asks', () => {
+    const link = tauri('src/link.rs');
+    // Exactly three requests exist, and only "pair" works before pairing.
+    const ops = link.slice(
+      link.indexOf('pub enum Request'),
+      link.indexOf('pub fn parse_request'),
+    );
+    expect(
+      ops
+        .match(/^\s{4}(\w+)/gm)!
+        .map(o => o.trim())
+        .sort(),
+    ).toEqual(['Http', 'Pair', 'Status']);
+    expect(link).toContain('Some(Request::Status) if paired =>');
+    expect(link).toContain('Some(Request::Http) if paired =>');
+    // Pairing: the one-time code, then the native dialog, then saved.
+    expect(link).toMatch(
+      /let code_ok = try_code\(&link\.pair_code, &code\);[\s\S]*?code_ok && \{[\s\S]*?approval::ask\(&app, &question\)\.await[\s\S]*?save_phones/,
+    );
+    // The model server on this PC only, on its own port.
+    expect(link).toContain(
+      'tokio::net::TcpStream::connect(("127.0.0.1", port))',
+    );
+    expect(link.match(/TcpStream::connect/g)).toHaveLength(1);
+    // Kept where the screens can't write ("PocketAgent:" is theirs).
+    expect(link).toContain('const KEY_ENTRY: &str = "DesktopAgent-link:key";');
+    expect(link).toContain(
+      'const PHONES_ENTRY: &str = "DesktopAgent-link:phones";',
+    );
+    // Off until switched on: nothing starts the link at app start.
+    expect(tauri('src/lib.rs')).not.toMatch(/link::start|link_on\(/);
   });
 
   it('network from the native side is http/https only', () => {

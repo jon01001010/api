@@ -14,7 +14,27 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 #[derive(Default)]
-pub struct ModelServer(pub Mutex<Option<Child>>);
+pub struct ModelServer(pub Mutex<Option<Running>>);
+
+/// The running server: its process, port and password (the home link
+/// passes requests to it, link.rs).
+pub struct Running {
+    pub child: Child,
+    pub port: u16,
+    pub key: String,
+}
+
+impl ModelServer {
+    /// Port and password of the running server, if it is still running.
+    pub fn address(&self) -> Option<(u16, String)> {
+        let mut guard = self.0.lock().unwrap();
+        let running = guard.as_mut()?;
+        if matches!(running.child.try_wait(), Ok(Some(_))) {
+            return None;
+        }
+        Some((running.port, running.key.clone()))
+    }
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -147,7 +167,11 @@ pub async fn model_server_start(
         command.creation_flags(CREATE_NO_WINDOW);
     }
     let child = command.spawn().map_err(|e| e.to_string())?;
-    *server.0.lock().unwrap() = Some(child);
+    *server.0.lock().unwrap() = Some(Running {
+        child,
+        port,
+        key: key.clone(),
+    });
     Ok(Started {
         url: format!("http://127.0.0.1:{port}"),
         api_key: key,
@@ -156,9 +180,9 @@ pub async fn model_server_start(
 
 #[tauri::command(async)]
 pub fn model_server_stop(server: State<'_, ModelServer>) {
-    if let Some(mut child) = server.0.lock().unwrap().take() {
-        let _ = child.kill();
-        let _ = child.wait();
+    if let Some(mut running) = server.0.lock().unwrap().take() {
+        let _ = running.child.kill();
+        let _ = running.child.wait();
     }
 }
 

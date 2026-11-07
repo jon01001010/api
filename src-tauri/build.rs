@@ -23,6 +23,11 @@ const COMMANDS: &[&str] = &[
     "system_info",
     "startup_timing",
     "preview_put",
+    "link_pair",
+    "link_on",
+    "link_off",
+    "link_status",
+    "link_forget",
 ];
 
 fn main() {

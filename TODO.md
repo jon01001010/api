@@ -455,6 +455,22 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [ ] A test pins the Tauri permissions: adding a door without its approval step fails until decided on purpose and written into SECURITY.md.
 - [x] Model-made HTML previews run in a locked-down frame with no way to reach the app's doors (2026-11-07). The native side serves the page from its own address `pa-preview` with the no-network policy + `sandbox allow-scripts`; the frame is sandboxed to scripts only; the window allows frames from `pa-preview` only. Checked against 24 ways out, in Chromium (Windows' engine) and in the real Linux app (WebKitGTK + the real Tauri bridge): page scripts run (clock); fetch, XHR, beacon, WebSocket, EventSource, images, CSS, prefetch, scripts from outside, workers, forms, pop-ups, downloads, added frames, top and self navigation, storage, cookies and WebRTC all blocked; the app's page and the Tauri bridge unreachable; nothing reached an outside listener (a loosened control run did leak, so the check catches leaks). End to end: a model's render_html reply shows a live clock in chat and fullscreen.
 
+## Home link: use your home PC's model from your phone, anywhere (started 2026-11-07)
+
+Research (2026-11-07): **iroh 1.x** (Rust, MIT/Apache, 1.0 in June 2026; we pin 1.4.1). Devices dial each other by public key; direct connection first (hole punching through home routers and mobile networks), else a relay that only passes encrypted bytes. Official Kotlin bindings exist (`computer.iroh:iroh`), but one report says their async calls hang on Android. Compared: plain WireGuard needs port forwarding / a public IP (often impossible behind the provider's shared address, CGNAT); Tailscale needs an outside account (Headscale: your own server); Tor onion services in Rust (Arti) work but lack DoS protection and are slower. n0's 4 public relays are free but rate-limited, "for development"; they can't read the traffic. Self-hosting `iroh-relay` is one binary.
+
+**Desktop side (done, checked in the real Linux app with a stand-in phone):**
+- [x] `src-tauri/src/link.rs` + Settings card "Use this PC's model from your phone": off by default; Pair a phone shows a QR code (PC key + one-time code, 10 min, one try); the phone sends the code; the PC asks in a native dialog; only then the phone's key is saved (credential store, names the screens can't write).
+- [x] Paired phones can only: ask whether a model runs (with its password), and pass HTTP to this PC's own model server. Checked: unpaired phone refused; reused code refused without a dialog; a paired phone asking for anything else refused; streamed chat reply through the link; Remove shuts the phone out at once; Switch off closes the port.
+- [x] Built with the `link` feature (default). The Windows type-check here runs with `--no-default-features` (no Windows C compiler here for iroh's crypto library; the real Windows build has one).
+- [ ] Relays: n0's public relays by default; add "Use my own relay" (URL) for people who self-host.
+- [ ] Keep running when the window is closed (tray icon), and start the model when a paired phone asks.
+- [ ] Linux keeps keys in the kernel keyring (forgotten after a reboot): use the desktop's secret service there.
+
+**Phone side (next):**
+- [ ] A small Rust library for Android (same iroh code as the PC side) behind a native module: scan the QR code, pair, then open a local port on the phone (127.0.0.1) that tunnels to the PC. The app adds a server "Home PC" pointing at it, so the existing chat code works unchanged.
+- [ ] Phone stays small (rule 5): no new Android permission beyond the internet one it has; the tunnel listens on 127.0.0.1 only.
+
 ## PocketAgent Desktop: companion app and phone ↔ desktop link (idea 2026-11-06, write-up only)
 
 A desktop app that pairs with the phone: trains the personal LoRA, runs bigger models (14B–30B) for the phone, and takes heavy jobs. **Platforms (decided 2026-11-07): Windows first; Linux not planned; no Apple at all (no Mac, no iPhone).** Open source, no Google, no account, no cloud.

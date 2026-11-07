@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-link-off"
+description = "Enables the link_off command without any pre-configured scope."
+commands.allow = ["link_off"]
+
+[[permission]]
+identifier = "deny-link-off"
+description = "Denies the link_off command without any pre-configured scope."
+commands.deny = ["link_off"]
