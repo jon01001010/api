@@ -341,6 +341,18 @@ Findings (2026-11-07):
 Plan (each step on its own; ask before each):
 **Rule (decided 2026-11-07): anything not needed on a platform is stubbed, not removed.** A stub has the same functions as the real module, does nothing and says "not available on this device", so the shared code never needs `if Windows` checks and nothing is deleted. The UI hides features whose module is a stub.
 
+**Branch `windows` (started 2026-11-07).** Done so far:
+- [x] react-native-windows 0.82.8 added; Windows C++ app project generated (`windows/PocketAgent`), our `metro.config.js` kept and merged.
+- [x] Stub layer (`stubs/windows/`): Metro swaps 24 packages for stubs only when bundling for Windows (Android bundle checked unchanged). "native" stubs say "not available on this device"; "ui" stubs (animations, gestures, safe areas, keyboard, masked view) keep screens rendering: animations jump to their end.
+- [x] The whole app bundles for Windows (`yarn bundle:windows`).
+- [x] Tests: every stub loads; native calls fail clearly; animation maths; and a guard that fails if a new native package has neither Windows code nor a stub.
+- [x] CI: `.github/workflows/pocketagent-windows.yml`, run only on request: `bundle` (cheap checks) or `exe` (full build).
+- [ ] First Windows CI run: see which linked packages (fs, storage, web view, svg, screens, clipboard, slider, picker, device info, gradients, config) build on the new architecture; stub the ones that don't.
+- [ ] Icon fonts (react-native-vector-icons) added to the Windows app's assets.
+- [ ] A real secure random source on Windows before pairing keys (the stub is fine for record IDs only).
+- [ ] API keys on Windows: Windows Credential Manager instead of the keychain stub.
+- [ ] Bottom sheets and the side menu run on inert animation stubs: check on Windows; a permanent sidebar suits a desktop window better than a drawer.
+
 1. [ ] **Windows shell:** add a react-native-windows project; the app opens on Windows; every native module without a Windows version gets a stub (llama.rn until step 2, whisper.rn, vision-camera, image-picker, audio stream, speech, share, haptics, phone actions, in-app purchases, Firebase, Google / Apple sign-in).
 2. [ ] **Local models on Windows without a new native module:** bundle llama.cpp's prebuilt `llama-server.exe` (CUDA for NVIDIA, Vulkan for AMD/Intel) and start it on 127.0.0.1; the app talks to it with the remote engine it already has. Same idea for voice (whisper.cpp server).
 3. [ ] **Platform list per tool:** each tool says where it runs. Phone actions stay Android-only; Windows gets its own small set later (open an app, open a file or folder, a notification). Approvals and switches work the same on both.

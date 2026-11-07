@@ -117,3 +117,6 @@ workflows/
 # Generated Python caches never belong in source checkpoints.
 __pycache__/
 *.py[cod]
+
+# Windows JS bundle output (yarn bundle:windows)
+windows-bundle/

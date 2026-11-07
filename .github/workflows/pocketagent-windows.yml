@@ -1,0 +1,77 @@
+# PocketAgent for Windows: builds the same app as a Windows .exe.
+# Runs ONLY when asked (workflow_dispatch), never on push: GitHub counts
+# Windows runner minutes at 2x Linux. See TODO.md "PocketAgent for Windows".
+name: PocketAgent Windows
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: bundle = JS bundle and checks only (cheap); exe = full Windows build
+        type: choice
+        default: bundle
+        options: [bundle, exe]
+permissions:
+  contents: read
+concurrency:
+  group: pocketagent-windows-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+      - name: Install locked dependencies and patches
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          npm install --global yarn@1.22.22
+          # postinstall is a bash script; yarn would run it through cmd.
+          yarn install --frozen-lockfile --non-interactive --ignore-scripts
+          bash scripts/postinstall.sh
+      - name: TypeScript validation
+        run: yarn typecheck
+      - name: Windows stub tests
+        run: yarn jest --runInBand --coverage=false stubs/windows
+      - name: Bundle the app for Windows
+        run: |
+          set -euo pipefail
+          mkdir -p windows-bundle/assets
+          npx react-native bundle --platform windows --dev false \
+            --entry-file index.js \
+            --bundle-output windows-bundle/index.windows.bundle \
+            --assets-dest windows-bundle/assets
+      - name: Build the Windows app
+        if: inputs.stage == 'exe'
+        timeout-minutes: 60
+        run: |
+          set -euo pipefail
+          npx @react-native-community/cli run-windows --release --arch x64 \
+            --no-launch --no-deploy --no-packager --logging 2>&1 | tee windows-build.log
+      - name: Upload the Windows app
+        if: success() && inputs.stage == 'exe'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketagent-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            windows/x64/Release/**
+            !windows/x64/Release/**/*.pdb
+          retention-days: 1
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketagent-windows-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            windows-build.log
+            windows/**/*.binlog
+          if-no-files-found: ignore
+          retention-days: 3
