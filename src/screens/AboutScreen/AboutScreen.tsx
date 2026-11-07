@@ -14,6 +14,7 @@ import {CopyIcon, GithubIcon, ChevronRightIcon} from '../../assets/icons';
 import {Sheet, TextInput} from '../../components';
 import {useTheme} from '../../hooks';
 import {createStyles} from './styles';
+import {LicensesModal} from './LicensesModal';
 import {L10nContext} from '../../utils';
 import {uiStore} from '../../store';
 
@@ -31,6 +32,7 @@ export const AboutScreen: React.FC = () => {
   const styles = createStyles(theme, insets);
   const l10n = useContext(L10nContext);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showLicenses, setShowLicenses] = useState(false);
 
   const [appInfo, setAppInfo] = React.useState({
     version: '',
@@ -101,7 +103,8 @@ export const AboutScreen: React.FC = () => {
                 PocketAgent
               </Text>
               <Text variant="bodyMedium" style={styles.description}>
-                Local AI models and an experimental on-device API. Built on PocketPal AI, llama.cpp and llama.rn.
+                Local AI models and an experimental on-device API. Built on
+                PocketPal AI, llama.cpp and llama.rn.
               </Text>
               <View style={styles.versionContainer}>
                 <TouchableOpacity
@@ -127,7 +130,8 @@ export const AboutScreen: React.FC = () => {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Open-source foundations</Text>
             <Text variant="bodyMedium" style={styles.description}>
-              PocketAgent builds on the open-source PocketPal AI project. You can support its original maintainers here.
+              PocketAgent builds on the open-source PocketPal AI project. You
+              can support its original maintainers here.
             </Text>
             <Button
               mode="outlined"
@@ -138,6 +142,17 @@ export const AboutScreen: React.FC = () => {
               icon={GithubButtonIcon}>
               {l10n.about.githubButton}
             </Button>
+            <Button
+              mode="outlined"
+              onPress={() => setShowLicenses(true)}
+              style={styles.actionButton}
+              testID="open-licenses">
+              Open-source licences
+            </Button>
+            <LicensesModal
+              visible={showLicenses}
+              onClose={() => setShowLicenses(false)}
+            />
             <Text style={styles.orText}>{l10n.about.orBy}</Text>
             <Button
               mode="outlined"

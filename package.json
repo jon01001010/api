@@ -29,6 +29,7 @@
     "windows": "npx @react-native-community/cli run-windows",
     "test:windows": "jest --config jest.config.windows.js",
     "build:web": "node scripts/web/build.js",
+    "licenses": "node scripts/licenses/generate.js",
     "bundle:windows": "react-native bundle --platform windows --dev false --entry-file index.js --bundle-output windows-bundle/index.windows.bundle --assets-dest windows-bundle/assets"
   },
   "dependencies": {
