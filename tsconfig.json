@@ -12,5 +12,5 @@
       "whisper.rn": ["./node_modules/whisper.rn/lib/typescript/index.d.ts"]
     },
   },
-  "exclude": ["node_modules", "extras"]
+  "exclude": ["node_modules", "extras", "web/dist", "windows-bundle", "coverage"]
 }

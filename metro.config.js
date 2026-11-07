@@ -5,6 +5,7 @@ const path = require('node:path');
 //const localPackagePaths = ['localpath/code/llama.rn'];
 
 const {windowsStubFor} = require('./stubs/windows/stubbedModules');
+const {webStubFor} = require('./stubs/web/stubbedModules');
 
 const rnwPath = fs.realpathSync(
   path.resolve(require.resolve('react-native-windows/package.json'), '..'),
@@ -38,10 +39,44 @@ const config = {
     // Windows: native packages with no Windows version are swapped for stubs
     // (same functions, "not available on this device"). Android and iOS are
     // untouched. See stubs/windows/stubbedModules.js.
+    // Web (the Windows app via Tauri): react-native-web stands in for
+    // react-native, and packages with no web version are stubbed
+    // (stubs/web/stubbedModules.js).
+    platforms: [...(defaultConfig.resolver.platforms || []), 'windows', 'web'],
     resolveRequest: (context, moduleName, platform) => {
-      const stub = platform === 'windows' ? windowsStubFor(moduleName) : null;
+      const stub =
+        platform === 'windows'
+          ? windowsStubFor(moduleName)
+          : platform === 'web'
+            ? webStubFor(moduleName)
+            : null;
       if (stub) {
         return {type: 'sourceFile', filePath: stub};
+      }
+      if (platform === 'web') {
+        // Packages' web code (their "browser" entry and .web.js / plain .js
+        // files), never their phone code (.native.js).
+        const webContext = {
+          ...context,
+          mainFields: ['browser', 'module', 'main'],
+          preferNativePlatform: false,
+        };
+        if (moduleName === 'react-native/Libraries/Image/AssetRegistry') {
+          // Images: react-native-web's own registry.
+          return webContext.resolveRequest(
+            webContext,
+            'react-native-web/dist/modules/AssetRegistry',
+            platform,
+          );
+        }
+        if (moduleName === 'react-native') {
+          // react-native-web plus the phone-only APIs it lacks.
+          return {
+            type: 'sourceFile',
+            filePath: path.join(__dirname, 'stubs', 'web', 'react-native.js'),
+          };
+        }
+        return webContext.resolveRequest(webContext, moduleName, platform);
       }
       return context.resolveRequest(context, moduleName, platform);
     },

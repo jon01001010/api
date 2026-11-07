@@ -120,3 +120,6 @@ __pycache__/
 
 # Windows JS bundle output (yarn bundle:windows)
 windows-bundle/
+
+# Web build output (node scripts/web/build.js)
+web/dist/

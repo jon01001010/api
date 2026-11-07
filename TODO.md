@@ -373,9 +373,19 @@ Firebase, Google Sign-In and Apple sign-in are left over from PocketPal. They ar
 - [ ] Add a test that fails if a `com.google.firebase` / `com.google.android.gms` library is in the build again (with the other security rules).
 - [ ] Check the APK with Exodus Privacy: aim for zero trackers.
 
-## Windows route change proposed: react-native-web + Tauri (2026-11-07, waiting for go-ahead)
+## Windows route: react-native-web + Tauri (go-ahead 2026-11-07, web version running)
 
 Instead of react-native-windows (most native libraries need stubs there, and nothing can be run or checked without a 40-minute Windows build): run the same app as a web app (react-native-web, which most of the app's libraries officially support) wrapped in a small Tauri .exe (Windows' own WebView2). Tauri bundles and starts `llama-server.exe` as a "sidecar", has file / clipboard / notification plugins, and builds the installer. The web version can be run and screenshot here; Windows builds are only for packaging. The react-native-windows work stays on the branch (don't delete).
+
+**Web version (step 1, done 2026-11-07):**
+- [x] react-native-web 0.21.2 + react-dom 19.1.1; Metro builds for platform "web" (`yarn build:web` → `web/dist`), using packages' web code and a web stand-in for `react-native` (react-native-web plus "not available" answers for phone-only APIs and the app's own native modules).
+- [x] Web stubs (`stubs/web/`), mostly shared with Windows: local models, voice, camera, Google/Apple/store services, file storage (in memory), device info, keychain, and the HTML preview (off until its web lock is built and checked).
+- [x] Chat database on the web: WatermelonDB's JavaScript database **saved in browser storage** (IndexedDB), so chats are kept.
+- [x] App and icon fonts load; images load.
+- [x] Checked in Chromium here: welcome screen, Chat, Settings and Models open with no errors (screenshots sent).
+- [ ] Next: Tauri wrapper (.exe), llama-server sidecar, native approval dialogs, Tauri file plugin instead of in-memory files, Windows Credential Manager for API keys.
+- [ ] Fix: an invalid colour `rgba(…)30` in the app's styles (Android ignores it; the web warns).
+- [ ] Fix: `pocketagent_logo` is an Android-only image name; give the web its file.
 
 **Access rule (decided 2026-11-07): broad access, never automatic.**
 - [ ] The app may reach the whole drive, run programs, open apps and links, use the clipboard; **every** such action asks first, showing exactly what will happen; no means nothing happens.

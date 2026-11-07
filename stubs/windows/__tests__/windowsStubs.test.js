@@ -40,9 +40,13 @@ describe('native feature stubs', () => {
     });
   });
 
-  it('components render their children and hooks return nothing', () => {
+  it('components render their children; hooks grant nothing', async () => {
     expect(typeof native.Camera).toBe('object'); // forwardRef component
-    expect(native.useCameraPermission()).toBeUndefined();
+    const permission = native.useCameraPermission();
+    expect(permission.hasPermission).toBe(false);
+    await expect(permission.requestPermission()).rejects.toThrow(
+      /not available on this device/,
+    );
   });
 
   it('llama.rn: loading a model says not available; screen lookups are harmless', async () => {

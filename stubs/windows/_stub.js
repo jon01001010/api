@@ -59,6 +59,26 @@ function chain() {
   return proxy;
 }
 
+/** What a native hook returns: nothing granted, nothing available. */
+function nativeHookResult(what) {
+  return new Proxy(
+    {},
+    {
+      get(_t, key) {
+        if (typeof key === 'symbol' || SKIP.has(key)) {
+          return undefined;
+        }
+        if (/^(has|is|can)[A-Z]/.test(key)) {
+          return false;
+        }
+        return function notAvailable() {
+          return Promise.reject(new NotAvailableError(`${what}.${key}`));
+        };
+      },
+    },
+  );
+}
+
 function makeStub(
   packageName,
   {mode = 'native', overrides = {}, hookValue, components = 'passthrough'} = {},
@@ -80,7 +100,12 @@ function makeStub(
           ? require('react-native').View
           : passthrough(`${packageName}.${key}`);
     } else if (/^use[A-Z]/.test(key)) {
-      value = () => hookValue;
+      // "native" hooks return a safe object (has…/is… are false, anything
+      // else is a "not available" function) unless a hookValue is given.
+      value = () =>
+        hookValue !== undefined || mode !== 'native'
+          ? hookValue
+          : nativeHookResult(`${packageName} (${key})`);
     } else if (mode === 'ui') {
       value = chain();
     } else {
