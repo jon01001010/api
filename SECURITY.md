@@ -1,6 +1,6 @@
 # PocketAgent security rules
 
-These rules keep the app safe as it grows: new tools, downloaded assistants and mods. Each rule has a test in `src/__tests__/securityRules.test.ts`, which fails if a change weakens it. **If one of those tests fails, don't just update the test.** Read the rule, decide on purpose, and update this file in the same change.
+These rules keep the app safe as it grows: new tools, downloaded assistants and mods. Each rule has a test in `src/__tests__/securityRules.test.ts` (and the Windows app's native side has Rust tests in `src-tauri`), which fails if a change weakens it. **If one of those tests fails, don't just update the test.** Read the rule, decide on purpose, and update this file in the same change.
 
 Audit of 2026-11-06: every place where untrusted input (model output, downloaded assistants, web pages, links from other apps, stored data) meets something powerful was checked. Findings and fixes are in `TODO.md` ("Off means off", "HTML preview lock").
 
@@ -35,6 +35,16 @@ Audit of 2026-11-06: every place where untrusted input (model output, downloaded
 - The app asks for a fixed list of Android permissions. Adding one means updating the test and this file.
 - Only the main screen can be opened by other apps. Links from outside only fill in the chat box or offer a model download; they never send or run anything.
 - The local API listens on the phone itself (127.0.0.1) only. It checks the Host header and a random password, compared in constant time, and accepts text only, with no tools.
+
+## 6. The Windows app opens doors only on purpose, and asks
+
+The Windows app (`src-tauri`, branch `windows`) is the same app in Windows' web view. Rule: broad access, never automatic.
+
+- The window has no internet access of its own and no frames (its content security policy). Network, files, keys and the model server are commands on the native side, each listed in `src-tauri/build.rs` and allowed in `src-tauri/capabilities/default.json`. Nothing else is allowed.
+- Files: the app's own folder (AppData) needs no prompt. Anywhere else, every read, write, list or delete shows an "Allow?" dialog **from the native side**, so the web screens can't skip it. `..` is refused everywhere.
+- Models: the bundled llama.cpp server (pinned release, checksum checked) listens on this PC only with a random password. Running a model file from outside the app folder asks first.
+- Keys: Windows Credential Manager, never plain files. In a plain browser, saving keys is not available.
+- Network from the native side is http and https only.
 
 ## For mods (planned)
 

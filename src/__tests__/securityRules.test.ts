@@ -180,3 +180,90 @@ describe('Rule 5: the phone side stays small', () => {
     expect(read('src/services/localApi/protocol.ts')).toMatch(/no tools/);
   });
 });
+
+describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => {
+  const tauri = (file: string) => read(`src-tauri/${file}`);
+  const commandsIn = (text: string) =>
+    [...text.matchAll(/"([a-z_]+)"/g)].map(m => m[1]);
+
+  it('the native side offers exactly these commands', () => {
+    const build = tauri('build.rs');
+    const listed = commandsIn(
+      build.slice(build.indexOf('COMMANDS'), build.indexOf('];')),
+    );
+    expect(listed.sort()).toEqual(
+      [
+        'fs_exists',
+        'fs_read',
+        'fs_write',
+        'fs_mkdir',
+        'fs_list',
+        'fs_stat',
+        'fs_remove',
+        'fs_copy',
+        'fs_move',
+        'secret_get',
+        'secret_set',
+        'secret_delete',
+        'http_request',
+        'http_abort',
+        'pick_model_file',
+        'model_server_start',
+        'model_server_stop',
+      ].sort(),
+    );
+    // The window is allowed exactly those, plus Tauri's core basics.
+    const caps = JSON.parse(tauri('capabilities/default.json'));
+    expect(caps.permissions.sort()).toEqual(
+      [
+        'core:default',
+        ...listed.map(c => `allow-${c.replace(/_/g, '-')}`),
+      ].sort(),
+    );
+    // Every command is wired in, none extra.
+    const lib = tauri('src/lib.rs');
+    const handlers = [...lib.matchAll(/\w+::(\w+),/g)].map(m => m[1]);
+    expect(handlers.sort()).toEqual(listed.sort());
+  });
+
+  it('every file command outside the app folder asks first (native dialog)', () => {
+    const files = tauri('src/files.rs');
+    const fns = [...files.matchAll(/pub async fn (fs_\w+)\(([\s\S]*?)\n}\n/g)];
+    expect(fns.map(m => m[1]).sort()).toEqual([
+      'fs_copy',
+      'fs_exists',
+      'fs_list',
+      'fs_mkdir',
+      'fs_move',
+      'fs_read',
+      'fs_remove',
+      'fs_stat',
+      'fs_write',
+    ]);
+    for (const [, name, body] of fns) {
+      expect([name, body.includes('allowed(&app')]).toEqual([name, true]);
+    }
+    expect(files).toMatch(/if !located\.own \{[\s\S]*?ask\(app, &question\)/);
+    expect(tauri('src/approval.rs')).toContain('blocking_show()');
+  });
+
+  it('running a model from outside the app folder asks first; the server is private', () => {
+    const server = tauri('src/model_server.rs');
+    expect(server).toMatch(/if !own_models \{[\s\S]*?approval::ask/);
+    expect(server).toContain('"127.0.0.1".into()');
+    expect(server).toContain('"--api-key".into()');
+  });
+
+  it('the window itself has no internet access and no frames', () => {
+    const csp = JSON.parse(tauri('tauri.conf.json')).app.security.csp;
+    expect(csp['default-src']).toBe("'self'");
+    expect(csp['script-src']).toBe("'self'");
+    expect(csp['connect-src']).toBe('ipc: http://ipc.localhost');
+    expect(csp['frame-src']).toBe("'none'");
+    expect(csp['object-src']).toBe("'none'");
+  });
+
+  it('network from the native side is http/https only', () => {
+    expect(tauri('src/net.rs')).toMatch(/"http" \| "https" => Ok\(parsed\)/);
+  });
+});

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-http-abort"
+description = "Enables the http_abort command without any pre-configured scope."
+commands.allow = ["http_abort"]
+
+[[permission]]
+identifier = "deny-http-abort"
+description = "Denies the http_abort command without any pre-configured scope."
+commands.deny = ["http_abort"]

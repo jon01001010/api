@@ -1,0 +1,5 @@
+/target/
+/gen/schemas
+# Downloaded by the build (pinned llama.cpp release), never committed.
+/llama/*
+!/llama/README.md

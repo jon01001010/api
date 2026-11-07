@@ -9,9 +9,19 @@
 const RNW = require('react-native-web');
 const {makeStub} = require('../windows/_stub');
 
+// Modules whose job means nothing in a desktop window: they quietly succeed.
+const QUIET = {
+  // Keeping a phone screen on while a reply is generated.
+  KeepAwakeModule: {activate: async () => {}, deactivate: async () => {}},
+};
+
 const stubs = {};
 const nativeModule = name =>
-  stubs[name] || (stubs[name] = makeStub(`${name}`, {mode: 'native'}));
+  stubs[name] ||
+  (stubs[name] = makeStub(`${name}`, {
+    mode: 'native',
+    overrides: QUIET[name] || {},
+  }));
 
 const TurboModuleRegistry = {
   get: () => null,

@@ -383,7 +383,14 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [x] Chat database on the web: WatermelonDB's JavaScript database **saved in browser storage** (IndexedDB), so chats are kept.
 - [x] App and icon fonts load; images load.
 - [x] Checked in Chromium here: welcome screen, Chat, Settings and Models open with no errors (screenshots sent).
-- [ ] Next: Tauri wrapper (.exe), llama-server sidecar, native approval dialogs, Tauri file plugin instead of in-memory files, Windows Credential Manager for API keys.
+**Tauri .exe (step 2, built 2026-11-07, first Windows build next):**
+- [x] `src-tauri` (Tauri 2.12.4): 17 native commands, each listed in build.rs and allowed in capabilities: files (own AppData folder free, anywhere else asks via a native dialog, `..` refused), keys (Windows Credential Manager), network (no browser cross-site limits; the window itself has no internet), model server.
+- [x] "Run a model on this PC" (Settings): pick a .gguf, the bundled llama.cpp server (b11662, Vulkan + CPU, checksum pinned) runs it on 127.0.0.1 with a random password and it appears as "This PC" in Models.
+- [x] Checked here: 9 Rust tests; the release web build under the .exe's security policy with a fake native side (streaming fetch/XHR, abort, direct internet blocked); end to end with a stand-in llama.cpp server (pick → start → This PC → Load → chat reply streamed).
+- [x] Safety rule 6 in SECURITY.md + tests that fail if a command, permission or approval step changes.
+- [ ] First Windows build: check the installer installs, opens, saves chats/settings, keys, a real .gguf runs.
+- [ ] Icon: only a 96px source exists; a proper large icon.
+- [ ] Code signing (SmartScreen "unknown publisher" until signed).
 - [ ] Fix: an invalid colour `rgba(…)30` in the app's styles (Android ignores it; the web warns).
 - [ ] Fix: `pocketagent_logo` is an Android-only image name; give the web its file.
 

@@ -165,21 +165,21 @@ describe('in-memory storage on Windows', () => {
   });
 
   it('files: write, read, list, stat, delete, like the phone', async () => {
-    const fs = jest.requireActual('../memory-fs.js').default;
-    const dir = fs.DocumentDirectoryPath + '/ws';
-    await fs.mkdir(dir);
-    await fs.writeFile(dir + '/a.txt', 'hello');
-    expect(await fs.exists(dir + '/a.txt')).toBe(true);
-    expect(await fs.readFile(dir + '/a.txt')).toBe('hello');
-    const listed = await fs.readDir(dir);
+    const memFs = jest.requireActual('../memory-fs.js').default;
+    const dir = memFs.DocumentDirectoryPath + '/ws';
+    await memFs.mkdir(dir);
+    await memFs.writeFile(dir + '/a.txt', 'hello');
+    expect(await memFs.exists(dir + '/a.txt')).toBe(true);
+    expect(await memFs.readFile(dir + '/a.txt')).toBe('hello');
+    const listed = await memFs.readDir(dir);
     expect(listed.map(e => e.name)).toEqual(['a.txt']);
-    expect((await fs.stat(dir + '/a.txt')).isFile()).toBe(true);
-    await fs.unlink(dir);
-    expect(await fs.exists(dir + '/a.txt')).toBe(false);
-    await expect(fs.readFile(dir + '/a.txt')).rejects.toMatchObject({
+    expect((await memFs.stat(dir + '/a.txt')).isFile()).toBe(true);
+    await memFs.unlink(dir);
+    expect(await memFs.exists(dir + '/a.txt')).toBe(false);
+    await expect(memFs.readFile(dir + '/a.txt')).rejects.toMatchObject({
       code: 'ENOENT',
     });
-    await expect(fs.downloadFile({}).promise).rejects.toThrow(
+    await expect(memFs.downloadFile({}).promise).rejects.toThrow(
       /not available on this device/,
     );
   });

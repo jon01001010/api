@@ -7,7 +7,8 @@
  */
 const {NotAvailableError} = require('./_stub');
 
-const ROOT = 'C:/PocketAgent';
+// Same space as the .exe's own folder (src-tauri/src/files.rs: /pocketagent).
+const ROOT = '/pocketagent';
 const files = new Map();
 const dirs = new Set([ROOT]);
 

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-model-server-start"
+description = "Enables the model_server_start command without any pre-configured scope."
+commands.allow = ["model_server_start"]
+
+[[permission]]
+identifier = "deny-model-server-start"
+description = "Denies the model_server_start command without any pre-configured scope."
+commands.deny = ["model_server_start"]

@@ -1,13 +1,11 @@
-# PocketAgent for Windows: builds the same app as a Windows .exe.
+# PocketAgent for Windows: the same app as a web app inside a small Tauri
+# .exe (src-tauri), with the pinned llama.cpp server for local models.
 # Runs ONLY when asked: a manual run, or a change to
 # .github/windows-build-request on the windows branch. Ordinary pushes never
 # start it: GitHub counts Windows runner minutes at 2x Linux.
-# See TODO.md "PocketAgent for Windows".
+# See TODO.md "Windows route: react-native-web + Tauri".
 name: PocketAgent Windows
 on:
-  # Manual runs need this file on the default branch; until it is there,
-  # a change to .github/windows-build-request on the windows branch starts
-  # a full (exe) build. Nothing else starts it.
   push:
     branches: [windows]
     paths:
@@ -15,15 +13,22 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: bundle = JS bundle and checks only (cheap); exe = full Windows build
+        description: exe = the Windows installer (Tauri); rnw = the earlier react-native-windows build (kept, not used)
         type: choice
-        default: bundle
-        options: [bundle, exe]
+        default: exe
+        options: [exe, rnw]
 permissions:
   contents: read
 concurrency:
   group: pocketagent-windows-${{ github.ref }}
   cancel-in-progress: false
+env:
+  # Pinned llama.cpp release (15 Oct 2026) and the checksum of its Windows
+  # build (Vulkan for graphics cards, CPU fallback included). Change both
+  # together, on purpose.
+  LLAMA_TAG: b11662
+  LLAMA_ZIP: llama-b11662-bin-win-vulkan-x64.zip
+  LLAMA_SHA256: d84541495f3608482c35a5c8c24267a8d61117d89d5cf34a557b3ed877b272f8
 jobs:
   windows:
     runs-on: windows-2022
@@ -48,9 +53,42 @@ jobs:
           bash scripts/postinstall.sh
       - name: TypeScript validation
         run: yarn typecheck
-      - name: Windows stub tests
-        run: yarn jest --runInBand --coverage=false stubs/windows
-      - name: Bundle the app for Windows
+      - name: Windows and safety rule tests
+        run: yarn jest --runInBand --coverage=false stubs src/__tests__/securityRules.test.ts
+
+      # --- exe (Tauri) ---
+      - name: Build the web app (release)
+        if: github.event_name == 'push' || inputs.stage == 'exe'
+        run: node scripts/web/build.js --release
+      - name: Add the pinned llama.cpp server (checksum checked)
+        if: github.event_name == 'push' || inputs.stage == 'exe'
+        run: |
+          set -euo pipefail
+          curl -sSfL -o "$LLAMA_ZIP" \
+            "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/${LLAMA_ZIP}"
+          echo "${LLAMA_SHA256}  ${LLAMA_ZIP}" | sha256sum -c -
+          unzip -q -o "$LLAMA_ZIP" -d src-tauri/llama
+          test -f src-tauri/llama/llama-server.exe
+      - name: Rust tests (native side)
+        if: github.event_name == 'push' || inputs.stage == 'exe'
+        working-directory: src-tauri
+        run: cargo test --locked
+      - name: Build the Windows installer
+        if: github.event_name == 'push' || inputs.stage == 'exe'
+        timeout-minutes: 60
+        run: npx tauri build --bundles nsis 2>&1 | tee windows-build.log
+      - name: Upload the installer
+        if: success() && (github.event_name == 'push' || inputs.stage == 'exe')
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketagent-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      # --- rnw (kept for reference, not the default) ---
+      - name: Bundle for react-native-windows
+        if: inputs.stage == 'rnw'
         run: |
           set -euo pipefail
           mkdir -p windows-bundle/assets
@@ -58,22 +96,14 @@ jobs:
             --entry-file index.js \
             --bundle-output windows-bundle/index.windows.bundle \
             --assets-dest windows-bundle/assets
-      - name: Build the Windows app
-        if: github.event_name == 'push' || inputs.stage == 'exe'
+      - name: Build with react-native-windows
+        if: inputs.stage == 'rnw'
         timeout-minutes: 60
         run: |
           set -euo pipefail
           npx @react-native-community/cli run-windows --release --arch x64 \
             --no-launch --no-deploy --no-packager --logging 2>&1 | tee windows-build.log
-      - name: Upload the Windows app
-        if: success() && (github.event_name == 'push' || inputs.stage == 'exe')
-        uses: actions/upload-artifact@v4
-        with:
-          name: pocketagent-windows-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            windows/x64/Release/**
-            !windows/x64/Release/**/*.pdb
-          retention-days: 1
+
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -84,3 +114,40 @@ jobs:
             windows/**/*.binlog
           if-no-files-found: ignore
           retention-days: 3
+
+  # Publishes the installer as a pre-release with a direct download link.
+  # Only this job can write to the repository: no third-party actions.
+  release:
+    needs: windows
+    if: success() && (github.event_name == 'push' || inputs.stage == 'exe')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the installer
+        uses: actions/download-artifact@v4
+        with:
+          name: pocketagent-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: exe
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          safe_branch=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')
+          tag="exe-${safe_branch}-${RUN_ID}-${RUN_ATTEMPT}"
+          src=$(ls exe/*.exe | head -1)
+          asset="PocketAgent-Windows-${safe_branch}-${RUN_ID}-setup.exe"
+          mv "$src" "exe/${asset}"
+          gh release create "$tag" "exe/${asset}" \
+            --target "$SHA" \
+            --prerelease \
+            --title "PocketAgent for Windows test build: ${BRANCH} (${SHA:0:7})" \
+            --notes "Test build from branch \`${BRANCH}\`, commit ${SHA}, workflow run ${RUN_ID}. Not a release, not code-signed: Windows SmartScreen will warn 'unknown publisher' (More info, Run anyway). Installs for your user only."
+          echo "Release: https://github.com/${GH_REPO}/releases/tag/${tag}" >> "$GITHUB_STEP_SUMMARY"

@@ -53,6 +53,7 @@ import {AuthSheet} from '../../components/PalsHub';
 import {LocalApiCard} from './LocalApiCard';
 import {ChatSettingsCard} from './ChatSettingsCard';
 import {SettingsLinks} from './SettingsLinks';
+import {ThisPcModelCard} from './ThisPcModelCard';
 
 import {useTheme} from '../../hooks';
 
@@ -378,6 +379,9 @@ export const SettingsScreen: React.FC = observer(() => {
           keyboardShouldPersistTaps="handled">
           {/* Screens that used to be in the side menu */}
           <SettingsLinks cardStyle={styles.card} />
+
+          {/* Windows app only: run a model with the bundled llama.cpp server. */}
+          <ThisPcModelCard cardStyle={styles.card} />
 
           {/* Chat: generation settings and export/import (moved from the
               chat screen's top-right menu). */}

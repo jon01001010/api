@@ -27,7 +27,8 @@ const STUBS = {
   'react-native-share': W('native.js'),
   'react-native-haptic-feedback': W('native.js'),
   '@react-native-documents/picker': W('native.js'),
-  'react-native-keychain': W('native.js'),
+  // Inside the .exe: Windows Credential Manager (stubs/web/keychain.js).
+  'react-native-keychain': path.join(__dirname, 'keychain.js'),
   // Google / Apple / store services: not used (no Google, no Apple).
   '@react-native-firebase/app': W('native.js'),
   '@react-native-firebase/app-check': W('native.js'),
@@ -35,7 +36,8 @@ const STUBS = {
   '@invertase/react-native-apple-authentication': W('native.js'),
   'react-native-iap': W('native.js'),
   // No web version: in memory or plain stand-ins until Tauri plugins.
-  '@dr.pogodin/react-native-fs': W('memory-fs.js'),
+  // Inside the .exe: real files via the native side; in a browser: memory.
+  '@dr.pogodin/react-native-fs': path.join(__dirname, 'fs.js'),
   'react-native-device-info': W('device-info.js'),
   'react-native-config': W('config.js'),
   'react-native-linear-gradient': W('linear-gradient.js'),
