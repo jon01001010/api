@@ -52,6 +52,15 @@ export async function readStartupTiming(): Promise<StartupReport | null> {
         label: 'App opened → page fully loaded',
         seconds: s(native.pageLoadFinishedMs),
       },
+      // The browser's storage (suspected cause of the Windows stall).
+      {
+        label: '  …first read of saved settings (page frozen while waiting)',
+        seconds: s(boot.localStorageMs),
+      },
+      {
+        label: '  …chat database storage answered after',
+        seconds: s(boot.indexedDbMs),
+      },
       // Finer marks (seconds since the page began loading).
       {label: '  …all start-up code has run at', seconds: s(boot.codeDone)},
       {

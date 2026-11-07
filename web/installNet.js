@@ -12,6 +12,26 @@ globalThis.__paBoot = {codeRunning: performance.now(), slowCalls: []};
 // shown, and the slowest files the page loaded.
 (function watchStart() {
   const boot = globalThis.__paBoot;
+  // The browser's storage: the first localStorage read freezes the page
+  // until storage answers (the app's settings live there); IndexedDB (the
+  // chats) answers later without freezing. Suspected 40 s Windows stall.
+  try {
+    const t = performance.now();
+    window.localStorage.getItem('pa-startup-probe');
+    boot.localStorageMs = performance.now() - t;
+  } catch (e) {
+    boot.localStorageMs = -1;
+  }
+  try {
+    const t = performance.now();
+    const req = window.indexedDB.open('pa-startup-probe');
+    req.onsuccess = () => {
+      boot.indexedDbMs = performance.now() - t;
+      try {
+        req.result.close();
+      } catch (e) {}
+    };
+  } catch (e) {}
   boot.longTasks = [];
   boot.visibility = [
     {
