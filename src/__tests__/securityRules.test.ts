@@ -34,7 +34,9 @@ function sourceFiles(dir: string): string[] {
 }
 const rel = (file: string) =>
   path.relative(ROOT, file).split(path.sep).join('/');
-const read = (file: string) => fs.readFileSync(path.join(ROOT, file), 'utf8');
+// Line breaks normalised: a Windows checkout has \r\n.
+const read = (file: string) =>
+  fs.readFileSync(path.join(ROOT, file), 'utf8').replace(/\r\n/g, '\n');
 const filesMatching = (pattern: RegExp) =>
   sourceFiles(SRC)
     .filter(f => pattern.test(fs.readFileSync(f, 'utf8')))
