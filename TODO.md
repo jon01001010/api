@@ -339,7 +339,9 @@ Findings (2026-11-07):
 - **Native parts that have no Windows version** and need a Windows replacement: llama.rn (local models), whisper.rn (voice), vision-camera (QR / camera), image-picker, audio stream, speech, share, haptics, phone actions.
 
 Plan (each step on its own; ask before each):
-1. [ ] **Windows shell:** add a react-native-windows project; the app opens on Windows; parts without Windows support are hidden (same switch pattern as Android-only features).
+**Rule (decided 2026-11-07): anything not needed on a platform is stubbed, not removed.** A stub has the same functions as the real module, does nothing and says "not available on this device", so the shared code never needs `if Windows` checks and nothing is deleted. The UI hides features whose module is a stub.
+
+1. [ ] **Windows shell:** add a react-native-windows project; the app opens on Windows; every native module without a Windows version gets a stub (llama.rn until step 2, whisper.rn, vision-camera, image-picker, audio stream, speech, share, haptics, phone actions, in-app purchases, Firebase, Google / Apple sign-in).
 2. [ ] **Local models on Windows without a new native module:** bundle llama.cpp's prebuilt `llama-server.exe` (CUDA for NVIDIA, Vulkan for AMD/Intel) and start it on 127.0.0.1; the app talks to it with the remote engine it already has. Same idea for voice (whisper.cpp server).
 3. [ ] **Platform list per tool:** each tool says where it runs. Phone actions stay Android-only; Windows gets its own small set later (open an app, open a file or folder, a notification). Approvals and switches work the same on both.
 4. [ ] **Desktop features in the Windows build:** "Share this PC's model with my phone" (QR pairing), LoRA training, heavy jobs. Shown on Windows only.
@@ -352,7 +354,7 @@ Not planned: Mac, iPhone, Linux (see Platforms).
 
 Firebase, Google Sign-In and Apple sign-in are left over from PocketPal. They are **not switched on** (no `google-services.json`, the Google Services plugin isn't applied), but the APK still ships Google's Firebase App Check and Play Integrity libraries (`android/app/build.gradle`). GrapheneOS users check APKs for exactly this (e.g. Exodus Privacy).
 
-- [ ] Take Firebase / Play Integrity / Google Sign-In / Apple sign-in / in-app purchases out of the Android build (keep the code in the repo, not built, per "don't delete"); the PalsHub sign-in that uses them stays off.
+- [ ] Stub Firebase / Play Integrity / Google Sign-In / Apple sign-in / in-app purchases (same stub rule as Windows): the JS modules are replaced by stubs and the Google libraries leave the Android build; the real code stays in the repo. The PalsHub sign-in that uses them shows "not available".
 - [ ] Add a test that fails if a `com.google.firebase` / `com.google.android.gms` library is in the build again (with the other security rules).
 - [ ] Check the APK with Exodus Privacy: aim for zero trackers.
 
