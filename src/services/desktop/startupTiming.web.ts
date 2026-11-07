@@ -35,6 +35,11 @@ export async function readStartupTiming(): Promise<StartupReport | null> {
         label: 'App opened → page fully loaded',
         seconds: s(native.pageLoadFinishedMs),
       },
+      // The slowest native calls (if any took 0.25 s or more).
+      ...(boot.slowCalls || []).map((c: any) => ({
+        label: `Slow native call ${c.cmd} (started at ${s(c.startedMs)} s)`,
+        seconds: s(c.ms),
+      })),
     ],
   };
 }

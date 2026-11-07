@@ -27,6 +27,7 @@
     "allow-model-server-start",
     "allow-model-server-stop",
     "allow-system-info",
-    "allow-startup-timing"
+    "allow-startup-timing",
+    "allow-preview-put"
   ]
 }

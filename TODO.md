@@ -427,20 +427,25 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [x] Haptic taps quietly do nothing on a PC (they were throwing "not available").
 - [x] Models list: there is no pull-down-to-refresh with a mouse, so it checks downloads each time the screen opens.
 - [ ] Wide windows: keep the side menu open beside the chat instead of sliding over it.
+- [x] Side menu chats: the hand cursor shows over the whole row (inner menu-item parts reset it, so the row looked clickable only on its text). Anything pressable gets `data-pa-press`; `web/index.html` keeps the hand over all of it.
 - [ ] Voice settings still say "on this phone" / "Android shows…"; voice input is not on the desktop yet (stubbed).
+- [ ] HTML preview "Share / save to phone" has no desktop version (the share sheet is phone-only); "Save to workspace" works. Desktop: a native "Save as…" dialog (the user picks the place, so it is their consent).
 - [ ] "Add local model" uses the phone's file picker (stubbed); on the desktop use "Run a model on this PC" or give it the native picker.
 
 **Start-up time (45 s on Windows, 2026-11-07):**
 - [x] Settings → "Start-up time" card shows where the time goes: app opened → page starts loading, loading the app's code, code running → first screen, page fully loaded (native marks from `startup_timing` + the page's own). Here (real Linux app): 1 s, 0.7 s, 0.4 s, 1.7 s.
 - [x] A "Loading DesktopAgent…" text shows while the code loads, instead of a blank window.
-- [ ] After the next Windows build, read the card. If "loading the app's code" is the slow part, it is likely WebView2's slow custom-protocol file serving for the 11 MB release bundle (tauri-apps/tauri#8920): split or shrink the bundle and/or serve it differently.
+- [x] Windows card (2026-11-07, every launch alike): page starts loading 0.9 s, code loads 0.6 s, **code running → first screen 37 s**, page fully loaded 38.5 s. Here the same step takes 0.4 s, and slowing every file by 10 s did not delay it, so not file serving. The "fully loaded" mark landing with the first screen points at the window's main thread being blocked: Tauri runs plain (non-`async`) commands on it, and several ran at start (saved keys from Windows Credential Manager, the PC's memory).
+- [x] Fix: every native command now runs off the main thread (`#[tauri::command(async)]`), pinned by a Rust test and a rule test.
+- [x] The card now also lists the slowest native calls at start-up (0.25 s or more), so the next build shows if one still holds things up.
+- [ ] Check on Windows: start-up time after this fix.
 
 **Access rule (decided 2026-11-07): broad access, never automatic.**
 - [ ] The app may reach the whole drive, run programs, open apps and links, use the clipboard; **every** such action asks first, showing exactly what will happen; no means nothing happens.
 - [ ] The approval dialog is shown by Tauri's native (Rust) side, not by the web screens, so even a bad page or a bug in the screens can't skip it.
 - [ ] No prompt only for the app looking after itself: its own AppData folder (settings, chats, models) and starting the bundled llama-server (this PC only, random password).
 - [ ] A test pins the Tauri permissions: adding a door without its approval step fails until decided on purpose and written into SECURITY.md.
-- [ ] Model-made HTML previews run in a locked-down frame with no way to reach the app's doors; checked in a browser here (like the WebRTC check) before trusting it.
+- [x] Model-made HTML previews run in a locked-down frame with no way to reach the app's doors (2026-11-07). The native side serves the page from its own address `pa-preview` with the no-network policy + `sandbox allow-scripts`; the frame is sandboxed to scripts only; the window allows frames from `pa-preview` only. Checked against 24 ways out, in Chromium (Windows' engine) and in the real Linux app (WebKitGTK + the real Tauri bridge): page scripts run (clock); fetch, XHR, beacon, WebSocket, EventSource, images, CSS, prefetch, scripts from outside, workers, forms, pop-ups, downloads, added frames, top and self navigation, storage, cookies and WebRTC all blocked; the app's page and the Tauri bridge unreachable; nothing reached an outside listener (a loosened control run did leak, so the check catches leaks). End to end: a model's render_html reply shows a live clock in chat and fullscreen.
 
 ## PocketAgent Desktop: companion app and phone ↔ desktop link (idea 2026-11-06, write-up only)
 

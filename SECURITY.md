@@ -22,6 +22,7 @@ Audit of 2026-11-06: every place where untrusted input (model output, downloaded
 - There is one WebView, and it has no bridge into the app (`onMessage` is never set) and no file access. It can't navigate, open pop-ups or keep anything between previews.
 - Every page starts with a CSP that blocks all network use, then a guard script that removes WebRTC (which a CSP can't block), blocks `window.open` and removes frames. Frame tags in the page text are renamed before the page is built.
 - A saved `.html` file opened in another browser is outside this box.
+- On the desktop (Windows / Linux app) the box is a frame instead of a WebView: the native side serves the page from its own address (`pa-preview`) with the same no-network policy plus `sandbox allow-scripts`, and the frame is sandboxed to scripts only (no origin, pop-ups, forms, downloads or storage). It gets no bridge: Tauri gives its secret call key to the app's own page only. The app window allows frames from `pa-preview` only, so a preview can't navigate itself anywhere else.
 
 ## 4. Data is never run as code
 
@@ -40,7 +41,9 @@ Audit of 2026-11-06: every place where untrusted input (model output, downloaded
 
 The Windows app (`src-tauri`, branch `windows`) is the same app in Windows' web view. Rule: broad access, never automatic.
 
-- The window has no internet access of its own and no frames (its content security policy). Network, files, keys and the model server are commands on the native side, each listed in `src-tauri/build.rs` and allowed in `src-tauri/capabilities/default.json`. Nothing else is allowed.
+- The window has no internet access of its own (its content security policy). Its only frames are HTML previews from `pa-preview` (rule 3).
+- Network, files, keys, previews and the model server are commands on the native side, each listed in `src-tauri/build.rs` and allowed in `src-tauri/capabilities/default.json`. Nothing else is allowed.
+- Every native command runs off the window's main thread (`async`), so a slow one can't freeze the window.
 - Files: the app's own folder (AppData) needs no prompt. Anywhere else, every read, write, list or delete shows an "Allow?" dialog **from the native side**, so the web screens can't skip it. `..` is refused everywhere.
 - Models: the bundled llama.cpp server (pinned release, checksum checked) listens on this PC only with a random password. Running a model file from outside the app folder asks first.
 - Keys: Windows Credential Manager, never plain files. In a plain browser, saving keys is not available.

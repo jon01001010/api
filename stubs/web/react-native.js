@@ -131,6 +131,22 @@ function withRightClick(Component, name) {
       },
       [ref, onContextMenu],
     );
+    // Pressable everywhere inside: the hand cursor shows over the whole
+    // item, not just its edges (web/index.html styles [data-pa-press]).
+    const pressable =
+      !props.disabled &&
+      (typeof props.onPress === 'function' ||
+        typeof props.onLongPress === 'function');
+    React.useEffect(() => {
+      const node = nodeRef.current;
+      if (node && node.setAttribute) {
+        if (pressable) {
+          node.setAttribute('data-pa-press', '');
+        } else {
+          node.removeAttribute('data-pa-press');
+        }
+      }
+    });
     return React.createElement(Component, {...props, ref: setRef});
   });
   Wrapped.displayName = name;

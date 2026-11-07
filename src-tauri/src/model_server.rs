@@ -111,7 +111,7 @@ pub async fn model_server_start(
         .unwrap_or(false);
     if !own_models {
         let question = format!(
-            "PocketAgent wants to run this model on your PC:\n\n{}",
+            "DesktopAgent wants to run this model on your PC:\n\n{}",
             model.display()
         );
         if !crate::approval::ask(&app, &question).await {
@@ -142,7 +142,7 @@ pub async fn model_server_start(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn model_server_stop(server: State<'_, ModelServer>) {
     if let Some(mut child) = server.0.lock().unwrap().take() {
         let _ = child.kill();

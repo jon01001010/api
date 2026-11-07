@@ -10,7 +10,7 @@ describe('which modules are stubbed on the web', () => {
   it('maps a package and paths inside it, nothing else', () => {
     expect(webStubFor('llama.rn')).toMatch(/local-model\.js$/);
     expect(webStubFor('react-native-webview/lib/WebView')).toMatch(
-      /native\.js$/,
+      /webview\.js$/,
     );
     // These support the web themselves, so they are not stubbed.
     for (const name of [
@@ -41,8 +41,20 @@ describe('which modules are stubbed on the web', () => {
     expect(src).toContain('useIncrementalIndexedDB: true');
   });
 
-  it('the HTML preview stays off on the web until its lock is built and checked', () => {
-    expect(webStubFor('react-native-webview')).toMatch(/native\.js$/);
+  it('the HTML preview is the sandboxed desktop frame', () => {
+    expect(webStubFor('react-native-webview')).toMatch(/web[\\/]webview\.js$/);
+    const src = fs.readFileSync(
+      path.join(__dirname, '..', 'webview.js'),
+      'utf8',
+    );
+    // Scripts only: no same-origin, pop-ups, forms, downloads or top navigation.
+    expect(src).toContain("const SANDBOX = 'allow-scripts';");
+    expect(src).not.toMatch(/allow-(same-origin|popups|forms|downloads|top)/);
+    // Only the page the app built (source.html), shown from the checked
+    // preview address; a page address (source.uri) is never used.
+    expect(src).toContain("typeof source.html === 'string'");
+    expect(src).toContain('src: url,');
+    expect(src).not.toContain('source.uri)');
   });
 });
 

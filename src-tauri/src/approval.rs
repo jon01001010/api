@@ -12,7 +12,7 @@ pub async fn ask(app: &AppHandle, question: &str) -> bool {
     tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .message(question)
-            .title("PocketAgent: allow this?")
+            .title("DesktopAgent: allow this?")
             .kind(MessageDialogKind::Warning)
             .buttons(MessageDialogButtons::OkCancelCustom(
                 "Allow".into(),

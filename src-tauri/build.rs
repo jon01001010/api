@@ -22,6 +22,7 @@ const COMMANDS: &[&str] = &[
     "model_server_stop",
     "system_info",
     "startup_timing",
+    "preview_put",
 ];
 
 fn main() {

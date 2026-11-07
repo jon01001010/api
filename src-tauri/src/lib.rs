@@ -8,6 +8,7 @@ mod download;
 mod files;
 mod model_server;
 mod net;
+mod preview;
 mod secrets;
 mod system;
 mod timing;
@@ -26,6 +27,11 @@ pub fn run() {
         .manage(net::Requests::default())
         .manage(model_server::ModelServer::default())
         .manage(download::Downloads::default())
+        // HTML previews: their own address, sandboxed, no network (rule 3).
+        .manage(preview::Previews::default())
+        .register_uri_scheme_protocol(preview::SCHEME, |ctx, request| {
+            preview::respond(&ctx.app_handle().state::<preview::Previews>(), &request)
+        })
         .invoke_handler(tauri::generate_handler![
             files::fs_exists,
             files::fs_read,
@@ -48,6 +54,7 @@ pub fn run() {
             model_server::model_server_stop,
             system::system_info,
             timing::startup_timing,
+            preview::preview_put,
         ])
         .build(tauri::generate_context!())
         .expect("error while building PocketAgent");
@@ -65,4 +72,41 @@ pub fn run() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    /// A plain (non-async) command runs on the window's main thread and
+    /// freezes the whole window while it works (the 37 s Windows start).
+    /// Every command must be `async` or `#[tauri::command(async)]`.
+    #[test]
+    fn no_command_blocks_the_main_thread() {
+        let sources = [
+            include_str!("files.rs"),
+            include_str!("download.rs"),
+            include_str!("secrets.rs"),
+            include_str!("net.rs"),
+            include_str!("model_server.rs"),
+            include_str!("system.rs"),
+            include_str!("timing.rs"),
+            include_str!("preview.rs"),
+        ];
+        for source in sources {
+            let lines: Vec<&str> = source.lines().collect();
+            for (i, line) in lines.iter().enumerate() {
+                if line.trim() == "#[tauri::command]" {
+                    // The function line (skipping other attributes).
+                    let next = lines[i + 1..]
+                        .iter()
+                        .find(|l| !l.trim_start().starts_with("#["))
+                        .copied()
+                        .unwrap_or("");
+                    assert!(
+                        next.contains("async fn"),
+                        "command runs on the main thread: {next}"
+                    );
+                }
+            }
+        }
+    }
 }

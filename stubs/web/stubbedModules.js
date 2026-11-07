@@ -45,9 +45,9 @@ const STUBS = {
   'react-native-keyboard-controller': W('keyboard-controller.js'),
   '@react-native-masked-view/masked-view': W('masked-view.js'),
   '@react-native-clipboard/clipboard': path.join(__dirname, 'clipboard.js'),
-  // The HTML preview needs a locked-down frame on the web (TODO: built and
-  // checked like the WebRTC lock before it is trusted). Until then: off.
-  'react-native-webview': W('native.js'),
+  // The HTML preview: a sandboxed frame served by the native side from its
+  // own address, no network (stubs/web/webview.js, SECURITY.md rule 3).
+  'react-native-webview': path.join(__dirname, 'webview.js'),
   // Browsers have crypto.getRandomValues already.
   'react-native-get-random-values': path.join(__dirname, 'nothing.js'),
 };

@@ -9,6 +9,9 @@
       html, body, #root { height: 100%; margin: 0; }
       body { background: #000; overflow: hidden; }
       #root { display: flex; }
+      /* Anything that can be pressed shows the hand all over, not just at
+         its edges (inner parts of some menu items reset the cursor). */
+      [data-pa-press], [data-pa-press] *:not(input):not(textarea) { cursor: pointer !important; }
     </style>
   </head>
   <body>

@@ -48,7 +48,7 @@ pub struct StartupTiming {
     now_ms: u128,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn startup_timing(timing: State<'_, Timing>) -> StartupTiming {
     StartupTiming {
         marks: timing.marks.lock().unwrap().clone(),

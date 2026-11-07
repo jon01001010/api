@@ -67,7 +67,7 @@ pub async fn allowed_path(app: &AppHandle, input: &str, what: &str) -> Result<Pa
 async fn allowed(app: &AppHandle, input: &str, what: &str) -> Result<PathBuf, String> {
     let located = locate(&app_root(app)?, input)?;
     if !located.own {
-        let question = format!("PocketAgent wants to {what}:\n\n{}", located.real.display());
+        let question = format!("DesktopAgent wants to {what}:\n\n{}", located.real.display());
         if !ask(app, &question).await {
             return Err("The user said no. Nothing was done.".into());
         }

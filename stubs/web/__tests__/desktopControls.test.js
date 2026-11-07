@@ -57,3 +57,33 @@ describe('the web stub list', () => {
     );
   });
 });
+
+describe('HTML preview frame address (desktop)', () => {
+  const g = global;
+  afterEach(() => {
+    delete g.window;
+    jest.resetModules();
+  });
+  const load = convert => {
+    g.window = {__TAURI_INTERNALS__: {convertFileSrc: convert}};
+    return require('../webview');
+  };
+  const id = 'a'.repeat(32);
+
+  it('uses only the preview address, in the Windows or Linux form', () => {
+    let wv = load((p, scheme) => `http://${scheme}.localhost/${p}`);
+    expect(wv.previewUrl(id)).toBe(`http://pa-preview.localhost/${id}`);
+    jest.resetModules();
+    wv = load((p, scheme) => `${scheme}://localhost/${p}`);
+    expect(wv.previewUrl(id)).toBe(`pa-preview://localhost/${id}`);
+  });
+
+  it('refuses odd ids and any other address', () => {
+    let wv = load((p, scheme) => `${scheme}://localhost/${p}`);
+    expect(wv.previewUrl('../x')).toBeNull();
+    expect(wv.previewUrl('A'.repeat(32))).toBeNull();
+    jest.resetModules();
+    wv = load(() => `https://example.com/${id}`);
+    expect(wv.previewUrl(id)).toBeNull();
+  });
+});

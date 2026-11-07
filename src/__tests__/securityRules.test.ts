@@ -216,6 +216,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'model_server_stop',
         'system_info',
         'startup_timing',
+        'preview_put',
       ].sort(),
     );
     // The window is allowed exactly those, plus Tauri's core basics.
@@ -228,7 +229,11 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     );
     // Every command is wired in, none extra.
     const lib = tauri('src/lib.rs');
-    const handlers = [...lib.matchAll(/\w+::(\w+),/g)].map(m => m[1]);
+    const handlerList = lib.slice(
+      lib.indexOf('generate_handler!['),
+      lib.indexOf(']', lib.indexOf('generate_handler![')),
+    );
+    const handlers = [...handlerList.matchAll(/\w+::(\w+),/g)].map(m => m[1]);
     expect(handlers.sort()).toEqual(listed.sort());
   });
 
@@ -266,12 +271,14 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(server).toContain('"--api-key".into()');
   });
 
-  it('the window itself has no internet access and no frames', () => {
+  it('the window itself has no internet access; its only frames are HTML previews', () => {
     const csp = JSON.parse(tauri('tauri.conf.json')).app.security.csp;
     expect(csp['default-src']).toBe("'self'");
     expect(csp['script-src']).toBe("'self'");
     expect(csp['connect-src']).toBe('ipc: http://ipc.localhost');
-    expect(csp['frame-src']).toBe("'none'");
+    // Frames only from the preview address (Linux form, Windows form), so a
+    // preview can't navigate itself anywhere else.
+    expect(csp['frame-src']).toBe('pa-preview: http://pa-preview.localhost');
     expect(csp['object-src']).toBe("'none'");
     // Tauri's nonces stay on for scripts; off for styles only (with a nonce
     // present, browsers ignore 'unsafe-inline' and the app's styles, which
@@ -281,6 +288,50 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(security.dangerousDisableAssetCspModification).toEqual([
       'style-src',
     ]);
+  });
+
+  it('HTML previews: own address, sandboxed to scripts, no network (rule 3)', () => {
+    const preview = tauri('src/preview.rs');
+    const policy = preview.slice(
+      preview.indexOf('PREVIEW_POLICY'),
+      preview.indexOf('";', preview.indexOf('PREVIEW_POLICY')),
+    );
+    for (const rule of [
+      "default-src 'none'",
+      "connect-src 'none'",
+      "frame-src 'none'",
+      "form-action 'none'",
+      "base-uri 'none'",
+      'sandbox allow-scripts',
+    ]) {
+      expect([rule, policy.includes(rule)]).toEqual([rule, true]);
+    }
+    // Every answer carries the policy.
+    expect(preview).toContain(
+      '.header(header::CONTENT_SECURITY_POLICY, PREVIEW_POLICY)',
+    );
+    const frame = read('stubs/web/webview.js');
+    expect(frame).toContain("const SANDBOX = 'allow-scripts';");
+    expect(frame).not.toMatch(/allow-(same-origin|popups|forms|downloads|top)/);
+  });
+
+  it('no native command blocks the window (all run off the main thread)', () => {
+    for (const file of [
+      'files',
+      'download',
+      'secrets',
+      'net',
+      'model_server',
+      'system',
+      'timing',
+      'preview',
+    ]) {
+      const src = tauri(`src/${file}.rs`).replace(/\r\n/g, '\n');
+      expect([
+        file,
+        /#\[tauri::command\]\n(#\[[^\n]*\n)*pub fn/.test(src),
+      ]).toEqual([file, false]);
+    }
   });
 
   it('network from the native side is http/https only', () => {

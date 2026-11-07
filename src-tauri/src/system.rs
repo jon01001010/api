@@ -11,7 +11,7 @@ pub struct SystemInfo {
     cpu_cores: usize,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn system_info() -> SystemInfo {
     let mut sys = sysinfo::System::new();
     sys.refresh_memory();

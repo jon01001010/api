@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-put"
+description = "Enables the preview_put command without any pre-configured scope."
+commands.allow = ["preview_put"]
+
+[[permission]]
+identifier = "deny-preview-put"
+description = "Denies the preview_put command without any pre-configured scope."
+commands.deny = ["preview_put"]

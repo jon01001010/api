@@ -125,7 +125,7 @@ pub async fn http_request(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn http_abort(requests: State<'_, Requests>, id: u32) {
     if let Some(task) = requests.0.lock().unwrap().remove(&id) {
         task.abort();

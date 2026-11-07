@@ -132,7 +132,7 @@ pub async fn download_to(
     });
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fs_download_cancel(downloads: State<'_, Downloads>, id: u32) {
     if let Some(task) = downloads.0.lock().unwrap().remove(&id) {
         task.abort();
