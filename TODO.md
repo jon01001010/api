@@ -391,6 +391,17 @@ A desktop app that pairs with the phone: trains the personal LoRA, runs bigger m
   3. *Jobs:* start / progress / cancel for training and heavy work; the phone shows progress.
 - [ ] **Desktop side:** listens on the local network only, never the internet; paired devices listed with **Remove**; a log of what each device asked for.
 
+### Working together on the same task (idea 2026-11-07)
+
+The phone agent and the desktop agent talk to each other over the paired link and share work, each doing what it is best at: the phone does phone things (alarms, texts, contacts, camera, being with you), the PC does heavy things (big models, training, long documents, files on the PC).
+
+- [ ] **Shared task list:** a task started on one device shows on both (title, steps, status, who is doing which step); either device can pick up a step; progress and results flow back. Works offline per device and syncs when they are both on the link.
+- [ ] **Agent-to-agent messages:** one agent can ask the other to do a step ("desktop: summarise this 200-page PDF"; "phone: set a reminder for the result"), with the request and the answer shown in the chat on both sides.
+- [ ] **Hand-off:** start a chat on the phone, continue it on the PC (and back) with the same context; the chat moves only when you ask.
+- [ ] **Shared memory (opt-in):** memory notes can sync between the two; off by default; you pick which notes.
+- [ ] **Safety:** a request from the other agent is treated like a request from a model: the same Toolbox switches and approval dialogs apply on the device that does the step (a desktop request to text someone asks on the phone, every time). Each device can refuse; a task log on both sides shows who asked for what. No step runs on a device whose user hasn't switched that tool on there.
+- [ ] Build after: pairing (step 1) and "use a desktop model"; reuses the link's "Jobs" messages.
+
 ### Safety rules for the link (add to SECURITY.md when built)
 
 - [ ] A request from the other device counts like a request from a model: the same Toolbox switches and approvals apply. The desktop can never trigger a phone action, read contacts or texts, or change memory without the approval dialog on the phone; the phone can't run anything on the desktop that the desktop user hasn't allowed.
