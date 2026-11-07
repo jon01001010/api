@@ -263,6 +263,14 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(csp['connect-src']).toBe('ipc: http://ipc.localhost');
     expect(csp['frame-src']).toBe("'none'");
     expect(csp['object-src']).toBe("'none'");
+    // Tauri's nonces stay on for scripts; off for styles only (with a nonce
+    // present, browsers ignore 'unsafe-inline' and the app's styles, which
+    // React Native Web adds at run time, were blocked). Styles can't run
+    // code, and img/font/connect rules stop them loading anything outside.
+    const security = JSON.parse(tauri('tauri.conf.json')).app.security;
+    expect(security.dangerousDisableAssetCspModification).toEqual([
+      'style-src',
+    ]);
   });
 
   it('network from the native side is http/https only', () => {
