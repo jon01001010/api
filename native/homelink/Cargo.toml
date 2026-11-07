@@ -1,0 +1,32 @@
+[package]
+name = "homelink"
+version = "0.1.0"
+description = "PocketAgent home link, phone side: use the home PC's model from anywhere"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[lib]
+# cdylib: the Android library (libhomelink.so); rlib: the test program.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Same pinned version as the PC side (src-tauri/Cargo.toml).
+iroh = "=1.4.1"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync", "time", "macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+jni = { version = "=0.21.1", optional = true }
+
+[features]
+# The Android door (src/android.rs). The Android build turns it on; it also
+# compiles here, so it can be checked without the Android tools.
+android = ["dep:jni"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

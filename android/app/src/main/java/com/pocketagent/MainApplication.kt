@@ -32,6 +32,7 @@ class MainApplication : Application(), ReactApplication {
               add(HardwareInfoPackage())
               add(DownloadPackage())
               add(com.pocketagent.localapi.LocalApiPackage())
+              add(com.pocketagent.homelink.HomeLinkPackage())
             }
 
         override fun getJSMainModuleName(): String = "index"

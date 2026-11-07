@@ -3196,6 +3196,8 @@ class ModelStore {
       // Desktop app: a "This PC" model starts its local server on Load
       // (src/services/desktop/thisPc.web.ts). Nothing on the phone.
       await prepareThisPcModel(model.serverId!, model.remoteModelId!);
+      // Phone: a "Home PC" model reopens its tunnel to the PC first.
+      await serverStore.prepareHomeLink(model.serverId!);
       const apiKey = await serverStore.getApiKey(model.serverId!);
       const server = serverStore.servers.find(s => s.id === model.serverId);
       if (!server) {

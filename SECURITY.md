@@ -36,6 +36,7 @@ Audit of 2026-11-06: every place where untrusted input (model output, downloaded
 - The app asks for a fixed list of Android permissions. Adding one means updating the test and this file.
 - Only the main screen can be opened by other apps. Links from outside only fill in the chat box or offer a model download; they never send or run anything.
 - The local API listens on the phone itself (127.0.0.1) only. It checks the Host header and a random password, compared in constant time, and accepts text only, with no tools.
+- Home link, phone side (`native/homelink`, `HomeLinkModule.kt`): pairing starts only from the PC's QR code (`PA1:P:` tag; anything else is refused), the phone asks first and the PC asks its user too. The phone's tunnel to the PC listens on 127.0.0.1 only and turns away anything else; it reaches only the PC's model server, and needs that server's password. The phone's own key stays in the app's no-backup folder (never in a cloud backup). No new Android permission.
 
 ## 6. The Windows app opens doors only on purpose, and asks
 

@@ -13,6 +13,7 @@ import {useTheme} from '../../hooks';
 import {L10nContext} from '../../utils';
 
 import {createStyles} from './styles';
+import {isPairingCode} from '../../services/homeLink/homeLink';
 
 interface ServerQRScannerProps {
   onScanned: (url: string) => void;
@@ -52,7 +53,10 @@ export const ServerQRScanner: React.FC<ServerQRScannerProps> = ({
       if (acceptedRef.current) {
         return;
       }
-      const url = codes.map(code => code.value?.trim() ?? '').find(isServerUrl);
+      // A server address, or a home PC pairing code (`PA1:P:`).
+      const url = codes
+        .map(code => code.value?.trim() ?? '')
+        .find(value => isServerUrl(value) || isPairingCode(value));
       if (url) {
         acceptedRef.current = true;
         onScanned(url);

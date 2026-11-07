@@ -5,6 +5,7 @@ import {OpenAICompletionEngine} from '../../api/completionEngines';
 
 jest.mock('../ServerStore', () => ({
   serverStore: {
+    prepareHomeLink: jest.fn().mockResolvedValue({ok: true}),
     getApiKey: jest.fn().mockResolvedValue('sk-ant-test'),
     servers: [
       {

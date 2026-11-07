@@ -110,6 +110,20 @@ jobs:
             esac
           done
           df -h /
+      # Home link, phone side (native/homelink): use the home PC's model from
+      # anywhere. Built for ARM64 with the NDK pinned above into jniLibs.
+      - name: Build the home link library (Rust)
+        if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native' || inputs.stage == 'compilation'
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          rustup target add aarch64-linux-android
+          cargo install cargo-ndk --version 4.1.2 --locked
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.3.13750724"
+          cargo ndk --manifest-path native/homelink/Cargo.toml -t arm64-v8a --platform 24 \
+            -o android/app/src/main/jniLibs build --release --locked --features android
+          ls -la android/app/src/main/jniLibs/arm64-v8a/
+          rm -rf native/homelink/target
       - name: Prepare diagnostic configuration
         run: python3 scripts/prepare-diagnostic-config.py
       - name: Verify Hexagon SDK for APK stage

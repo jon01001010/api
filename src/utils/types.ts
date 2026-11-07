@@ -492,6 +492,9 @@ export interface ServerConfig {
   // detectServerType seeds it best-effort; user selection wins. undefined =
   // unknown, on rows written before the field existed.
   serverType?: ServerType;
+  // Home link: this server is the home PC's model, reached through the
+  // phone's local tunnel (src/services/homeLink). The PC's key.
+  homeLinkPc?: string;
 }
 
 /**

@@ -16,6 +16,7 @@ import {ReasoningCapability} from '../utils/reasoningCapability';
 import {toServerType} from '../utils/serverTypes';
 import {deriveListCapsMap} from '../api/servers';
 import {profileFor} from '../api/servers';
+import {openTunnel, pcStatus, tunnelUrl} from '../services/homeLink/homeLink';
 
 const KEYCHAIN_SERVICE_PREFIX = 'pocketpal-server-';
 
@@ -294,6 +295,38 @@ class ServerStore {
     return this.userSelectedModels.filter(m => m.serverId === serverId);
   }
 
+  /**
+   * Home link: before a "Home PC" server is used, reopen the phone's local
+   * tunnel to the PC (its port changes each time the app starts) and take
+   * the model's current password from the PC (it changes when the PC starts
+   * a model). Does nothing for other servers. Never throws.
+   */
+  async prepareHomeLink(
+    serverId: string,
+  ): Promise<{ok: boolean; error?: string}> {
+    const server = this.servers.find(s => s.id === serverId);
+    if (!server?.homeLinkPc) {
+      return {ok: true};
+    }
+    const tunnel = await openTunnel(server.homeLinkPc);
+    if (!tunnel.ok) {
+      return {ok: false, error: tunnel.error};
+    }
+    const url = tunnelUrl(tunnel.port);
+    if (server.url !== url) {
+      this.updateServer(serverId, {url});
+    }
+    const status = await pcStatus(server.homeLinkPc);
+    if (!status.ok) {
+      return {ok: false, error: status.error};
+    }
+    if (!status.running || !status.apiKey) {
+      return {ok: false, error: 'No model is running on your PC'};
+    }
+    await this.setApiKey(serverId, status.apiKey);
+    return {ok: true};
+  }
+
   // API key management (Keychain)
   async setApiKey(serverId: string, apiKey: string): Promise<void> {
     try {
@@ -347,7 +380,9 @@ class ServerStore {
     this.isLoading = true;
     this.error = null;
 
-    const {url} = server;
+    // Home PC: reopen the tunnel first (no-op for other servers).
+    await this.prepareHomeLink(serverId);
+    const {url} = this.servers.find(s => s.id === serverId) ?? server;
     try {
       const apiKey = await this.getApiKey(serverId);
       const {models, hasModelsKey} = await fetchModelsWithHeaders(

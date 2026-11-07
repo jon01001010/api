@@ -14,8 +14,9 @@
 //!   two things: ask whether a model is running ("status"), and pass HTTP
 //!   requests to this PC's own model server on 127.0.0.1 ("http"). Nothing
 //!   else on the PC is reachable: no files, no tools, no other ports.
-//! - The PC's link key and the paired phones are kept in the system's
-//!   credential store under names the screens can't write.
+//! - The PC's link key and the paired phones are kept where the screens
+//!   can't write: Windows Credential Manager, or on Linux a private file in
+//!   the app's settings folder (see read_entry).
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -26,7 +27,7 @@ use tauri::{AppHandle, Manager, State};
 /// Each connection must name this protocol, or it is refused in the handshake.
 pub const ALPN: &[u8] = b"pocketagent/home-link/1";
 /// What the QR code starts with.
-pub const QR_PREFIX: &str = "pocketagent-link:1:";
+pub const QR_PREFIX: &str = "PA1:P:";
 const KEY_ENTRY: &str = "DesktopAgent-link:key";
 const PHONES_ENTRY: &str = "DesktopAgent-link:phones";
 const PAIR_CODE_LIFETIME: Duration = Duration::from_secs(10 * 60);
@@ -121,21 +122,71 @@ fn random_hex(bytes: usize) -> Result<String, String> {
 
 // -------------------------------------------------------- credential store
 
-fn store(name: &str) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(name, "link").map_err(|e| e.to_string())
+/// Keeps the link's own secrets where the app's screens can't write.
+/// Windows: Credential Manager. Linux: a private file (owner only) in the
+/// app's settings folder (~/.config/...), which is not the data folder the
+/// screens' file commands reach (the kernel keyring proved unreliable: an
+/// entry could get stuck so it could be neither read nor written).
+#[cfg(windows)]
+fn read_entry(_app: &AppHandle, name: &str) -> Option<String> {
+    keyring::Entry::new(name, "link").ok()?.get_password().ok()
 }
 
-fn load_phones() -> Vec<Phone> {
-    store(PHONES_ENTRY)
-        .ok()
-        .and_then(|e| e.get_password().ok())
+#[cfg(windows)]
+fn write_entry(_app: &AppHandle, name: &str, value: &str) -> Result<(), String> {
+    keyring::Entry::new(name, "link")
+        .map_err(|e| e.to_string())?
+        .set_password(value)
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(not(windows))]
+fn entry_file(app: &AppHandle, name: &str) -> Result<std::path::PathBuf, String> {
+    let config = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    // Never inside the folder the screens can reach.
+    if config.starts_with(&data) || data.starts_with(&config) {
+        return Err("No private folder for the link on this system".into());
+    }
+    let file: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
+    Ok(config.join("link").join(file))
+}
+
+#[cfg(not(windows))]
+fn read_entry(app: &AppHandle, name: &str) -> Option<String> {
+    std::fs::read_to_string(entry_file(app, name).ok()?).ok()
+}
+
+#[cfg(not(windows))]
+fn write_entry(app: &AppHandle, name: &str, value: &str) -> Result<(), String> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let file = entry_file(app, name)?;
+    let dir = file.parent().ok_or("Bad folder")?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
+    let tmp = file.with_extension("new");
+    let mut out = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&tmp)
+        .map_err(|e| e.to_string())?;
+    out.write_all(value.as_bytes()).map_err(|e| e.to_string())?;
+    drop(out);
+    std::fs::rename(&tmp, &file).map_err(|e| e.to_string())
+}
+
+fn load_phones(app: &AppHandle) -> Vec<Phone> {
+    read_entry(app, PHONES_ENTRY)
         .and_then(|json| serde_json::from_str(&json).ok())
         .unwrap_or_default()
 }
 
-fn save_phones(phones: &[Phone]) -> Result<(), String> {
+fn save_phones(app: &AppHandle, phones: &[Phone]) -> Result<(), String> {
     let json = serde_json::to_string(phones).map_err(|e| e.to_string())?;
-    store(PHONES_ENTRY)?.set_password(&json).map_err(|e| e.to_string())
+    write_entry(app, PHONES_ENTRY, &json)
 }
 
 // ------------------------------------------------------------ the endpoint
@@ -178,16 +229,15 @@ pub fn qr_image(text: &str) -> Result<String, String> {
     ))
 }
 
-fn secret_key() -> Result<iroh::SecretKey, String> {
-    let entry = store(KEY_ENTRY)?;
-    if let Ok(hex) = entry.get_password() {
-        if let Ok(key) = hex.parse::<iroh::SecretKey>() {
+fn secret_key(app: &AppHandle) -> Result<iroh::SecretKey, String> {
+    if let Some(hex) = read_entry(app, KEY_ENTRY) {
+        if let Ok(key) = hex.trim().parse::<iroh::SecretKey>() {
             return Ok(key);
         }
     }
     let key = iroh::SecretKey::generate();
     let hex: String = key.to_bytes().iter().map(|b| format!("{b:02x}")).collect();
-    entry.set_password(&hex).map_err(|e| e.to_string())?;
+    write_entry(app, KEY_ENTRY, &hex)?;
     Ok(key)
 }
 
@@ -243,7 +293,7 @@ async fn serve_stream(
     let request = read_line(&mut recv)
         .await
         .and_then(|line| parse_request(&line));
-    let paired = load_phones().iter().any(|p| p.id == remote);
+    let paired = load_phones(&app).iter().any(|p| p.id == remote);
     match request {
         Some(Request::Pair { code, name }) => {
             let link = app.state::<Link>();
@@ -255,9 +305,9 @@ async fn serve_stream(
                     &remote[..remote.len().min(16)]
                 );
                 if crate::approval::ask(&app, &question).await {
-                    let mut phones = load_phones();
+                    let mut phones = load_phones(&app);
                     add_phone(&mut phones, Phone { id: remote.clone(), name });
-                    save_phones(&phones).is_ok()
+                    save_phones(&app, &phones).is_ok()
                 } else {
                     false
                 }
@@ -315,7 +365,7 @@ async fn start(app: &AppHandle) -> Result<String, String> {
         return Ok(router.endpoint().id().to_string());
     }
     let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
-        .secret_key(secret_key()?)
+        .secret_key(secret_key(app)?)
         .alpns(vec![ALPN.to_vec()])
         .bind()
         .await
@@ -360,21 +410,21 @@ pub async fn link_off(link: State<'_, Link>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn link_status(link: State<'_, Link>) -> Result<LinkStatus, String> {
+pub async fn link_status(app: AppHandle, link: State<'_, Link>) -> Result<LinkStatus, String> {
     let running = link.running.lock().await;
     Ok(LinkStatus {
         on: running.is_some(),
         pc_id: running.as_ref().map(|r| r.endpoint().id().to_string()),
-        phones: load_phones(),
+        phones: load_phones(&app),
     })
 }
 
 /// Removes a paired phone: it can't connect any more.
 #[tauri::command]
-pub async fn link_forget(id: String) -> Result<(), String> {
-    let mut phones = load_phones();
+pub async fn link_forget(app: AppHandle, id: String) -> Result<(), String> {
+    let mut phones = load_phones(&app);
     phones.retain(|p| p.id != id);
-    save_phones(&phones)
+    save_phones(&app, &phones)
 }
 
 #[cfg(test)]
@@ -433,7 +483,7 @@ mod tests {
 
     #[test]
     fn qr_text_holds_the_key_and_code() {
-        assert_eq!(qr_text("pk", "c0de"), "pocketagent-link:1:pk:c0de");
+        assert_eq!(qr_text("pk", "c0de"), "PA1:P:pk:c0de");
         let image = qr_image(&qr_text(&"a".repeat(64), &"b".repeat(32))).unwrap();
         assert!(image.starts_with("data:image/svg+xml;base64,"));
     }

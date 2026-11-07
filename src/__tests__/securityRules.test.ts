@@ -391,6 +391,29 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(tauri('src/lib.rs')).not.toMatch(/link::start|link_on\(/);
   });
 
+  it('home link, phone side: 127.0.0.1 only, the PC QR tag only, same protocol as the PC', () => {
+    const phone = read('native/homelink/src/lib.rs');
+    const pc = tauri('src/link.rs');
+    const alpn = (src: string) =>
+      src.match(/pub const ALPN: &\[u8\] = b"([^"]+)";/)![1];
+    const tag = (src: string) =>
+      src.match(/pub const QR_PREFIX: &str = "([^"]+)";/)![1];
+    expect(alpn(phone)).toBe(alpn(pc));
+    expect(tag(phone)).toBe('PA1:P:');
+    expect(tag(pc)).toBe('PA1:P:');
+    expect(phone).toContain('TcpListener::bind(("127.0.0.1", 0))');
+    expect(phone).toContain('if !from.ip().is_loopback() {');
+    // The phone only ever asks for status, pairing or the model server.
+    const ops = [...phone.matchAll(/"op\\?":\s*\\?"(\w+)/g)].map(m => m[1]);
+    expect([...new Set(ops)].sort()).toEqual(['http', 'pair', 'status']);
+    // Key kept out of cloud backups.
+    expect(
+      read(
+        'android/app/src/main/java/com/pocketagent/homelink/HomeLinkModule.kt',
+      ),
+    ).toContain('context.noBackupFilesDir');
+  });
+
   it('network from the native side is http/https only', () => {
     expect(tauri('src/net.rs')).toMatch(/"http" \| "https" => Ok\(parsed\)/);
   });

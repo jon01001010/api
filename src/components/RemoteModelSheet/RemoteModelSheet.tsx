@@ -47,6 +47,8 @@ import {t} from '../../locales';
 import {createStyles} from './styles';
 import {RouterModelRows} from './RouterModelRows';
 import {ChatIcon, EyeIcon, EyeOffIcon} from '../../assets/icons';
+import {isPairingCode} from '../../services/homeLink/homeLink';
+import {pairHomePc} from '../../services/homeLink/pairHomePc';
 
 interface RemoteModelSheetProps {
   isVisible: boolean;
@@ -230,11 +232,39 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
       setIsScannerOpen(true);
     }, [hasPermission, requestPermission, l10n]);
 
-    const handleScanned = useCallback((value: string) => {
-      setUrl(value);
-      setUrlError('');
-      setIsScannerOpen(false);
-    }, []);
+    const handleScanned = useCallback(
+      (value: string) => {
+        setIsScannerOpen(false);
+        if (isPairingCode(value)) {
+          // Home PC: ask here first; the PC asks its user too.
+          Alert.alert(
+            'Pair with your PC?',
+            'This phone will be able to use the model running on your PC (DesktopAgent), from anywhere. Your PC asks you to allow it too.',
+            [
+              {text: 'Cancel', style: 'cancel'},
+              {
+                text: 'Pair',
+                onPress: () => {
+                  pairHomePc(value).then(result => {
+                    Alert.alert(
+                      result.ok ? 'Paired with your PC' : 'Not paired',
+                      result.message,
+                    );
+                    if (result.ok) {
+                      onDismiss();
+                    }
+                  });
+                },
+              },
+            ],
+          );
+          return;
+        }
+        setUrl(value);
+        setUrlError('');
+      },
+      [onDismiss],
+    );
 
     // Re-probe on apiKey blur
     const handleApiKeyBlur = useCallback(() => {

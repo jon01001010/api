@@ -462,14 +462,21 @@ Research (2026-11-07): **iroh 1.x** (Rust, MIT/Apache, 1.0 in June 2026; we pin 
 **Desktop side (done, checked in the real Linux app with a stand-in phone):**
 - [x] `src-tauri/src/link.rs` + Settings card "Use this PC's model from your phone": off by default; Pair a phone shows a QR code (PC key + one-time code, 10 min, one try); the phone sends the code; the PC asks in a native dialog; only then the phone's key is saved (credential store, names the screens can't write).
 - [x] Paired phones can only: ask whether a model runs (with its password), and pass HTTP to this PC's own model server. Checked: unpaired phone refused; reused code refused without a dialog; a paired phone asking for anything else refused; streamed chat reply through the link; Remove shuts the phone out at once; Switch off closes the port.
+- [x] Linux: the kernel keyring got an entry stuck (neither readable nor writable), so on Linux the link key and paired phones live in an owner-only file in the app's settings folder (~/.config/…), outside the data folder the screens reach. Windows: Credential Manager.
 - [x] Built with the `link` feature (default). The Windows type-check here runs with `--no-default-features` (no Windows C compiler here for iroh's crypto library; the real Windows build has one).
 - [ ] Relays: n0's public relays by default; add "Use my own relay" (URL) for people who self-host.
 - [ ] Keep running when the window is closed (tray icon), and start the model when a paired phone asks.
 - [ ] Linux keeps keys in the kernel keyring (forgotten after a reboot): use the desktop's secret service there.
 
-**Phone side (next):**
-- [ ] A small Rust library for Android (same iroh code as the PC side) behind a native module: scan the QR code, pair, then open a local port on the phone (127.0.0.1) that tunnels to the PC. The app adds a server "Home PC" pointing at it, so the existing chat code works unchanged.
-- [ ] Phone stays small (rule 5): no new Android permission beyond the internet one it has; the tunnel listens on 127.0.0.1 only.
+**Phone side (written 2026-11-07; not yet built for Android):**
+- [x] `native/homelink`: our own small Rust library (same iroh 1.4.1 as the PC side; not the Kotlin bindings that were reported to hang on Android). Pair from the QR code, ask status, open a local port on the phone (127.0.0.1 only, others turned away) that leads to the PC's model server. Checked here against the real desktop app: pairing (PC dialog), status, `GET /v1/models` and a streamed chat through the local port with plain `curl`, wrong password refused, bad QR refused.
+- [x] Android door: JNI calls answering JSON (`src/android.rs`), checked here by loading the real library from Java with the app's class and method names: pair, status, tunnel + streamed chat, close.
+- [x] `HomeLinkModule.kt` (calls off the main thread; phone key in the no-backup folder), registered in MainApplication. The QR scanner also takes `PA1:P:` pairing codes; the phone asks "Pair with your PC?", then adds the server "Home PC" (10-minute wait for slow PCs). Before listing or loading a Home PC model, the app reopens the tunnel and takes the model's current password.
+- [x] The Android build compiles the library (cargo-ndk 4.1.2, NDK 27.3, arm64) into jniLibs before Gradle.
+- [x] Phone stays small (rule 5): no new Android permission.
+- [ ] Build the APK (the Android job runs from main, or by hand on a branch) and test on a phone: pair over the hotspot, then away from home on mobile data (relay).
+- [ ] Keep the tunnel alive in the background (foreground service) for long replies with the screen off.
+- [ ] Desktop-to-phone the other way (PC uses the phone's tools), shared tasks: later.
 
 ## PocketAgent Desktop: companion app and phone ↔ desktop link (idea 2026-11-06, write-up only)
 

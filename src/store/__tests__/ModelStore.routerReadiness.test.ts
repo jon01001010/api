@@ -8,6 +8,7 @@ import {RemoteModelRequestWithdrawnError} from '../../utils/errors';
 
 jest.mock('../ServerStore', () => ({
   serverStore: {
+    prepareHomeLink: jest.fn().mockResolvedValue({ok: true}),
     getApiKey: jest.fn().mockResolvedValue(undefined),
     servers: [] as any[],
     fetchRemoteModelCaps: jest.fn().mockResolvedValue(undefined),
