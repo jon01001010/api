@@ -459,17 +459,17 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 
 No Android sandbox on the PC: the native side (Rust) can use Windows directly (and Linux where it makes sense). More memory and a graphics card too. Same rules as everywhere (SECURITY.md 2 and 6): **every tool starts off** (Toolbox switch), and every action outside the app's own folder shows **exactly** what will happen in a native dialog; no means nothing happens. Dangerous kinds (run a command, delete, send) always ask, with no "always allow". Every action is written to a log the user can read.
 
-**Files and documents**
-- [ ] Folder grants: the user picks folders (Documents, a project…) the assistant may read; each grant can be removed; reading inside a grant needs no prompt, writing always asks.
-- [ ] Search files by name and content in granted folders (Windows Search index where it's on; Linux: plain search).
-- [ ] Read Word, Excel, PowerPoint and PDF files as text (converted on the native side, nothing uploaded).
-- [ ] Write or change a file with a before/after view; nothing is saved until the user presses Save.
-- [ ] Tidy up: rename / move many files from one list the user checks and approves at once.
-- [ ] Drag and drop files into the chat.
-- [ ] Ask your documents: a local search index (embeddings on this PC) over granted folders, so the model can answer from your own files.
+**Files and documents: the workspace folder only (same as Android, decided 2026-11-07)**
+- [ ] File tools work only inside the app's own workspace folder (in AppData), like the phone's workspace. No access to the rest of the PC's files.
+- [ ] Getting files in and out is the user's action: import (file picker or drag and drop into the chat) puts a copy in the workspace; export / Save as copies one out. The model can't reach outside.
+- [ ] Search files by name and content in the workspace.
+- [ ] Read Word, Excel, PowerPoint and PDF files in the workspace as text (converted on the native side, nothing uploaded).
+- [ ] Write or change a workspace file with a before/after view; nothing is saved until the user presses Save.
+- [ ] Tidy up: rename / move many workspace files from one list the user checks and approves at once.
+- [ ] Ask your documents: a local search index (embeddings on this PC) over the workspace, so the model can answer from your own files.
 
 **Apps and the system**
-- [ ] Open an app, file or web page (asks each time, shows what opens).
+- [ ] Open an app or web page, or a workspace file in its app (asks each time, shows what opens).
 - [ ] Run a PowerShell / shell command: shown in full, asks every time, output shown in the chat; a short list of read-only commands (e.g. disk space, IP address) can be allowed once.
 - [ ] Read the system: battery, disk space, memory, graphics card (to pick the right model size), running programs (read-only).
 - [ ] Clipboard: copy is the user's button (done); reading the clipboard asks.
@@ -492,8 +492,8 @@ No Android sandbox on the PC: the native side (Rust) can use Windows directly (a
 **Automation and coding**
 - [ ] Custom tools / shortcuts on the desktop too (built-in tools only, same review as the phone's).
 - [ ] Scheduled tasks ("every morning: weather + calendar"), run only while the app is open, each run listed.
-- [ ] Run small Python scripts for maths, charts and data, in a locked folder, asking first; the result is shown before anything is saved.
-- [ ] Code helper for a chosen project folder: read files, explain, propose changes as a diff the user applies.
+- [ ] Run small Python scripts for maths, charts and data, inside the workspace, asking first; the result is shown before anything is saved.
+- [ ] Code helper for a project imported into the workspace: read files, explain, propose changes as a diff the user applies.
 
 **Together with the phone (home link)**
 - [ ] The phone uses the PC's tools too (not only the model): each PC tool still asks on the PC, or on the phone with the PC's dialog mirrored; off by default.
