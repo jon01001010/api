@@ -391,7 +391,7 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [x] First Windows installer built (run 42332849525, 2026-11-07): release `exe-windows-42332849525-1`, 20 MB, contains pocketagent.exe + the llama.cpp folder (53 files). Earlier runs failed on Windows-runner differences, all fixed: CRLF in a rule test, npx.cmd, unzip, Windows paths in Rust tests, rustls/ring → native TLS. The Rust code now type-checks for Windows here (`cargo check --target x86_64-pc-windows-msvc`) and a local `tauri build --bundles deb` checks config + resources before any Windows run.
 - [ ] On a Windows PC: installs, opens, saves chats/settings, keys, a real .gguf runs, Allow dialog for files outside the app folder.
 - [ ] Icon: only a 96px source exists; a proper large icon.
-- [ ] Code signing (SmartScreen "unknown publisher" until signed).
+- [ ] Code signing, decided 2026-11-07: no outside certificate company. If wanted, a self-signed "PocketAgent" certificate (key as a GitHub secret, signtool in the build, fingerprint + SHA-256 published) proves a download is ours; Windows still says "unknown publisher". Not started. Outside options noted only: SignPath Foundation (free, open source), Azure Artifact Signing (US/Canada individuals), paid certificates.
 - [ ] Fix: an invalid colour `rgba(…)30` in the app's styles (Android ignores it; the web warns).
 - [ ] Fix: `pocketagent_logo` is an Android-only image name; give the web its file.
 
