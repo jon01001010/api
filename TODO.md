@@ -388,7 +388,8 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [x] "Run a model on this PC" (Settings): pick a .gguf, the bundled llama.cpp server (b11662, Vulkan + CPU, checksum pinned) runs it on 127.0.0.1 with a random password and it appears as "This PC" in Models.
 - [x] Checked here: 9 Rust tests; the release web build under the .exe's security policy with a fake native side (streaming fetch/XHR, abort, direct internet blocked); end to end with a stand-in llama.cpp server (pick → start → This PC → Load → chat reply streamed).
 - [x] Safety rule 6 in SECURITY.md + tests that fail if a command, permission or approval step changes.
-- [ ] First Windows build: check the installer installs, opens, saves chats/settings, keys, a real .gguf runs.
+- [x] First Windows installer built (run 42332849525, 2026-11-07): release `exe-windows-42332849525-1`, 20 MB, contains pocketagent.exe + the llama.cpp folder (53 files). Earlier runs failed on Windows-runner differences, all fixed: CRLF in a rule test, npx.cmd, unzip, Windows paths in Rust tests, rustls/ring → native TLS. The Rust code now type-checks for Windows here (`cargo check --target x86_64-pc-windows-msvc`) and a local `tauri build --bundles deb` checks config + resources before any Windows run.
+- [ ] On a Windows PC: installs, opens, saves chats/settings, keys, a real .gguf runs, Allow dialog for files outside the app folder.
 - [ ] Icon: only a 96px source exists; a proper large icon.
 - [ ] Code signing (SmartScreen "unknown publisher" until signed).
 - [ ] Fix: an invalid colour `rgba(…)30` in the app's styles (Android ignores it; the web warns).
