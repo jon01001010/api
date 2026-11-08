@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {Image, StyleSheet, View} from 'react-native';
 import {Button, Card, Text} from 'react-native-paper';
 
+import {describeEvent} from '../../services/homeLink/homeLink';
 import {
   homeLinkAvailable,
   linkForget,
@@ -142,6 +143,21 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
             </Button>
           </View>
         ))}
+        {status.events && status.events.length > 0 ? (
+          <>
+            <Text variant="labelMedium" style={styles.state}>
+              Pairing history (your paired phones see this too)
+            </Text>
+            {[...status.events]
+              .reverse()
+              .slice(0, 5)
+              .map(e => (
+                <Text key={e.n} variant="bodySmall" testID="home-link-event">
+                  {describeEvent(e)}
+                </Text>
+              ))}
+          </>
+        ) : null}
         {message ? <Text variant="bodySmall">{message}</Text> : null}
       </Card.Content>
     </Card>

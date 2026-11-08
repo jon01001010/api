@@ -8,10 +8,19 @@ export interface LinkPhone {
   name: string;
 }
 
+export interface LinkEvent {
+  n: number;
+  at: number;
+  kind: string;
+  name?: string;
+}
+
 export interface LinkStatus {
   on: boolean;
   pcId: string | null;
   phones: LinkPhone[];
+  /** Pairing history: codes made, phones paired / removed. */
+  events?: LinkEvent[];
 }
 
 export interface LinkPairing {
@@ -23,7 +32,7 @@ export interface LinkPairing {
 export const homeLinkAvailable = (): boolean => false;
 
 export async function linkStatus(): Promise<LinkStatus> {
-  return {on: false, pcId: null, phones: []};
+  return {on: false, pcId: null, phones: [], events: []};
 }
 
 export async function linkPair(): Promise<LinkPairing> {

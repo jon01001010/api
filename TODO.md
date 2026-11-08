@@ -631,6 +631,9 @@ Research (2026-11-07): **iroh 1.x** (Rust, MIT/Apache, 1.0 in June 2026; we pin 
 - [x] Paired phones can only: ask whether a model runs (with its password), and pass HTTP to this PC's own model server. Checked: unpaired phone refused; reused code refused without a dialog; a paired phone asking for anything else refused; streamed chat reply through the link; Remove shuts the phone out at once; Switch off closes the port.
 - [x] Linux: the kernel keyring got an entry stuck (neither readable nor writable), so on Linux the link key and paired phones live in an owner-only file in the app's settings folder (~/.config/…), outside the data folder the screens reach. Windows: Credential Manager.
 - [x] Built with the `link` feature (default). The Windows type-check here runs with `--no-default-features` (no Windows C compiler here for iroh's crypto library; the real Windows build has one).
+- [x] Pairing codes are single use (one try, 10 minutes). Pairing history (user, 2026-11-08): every code made, phone paired and phone removed is recorded on the PC and sent to paired phones with each status; the phone shows "Pairing activity on your PC" for anything new (not its own pairing). Checked in the real app: making a code shows up in the paired phone's status.
+- [ ] Tell the phone at once (not only at its next contact): a background check or a push over the link while the app is closed.
+- [ ] Optional setting: a new pairing also needs OK from an already paired phone ("the PC asks, the phone answers").
 - [ ] Relays: n0's public relays by default; add "Use my own relay" (URL) for people who self-host.
 - [ ] Keep running when the window is closed (tray icon), and start the model when a paired phone asks.
 - [ ] Linux keeps keys in the kernel keyring (forgotten after a reboot): use the desktop's secret service there.

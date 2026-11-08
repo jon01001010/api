@@ -66,7 +66,12 @@ pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_status(
 ) -> jstring {
     let (key_file, pc) = (text(&mut env, &key_file), text(&mut env, &pc));
     let value = match phone(&key_file).and_then(|p| p.status(&pc)) {
-        Ok(s) => serde_json::json!({"ok": true, "running": s.running, "apiKey": s.api_key}),
+        Ok(s) => serde_json::json!({
+            "ok": true,
+            "running": s.running,
+            "apiKey": s.api_key,
+            "events": s.events,
+        }),
         Err(e) => fail(e),
     };
     answer(&mut env, value)

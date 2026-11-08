@@ -57,6 +57,9 @@ pub fn parse_qr(text: &str) -> Result<PairingCode, String> {
 pub struct Status {
     pub running: bool,
     pub api_key: Option<String>,
+    /// The PC's pairing history (codes made, phones paired / removed), so
+    /// the app can tell the user about new ones.
+    pub events: serde_json::Value,
 }
 
 pub struct Phone {
@@ -192,6 +195,7 @@ impl Phone {
         Ok(Status {
             running: answer.get("running").and_then(|v| v.as_bool()).unwrap_or(false),
             api_key: answer.get("apiKey").and_then(|v| v.as_str()).map(String::from),
+            events: answer.get("events").cloned().unwrap_or(serde_json::json!([])),
         })
     }
 

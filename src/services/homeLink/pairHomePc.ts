@@ -4,7 +4,13 @@
  */
 import {serverStore} from '../../store/ServerStore';
 
-import {openTunnel, pairWithPc, pcStatus, tunnelUrl} from './homeLink';
+import {
+  newPairingEvents,
+  openTunnel,
+  pairWithPc,
+  pcStatus,
+  tunnelUrl,
+} from './homeLink';
 
 /** A local PC model reads long prompts slowly: wait up to 10 minutes. */
 const HOME_PC_TIMEOUT_MS = 10 * 60 * 1000;
@@ -31,6 +37,10 @@ export async function pairHomePc(
         requestTimeoutMs: HOME_PC_TIMEOUT_MS,
       });
   const status = await pcStatus(paired.pc);
+  // This phone's own pairing (and history before it) is not news.
+  if (status.ok) {
+    await newPairingEvents(paired.pc, status.events, true);
+  }
   if (status.ok && status.running && status.apiKey) {
     await serverStore.setApiKey(serverId, status.apiKey);
     await serverStore.fetchModelsForServer(serverId);

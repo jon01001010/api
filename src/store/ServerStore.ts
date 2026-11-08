@@ -16,7 +16,12 @@ import {ReasoningCapability} from '../utils/reasoningCapability';
 import {toServerType} from '../utils/serverTypes';
 import {deriveListCapsMap} from '../api/servers';
 import {profileFor} from '../api/servers';
-import {openTunnel, pcStatus, tunnelUrl} from '../services/homeLink/homeLink';
+import {
+  noticePairingActivity,
+  openTunnel,
+  pcStatus,
+  tunnelUrl,
+} from '../services/homeLink/homeLink';
 
 const KEYCHAIN_SERVICE_PREFIX = 'pocketpal-server-';
 
@@ -320,6 +325,8 @@ class ServerStore {
     if (!status.ok) {
       return {ok: false, error: status.error};
     }
+    // A pairing code made (or a phone added) on the PC since last time.
+    await noticePairingActivity(server.homeLinkPc, status.events);
     if (!status.running || !status.apiKey) {
       return {ok: false, error: 'No model is running on your PC'};
     }

@@ -30,6 +30,9 @@ pub const ALPN: &[u8] = b"pocketagent/home-link/1";
 pub const QR_PREFIX: &str = "PA1:P:";
 const KEY_ENTRY: &str = "DesktopAgent-link:key";
 const PHONES_ENTRY: &str = "DesktopAgent-link:phones";
+const EVENTS_ENTRY: &str = "DesktopAgent-link:events";
+/// Pairing history kept (paired phones see it, so they notice new codes).
+const MAX_EVENTS: usize = 30;
 const PAIR_CODE_LIFETIME: Duration = Duration::from_secs(10 * 60);
 /// The credential store holds about 2.5 KB per entry: a few phones.
 const MAX_PHONES: usize = 8;
@@ -189,6 +192,52 @@ fn save_phones(app: &AppHandle, phones: &[Phone]) -> Result<(), String> {
     write_entry(app, PHONES_ENTRY, &json)
 }
 
+/// One line of the pairing history: a pairing code was made, a phone was
+/// paired or removed. Paired phones get this list with every status, so a
+/// code made while you are away from home shows up on your phone.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LinkEvent {
+    /// Counts up; the phone remembers the last one it showed.
+    pub n: u64,
+    /// Seconds since 1970 (the PC's clock).
+    pub at: u64,
+    /// "code" | "paired" | "removed"
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+pub fn add_event(events: &mut Vec<LinkEvent>, at: u64, kind: &str, name: Option<String>) {
+    let n = events.last().map(|e| e.n + 1).unwrap_or(1);
+    events.push(LinkEvent {
+        n,
+        at,
+        kind: kind.into(),
+        name,
+    });
+    while events.len() > MAX_EVENTS {
+        events.remove(0);
+    }
+}
+
+fn load_events(app: &AppHandle) -> Vec<LinkEvent> {
+    read_entry(app, EVENTS_ENTRY)
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or_default()
+}
+
+fn record(app: &AppHandle, kind: &str, name: Option<String>) {
+    let at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut events = load_events(app);
+    add_event(&mut events, at, kind, name);
+    if let Ok(json) = serde_json::to_string(&events) {
+        let _ = write_entry(app, EVENTS_ENTRY, &json);
+    }
+}
+
 // ------------------------------------------------------------ the endpoint
 
 #[derive(Default)]
@@ -203,6 +252,7 @@ pub struct LinkStatus {
     on: bool,
     pc_id: Option<String>,
     phones: Vec<Phone>,
+    events: Vec<LinkEvent>,
 }
 
 #[derive(Serialize)]
@@ -306,8 +356,12 @@ async fn serve_stream(
                 );
                 if crate::approval::ask(&app, &question).await {
                     let mut phones = load_phones(&app);
-                    add_phone(&mut phones, Phone { id: remote.clone(), name });
-                    save_phones(&app, &phones).is_ok()
+                    add_phone(&mut phones, Phone { id: remote.clone(), name: name.clone() });
+                    let saved = save_phones(&app, &phones).is_ok();
+                    if saved {
+                        record(&app, "paired", Some(name));
+                    }
+                    saved
                 } else {
                     false
                 }
@@ -322,6 +376,8 @@ async fn serve_stream(
                     "ok": true,
                     "running": address.is_some(),
                     "apiKey": address.map(|(_, key)| key),
+                    // So the phone notices pairing codes made while away.
+                    "events": load_events(&app),
                 }),
             )
             .await;
@@ -386,6 +442,8 @@ pub async fn link_pair(app: AppHandle) -> Result<Pairing, String> {
     let id = start(&app).await?;
     let code = random_hex(16)?;
     *app.state::<Link>().pair_code.lock().unwrap() = Some(PairCode::new(code.clone()));
+    // Paired phones will see that a code was made (and when).
+    record(&app, "code", None);
     let qr = qr_text(&id, &code);
     Ok(Pairing {
         qr_image: qr_image(&qr)?,
@@ -416,6 +474,7 @@ pub async fn link_status(app: AppHandle, link: State<'_, Link>) -> Result<LinkSt
         on: running.is_some(),
         pc_id: running.as_ref().map(|r| r.endpoint().id().to_string()),
         phones: load_phones(&app),
+        events: load_events(&app),
     })
 }
 
@@ -423,8 +482,11 @@ pub async fn link_status(app: AppHandle, link: State<'_, Link>) -> Result<LinkSt
 #[tauri::command]
 pub async fn link_forget(app: AppHandle, id: String) -> Result<(), String> {
     let mut phones = load_phones(&app);
+    let name = phones.iter().find(|p| p.id == id).map(|p| p.name.clone());
     phones.retain(|p| p.id != id);
-    save_phones(&app, &phones)
+    save_phones(&app, &phones)?;
+    record(&app, "removed", name);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -479,6 +541,22 @@ mod tests {
         assert_eq!(phones.len(), MAX_PHONES);
         add_phone(&mut phones, Phone { id: "5".into(), name: "again".into() });
         assert_eq!(phones.iter().filter(|p| p.id == "5").count(), 1);
+    }
+
+    #[test]
+    fn the_pairing_history_counts_up_and_stays_short() {
+        let mut events = Vec::new();
+        add_event(&mut events, 100, "code", None);
+        add_event(&mut events, 101, "paired", Some("Pixel".into()));
+        assert_eq!(events[0].n, 1);
+        assert_eq!(events[1].n, 2);
+        assert_eq!(events[1].name.as_deref(), Some("Pixel"));
+        for i in 0..(MAX_EVENTS + 5) {
+            add_event(&mut events, 200 + i as u64, "code", None);
+        }
+        assert_eq!(events.len(), MAX_EVENTS);
+        // Numbers keep counting up after old lines drop off.
+        assert_eq!(events.last().unwrap().n, (MAX_EVENTS + 7) as u64);
     }
 
     #[test]
