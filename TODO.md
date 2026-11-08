@@ -26,11 +26,18 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
   - One **system prompt** for both: the global system prompt (and memory, which goes into it) is kept the same on phone and PC, so the model behaves the same whichever device you use. Edit on either, the other follows.
   - **Never two system prompts:** when the phone uses the PC's model (Home PC), only the phone's request carries the system prompt; the PC's link passes requests through untouched and adds nothing of its own (keep it that way; a test should pin it). Same the other way round.
   - Also kept in step (each its own switch): assistants (pals) and their prompts, custom tools / shortcuts, Toolbox switches (each device still asks for its own phone/PC actions), memory notes, loops / plans, chats (optional).
+  - **Chats mirrored** (user, 2026-11-08, after the first real pairing): a chat with the Home PC on the phone shows up on the PC too (and the other way), live while both are on; same history, either device can continue it.
   - Conflicts: last edit wins per item, with the other version kept in history (memory already has snapshots); a changed system prompt shows "changed on your PC" once.
   - Model choice and per-device settings (model files, GPU, storage, permissions) stay per device.
 - [ ] Desktop tools in the workspace folder only; voice; quick chat on a hotkey.
 
 - [ ] **Ready-made loops** for people who don't write prompts (idea 2026-11-08): pick one, fill in the blanks, it runs on a timer and ends each run with next steps. See "Ready-made loops" below.
+
+- [ ] **Reasoning that doesn't loop** (first real use 2026-11-08: a 2B model with Think on went back and forth "wait, I should…" and never answered "hi"):
+  - A thinking budget: a cap on reasoning tokens (setting, default small for small models; llama-server's reasoning budget), then it must answer.
+  - Loop guard while streaming: the same phrase over and over in the reasoning → stop thinking and ask for the answer.
+  - The model maker's recommended settings per model family when thinking (Qwen: temperature 0.6, top_p 0.95, top_k 20, presence penalty ~1.5 for quantized), applied to Home PC / This PC models too.
+  - Think off by default for small models; a short system prompt when no tools are switched on.
 
 **3. It learns you (later)**
 - [ ] Daily personal training (PC trains, phone learns, raw data deletable). Small models keep improving; style and habits first, exact facts stay in memory notes.
