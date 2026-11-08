@@ -63,6 +63,15 @@ A loop is a small agent job that comes back on a timer: it does its part, shows 
 - [ ] Versioned: each edit makes a new version; going back is one tap. Ready-made loops are just shipped plans; shared plans (QR / file) are reviewed and installed off, like tools.
 - [ ] Runs where it fits: the phone for quick steps, the PC (home link) for long or heavy ones; a step can say "on the PC", and the PC's questions can be answered on the phone.
 
+- [ ] **The user chooses how many steps** (user, 2026-11-08): a detail level when making the plan (Short ≈ 3 steps, Normal ≈ 5–7, Detailed ≈ 10–15, or an exact number), and a hard maximum per plan (default 20, settable). The model must fit the plan to it; asking for more steps later is a plan change the user approves.
+- [ ] **Loop guards** (all on by default, shown on the plan's card, only the user can raise them):
+  - Each **repeat** block has a maximum count; each plan a maximum number of steps run in total and a maximum run time.
+  - A budget per run: model calls, tool calls, tokens; on the phone also battery (stop below a level, heavy work only on the charger).
+  - **No-progress stop:** the same step with the same result twice in a row, or a check that never changes after N tries → pause and ask the user instead of looping.
+  - **Runaway stop:** no plan can start another plan, schedule itself more often, or edit its own steps, tools or guards.
+  - When a guard is hit: pause (never silently retry), show which guard and why, and offer: stop, continue once, or raise the limit (the user's choice, logged).
+- [ ] **Still asks the user**, whatever the plan says: ask-the-user steps can't be skipped by the model; anything outside the app, any phone action, and anything dangerous (send, buy, delete, run a command) asks every time; no answer = the plan waits.
+
 **How it looks to the user**
 - [ ] A **Loops** gallery: each card says in one line what it does, how often, and what it may use. Pick one, fill in the blanks (topic, time, how long), press Start. No prompt writing.
 - [ ] Before it starts, a plain summary: "Runs every day at 7:00 for 2 weeks. May use: weather, calendar, memory (read). Never sends, buys or deletes anything."
