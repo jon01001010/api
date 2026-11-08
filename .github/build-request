@@ -1,0 +1,5 @@
+Change this file on the windows branch to build the phone app (APK) and the
+desktop apps (Windows, Linux) together, from the same commit, so they match.
+Each app shows its build in App Info; the home link says when phone and PC
+differ.
+Requested: (not yet)

@@ -60,6 +60,8 @@ pub struct Status {
     /// The PC's pairing history (codes made, phones paired / removed), so
     /// the app can tell the user about new ones.
     pub events: serde_json::Value,
+    /// Which commit the PC app was built from (to tell when phone and PC differ).
+    pub build: Option<String>,
 }
 
 pub struct Phone {
@@ -196,6 +198,7 @@ impl Phone {
             running: answer.get("running").and_then(|v| v.as_bool()).unwrap_or(false),
             api_key: answer.get("apiKey").and_then(|v| v.as_str()).map(String::from),
             events: answer.get("events").cloned().unwrap_or(serde_json::json!([])),
+            build: answer.get("build").and_then(|v| v.as_str()).map(String::from),
         })
     }
 

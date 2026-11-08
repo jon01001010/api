@@ -9,6 +9,7 @@ on:
     branches: [windows]
     paths:
       - '.github/linux-build-request'
+      - '.github/build-request'
   workflow_dispatch:
 permissions:
   contents: read
@@ -49,6 +50,8 @@ jobs:
         run: yarn typecheck
       - name: Desktop and safety rule tests
         run: yarn jest --runInBand --coverage=false stubs src/__tests__/securityRules.test.ts
+      - name: Record which build this is (shown in App Info, compared over the home link)
+        run: node scripts/build-info/write.js
       - name: Build the web app (release)
         run: node scripts/web/build.js --release
       - name: Add the pinned llama.cpp server (checksum checked)

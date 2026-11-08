@@ -43,7 +43,7 @@ describe('AboutScreen', () => {
     const {getByText} = render(<AboutScreen />);
 
     expect(getByText('PocketAgent')).toBeTruthy();
-    expect(getByText('v1.0.0 (100)')).toBeTruthy();
+    expect(getByText('v1.0.0 (100) · Build: development')).toBeTruthy();
     expect(getByText('Open-source foundations')).toBeTruthy();
     expect(getByText(l10n.en.about.githubButton)).toBeTruthy();
   });
@@ -51,7 +51,7 @@ describe('AboutScreen', () => {
   it('copies version to clipboard when version button is pressed', () => {
     const {getByText} = render(<AboutScreen />);
 
-    fireEvent.press(getByText('v1.0.0 (100)'));
+    fireEvent.press(getByText('v1.0.0 (100) · Build: development'));
 
     expect(Alert.alert).toHaveBeenCalledWith(
       l10n.en.about.versionCopiedTitle,

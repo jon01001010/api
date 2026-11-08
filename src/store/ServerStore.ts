@@ -17,6 +17,7 @@ import {toServerType} from '../utils/serverTypes';
 import {deriveListCapsMap} from '../api/servers';
 import {profileFor} from '../api/servers';
 import {
+  noticeBuildMismatch,
   noticePairingActivity,
   openTunnel,
   pcStatus,
@@ -327,6 +328,8 @@ class ServerStore {
     }
     // A pairing code made (or a phone added) on the PC since last time.
     await noticePairingActivity(server.homeLinkPc, status.events);
+    // Phone and PC apps built from different commits: say so once.
+    await noticeBuildMismatch(server.homeLinkPc, status.build);
     if (!status.running || !status.apiKey) {
       return {ok: false, error: 'No model is running on your PC'};
     }

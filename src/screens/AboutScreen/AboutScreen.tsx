@@ -15,6 +15,7 @@ import {Sheet, TextInput} from '../../components';
 import {useTheme} from '../../hooks';
 import {createStyles} from './styles';
 import {LicensesModal} from './LicensesModal';
+import {buildLabel} from '../../utils/buildInfo';
 import {L10nContext} from '../../utils';
 import {uiStore} from '../../store';
 
@@ -55,7 +56,7 @@ export const AboutScreen: React.FC = () => {
   }, []);
 
   const copyVersionToClipboard = () => {
-    const versionString = `Version ${appInfo.version} (${appInfo.build})`;
+    const versionString = `Version ${appInfo.version} (${appInfo.build}), ${buildLabel()}`;
     Clipboard.setString(versionString);
     Alert.alert(
       l10n.about.versionCopiedTitle,
@@ -110,8 +111,8 @@ export const AboutScreen: React.FC = () => {
                 <TouchableOpacity
                   style={styles.versionButton}
                   onPress={copyVersionToClipboard}>
-                  <Text style={styles.versionText}>
-                    v{appInfo.version} ({appInfo.build})
+                  <Text style={styles.versionText} testID="app-build">
+                    v{appInfo.version} ({appInfo.build}) · {buildLabel()}
                   </Text>
                   <CopyIcon
                     width={16}

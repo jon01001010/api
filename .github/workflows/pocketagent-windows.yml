@@ -10,6 +10,9 @@ on:
     branches: [windows]
     paths:
       - '.github/windows-build-request'
+      # One file starts the phone and the PC builds together, from the same
+      # commit, so they always match (see .github/build-request).
+      - '.github/build-request'
   workflow_dispatch:
     inputs:
       stage:
@@ -57,6 +60,9 @@ jobs:
         run: yarn jest --runInBand --coverage=false stubs src/__tests__/securityRules.test.ts
 
       # --- exe (Tauri) ---
+      - name: Record which build this is (shown in App Info, compared over the home link)
+        shell: bash
+        run: node scripts/build-info/write.js
       - name: Build the web app (release)
         if: github.event_name == 'push' || inputs.stage == 'exe'
         run: node scripts/web/build.js --release

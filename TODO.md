@@ -13,6 +13,7 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [ ] Home link on real devices: pair over the hotspot, then use it away from home on mobile data (relay).
 - [ ] Keep the link alive in the background; start the PC's model when the phone asks.
 - [ ] Clean installs and updates: a version per build (0.1.<build>), upgrades in place.
+- [x] **Builds always match** (user, 2026-11-08): one file, `.github/build-request`, starts the Android, Windows and Linux builds together from the same commit (on the windows branch, nothing else starts the Android build). Each build records its commit (scripts/build-info/write.js); App Info shows it ("Build 1a2b3c4"); the home link compares the phone's and the PC's and says once when they differ.
 
 **2. One assistant on two devices (next)**
 - [ ] **The PC asks, the phone can answer** (decided 2026-11-08): when the PC needs an "Allow?" (a file outside the workspace, a command, pairing…), the same question also appears on the paired phone, and either device can answer. Security:

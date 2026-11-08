@@ -118,6 +118,7 @@ pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_status(
             "running": s.running,
             "apiKey": s.api_key,
             "events": s.events,
+            "build": s.build,
         }),
         Err(e) => fail(e),
     });

@@ -10,6 +10,8 @@
 import {Alert, NativeModules} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {buildCommit, buildsDiffer} from '../../utils/buildInfo';
+
 export const PAIRING_TAG = 'PA1:P:';
 
 /** True for a desktop pairing code (the one QR scanner's `PA1:P:` tag). */
@@ -55,10 +57,12 @@ export interface PairingEvent {
 }
 
 export const pcStatus = (pc: string) =>
-  ask<{running: boolean; apiKey: string | null; events?: PairingEvent[]}>(
-    'status',
-    pc,
-  );
+  ask<{
+    running: boolean;
+    apiKey: string | null;
+    events?: PairingEvent[];
+    build?: string | null;
+  }>('status', pc);
 
 const seenKey = (pc: string) => `homeLink.lastEvent.${pc}`;
 
@@ -125,3 +129,30 @@ export const closeTunnel = () => ask<{}>('closeTunnel');
 
 /** The address the app uses for the PC's model server. */
 export const tunnelUrl = (port: number) => `http://127.0.0.1:${port}`;
+
+/**
+ * Tells the user once when this phone app and the PC app were built from
+ * different commits (they should always be built together).
+ */
+export async function noticeBuildMismatch(
+  pc: string,
+  pcBuild: string | null | undefined,
+  phoneBuild: string = buildCommit(),
+): Promise<boolean> {
+  if (!buildsDiffer(pcBuild, phoneBuild)) {
+    return false;
+  }
+  const key = `homeLink.buildNotice.${pc}`;
+  const pair = `${pcBuild}|${phoneBuild}`;
+  try {
+    if ((await AsyncStorage.getItem(key)) === pair) {
+      return false;
+    }
+    await AsyncStorage.setItem(key, pair);
+  } catch {}
+  Alert.alert(
+    'Phone and PC apps differ',
+    `Your PC is on build ${String(pcBuild).slice(0, 7)}, this phone on build ${phoneBuild.slice(0, 7)}. They are made to be built together: install both from the same build so they match.`,
+  );
+  return true;
+}

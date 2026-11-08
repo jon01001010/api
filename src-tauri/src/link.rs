@@ -238,6 +238,15 @@ fn record(app: &AppHandle, kind: &str, name: Option<String>) {
     }
 }
 
+/// Which commit this PC app was built from (scripts/build-info/write.js runs
+/// before the build); "dev" for local builds.
+pub fn pc_build() -> String {
+    serde_json::from_str::<serde_json::Value>(include_str!("../../src/assets/build-info.json"))
+        .ok()
+        .and_then(|v| v.get("commit").and_then(|c| c.as_str()).map(String::from))
+        .unwrap_or_else(|| "dev".into())
+}
+
 // ------------------------------------------------------------ the endpoint
 
 #[derive(Default)]
@@ -378,6 +387,8 @@ async fn serve_stream(
                     "apiKey": address.map(|(_, key)| key),
                     // So the phone notices pairing codes made while away.
                     "events": load_events(&app),
+                    // So the phone can say when the two apps' builds differ.
+                    "build": pc_build(),
                 }),
             )
             .await;
@@ -557,6 +568,11 @@ mod tests {
         assert_eq!(events.len(), MAX_EVENTS);
         // Numbers keep counting up after old lines drop off.
         assert_eq!(events.last().unwrap().n, (MAX_EVENTS + 7) as u64);
+    }
+
+    #[test]
+    fn the_pc_knows_its_build() {
+        assert!(!pc_build().is_empty());
     }
 
     #[test]

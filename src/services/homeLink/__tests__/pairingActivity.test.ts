@@ -19,6 +19,7 @@ import {serverStore} from '../../../store/ServerStore';
 import {
   describeEvent,
   newPairingEvents,
+  noticeBuildMismatch,
   noticePairingActivity,
 } from '../homeLink';
 
@@ -97,5 +98,28 @@ describe('pairing activity on the PC reaches the phone', () => {
       'Pairing activity on your PC',
       expect.stringContaining('a pairing code was made'),
     );
+  });
+
+  it('says once when phone and PC were built from different commits', async () => {
+    const spy = jest.spyOn(Alert, 'alert');
+    expect(await noticeBuildMismatch(PC, 'aaaaaaaaaaaa', 'aaaaaaaaaaaa')).toBe(
+      false,
+    );
+    expect(await noticeBuildMismatch(PC, 'aaaaaaaaaaaa', 'bbbbbbbbbbbb')).toBe(
+      true,
+    );
+    expect(spy).toHaveBeenCalledWith(
+      'Phone and PC apps differ',
+      expect.stringContaining('build aaaaaaa, this phone on build bbbbbbb'),
+    );
+    // Only once for the same pair; again when a build changes.
+    expect(await noticeBuildMismatch(PC, 'aaaaaaaaaaaa', 'bbbbbbbbbbbb')).toBe(
+      false,
+    );
+    expect(await noticeBuildMismatch(PC, 'cccccccccccc', 'bbbbbbbbbbbb')).toBe(
+      true,
+    );
+    // A development build on either side never warns.
+    expect(await noticeBuildMismatch(PC, 'dev', 'bbbbbbbbbbbb')).toBe(false);
   });
 });
