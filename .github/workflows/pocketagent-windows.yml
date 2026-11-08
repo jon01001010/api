@@ -66,20 +66,45 @@ jobs:
       - name: Build the web app (release)
         if: github.event_name == 'push' || inputs.stage == 'exe'
         run: node scripts/web/build.js --release
+      # Pinned downloads come from a cached copy (checked against their pinned
+      # checksums) so builds don't depend on GitHub's release downloads, which
+      # returned 504 for hours on 2026-11-08.
+      - name: Restore the pinned llama.cpp archive (cached copy)
+        id: llama-cache
+        if: github.event_name == 'push' || inputs.stage == 'exe'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.LLAMA_ZIP }}
+          key: llama-cpp-${{ env.LLAMA_SHA256 }}
       - name: Add the pinned llama.cpp server (checksum checked)
         if: github.event_name == 'push' || inputs.stage == 'exe'
         run: |
           set -euo pipefail
-          curl -sSfL --retry 5 --retry-delay 30 --retry-all-errors -o "$LLAMA_ZIP" \
-            "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/${LLAMA_ZIP}"
+          if [ ! -f "$LLAMA_ZIP" ]; then
+            curl -sSfL --retry 8 --retry-delay 60 --retry-all-errors -o "$LLAMA_ZIP" \
+              "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/${LLAMA_ZIP}"
+          fi
           echo "${LLAMA_SHA256}  ${LLAMA_ZIP}" | sha256sum -c -
           # Windows' own unzip (Git Bash may not have unzip).
           powershell -NoProfile -Command "Expand-Archive -Path '${LLAMA_ZIP}' -DestinationPath 'src-tauri/llama' -Force"
           test -f src-tauri/llama/llama-server.exe
+      - name: Keep a copy of the llama.cpp archive
+        if: steps.llama-cache.outputs.cache-hit != 'true' && (github.event_name == 'push' || inputs.stage == 'exe')
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.LLAMA_ZIP }}
+          key: llama-cpp-${{ env.LLAMA_SHA256 }}
       - name: Rust tests (native side)
         if: github.event_name == 'push' || inputs.stage == 'exe'
         working-directory: src-tauri
         run: cargo test --locked
+      - name: Restore Tauri's packaging tools (cached copy)
+        id: tauri-tools
+        if: github.event_name == 'push' || inputs.stage == 'exe'
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/AppData/Local/tauri
+          key: tauri-tools-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
       - name: Build the Windows installer
         if: github.event_name == 'push' || inputs.stage == 'exe'
         timeout-minutes: 60
@@ -94,6 +119,12 @@ jobs:
             sleep 60
           done
           exit 1
+      - name: Keep a copy of Tauri's packaging tools
+        if: success() && steps.tauri-tools.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/AppData/Local/tauri
+          key: tauri-tools-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
       - name: Upload the installer
         if: success() && (github.event_name == 'push' || inputs.stage == 'exe')
         uses: actions/upload-artifact@v4

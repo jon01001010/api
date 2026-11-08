@@ -59,6 +59,9 @@ jobs:
           cache-read-only: false
           cache-cleanup: always
       - name: Install locked dependencies and patches
+        env:
+          # llama.rn's own download runs in its own step below (cached).
+          RNLLAMA_SKIP_POSTINSTALL: '1'
         timeout-minutes: 12
         run: |
           set -euo pipefail
@@ -73,6 +76,34 @@ jobs:
             sleep 60
           done
           node node_modules/patch-package/index.js --error-on-fail
+      # Pinned downloads come from a cached copy (checked against their pinned
+      # checksums) so builds don't depend on GitHub's release downloads, which
+      # returned 504 for hours on 2026-11-08.
+      - name: Restore llama.rn's native libraries (cached copy)
+        id: rnllama-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules/llama.rn/android/src/main/jniLibs
+            node_modules/llama.rn/ios/rnllama.xcframework
+          key: llama-rn-native-${{ hashFiles('node_modules/llama.rn/install/native-artifacts.json') }}
+      - name: Get llama.rn's native libraries (checksum checked; skipped when cached)
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            node node_modules/llama.rn/install/download-native-artifacts.js && break
+            [ "$attempt" = 5 ] && exit 1
+            echo "Attempt $attempt failed; trying again in 120 s"
+            sleep 120
+          done
+      - name: Keep a copy of llama.rn's native libraries
+        if: steps.rnllama-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            node_modules/llama.rn/android/src/main/jniLibs
+            node_modules/llama.rn/ios/rnllama.xcframework
+          key: llama-rn-native-${{ hashFiles('node_modules/llama.rn/install/native-artifacts.json') }}
       - name: Record which build this is (shown in App Info, compared over the home link)
         run: node scripts/build-info/write.js
       - name: TypeScript validation

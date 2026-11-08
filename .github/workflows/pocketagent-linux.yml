@@ -41,6 +41,9 @@ jobs:
             libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev \
             librsvg2-dev libssl-dev file
       - name: Install locked dependencies and patches
+        env:
+          # llama.rn's own download runs in its own step below (cached).
+          RNLLAMA_SKIP_POSTINSTALL: '1'
         timeout-minutes: 15
         run: |
           set -euo pipefail
@@ -53,6 +56,34 @@ jobs:
             echo "Install attempt $attempt failed; trying again in 60 s"
             sleep 60
           done
+      # Pinned downloads come from a cached copy (checked against their pinned
+      # checksums) so builds don't depend on GitHub's release downloads, which
+      # returned 504 for hours on 2026-11-08.
+      - name: Restore llama.rn's native libraries (cached copy)
+        id: rnllama-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules/llama.rn/android/src/main/jniLibs
+            node_modules/llama.rn/ios/rnllama.xcframework
+          key: llama-rn-native-${{ hashFiles('node_modules/llama.rn/install/native-artifacts.json') }}
+      - name: Get llama.rn's native libraries (checksum checked; skipped when cached)
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            node node_modules/llama.rn/install/download-native-artifacts.js && break
+            [ "$attempt" = 5 ] && exit 1
+            echo "Attempt $attempt failed; trying again in 120 s"
+            sleep 120
+          done
+      - name: Keep a copy of llama.rn's native libraries
+        if: steps.rnllama-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            node_modules/llama.rn/android/src/main/jniLibs
+            node_modules/llama.rn/ios/rnllama.xcframework
+          key: llama-rn-native-${{ hashFiles('node_modules/llama.rn/install/native-artifacts.json') }}
       - name: TypeScript validation
         run: yarn typecheck
       - name: Desktop and safety rule tests
@@ -61,17 +92,40 @@ jobs:
         run: node scripts/build-info/write.js
       - name: Build the web app (release)
         run: node scripts/web/build.js --release
+      # Pinned downloads come from a cached copy (checked against their pinned
+      # checksums) so builds don't depend on GitHub's release downloads, which
+      # returned 504 for hours on 2026-11-08.
+      - name: Restore the pinned llama.cpp archive (cached copy)
+        id: llama-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.LLAMA_TAR }}
+          key: llama-cpp-${{ env.LLAMA_SHA256 }}
       - name: Add the pinned llama.cpp server (checksum checked)
         run: |
           set -euo pipefail
-          curl -sSfL --retry 5 --retry-delay 30 --retry-all-errors -o "$LLAMA_TAR" \
-            "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/${LLAMA_TAR}"
+          if [ ! -f "$LLAMA_TAR" ]; then
+            curl -sSfL --retry 8 --retry-delay 60 --retry-all-errors -o "$LLAMA_TAR" \
+              "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/${LLAMA_TAR}"
+          fi
           echo "${LLAMA_SHA256}  ${LLAMA_TAR}" | sha256sum -c -
           tar -xzf "$LLAMA_TAR" --strip-components=1 -C src-tauri/llama
           test -x src-tauri/llama/llama-server
+      - name: Keep a copy of the llama.cpp archive
+        if: steps.llama-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.LLAMA_TAR }}
+          key: llama-cpp-${{ env.LLAMA_SHA256 }}
       - name: Rust tests (native side)
         working-directory: src-tauri
         run: cargo test --locked
+      - name: Restore Tauri's packaging tools (cached copy)
+        id: tauri-tools
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/tauri
+          key: tauri-tools-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
       - name: Build the Linux packages
         timeout-minutes: 40
         shell: bash
@@ -85,6 +139,12 @@ jobs:
             sleep 60
           done
           exit 1
+      - name: Keep a copy of Tauri's packaging tools
+        if: success() && steps.tauri-tools.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/tauri
+          key: tauri-tools-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
       - name: Upload the packages
         uses: actions/upload-artifact@v4
         with:
