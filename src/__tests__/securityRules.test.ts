@@ -414,6 +414,23 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     ).toContain('context.noBackupFilesDir');
   });
 
+  it('the release token is used only by the publish steps', () => {
+    const dir = path.join(__dirname, '..', '..', '.github', 'workflows');
+    for (const file of fs.readdirSync(dir)) {
+      const text = fs.readFileSync(path.join(dir, file), 'utf8');
+      // Split into steps; the token may appear only in "Publish pre-release".
+      const steps = text.split(/\n\s+- name: /);
+      for (const step of steps) {
+        if (step.includes('RELEASE_TOKEN')) {
+          expect([file, step.split('\n')[0].trim()]).toEqual([
+            file,
+            'Publish pre-release',
+          ]);
+        }
+      }
+    }
+  });
+
   it('network from the native side is http/https only', () => {
     expect(tauri('src/net.rs')).toMatch(/"http" \| "https" => Ok\(parsed\)/);
   });
