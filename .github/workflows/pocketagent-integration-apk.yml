@@ -120,8 +120,10 @@ jobs:
           rustup target add aarch64-linux-android
           cargo install cargo-ndk --version 4.1.2 --locked
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.3.13750724"
-          cargo ndk --manifest-path native/homelink/Cargo.toml -t arm64-v8a --platform 24 \
-            -o android/app/src/main/jniLibs build --release --locked --features android
+          # cargo-ndk 4 reads the crate from the current folder (its
+          # --manifest-path is not used for that), so run it from there.
+          (cd native/homelink && cargo ndk -t arm64-v8a --platform 24 \
+            -o ../../android/app/src/main/jniLibs build --release --locked --features android)
           ls -la android/app/src/main/jniLibs/arm64-v8a/
           rm -rf native/homelink/target
       - name: Prepare diagnostic configuration
