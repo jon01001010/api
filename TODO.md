@@ -43,6 +43,15 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
   - [ ] Memory block: an empty or template memory (e.g. `01 =MEM/1 | 02:@U=user…`) is still sent; send nothing when there are no real notes.
   - (was) **Time without the fixation** (2026-11-08: a 2B with Think on dwelt on "(Sent at 23:29, UTC-08:00)"): a setting "Tell the model the time: always / date only / off"; put the time in the prompt's background block ("Current time: …") instead of on the end of the user's message, worded so it isn't read as part of the question. Each device uses its own clock (both set automatically from the network); when the phone uses the Home PC, the phone's time is sent. If phone and PC report different UTC offsets over the home link, say so once (seen 2026-11-08: BC went permanent UTC-7 in 2026; a PC on old Windows Pacific rules showed UTC-8).
 
+- [ ] **Find the fit** (user, 2026-11-08): the PC app works out which models this PC can run, so nobody needs to know about VRAM or quantisation.
+  - Read the hardware on the native side: graphics card(s) and their memory (Windows: DXGI; Linux: Vulkan), RAM, CPU cores (RAM/cores already via `system_info`).
+  - For each model (Hugging Face search, downloads, files picked): estimate memory needed (file size + room for the conversation at the chosen context) and show a label before download: "Fits on your graphics card (fast)", "Fits, partly on the card (medium)", "Runs from memory only (slow)", "Too big for this PC". Pick the best quantisation that fits (e.g. Q4_K_M → Q3 → Q2 for big models).
+  - Mixture-of-experts models (e.g. 30B with ~3B active) marked as good picks for PCs with lots of RAM and a weak card.
+  - Load with llama.cpp splitting layers between card and RAM to fit (its fitting tool / --n-gpu-layers chosen from the estimate) instead of all on the card (today: `--n-gpu-layers 999`, which can fail when the model is bigger than the card).
+  - After the first replies, show the real speed (tokens/s) and remember it per model on this PC.
+  - Big models (40–70B) on new PCs: about 25 GB (40B) to 42 GB (70B) at Q4; fast on 48 GB of graphics memory (e.g. two 24 GB cards) or on PCs with large shared memory (e.g. 96–128 GB unified-memory mini-PCs); usable from 64 GB RAM at a few tokens/s. The fit check says which, per PC.
+  - Check model type support against the bundled llama.cpp (b11662) and say "needs a newer llama.cpp" instead of failing.
+
 **3. It learns you (later)**
 - [ ] Daily personal training (PC trains, phone learns, raw data deletable). Small models keep improving; style and habits first, exact facts stay in memory notes.
 
