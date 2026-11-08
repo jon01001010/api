@@ -64,7 +64,14 @@ jobs:
           set -euo pipefail
           chmod +x scripts/postinstall.sh
           npm install --global yarn@1.22.22
-          yarn install --frozen-lockfile --non-interactive
+          # GitHub's release downloads can fail for a while (504s seen 2026-11-08):
+          # try again a few times before giving up.
+          for attempt in 1 2 3; do
+            yarn install --frozen-lockfile --non-interactive && break
+            [ "$attempt" = 3 ] && exit 1
+            echo "Install attempt $attempt failed; trying again in 60 s"
+            sleep 60
+          done
           node node_modules/patch-package/index.js --error-on-fail
       - name: Record which build this is (shown in App Info, compared over the home link)
         run: node scripts/build-info/write.js

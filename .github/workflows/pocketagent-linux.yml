@@ -45,7 +45,14 @@ jobs:
         run: |
           set -euo pipefail
           npm install --global yarn@1.22.22
-          yarn install --frozen-lockfile --non-interactive
+          # GitHub's release downloads can fail for a while (504s seen 2026-11-08):
+          # try again a few times before giving up.
+          for attempt in 1 2 3; do
+            yarn install --frozen-lockfile --non-interactive && break
+            [ "$attempt" = 3 ] && exit 1
+            echo "Install attempt $attempt failed; trying again in 60 s"
+            sleep 60
+          done
       - name: TypeScript validation
         run: yarn typecheck
       - name: Desktop and safety rule tests
@@ -57,7 +64,7 @@ jobs:
       - name: Add the pinned llama.cpp server (checksum checked)
         run: |
           set -euo pipefail
-          curl -sSfL -o "$LLAMA_TAR" \
+          curl -sSfL --retry 5 --retry-delay 30 --retry-all-errors -o "$LLAMA_TAR" \
             "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/${LLAMA_TAR}"
           echo "${LLAMA_SHA256}  ${LLAMA_TAR}" | sha256sum -c -
           tar -xzf "$LLAMA_TAR" --strip-components=1 -C src-tauri/llama
@@ -67,7 +74,17 @@ jobs:
         run: cargo test --locked
       - name: Build the Linux packages
         timeout-minutes: 40
-        run: npx tauri build --bundles appimage,deb 2>&1 | tee linux-build.log
+        shell: bash
+        run: |
+          set -o pipefail
+          # GitHub's release downloads can fail for a while (504s seen 2026-11-08):
+          # try again a few times before giving up.
+          for attempt in 1 2 3; do
+            npx tauri build --bundles appimage,deb 2>&1 | tee linux-build.log && exit 0
+            echo "Attempt $attempt failed; trying again in 60 s"
+            sleep 60
+          done
+          exit 1
       - name: Upload the packages
         uses: actions/upload-artifact@v4
         with:

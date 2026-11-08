@@ -70,7 +70,7 @@ jobs:
         if: github.event_name == 'push' || inputs.stage == 'exe'
         run: |
           set -euo pipefail
-          curl -sSfL -o "$LLAMA_ZIP" \
+          curl -sSfL --retry 5 --retry-delay 30 --retry-all-errors -o "$LLAMA_ZIP" \
             "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/${LLAMA_ZIP}"
           echo "${LLAMA_SHA256}  ${LLAMA_ZIP}" | sha256sum -c -
           # Windows' own unzip (Git Bash may not have unzip).
@@ -83,7 +83,17 @@ jobs:
       - name: Build the Windows installer
         if: github.event_name == 'push' || inputs.stage == 'exe'
         timeout-minutes: 60
-        run: npx tauri build --bundles nsis 2>&1 | tee windows-build.log
+        shell: bash
+        run: |
+          set -o pipefail
+          # GitHub's release downloads can fail for a while (504s seen 2026-11-08):
+          # try again a few times before giving up.
+          for attempt in 1 2 3; do
+            npx tauri build --bundles nsis 2>&1 | tee windows-build.log && exit 0
+            echo "Attempt $attempt failed; trying again in 60 s"
+            sleep 60
+          done
+          exit 1
       - name: Upload the installer
         if: success() && (github.event_name == 'push' || inputs.stage == 'exe')
         uses: actions/upload-artifact@v4
