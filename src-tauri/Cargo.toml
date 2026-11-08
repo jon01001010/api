@@ -45,5 +45,7 @@ keyring = { version = "3.6.3", features = ["linux-native"] }
 codegen-units = 1
 lto = true
 opt-level = "s"
-panic = "abort"
+# Unwind, never abort: a fault in one task (e.g. the home link) must not
+# close the whole app; Tokio and Tauri report it instead.
+panic = "unwind"
 strip = true

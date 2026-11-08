@@ -645,6 +645,7 @@ Research (2026-11-07): **iroh 1.x** (Rust, MIT/Apache, 1.0 in June 2026; we pin 
 - [x] `HomeLinkModule.kt` (calls off the main thread; phone key in the no-backup folder), registered in MainApplication. The QR scanner also takes `PA1:P:` pairing codes; the phone asks "Pair with your PC?", then adds the server "Home PC" (10-minute wait for slow PCs). Before listing or loading a Home PC model, the app reopens the tunnel and takes the model's current password.
 - [x] The Android build compiles the library (cargo-ndk 4.1.2, NDK 27.3, arm64) into jniLibs before Gradle.
 - [x] Phone stays small (rule 5): no new Android permission.
+- [x] First phone test (2026-11-07): the app closed on pairing (native crash in libc.so). Cause: iroh's DNS and network code read the Android app context (ndk-context), which was never set, and the library was built to abort on any failure, so even iroh's own fallback couldn't catch it. Fixed: the app context is handed to iroh once at start (`install_android_jni_context`, as iroh documents), every Android door catches failures and answers with an error, and both the phone library and the desktop are built to unwind, never abort (pinned by a rule test).
 - [ ] Build the APK (the Android job runs from main, or by hand on a branch) and test on a phone: pair over the hotspot, then away from home on mobile data (relay).
 - [ ] Keep the tunnel alive in the background (foreground service) for long replies with the screen off.
 - [ ] Desktop-to-phone the other way (PC uses the phone's tools), shared tasks: later.

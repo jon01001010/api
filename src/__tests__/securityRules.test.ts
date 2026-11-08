@@ -414,6 +414,25 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     ).toContain('context.noBackupFilesDir');
   });
 
+  it('the home link can never crash the app: failures come back as errors', () => {
+    expect(read('native/homelink/Cargo.toml')).toMatch(/^panic = "unwind"$/m);
+    expect(read('src-tauri/Cargo.toml')).toMatch(/^panic = "unwind"$/m);
+    const android = read('native/homelink/src/android.rs');
+    // Every door from Android goes through guarded(), and iroh gets the
+    // app context first (it needs it to read the network settings).
+    const doors = android.match(/pub extern "system" fn Java_\w+/g) || [];
+    expect(doors.length).toBe(5);
+    for (const door of doors) {
+      const body = android.slice(android.indexOf(door));
+      const next = body.indexOf('pub extern "system"', 10);
+      expect([
+        door,
+        (next > 0 ? body.slice(0, next) : body).includes('guarded('),
+      ]).toEqual([door, true]);
+    }
+    expect(android).toContain('iroh::dns::install_android_jni_context(');
+  });
+
   it('the release token is used only by the publish steps', () => {
     const dir = path.join(__dirname, '..', '..', '.github', 'workflows');
     for (const file of fs.readdirSync(dir)) {

@@ -28,5 +28,7 @@ android = ["dep:jni"]
 codegen-units = 1
 lto = true
 opt-level = "s"
-panic = "abort"
+# Unwind, never abort: a failure inside the library must come back to the
+# app as an error (android.rs catches it), not take the whole app down.
+panic = "unwind"
 strip = true

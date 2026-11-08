@@ -19,6 +19,7 @@ import java.util.concurrent.Executors
 class HomeLinkModule(private val context: ReactApplicationContext) :
     ReactContextBaseJavaModule(context) {
     private val worker = Executors.newSingleThreadExecutor()
+    @Volatile private var ready = false
 
     override fun getName() = "HomeLink"
 
@@ -33,6 +34,11 @@ class HomeLinkModule(private val context: ReactApplicationContext) :
         }
         worker.execute {
             try {
+                if (!ready) {
+                    // The app's context (not an activity), kept for the app's life.
+                    HomeLinkNative.init(context.applicationContext)
+                    ready = true
+                }
                 promise.resolve(block())
             } catch (e: Throwable) {
                 promise.resolve("{\"ok\":false,\"error\":\"${e.javaClass.simpleName}\"}")

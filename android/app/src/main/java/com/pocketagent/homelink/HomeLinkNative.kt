@@ -14,6 +14,8 @@ object HomeLinkNative {
         false
     }
 
+    /** Once, before anything else: the app's context, which iroh needs on Android. */
+    @JvmStatic external fun init(context: android.content.Context): String
     @JvmStatic external fun pair(keyFile: String, qr: String, name: String): String
     @JvmStatic external fun status(keyFile: String, pc: String): String
     @JvmStatic external fun openTunnel(keyFile: String, pc: String): String
