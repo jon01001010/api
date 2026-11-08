@@ -4,6 +4,40 @@
 
 Updated: 2026-11-03. This document tracks planned work. Items marked done are done in code (with tests) on the open PR stack (#3 → #4 → #5 → todo-batch); anything that still needs checking on the phone is listed under **Phone checks**.
 
+## Roadmap (agreed 2026-11-08)
+
+**No point in any of this without real security.** Every step keeps the rules in SECURITY.md (off until switched on; anything outside the app asks, natively, every time), and each new ability gets its rule test before it ships.
+
+**1. Make what exists solid (now, confirmed)**
+- [ ] Fix the 40 s Windows start (Start-up time card → settings storage read suspected).
+- [ ] Home link on real devices: pair over the hotspot, then use it away from home on mobile data (relay).
+- [ ] Keep the link alive in the background; start the PC's model when the phone asks.
+- [ ] Clean installs and updates: a version per build (0.1.<build>), upgrades in place.
+
+**2. One assistant on two devices (next)**
+- [ ] **The PC asks, the phone can answer** (decided 2026-11-08): when the PC needs an "Allow?" (a file outside the workspace, a command, pairing…), the same question also appears on the paired phone, and either device can answer. Security:
+  - Only a paired phone, over the encrypted home link; the PC shows its own dialog too, and the first answer wins.
+  - The phone shows the PC's exact text (what, where, which file / command) and which PC is asking; no summary.
+  - The PC still checks everything itself; the phone's answer is only yes/no for that one question (a one-time id, expires in 2 minutes; no answer = no).
+  - Never "always allow" from the phone for dangerous kinds (run a command, delete, send).
+  - Off until switched on, on both devices; every answer is logged on the PC with which device gave it.
+- [ ] The phone uses the PC's tools (each still asks, on the PC or the phone as above); hand-off of tasks; chats and memory in step over the link.
+- [ ] Desktop tools in the workspace folder only; voice; quick chat on a hotkey.
+
+**3. It learns you (later)**
+- [ ] Daily personal training (PC trains, phone learns, raw data deletable). Small models keep improving; style and habits first, exact facts stay in memory notes.
+
+**4. Further, optional**
+- [ ] More devices (laptop, second phone, an always-on home box); a family sharing one home model, each with their own space; errands across devices under the same rules.
+
+**Not chasing:** cloud features or accounts; beating big cloud models on raw smarts; many platforms at once (Windows + Android first, then Linux).
+
+**Before releasing to people: a full security audit**
+- [ ] Our own full audit of both apps and the link (like the 2026-11-06 one, plus the desktop and the link): every door, every approval, every stored secret, every way in from outside (QR codes, links, model output, pages, paired devices).
+- [ ] A public security policy (SECURITY.md: how to report a problem privately, what's in scope, response times) and a changelog of security fixes.
+- [ ] Invite testers: early users run the test builds and try to break it; credit them. Fix before widening the release.
+- [ ] Builds anyone can check: published checksums for every download (signing optional, our own key).
+
 ## Current validation and fixes
 
 - [x] Memory editor easy to reach: **Toolbox → Memory**, above Global System Prompt; History lists every snapshot to preview and restore (PR #5).
