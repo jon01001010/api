@@ -46,6 +46,26 @@ globalThis.__paBoot = {codeRunning: performance.now(), slowCalls: []};
       }
     }).observe({type: 'longtask', buffered: true});
   } catch (e) {}
+  // Canvas setup can wait for the graphics process (suspected Windows stall).
+  boot.canvas = [];
+  try {
+    const proto =
+      window.HTMLCanvasElement && window.HTMLCanvasElement.prototype;
+    if (proto && proto.getContext) {
+      const real = proto.getContext;
+      proto.getContext = function (...args) {
+        const t = performance.now();
+        try {
+          return real.apply(this, args);
+        } finally {
+          const ms = performance.now() - t;
+          if (ms >= 50 && boot.canvas.length < 5) {
+            boot.canvas.push({kind: String(args[0]), start: t, ms});
+          }
+        }
+      };
+    }
+  } catch (e) {}
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', () => {
       boot.visibility.push({

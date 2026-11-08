@@ -82,6 +82,10 @@ export async function readStartupTiming(): Promise<StartupReport | null> {
           label: `  …long task starting at ${s(l.start)} s`,
           seconds: s(l.ms),
         })),
+      ...(boot.canvas || []).map((c: any) => ({
+        label: `  …canvas (${c.kind}) set up, started at ${s(c.start)} s`,
+        seconds: s(c.ms),
+      })),
       ...(boot.visibility || []).map((v: any) => ({
         label: `  …window ${v.state} at`,
         seconds: s(v.at),
