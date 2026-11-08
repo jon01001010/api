@@ -66,6 +66,76 @@ globalThis.__paBoot = {codeRunning: performance.now(), slowCalls: []};
       };
     }
   } catch (e) {}
+  // Where start-up time goes inside the browser: total time spent in each
+  // kind of browser call during the first two minutes (the card shows the
+  // biggest). A call that takes 38 s on one PC shows up here by name.
+  boot.calls = {};
+  const timed = (owner, name, label) => {
+    try {
+      const desc = owner && Object.getOwnPropertyDescriptor(owner, name);
+      if (!desc) {
+        return;
+      }
+      const note = t => {
+        const ms = performance.now() - t;
+        if (t < 120000) {
+          const c = (boot.calls[label] = boot.calls[label] || {
+            ms: 0,
+            n: 0,
+            max: 0,
+          });
+          c.ms += ms;
+          c.n += 1;
+          c.max = Math.max(c.max, ms);
+        }
+      };
+      if (typeof desc.value === 'function') {
+        const real = desc.value;
+        owner[name] = function (...args) {
+          const t = performance.now();
+          try {
+            return real.apply(this, args);
+          } finally {
+            note(t);
+          }
+        };
+      } else if (desc.get) {
+        const get = desc.get;
+        Object.defineProperty(owner, name, {
+          ...desc,
+          get() {
+            const t = performance.now();
+            try {
+              return get.call(this);
+            } finally {
+              note(t);
+            }
+          },
+        });
+      }
+    } catch (e) {}
+  };
+  const W = typeof window !== 'undefined' ? window : {};
+  const P = c => W[c] && W[c].prototype;
+  timed(P('CSSStyleSheet'), 'insertRule', 'add a style rule');
+  timed(P('Element'), 'getBoundingClientRect', 'measure layout');
+  timed(P('HTMLElement'), 'offsetWidth', 'measure layout');
+  timed(P('HTMLElement'), 'offsetHeight', 'measure layout');
+  timed(P('Element'), 'scrollHeight', 'measure layout');
+  timed(W, 'getComputedStyle', 'read computed style');
+  timed(P('CanvasRenderingContext2D'), 'measureText', 'measure text (canvas)');
+  timed(P('HTMLCanvasElement'), 'getContext', 'set up a canvas');
+  timed(P('Document'), 'createElement', 'create an element');
+  timed(P('Node'), 'appendChild', 'add to the page');
+  timed(P('Node'), 'insertBefore', 'add to the page');
+  timed(P('Element'), 'setAttribute', 'set an attribute');
+  timed(P('Storage'), 'getItem', 'read saved settings');
+  timed(P('Storage'), 'setItem', 'save settings');
+  timed(P('IDBFactory'), 'open', 'open the chat database');
+  timed(W.JSON, 'parse', 'read data (JSON)');
+  timed(P('FontFaceSet'), 'load', 'load a font');
+  timed(P('FontFaceSet'), 'check', 'check a font');
+  timed(W, 'matchMedia', 'check screen settings');
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', () => {
       boot.visibility.push({

@@ -86,6 +86,14 @@ export async function readStartupTiming(): Promise<StartupReport | null> {
         label: `  …canvas (${c.kind}) set up, started at ${s(c.start)} s`,
         seconds: s(c.ms),
       })),
+      // The browser calls that took the most time in total.
+      ...Object.entries(boot.calls || {})
+        .sort((a: any, b: any) => b[1].ms - a[1].ms)
+        .slice(0, 5)
+        .map(([label, c]: any) => ({
+          label: `  …browser: ${label} (${c.n}×, longest ${s(c.max)} s), total`,
+          seconds: s(c.ms),
+        })),
       ...(boot.visibility || []).map((v: any) => ({
         label: `  …window ${v.state} at`,
         seconds: s(v.at),
