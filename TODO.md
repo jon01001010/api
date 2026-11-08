@@ -22,6 +22,12 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
   - Never "always allow" from the phone for dangerous kinds (run a command, delete, send).
   - Off until switched on, on both devices; every answer is logged on the PC with which device gave it.
 - [ ] The phone uses the PC's tools (each still asks, on the PC or the phone as above); hand-off of tasks; chats and memory in step over the link.
+- [ ] **Sync phone and PC** (user, 2026-11-08), over the home link only, off until switched on:
+  - One **system prompt** for both: the global system prompt (and memory, which goes into it) is kept the same on phone and PC, so the model behaves the same whichever device you use. Edit on either, the other follows.
+  - **Never two system prompts:** when the phone uses the PC's model (Home PC), only the phone's request carries the system prompt; the PC's link passes requests through untouched and adds nothing of its own (keep it that way; a test should pin it). Same the other way round.
+  - Also kept in step (each its own switch): assistants (pals) and their prompts, custom tools / shortcuts, Toolbox switches (each device still asks for its own phone/PC actions), memory notes, loops / plans, chats (optional).
+  - Conflicts: last edit wins per item, with the other version kept in history (memory already has snapshots); a changed system prompt shows "changed on your PC" once.
+  - Model choice and per-device settings (model files, GPU, storage, permissions) stay per device.
 - [ ] Desktop tools in the workspace folder only; voice; quick chat on a hotkey.
 
 - [ ] **Ready-made loops** for people who don't write prompts (idea 2026-11-08): pick one, fill in the blanks, it runs on a timer and ends each run with next steps. See "Ready-made loops" below.
