@@ -24,6 +24,8 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [ ] The phone uses the PC's tools (each still asks, on the PC or the phone as above); hand-off of tasks; chats and memory in step over the link.
 - [ ] Desktop tools in the workspace folder only; voice; quick chat on a hotkey.
 
+- [ ] **Ready-made loops** for people who don't write prompts (idea 2026-11-08): pick one, fill in the blanks, it runs on a timer and ends each run with next steps. See "Ready-made loops" below.
+
 **3. It learns you (later)**
 - [ ] Daily personal training (PC trains, phone learns, raw data deletable). Small models keep improving; style and habits first, exact facts stay in memory notes.
 
@@ -37,6 +39,34 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [ ] A public security policy (SECURITY.md: how to report a problem privately, what's in scope, response times) and a changelog of security fixes.
 - [ ] Invite testers: early users run the test builds and try to break it; credit them. Fix before widening the release.
 - [ ] Builds anyone can check: published checksums for every download (signing optional, our own key).
+
+## Ready-made loops: timer + next steps, for beginners (idea 2026-11-08, write-up only)
+
+A loop is a small agent job that comes back on a timer: it does its part, shows the result, and ends with **next steps** the user can tap. Ready-made ones in a gallery, so nobody has to know what an "agentic loop" is.
+
+**How it looks to the user**
+- [ ] A **Loops** gallery: each card says in one line what it does, how often, and what it may use. Pick one, fill in the blanks (topic, time, how long), press Start. No prompt writing.
+- [ ] Before it starts, a plain summary: "Runs every day at 7:00 for 2 weeks. May use: weather, calendar, memory (read). Never sends, buys or deletes anything."
+- [ ] Each run ends with a short result and 1–3 **next steps** as buttons ("Do step 2 now", "Remind me at 5", "Done, skip ahead"). Tapping one continues the loop; ignoring it is fine.
+- [ ] A **Running loops** list: next run time, runs so far, Pause / Stop / Edit; a notification per run (can be turned off).
+
+**Starter loops (examples)**
+- [ ] Morning brief: weather, today's calendar, reminders from memory → three things to do first.
+- [ ] Focus timer: 25 min work / 5 min break; at each break asks what got done and suggests the next small step.
+- [ ] Goal planner: give a goal ("learn Spanish basics", "clean the garage"); it breaks it into steps and each day offers the next one, checking what's done.
+- [ ] Evening review: what went well, what's left; tomorrow's first steps saved to memory (asks before saving).
+- [ ] Watch a page: checks a web page every few hours and tells you only when it changes.
+- [ ] Habit check-in: a daily question ("water? walk?"), a streak, and a gentle next step.
+- [ ] Learn something: a short lesson a day on a topic, with a quiz question; the next lesson builds on the answers.
+- [ ] With DesktopAgent (home link): a long job runs on the PC overnight (summarise a workspace folder, a long draft) and the phone gets the result and next steps in the morning.
+
+**Rules (same as everything else; a loop is data, never code)**
+- [ ] A loop is a ready-made custom tool with a timer: built-in tools only, each still behind its Toolbox switch; phone actions and anything outside the app still ask every time. Installed off; shown in full before starting.
+- [ ] Hard limits on every loop: how often, how many runs, an end date, a time/battery budget per run (phone: only on the charger for heavy ones); stops by itself when reached.
+- [ ] A loop can't start other loops, change its own tools or timer, or raise its limits; only the user can.
+- [ ] Every run is logged (what it did, which tools); the log shows on the loop's card.
+- [ ] Phone: runs through Android's job scheduler (may be a few minutes late; exact times only for alarms the user sets). Desktop: runs while DesktopAgent is open (tray later).
+- [ ] Sharing loops: as a QR / file like tools (`PA1:L:` later), reviewed before install, installed off.
 
 ## Current validation and fixes
 
