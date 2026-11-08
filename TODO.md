@@ -44,7 +44,15 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 
 A loop is a small agent job that comes back on a timer: it does its part, shows the result, and ends with **next steps** the user can tap. Ready-made ones in a gallery, so nobody has to know what an "agentic loop" is.
 
-**How it looks to the user**
+**The shape of every loop (user, 2026-11-08): Prompt → Research → Breakdown → Timers → Continue → Ask**
+1. [ ] **Prompt:** the user says what they want in one sentence ("help me get fit before summer", "plan my move"); or picks a ready-made loop, which is this sentence filled in.
+2. [ ] **Research:** the model gathers what it needs with the tools that are switched on (web, memory, workspace files; the PC's tools over the home link later), and shows what it found and where from.
+3. [ ] **Breakdown:** it turns the goal into small, concrete steps with rough times, shown as a checklist the user can edit, reorder or delete before anything starts.
+4. [ ] **Timers:** each step gets a when (a time, "every morning", "in 2 days", "after step 3"); the user sees the whole schedule and can change any of it. Limits (how often, end date, battery) are set here.
+5. [ ] **Continue:** at each timer the loop picks up where it left off: does its part of the next step, updates the checklist, and adjusts the plan if something changed.
+6. [ ] **Ask:** before anything that matters (an action outside the app, changing the plan, spending, sending, more time) it asks; and at each check-in it asks the user how it went, then shows the next steps as buttons. No answer = it waits, it never guesses ahead.
+- [ ] One **"Make a loop"** button: type the sentence, the app runs steps 2–4 and shows the plan for approval; nothing runs before the user presses Start.
+
 - [ ] A **Loops** gallery: each card says in one line what it does, how often, and what it may use. Pick one, fill in the blanks (topic, time, how long), press Start. No prompt writing.
 - [ ] Before it starts, a plain summary: "Runs every day at 7:00 for 2 weeks. May use: weather, calendar, memory (read). Never sends, buys or deletes anything."
 - [ ] Each run ends with a short result and 1–3 **next steps** as buttons ("Do step 2 now", "Remind me at 5", "Done, skip ahead"). Tapping one continues the loop; ignoring it is fine.
