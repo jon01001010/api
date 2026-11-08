@@ -442,13 +442,15 @@ describe('useChatSession — AssistantTurn integration', () => {
     });
     const messages = sent[0]?.messages ?? [];
     expect(messages[0].role).toBe('system');
-    expect(messages[0].content).toMatch(/Today is \w+day, \d{1,2} \w+ \d{4}\./);
+    // Date only by default, once, in the background part.
+    expect(messages[0].content).toMatch(
+      /Background: today is \w+day, \d{1,2} \w+ \d{4}\./,
+    );
+    // Nothing is glued onto the user's own message any more.
     const lastUser = [...messages]
       .reverse()
       .find((m: any) => m.role === 'user');
-    expect(lastUser.content).toMatch(
-      /\(Sent at \d\d:\d\d, UTC[+-]\d\d:\d\d\)$/,
-    );
+    expect(lastUser.content).not.toMatch(/Sent at/);
   });
 
   it('never runs a switched-off tool, even when the assistant lists it and the model calls it', async () => {

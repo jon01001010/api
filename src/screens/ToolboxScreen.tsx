@@ -18,6 +18,7 @@ import {MemorySection} from '../components/PalsSheets/MemorySection';
 import {themeColor} from '../theme/phosphor';
 import {observer} from 'mobx-react';
 import {uiStore} from '../store';
+import {PromptPartsSection} from '../components/PromptPartsSection/PromptPartsSection';
 
 type Draft = {id: string; name: string; description: string; parameters: string; kind?: 'text_uppercase' | 'text_lowercase' | 'text_trim' | 'calculator' | 'http_get'};
 const STORAGE_KEY = '@pocketagent/toolbox/drafts/v1';
@@ -192,6 +193,7 @@ const ToolboxScreenBody: React.FC = () => {
         <Button disabled={!settingsLoaded} onPress={async () => {try {await writeGlobalPrompt(globalPrompt); setToggleError(''); setNotice('Global prompt saved');} catch (e) {setNotice(''); setToggleError('Could not save prompt: ' + String(e));}}}>Save global prompt</Button>
         <Text variant="titleSmall">Generated tool instructions (read only)</Text>
         <Text selectable variant="bodySmall">{generatedToolPrompt(enabledTools) || 'No tools enabled.'}</Text>
+        <PromptPartsSection />
                 {!loaded ? <Text>Loading saved drafts…</Text> : null}
         {storageError ? <Text style={{color: errorColor}}>{storageError}</Text> : null}
         <CustomToolsSection

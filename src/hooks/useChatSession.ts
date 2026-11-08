@@ -58,7 +58,12 @@ import {
 } from '../services/talents';
 import type {ToolDefinition} from '../services/talents/types';
 import {deriveToolSchemas} from '../services/talents';
-import {todayLine, timeNote, withTimeNote} from '../utils/currentTime';
+import {
+  buildBackgroundParts,
+  joinParts,
+  readPromptPartSettings,
+  type PromptPartSettings,
+} from '../utils/promptParts';
 import {readGlobalTools, readGlobalPrompt, generatedToolPrompt, readAgentMaxTurns, assistantOnlyTools} from '../utils/globalToolSettings';
 import {
   agentStateReducer,
@@ -84,7 +89,9 @@ const prepareCompletion = async ({
   isMultimodalEnabled,
   l10n,
   currentMessages,
+  promptParts,
 }: {
+  promptParts: PromptPartSettings;
   imageUris: string[];
   message: MessageType.PartialText;
   systemMessages: Array<{role: 'system'; content: string}>;
@@ -164,10 +171,13 @@ const prepareCompletion = async ({
   const sessionToolNames = (
     (sessionCompletionSettings?.tools as ToolDefinition[] | undefined) ?? []
   ).map(tool => tool.function?.name ?? '');
-  const systemPromptFragments = collectSystemPromptFragments(sessionToolNames, {
-    now: new Date(),
-    maxToolTurns: DEFAULT_MAX_TURNS,
-  });
+  // (switch: Toolbox → What the model sees → Tool guidance)
+  const systemPromptFragments = promptParts.toolGuidance
+    ? collectSystemPromptFragments(sessionToolNames, {
+        now: new Date(),
+        maxToolTurns: DEFAULT_MAX_TURNS,
+      })
+    : [];
 
   const messages = assembleMessages(systemMessages, systemPromptFragments, [
     ...chatMessages,
@@ -769,9 +779,15 @@ export const useChatSession = (
       ? palStore.pals.find(p => p.id === activeSession.activePalId)
       : null;
 
+    // Everything added besides your messages has a switch (utils/promptParts).
+    const promptParts = await readPromptPartSettings();
     const systemMessages = resolveSystemMessages({
       pal,
-      model: modelStore.activeModel,
+      // The model file's own prompt only when its switch is on.
+      model:
+        pal || promptParts.modelDefaultPrompt
+          ? modelStore.activeModel
+          : undefined,
     });
 
     const {cleanCompletionParams, messageInfo} = await prepareCompletion({
@@ -784,6 +800,7 @@ export const useChatSession = (
       isMultimodalEnabled,
       l10n,
       currentMessages,
+      promptParts,
     });
 
     currentMessageInfo.current = messageInfo;
@@ -821,15 +838,17 @@ export const useChatSession = (
         contextSummary
       : '';
     const now = new Date();
-    const globalText = [
-      todayLine(now),
-      globalInstructions.trim(),
-      memoryContext,
-      summaryContext,
-      generatedToolPrompt(palTalents),
-    ]
-      .filter(Boolean)
-      .join('\n\n');
+    // The same builder makes "Show exactly what the model sees" (Toolbox).
+    const globalText = joinParts(
+      buildBackgroundParts({
+        now,
+        settings: promptParts,
+        globalInstructions,
+        memoryContext,
+        summaryContext,
+        toolLine: generatedToolPrompt(palTalents),
+      }),
+    );
     if (globalText) {
       const messages = cleanCompletionParams.messages ?? [];
       const first = messages[0];
@@ -845,13 +864,9 @@ export const useChatSession = (
         ];
       }
     }
-    // The time goes on the newest message (see utils/currentTime).
-    if (cleanCompletionParams.messages) {
-      cleanCompletionParams.messages = withTimeNote(
-        cleanCompletionParams.messages as any[],
-        timeNote(now),
-      );
-    }
+    // The date/time is now one line in the background part above (or none),
+    // never glued onto the user's message: small models read it as part of
+    // the question and fixated on it (2026-11-08).
 
     const completionStartTime = Date.now();
     const timeToFirstTokenMs: {value: number | null} = {value: null};

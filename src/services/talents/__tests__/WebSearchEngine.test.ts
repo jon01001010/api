@@ -441,7 +441,7 @@ describe('WebSearchEngine', () => {
 
     it("grounds today's date, the tool budget, and search guidance", () => {
       const fragment = frag(['web_search', 'read_url']);
-      expect(fragment).toContain("Today's date is 2026-07-15");
+      expect(fragment).not.toContain("Today's date is");
       expect(fragment).toContain('budget of 4 tool calls');
       expect(fragment).toContain('web_search');
       expect(fragment).toContain('cite');

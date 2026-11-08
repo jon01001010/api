@@ -132,14 +132,15 @@ export class WebSearchEngine implements TalentEngine {
   }
 
   systemPromptFragment(ctx: SystemPromptContext): string {
-    const today = ctx.now.toISOString().slice(0, 10);
+    // No date here: the one date line (local time, with its own switch) is
+    // in the background part; a UTC date here disagreed with it at night.
     const budget = ctx.maxToolTurns - 1;
     // Mention read_url only when that talent is also enabled for this Pal.
     const readUrl = ctx.activeTalents.has('read_url')
       ? ' and open pages with read_url'
       : '';
     return (
-      `Today's date is ${today}. You can search the web with web_search${readUrl}. ` +
+      `You can search the web with web_search${readUrl}. ` +
       `For time-sensitive or factual questions, search first; usually one or two searches suffice — ` +
       `you have a budget of ${budget} tool calls. Answer using the facts in the results and cite ` +
       'source URLs. If the results do not contain the answer, say so rather than guessing.'

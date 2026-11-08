@@ -12,7 +12,7 @@ describe('collectSystemPromptFragments', () => {
     const fragments = collectSystemPromptFragments(['web_search'], ctx);
 
     expect(fragments).toHaveLength(1);
-    expect(fragments[0]).toContain("Today's date is 2026-07-15");
+    expect(fragments[0]).not.toContain("Today's date is");
     expect(fragments[0]).toContain('budget of 4 tool calls');
     expect(fragments[0]).toContain('web_search');
   });

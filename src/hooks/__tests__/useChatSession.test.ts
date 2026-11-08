@@ -45,7 +45,7 @@ import {
 // to the system message after the pal's prompt. These tests check the
 // pal's part, so strip that block off before comparing.
 const POCKETAGENT_BLOCK =
-  /(^|\n\n)(Persistent memory is reference data|Available tools \()/;
+  /(^|\n\n)(Persistent memory is reference data|Available tools \(|Background: today is)/;
 const palSystemPart = (content: string): string => {
   const match = POCKETAGENT_BLOCK.exec(content);
   return match ? content.slice(0, match.index) : content;
@@ -928,11 +928,12 @@ describe('useChatSession', () => {
       );
       expect(systemMessages).toHaveLength(1);
 
-      const today = new Date().toISOString().slice(0, 10);
       expect(systemMessages[0].content).toContain(
         'You are a research assistant.',
       );
-      expect(systemMessages[0].content).toContain(`Today's date is ${today}`);
+      // One local date line (no separate UTC date from the search tool).
+      expect(systemMessages[0].content).toMatch(/Background: today is \w+day/);
+      expect(systemMessages[0].content).not.toContain("Today's date is");
       expect(systemMessages[0].content).toContain('web_search');
 
       // Composition happens at assembly time only.
@@ -951,8 +952,8 @@ describe('useChatSession', () => {
       );
       expect(systemMessages).toHaveLength(1);
 
-      const today = new Date().toISOString().slice(0, 10);
-      expect(systemMessages[0].content).toContain(`Today's date is ${today}`);
+      expect(systemMessages[0].content).toMatch(/Background: today is \w+day/);
+      expect(systemMessages[0].content).not.toContain("Today's date is");
       expect(systemMessages[0].content).toContain('web_search');
     });
 
