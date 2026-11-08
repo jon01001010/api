@@ -53,6 +53,17 @@ A loop is a small agent job that comes back on a timer: it does its part, shows 
 6. [ ] **Ask:** before anything that matters (an action outside the app, changing the plan, spending, sending, more time) it asks; and at each check-in it asks the user how it went, then shows the next steps as buttons. No answer = it waits, it never guesses ahead.
 - [ ] One **"Make a loop"** button: type the sentence, the app runs steps 2–4 and shows the plan for approval; nothing runs before the user presses Start.
 
+**Agentic planning: the plan is a program (user, 2026-11-08)**
+- [ ] A plan is saved as structured steps, not chat text, and run by a fixed runner in the app, step by step, like a small program. It stays data, never code (rule 4): the runner only knows a short list of step kinds, and the model can't add new ones.
+- [ ] Step kinds: **ask the model** (a prompt, with the results of earlier steps filled in), **use a tool** (built-in, behind its switch), **ask the user** (a question or a choice, as buttons), **wait** (a timer or a time), **check** (a simple condition on earlier results: done / not done, changed / not changed, a number above or below), **repeat** (a block, with a maximum count), **notify**, **save to memory or workspace** (asks first).
+- [ ] Each step has: a name the user can read, inputs (from the user or earlier steps), what it produces, which tools it may use, a time limit, and what happens if it fails (retry once, skip, or stop and ask).
+- [ ] The model writes the plan from the user's sentence (Prompt → Research → Breakdown → Timers); the user sees it as a readable checklist / flow, can edit any step, and starts it. The model can propose changes later, but only the user applies them (shown as a before/after).
+- [ ] **Dry run** before starting: walks through the plan without doing anything outside the app, showing what each step would do and which questions it would ask.
+- [ ] Every run keeps a trace: which step, when, what went in and out; resume after the phone or PC restarts exactly where it stopped; pause / step through / stop at any time.
+- [ ] Versioned: each edit makes a new version; going back is one tap. Ready-made loops are just shipped plans; shared plans (QR / file) are reviewed and installed off, like tools.
+- [ ] Runs where it fits: the phone for quick steps, the PC (home link) for long or heavy ones; a step can say "on the PC", and the PC's questions can be answered on the phone.
+
+**How it looks to the user**
 - [ ] A **Loops** gallery: each card says in one line what it does, how often, and what it may use. Pick one, fill in the blanks (topic, time, how long), press Start. No prompt writing.
 - [ ] Before it starts, a plain summary: "Runs every day at 7:00 for 2 weeks. May use: weather, calendar, memory (read). Never sends, buys or deletes anything."
 - [ ] Each run ends with a short result and 1–3 **next steps** as buttons ("Do step 2 now", "Remind me at 5", "Done, skip ahead"). Tapping one continues the loop; ignoring it is fine.
