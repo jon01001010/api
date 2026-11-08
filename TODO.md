@@ -648,6 +648,9 @@ Research (2026-11-07): **iroh 1.x** (Rust, MIT/Apache, 1.0 in June 2026; we pin 
 - [x] Pairing codes are single use (one try, 10 minutes). Pairing history (user, 2026-11-08): every code made, phone paired and phone removed is recorded on the PC and sent to paired phones with each status; the phone shows "Pairing activity on your PC" for anything new (not its own pairing). Checked in the real app: making a code shows up in the paired phone's status.
 - [ ] Tell the phone at once (not only at its next contact): a background check or a push over the link while the app is closed.
 - [ ] Optional setting: a new pairing also needs OK from an already paired phone ("the PC asks, the phone answers").
+- [ ] **Show how phone and PC are connected** (user, 2026-11-08): on both devices, "Connected directly (local network)" or "Connected through a relay (encrypted)", from iroh's path info; live while chatting.
+- [ ] **Switch networks without reconnecting** (user, 2026-11-08): leaving home mid-chat (Wi-Fi off), the link moves to mobile data / the relay by itself and back to direct when possible (iroh connections can change path); no new pairing, no restart, the chat carries on. Test on real devices: Wi-Fi off mid-reply, then on again. Optional "Switch now" button before leaving, and a "Prefer: automatic / direct only / relay" setting.
+- [ ] Note for users whose PC gets internet through the phone's hotspot (as in the first test): away from home the PC has no internet, so the link can't reach it; it needs its own connection.
 - [ ] Relays: n0's public relays by default; add "Use my own relay" (URL) for people who self-host.
 - [ ] Keep running when the window is closed (tray icon), and start the model when a paired phone asks.
 - [ ] Linux keeps keys in the kernel keyring (forgotten after a reboot): use the desktop's secret service there.
