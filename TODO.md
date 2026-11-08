@@ -51,6 +51,7 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
   - After the first replies, show the real speed (tokens/s) and remember it per model on this PC.
   - Big models (40–70B) on new PCs: about 25 GB (40B) to 42 GB (70B) at Q4; fast on 48 GB of graphics memory (e.g. two 24 GB cards) or on PCs with large shared memory (e.g. 96–128 GB unified-memory mini-PCs); usable from 64 GB RAM at a few tokens/s. The fit check says which, per PC.
   - Check model type support against the bundled llama.cpp (b11662) and say "needs a newer llama.cpp" instead of failing.
+- [ ] **NPU on the desktop** (user, 2026-11-08): big models stay on the graphics chip (memory speed is the limit; llama.cpp has no desktop-NPU backend). Use the NPU (AMD Ryzen AI / XDNA via Ryzen AI software or Lemonade, Intel Core Ultra via OpenVINO) for small always-on helpers at low power: wake word, speech to text, the "ask your documents" index, a small quick-reply model. The phone already has a Hexagon NPU build. Qualcomm Snapdragon X PCs need an ARM build of DesktopAgent first.
 
 **3. It learns you (later)**
 - [ ] Daily personal training (PC trains, phone learns, raw data deletable). Small models keep improving; style and habits first, exact facts stay in memory notes.
