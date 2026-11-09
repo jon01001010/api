@@ -51,6 +51,13 @@ import {
 } from '../../utils/deviceCapabilities';
 
 // Mock deviceCapabilities
+// These tests cover PocketPal's original code paths, which PocketAgent keeps
+// switched off (config/outside.ts; the off state is tested in outside.test.ts).
+jest.mock('../../config/outside', () => ({
+  ...jest.requireActual('../../config/outside'),
+  OUTSIDE_REPORTS: true,
+  ONLINE_DEVICE_RULES: true,
+}));
 jest.mock('../../utils/deviceCapabilities', () => ({
   ...jest.requireActual('../../utils/deviceCapabilities'),
   getCpuCoreCount: jest.fn().mockResolvedValue(8),

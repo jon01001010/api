@@ -73,6 +73,7 @@ import {downloadManager, DownloadCancelledError} from '../services/downloads';
 import {classify, ClassifyPlatform} from '../services/deviceRules/classify';
 import {deriveUrl, parseDeviceRules} from '../services/deviceRules/parse';
 import {fetchRules} from '../services/deviceRules/rules';
+import {ONLINE_DEVICE_RULES} from '../config/outside';
 import {readDeviceSignals} from '../services/deviceRules/signals';
 import {
   DeviceRules,
@@ -1070,6 +1071,11 @@ class ModelStore {
   // off the first-population path (fire-and-forget); any failure leaves the
   // already-applied bundled presets in place.
   private upgradeToFetchedRules = async (): Promise<void> => {
+    // Off: no download at start-up; the built-in rules are used
+    // (config/outside.ts).
+    if (!ONLINE_DEVICE_RULES) {
+      return;
+    }
     try {
       const fetched = await fetchRules(DeviceInfo.getVersion());
       if (!fetched) {

@@ -56,6 +56,15 @@ The Windows app (`src-tauri`, branch `windows`) is the same app in Windows' web 
 - The desktop app makes no network calls at start-up (the phone's device-rules fetch from PocketPal's CDN is off on the desktop).
 - Tauri's script nonces stay on; its style nonces are off (`dangerousDisableAssetCspModification: ["style-src"]`), because the app's styles are added at run time. Styles can't run code, and the policy stops them loading anything from outside.
 
+## 7. No outside connection the user didn't ask for
+
+Audit 2026-11-09 (every outside address in the code, plus the desktop app's actual traffic in its first minute: none).
+
+- Nothing contacts an outside service on its own: no reports, no analytics, no crash reporting, no Google. `src/config/outside.ts` keeps PocketPal's original senders in the code but off: feedback, content reports, model error reports and shared benchmarks (PocketPal's Firebase / Google App Check, after a google.com probe) are refused before any connection (the error report is copied instead); the device-rules download from cdn.jsdelivr.net at every phone start is off (built-in rules are used). A test pins both off.
+- Not built in: Firebase (no project; its JS modules unlinked, its Android libraries commented out). Built in but never started: Google Sign-In and PalsHub accounts (only with a Supabase address, which PocketAgent builds don't have), Google Play billing (`NO_PURCHASES`).
+- Connections that happen because the user asked: model search and downloads (Hugging Face; a downloaded model's checksum is fetched from there to check the file), cloud models and servers the user added, web search / page reading tools (when switched on), custom tool tests (after a yes), the home link (when switched on: iroh's public relay and discovery servers by number0 see which keys connect, never the content).
+- New outside connections need this file updated and their switch or consent; reviewed in the security audit before release.
+
 ## For mods (planned)
 
 A mod is data, never code. It lists every tool it uses, its full contents are shown before install, and it installs switched off. It goes through the same checks as a tool the model saves (rule 2).

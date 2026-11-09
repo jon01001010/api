@@ -5,6 +5,13 @@ import * as networkUtils from '../../utils';
 import {urls} from '../../config';
 import {DeviceInfo, BenchmarkResult} from '../../utils/types';
 
+// These tests cover PocketPal's original code paths, which PocketAgent keeps
+// switched off (config/outside.ts; the off state is tested in outside.test.ts).
+jest.mock('../../config/outside', () => ({
+  ...jest.requireActual('../../config/outside'),
+  OUTSIDE_REPORTS: true,
+  ONLINE_DEVICE_RULES: true,
+}));
 jest.mock('axios');
 jest.mock('../../utils/fb');
 jest.mock('../../utils', () => {

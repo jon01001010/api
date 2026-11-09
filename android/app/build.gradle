@@ -208,11 +208,13 @@ dependencies {
         implementation jscFlavor
     }
 
-    // The Firebase Android BoM (Bill of Materials) lets you manage all your Firebase library versions 
-    // by specifying only one version — the BoM's version.
-    implementation platform('com.google.firebase:firebase-bom:34.4.0')
-    implementation 'com.google.firebase:firebase-appcheck-playintegrity'
-    implementation 'com.google.firebase:firebase-appcheck-debug'
+    // Firebase App Check (Google Play Integrity) was PocketPal's, for sending
+    // reports to its Firebase service. PocketAgent sends no reports and has
+    // no Firebase project (config/outside.ts; the JS modules are unlinked in
+    // react-native.config.js), so its Google libraries are not built in.
+    // implementation platform('com.google.firebase:firebase-bom:34.4.0')
+    // implementation 'com.google.firebase:firebase-appcheck-playintegrity'
+    // implementation 'com.google.firebase:firebase-appcheck-debug'
 
     // Room dependencies for DownloadModule
     def room_version = "2.8.2"

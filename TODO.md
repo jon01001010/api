@@ -605,6 +605,12 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [x] Fixed (2026-11-09): "Copy report" copies the ticked details as text; nothing is sent (PocketPal's Firebase sender is kept in the code, unused). The real system is shown (Windows / Linux on the desktop).
 - [x] (was) Model error report on the PC: shows "OS: Android" (it only knows phones), and "Submit Report" goes to PocketPal's Firebase report service (needs Google's app check; it fails, nothing is sent). No Google anywhere: replace with "Copy report" (to paste where the user wants) and show the real system.
 
+**No outside connections (audit, user, 2026-11-09):**
+- [x] Every outside address in the code checked; the desktop app's real traffic in its first minute: none. Switched off (code kept, `src/config/outside.ts`, tested): feedback, content reports, model error reports, shared benchmarks (PocketPal's Firebase / Google, after a google.com probe); the phone's device-rules download from cdn.jsdelivr.net at every start. Firebase's Android libraries taken out of the build. SECURITY.md rule 7.
+- [ ] The Send feedback / Report / Share benchmark buttons now end in "Sending reports is off…": replace them with Copy (like the error report) or hide them.
+- [ ] Unlink Google Sign-In and Google Play billing on Android too (never started today); check on the phone that nothing imports them at start-up first.
+- [ ] Check the phone's real traffic at start-up (no tool here can watch it; e.g. the phone's own per-app data usage, or a network log).
+
 **Model memory on the PC (user, 2026-11-09):**
 - [x] A 4B model showed "Memory Warning" on a 16 GB PC: the limit was the phone's rule (what was free on the first day, kept forever). The desktop limit is now all memory but 3 GB for Windows (never less than what is free now), read fresh every start.
 - [x] Count the graphics card's own memory when telling what fits (2026-11-09, see "Find the fit").

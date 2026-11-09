@@ -1,3 +1,4 @@
+import {OUTSIDE_REPORTS, REPORTS_OFF_MESSAGE} from '../config/outside';
 import axios from 'axios';
 import {Platform} from 'react-native';
 import {urls} from '../config';
@@ -23,6 +24,10 @@ export async function submitBenchmark(
   deviceInfo: DeviceInfo,
   benchmarkResult: BenchmarkResult,
 ): Promise<{message: string; id: number}> {
+  // Off: no outside service (config/outside.ts); refused before any connection.
+  if (!OUTSIDE_REPORTS) {
+    throw new Error(REPORTS_OFF_MESSAGE);
+  }
   try {
     // Check network connectivity first
     const isConnected = await checkConnectivity();
