@@ -183,8 +183,15 @@ pub fn start(webview: &tauri::Webview) {
     });
 }
 
+/// Elsewhere (Linux): no such profiler; the card says so instead of waiting.
 #[cfg(not(windows))]
-pub fn start(_webview: &tauri::Webview) {}
+pub fn start(webview: &tauri::Webview) {
+    use tauri::Manager;
+    *webview.state::<StartupProfile>().0.lock().unwrap() = Some(ProfileSummary {
+        error: Some("Windows only".into()),
+        ..Default::default()
+    });
+}
 
 #[cfg(windows)]
 fn finish(app: &tauri::AppHandle, answer: Result<String, String>) {

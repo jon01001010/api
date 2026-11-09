@@ -7,6 +7,8 @@ import {invoke} from '@tauri-apps/api/core';
 
 export interface StartupReport {
   rows: {label: string; seconds: number}[];
+  /** The Windows profile is still being recorded (read again soon). */
+  waiting?: boolean;
 }
 
 const s = (ms: number | null | undefined) =>
@@ -33,7 +35,12 @@ type Hot = {name: string; place: string; ms: number};
 
 function profileRows(p: any): {label: string; seconds: number}[] {
   if (!p) {
-    return [];
+    return [
+      {
+        label: 'Profile: still recording (ready about a minute after start)',
+        seconds: NaN,
+      },
+    ];
   }
   if (p.error) {
     return [{label: `Profile: not recorded (${p.error})`, seconds: NaN}];
@@ -61,6 +68,7 @@ export async function readStartupTiming(): Promise<StartupReport | null> {
     return null;
   }
   return {
+    waiting: !native.profile,
     rows: [
       {
         label: 'App opened → page starts loading',

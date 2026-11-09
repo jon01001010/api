@@ -12,9 +12,21 @@ export const StartupTimingCard: React.FC<{cardStyle?: object}> = ({
 }) => {
   const [report, setReport] = useState<StartupReport | null>(null);
   useEffect(() => {
-    readStartupTiming()
-      .then(setReport)
-      .catch(() => setReport(null));
+    // Settings stays open in the background, so read again every few
+    // seconds until the Windows profile is in (ready a minute after start).
+    let tries = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const read = () =>
+      readStartupTiming()
+        .then(r => {
+          setReport(r);
+          if (r?.waiting && tries++ < 60) {
+            timer = setTimeout(read, 5000);
+          }
+        })
+        .catch(() => setReport(null));
+    read();
+    return () => clearTimeout(timer);
   }, []);
   if (!report) {
     return null;
