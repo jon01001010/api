@@ -15,6 +15,8 @@ const release = process.argv.includes('--release');
 
 fs.rmSync(out, {recursive: true, force: true});
 fs.mkdirSync(out, {recursive: true});
+const maps = path.join(root, 'web', 'maps');
+fs.mkdirSync(maps, {recursive: true});
 execFileSync(
   // Node runs React Native's CLI directly: no npx (on Windows that is
   // npx.cmd, which Node can't start this way).
@@ -34,6 +36,9 @@ execFileSync(
     path.join(out, 'bundle.js'),
     '--assets-dest',
     out,
+    // Release: a source map next to (not inside) the app, kept by CI only,
+    // to read start-up profiles from the shipped app (src-tauri/src/profile.rs).
+    ...(release ? ['--sourcemap-output', path.join(maps, 'bundle.js.map')] : []),
   ],
   {cwd: root, stdio: 'inherit'},
 );

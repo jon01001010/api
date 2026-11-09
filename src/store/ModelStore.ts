@@ -895,8 +895,10 @@ class ModelStore {
 
     await this.initializeGpuSettings(); // Should be awaited to ensure GPU settings are applied before initializing context
 
-    // Initialize available memory ceiling at app startup if not set
-    if (this.availableMemoryCeiling === undefined) {
+    // Initialize available memory ceiling at app startup if not set. The
+    // desktop app (web) reads it fresh every start: a PC's limit comes from
+    // its memory size, not from what happened to be free on the first day.
+    if (this.availableMemoryCeiling === undefined || Platform.OS === 'web') {
       try {
         const availableBytes = await NativeHardwareInfo.getAvailableMemory();
         runInAction(() => {

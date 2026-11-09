@@ -46,13 +46,19 @@ pub struct StartupTiming {
     #[serde(flatten)]
     marks: StartupMarks,
     now_ms: u128,
+    /// Windows: where the page's time went (ready a minute after start).
+    profile: Option<crate::profile::ProfileSummary>,
 }
 
 #[tauri::command(async)]
-pub fn startup_timing(timing: State<'_, Timing>) -> StartupTiming {
+pub fn startup_timing(
+    timing: State<'_, Timing>,
+    profile: State<'_, crate::profile::StartupProfile>,
+) -> StartupTiming {
     StartupTiming {
         marks: timing.marks.lock().unwrap().clone(),
         now_ms: timing.started.elapsed().as_millis(),
+        profile: profile.0.lock().unwrap().clone(),
     }
 }
 

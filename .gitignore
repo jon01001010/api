@@ -123,6 +123,7 @@ windows-bundle/
 
 # Web build output (node scripts/web/build.js)
 web/dist/
+web/maps/
 
 # Home link library: built by the Android job (native/homelink).
 android/app/src/main/jniLibs/*/libhomelink.so

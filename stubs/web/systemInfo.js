@@ -12,4 +12,15 @@ async function systemInfo() {
   return invoke('system_info');
 }
 
-module.exports = {systemInfo};
+/**
+ * How much memory a model may use on a PC. A phone's limit is what is free
+ * right now; a PC frees memory when asked (other apps move to the page
+ * file), so the limit is all memory but room for Windows, never less than
+ * what is free right now.
+ */
+const WINDOWS_ROOM = 3 * 1e9;
+function modelMemoryLimit({totalMemory, availableMemory}) {
+  return Math.max(availableMemory, totalMemory - WINDOWS_ROOM, 0);
+}
+
+module.exports = {systemInfo, modelMemoryLimit};

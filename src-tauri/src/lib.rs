@@ -14,6 +14,7 @@ mod link;
 mod model_server;
 mod net;
 mod preview;
+mod profile;
 mod remembered;
 mod secrets;
 mod system;
@@ -33,9 +34,14 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(timing::Timing::new())
+        .manage(profile::StartupProfile::default())
         .on_page_load(|webview, payload| {
             let finished = matches!(payload.event(), tauri::webview::PageLoadEvent::Finished);
             webview.state::<timing::Timing>().mark(finished);
+            if !finished {
+                // Windows: where the page's time goes while it starts.
+                profile::start(webview);
+            }
         })
         .manage(net::Requests::default())
         .manage(model_server::ModelServer::default())

@@ -109,3 +109,20 @@ describe('downloads in the desktop app', () => {
     jest.dontMock('../tauri');
   });
 });
+
+describe('model memory on a PC', () => {
+  const {modelMemoryLimit} = require('../systemInfo');
+  const GB = 1e9;
+  it('is all memory but room for Windows, not just what is free now', () => {
+    // 16 GB PC with only 4 GB free at the moment: a 4B model still fits.
+    expect(
+      modelMemoryLimit({totalMemory: 16 * GB, availableMemory: 4 * GB}),
+    ).toBe(13 * GB);
+  });
+  it('never less than what is free right now, never below zero', () => {
+    expect(
+      modelMemoryLimit({totalMemory: 4 * GB, availableMemory: 2 * GB}),
+    ).toBe(2 * GB);
+    expect(modelMemoryLimit({totalMemory: 1 * GB, availableMemory: 0})).toBe(0);
+  });
+});

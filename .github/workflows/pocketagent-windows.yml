@@ -133,6 +133,16 @@ jobs:
           path: src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
           retention-days: 1
+      # Not shipped: maps the app's shortened code back to the source, to
+      # read the Start-up time card's profile (file:line:column).
+      - name: Keep the web app's source map
+        if: success() && (github.event_name == 'push' || inputs.stage == 'exe')
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketagent-windows-sourcemap-${{ github.run_id }}-${{ github.run_attempt }}
+          path: web/maps/bundle.js.map
+          if-no-files-found: error
+          retention-days: 30
 
       # --- rnw (kept for reference, not the default) ---
       - name: Bundle for react-native-windows

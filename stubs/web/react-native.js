@@ -31,8 +31,10 @@ const QUIET = {
   // The PC's real memory and cores (src-tauri/src/system.rs), so model
   // memory checks are right. In a plain browser: unknown, fail as before.
   HardwareInfo: {
-    getAvailableMemory: async () =>
-      (await require('./systemInfo').systemInfo()).availableMemory,
+    getAvailableMemory: async () => {
+      const {systemInfo, modelMemoryLimit} = require('./systemInfo');
+      return modelMemoryLimit(await systemInfo());
+    },
     getCPUInfo: async () => ({
       cores: (await require('./systemInfo').systemInfo()).cpuCores,
     }),

@@ -29,6 +29,29 @@ function slowestFiles(): {name: string; start: number; ms: number}[] {
   }
 }
 
+type Hot = {name: string; place: string; ms: number};
+
+function profileRows(p: any): {label: string; seconds: number}[] {
+  if (!p) {
+    return [];
+  }
+  if (p.error) {
+    return [{label: `Profile: not recorded (${p.error})`, seconds: NaN}];
+  }
+  const hot = (title: string, list: Hot[]) =>
+    (list || []).slice(0, 8).map(h => ({
+      label: `  …${title}: ${h.name} at ${h.place || '?'}`,
+      seconds: s(h.ms),
+    }));
+  return [
+    {label: 'Profile: page busy (first minute)', seconds: s(p.busyMs)},
+    {label: '  …cleaning up memory', seconds: s(p.garbageCollectorMs)},
+    {label: '  …browser itself', seconds: s(p.programMs)},
+    ...hot('own time', p.topSelf),
+    ...hot('with what it calls', p.topTotal),
+  ];
+}
+
 export async function readStartupTiming(): Promise<StartupReport | null> {
   const boot = (globalThis as any).__paBoot || {};
   let native: any = {};
@@ -102,6 +125,9 @@ export async function readStartupTiming(): Promise<StartupReport | null> {
         label: `  …file ${f.name} (started at ${s(f.start)} s)`,
         seconds: s(f.ms),
       })),
+      // Windows: the page's own profiler (src-tauri/src/profile.rs), ready
+      // a minute after start. Places are file:line:column in the app's code.
+      ...profileRows(native.profile),
       // The slowest native calls (if any took 0.25 s or more).
       ...(boot.slowCalls || []).map((c: any) => ({
         label: `Slow native call ${c.cmd} (started at ${s(c.startedMs)} s)`,
