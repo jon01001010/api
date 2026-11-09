@@ -2,4 +2,4 @@ Change this file on the windows branch to build the phone app (APK) and the
 desktop apps (Windows, Linux) together, from the same commit, so they match.
 Each app shows its build in App Info; the home link says when phone and PC
 differ.
-Requested: 2026-11-09T01:14:30Z (start-up profile, downloaded models on the PC, PC memory limit)
+Requested: 2026-11-09T02:38:05Z (40 s Windows start fixed)
