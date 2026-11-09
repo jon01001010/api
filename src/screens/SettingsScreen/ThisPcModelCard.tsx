@@ -7,6 +7,8 @@ import {
   runModelOnThisPc,
   stopModelOnThisPc,
 } from '../../services/desktop/thisPc';
+import {usePcHardware} from '../../services/desktop/pcHardware';
+import {formatBytes} from '../../utils';
 
 /**
  * Windows app only: run a .gguf model on this PC with the bundled llama.cpp
@@ -17,6 +19,7 @@ export const ThisPcModelCard: React.FC<{cardStyle?: object}> = ({
 }) => {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const hardware = usePcHardware();
   if (!isDesktopApp()) {
     return null;
   }
@@ -43,6 +46,23 @@ export const ThisPcModelCard: React.FC<{cardStyle?: object}> = ({
           Pick a .gguf model file. It runs on this PC only, with a private
           password, and shows up as the server "This PC" in Models.
         </Text>
+        {hardware ? (
+          <Text variant="bodySmall" testID="this-pc-hardware">
+            This PC: {formatBytes(hardware.totalMemory, 0)} memory
+            {hardware.gpus.length
+              ? hardware.gpus
+                  .map(
+                    g =>
+                      ` · ${g.name} (${
+                        g.shared
+                          ? "uses the PC's memory"
+                          : formatBytes(g.totalMemory, 0)
+                      })`,
+                  )
+                  .join('')
+              : ' · no graphics card found (models run in memory)'}
+          </Text>
+        ) : null}
         <Button
           mode="contained"
           onPress={run}

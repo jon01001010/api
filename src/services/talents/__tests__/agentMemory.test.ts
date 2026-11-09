@@ -128,6 +128,21 @@ describe('memory in the prompt', () => {
     const ctx = await buildMemoryContext();
     expect(ctx).not.toContain('Notes the user wrote');
   });
+
+  it('sends nothing when there are no real notes (only the starting template)', async () => {
+    // A fresh install: no user notes, model memory is the template.
+    expect(await buildMemoryContext()).toBe('');
+    await memoryReplace('project: PocketAgent', DEFAULT_MEMORY);
+    await memoryReplace(DEFAULT_MEMORY, 'project: PocketAgent');
+    expect(await buildMemoryContext()).toBe('');
+  });
+
+  it('user notes alone: no empty "Your notes" heading', async () => {
+    await userMemoryReplace('my name is Jon', '');
+    const ctx = await buildMemoryContext();
+    expect(ctx).toContain('Notes the user wrote:\nmy name is Jon');
+    expect(ctx).not.toContain('Your notes');
+  });
 });
 
 describe('model memory tools', () => {

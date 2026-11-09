@@ -10,6 +10,10 @@ import type {ToolCall} from 'llama.rn';
 export interface ReasoningIntent {
   enabled: boolean;
   effort?: string;
+  /** Most thinking tokens before the model must answer (utils/thinkingBudget). */
+  budgetTokens?: number;
+  /** Put before the end of the thinking when the budget runs out. */
+  budgetMessage?: string;
 }
 
 export type ApiCompletionParams = LlamaRNCompletionParams & {

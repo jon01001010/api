@@ -23,6 +23,12 @@ import {
   deriveToolSchemas,
 } from '../../services/talents';
 import {buildMemoryContext} from '../../services/talents/agentMemory';
+import {
+  DEFAULT_THINKING_LENGTH,
+  readThinkingLength,
+  ThinkingLength,
+  writeThinkingLength,
+} from '../../utils/thinkingBudget';
 
 /**
  * Toolbox → What the model sees: every part the app adds besides your own
@@ -37,8 +43,13 @@ export const PromptPartsSection: React.FC = () => {
     tools: {name: string; description: string}[];
   } | null>(null);
 
+  const [thinking, setThinking] = useState<ThinkingLength>(
+    DEFAULT_THINKING_LENGTH,
+  );
+
   useEffect(() => {
     readPromptPartSettings().then(setSettings);
+    readThinkingLength().then(setThinking);
   }, []);
 
   const change = useCallback(
@@ -124,6 +135,27 @@ export const PromptPartsSection: React.FC = () => {
         Told once, in the background, in this device's time zone; never added to
         your message. "Date and time" changes every minute, so on a phone long
         chats are re-read from the start each time (slower).
+      </Text>
+      <Text variant="bodyMedium" style={styles.label}>
+        How long the model may think
+      </Text>
+      <SegmentedButtons
+        value={thinking}
+        onValueChange={v => {
+          setThinking(v as ThinkingLength);
+          writeThinkingLength(v as ThinkingLength).catch(() => {});
+        }}
+        buttons={[
+          {value: 'short', label: 'Short', testID: 'thinking-short'},
+          {value: 'medium', label: 'Medium', testID: 'thinking-medium'},
+          {value: 'long', label: 'Long', testID: 'thinking-long'},
+          {value: 'unlimited', label: 'No limit', testID: 'thinking-unlimited'},
+        ]}
+      />
+      <Text variant="bodySmall" style={styles.note}>
+        With Think on, the model must answer after about 400 / 1,500 / 6,000
+        words of thinking, so it can't go round in circles. For models on
+        this device and on llama.cpp servers (This PC, Home PC).
       </Text>
       {row('Memory', 'Your memory notes (Memory above).', 'memory')}
       {row(

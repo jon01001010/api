@@ -1,4 +1,5 @@
 import {buildMemoryContext} from '../services/talents/agentMemory';
+import {applyThinkingBudget, readThinkingLength} from '../utils/thinkingBudget';
 import {messagesForModel} from '../services/chatSummary';
 import React, {useRef} from 'react';
 import {AccessibilityInfo, DeviceEventEmitter, Platform} from 'react-native';
@@ -802,6 +803,11 @@ export const useChatSession = (
       currentMessages,
       promptParts,
     });
+    // How long the model may think before it must answer (Toolbox).
+    applyThinkingBudget(
+      cleanCompletionParams as ApiCompletionParams,
+      await readThinkingLength(),
+    );
 
     currentMessageInfo.current = messageInfo;
 

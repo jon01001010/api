@@ -44,7 +44,7 @@ pub struct Started {
 }
 
 /// llama.cpp's server, shipped with its DLLs in the app's `llama` folder.
-fn server_exe(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn server_exe(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .resource_dir()
@@ -93,10 +93,12 @@ pub fn server_args(
         "--ctx-size".into(),
         context.clamp(512, 131_072).to_string(),
         "--jinja".into(),
-        // Use the graphics card for every layer when there is one (Vulkan);
-        // without one llama.cpp runs on the processor.
-        "--n-gpu-layers".into(),
-        "999".into(),
+        // Graphics card: llama.cpp fits the model itself (`--fit`, on by
+        // default): as many layers on the card as fit, the rest in memory.
+        // Forcing every layer onto the card (`--n-gpu-layers 999`, before
+        // 2026-11-09) turned that off, so a model bigger than the card failed.
+        "--fit".into(),
+        "on".into(),
     ];
     // The server answers with this name (commas would split it in two).
     if name != model && !name.contains(',') {
@@ -238,6 +240,13 @@ mod tests {
         assert!(args.contains("--host 127.0.0.1"));
         assert!(args.contains("--api-key abc"));
         assert!(!args.contains("0.0.0.0"));
+    }
+
+    #[test]
+    fn llama_cpp_fits_the_model_to_the_graphics_card() {
+        let args = server_args("m", "m", None, 1, "k", 4096).join(" ");
+        assert!(args.contains("--fit on"));
+        assert!(!args.contains("--n-gpu-layers"));
     }
 
     #[test]

@@ -104,18 +104,28 @@ function llamaCppReasoningExtras(
   if (!reasoning) {
     return {};
   }
-  const {enabled, effort} = reasoning;
+  const {enabled, effort, budgetTokens, budgetMessage} = reasoning;
   if (!enabled) {
     return {
       reasoning_format: 'auto',
       chat_template_kwargs: {enable_thinking: false},
     };
   }
+  // How long it may think (utils/thinkingBudget): llama.cpp ends the
+  // thinking with the message and the model answers.
+  const budget =
+    budgetTokens !== undefined && budgetTokens >= 0
+      ? {
+          thinking_budget_tokens: budgetTokens,
+          ...(budgetMessage ? {reasoning_budget_message: budgetMessage} : {}),
+        }
+      : {};
   if (!effort) {
-    return {reasoning_format: 'auto'};
+    return {reasoning_format: 'auto', ...budget};
   }
   return {
     reasoning_format: 'auto',
+    ...budget,
     chat_template_kwargs: {reasoning_effort: effort},
   };
 }

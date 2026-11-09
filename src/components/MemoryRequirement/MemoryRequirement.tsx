@@ -9,6 +9,11 @@ import {t} from '../../locales';
 import {getModelMemoryRequirement} from '../../utils/memoryEstimator';
 import {Model} from '../../utils/types';
 import {modelStore} from '../../store';
+import {
+  FIT_TEXT,
+  fitOnThisPc,
+  usePcHardware,
+} from '../../services/desktop/pcHardware';
 
 import {createStyles} from './styles';
 
@@ -37,7 +42,13 @@ export const MemoryRequirement: React.FC<MemoryRequirementProps> = observer(
     );
 
     const sizeText = formatBytes(memoryRequirement, 1); // "2.5 GB"
-    const displayText = t(l10n.memory.estimatedMemory, {size: sizeText});
+    const estimate = t(l10n.memory.estimatedMemory, {size: sizeText});
+    // Desktop app: where it runs on this PC (graphics card, memory, or not
+    // at all), from the PC's hardware read at this start.
+    const hardware = usePcHardware();
+    const displayText = hardware
+      ? `${estimate} · ${FIT_TEXT[fitOnThisPc(memoryRequirement, hardware)]}`
+      : estimate;
 
     return (
       <View style={styles.container} testID="memory-requirement">

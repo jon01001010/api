@@ -126,3 +126,41 @@ describe('model memory on a PC', () => {
     expect(modelMemoryLimit({totalMemory: 1 * GB, availableMemory: 0})).toBe(0);
   });
 });
+
+describe('where a model runs on a PC', () => {
+  const {modelMemoryLimit, cardMemory, pcFit} = require('../systemInfo');
+  const GB = 1e9;
+  const GiB = 1024 * 1024 * 1024;
+  // The user's PC (2026-11-09): 16 GB memory, an 8 GB graphics card, and
+  // the processor's own graphics (uses the PC's memory).
+  const pc = {
+    totalMemory: 16 * GB,
+    availableMemory: 6 * GB,
+    gpus: [
+      {
+        name: 'NVIDIA GeForce',
+        totalMemory: 8 * GiB,
+        freeMemory: 8 * GiB,
+        shared: false,
+      },
+      {
+        name: 'Intel(R) UHD Graphics',
+        totalMemory: 8 * GiB,
+        freeMemory: 8 * GiB,
+        shared: true,
+      },
+    ],
+  };
+  it("counts the card's own memory, not built-in graphics", () => {
+    expect(cardMemory(pc)).toBe(7 * GiB);
+    expect(modelMemoryLimit(pc)).toBe(13 * GB + 7 * GiB);
+  });
+  it('says card, partly, memory or too big', () => {
+    expect(pcFit(3 * GB, pc)).toBe('card');
+    expect(pcFit(12 * GB, pc)).toBe('partly');
+    expect(pcFit(30 * GB, pc)).toBe('too-big');
+    const noCard = {...pc, gpus: []};
+    expect(pcFit(3 * GB, noCard)).toBe('memory');
+    expect(pcFit(14 * GB, noCard)).toBe('too-big');
+  });
+});
