@@ -9,7 +9,7 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 **No point in any of this without real security.** Every step keeps the rules in SECURITY.md (off until switched on; anything outside the app asks, natively, every time), and each new ability gets its rule test before it ships.
 
 **1. Make what exists solid (now, confirmed)**
-- [ ] Fix the 40 s Windows start (Start-up time card → settings storage read suspected).
+- [x] Fix the 40 s Windows start: it was every native call being sent through itself (fixed 2026-11-09, now 2.2 s).
 - [ ] Home link on real devices: pair over the hotspot, then use it away from home on mobile data (relay).
 - [ ] Keep the link alive in the background; start the PC's model when the phone asks.
 - [ ] Clean installs and updates: a version per build (0.1.<build>), upgrades in place.
@@ -587,7 +587,8 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [x] Next step built: on Windows the app records WebView2's own CPU profile (the one Edge's developer tools use) from when the page starts loading until 60 s later, and the Start-up time card lists the busiest functions (own time and with what they call) plus garbage collection, as file:line:column. The full profile is kept as `startup-profile.cpuprofile` in the app's data folder. CI keeps the source map (not shipped) for 30 days to turn the places back into source files. Checked here end to end on a Chromium profile (summary in Rust, places mapped back to React / Metro source).
 - [x] Card from build 692bacf (2026-11-09), also with fresh data (so not saved data): 41 s in Tauri's own bridge code (`processIpcMessage` 31 s, `postMessage` 10 s), called from our `async` code. Cause: on Windows the native bridge is `fetch("http://ipc.localhost/<command>")`, and our network layer (`web/tauriNet.js`) took that for an outside address and sent it through the native bridge, which is again such a fetch: every native call called itself, with a payload growing each time, until the page gave up and Tauri switched to its slower backup (`postMessage`). Linux uses `ipc://localhost`, so it never happened there.
 - [x] Fixed: the app's own addresses (`*.localhost`) are never sent through the bridge (page), and the native side refuses them and drops the bridge's key (security). Reproduced here with Tauri's real Windows bridge code: before 25.7 s with the backup used 21 times; after 0.9 s, backup never used.
-- [ ] Check on Windows (next build): start-up card; then the investigation's extra probes can be slimmed down (keep the card).
+- [x] Checked on Windows (build 4f56602, 2026-11-09): page fully loaded in 2.2 s (was 43–48 s); code running → first screen 0.3 s (was 41–43 s); no long task over 0.2 s.
+- [ ] Slim down the investigation's extra probes (keep the card and the profile).
 - [ ] (old suspect, ruled out) Suspect: a synchronous wait for WebView2's graphics process during the first screen (the UI library measures text with a canvas). Test on the PC: start once with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--disable-gpu`. The card now also times canvas setup. If confirmed, fix in the app (e.g. a web view flag, or no canvas during start).
 
 **Downloaded models on the PC (user, 2026-11-09):**
