@@ -36,7 +36,12 @@ import {voiceStore} from './VoiceStore';
 
 import {uiStore, hfStore} from '.';
 import {serverStore} from './ServerStore';
-import {prepareThisPcModel} from '../services/desktop/thisPc';
+import {
+  isDesktopApp,
+  prepareThisPcModel,
+  startOnThisPc,
+  THIS_PC,
+} from '../services/desktop/thisPc';
 import {routerStore} from './RouterStore';
 import {chatSessionStore} from './ChatSessionStore';
 import {GenerationSlot, type GenerationLease} from './generationLease';
@@ -2342,6 +2347,35 @@ class ModelStore {
    * @param mmProjPath Optional path to a projection model for multimodal support
    * @returns The initialized LlamaContext, or null if cancelled/skipped
    */
+  /** Desktop app: runs a downloaded model in the PC's model server. */
+  private loadOnThisPc = async (model: Model, mmProjPath?: string) => {
+    this.pendingModelId = model.id;
+    runInAction(() => {
+      this.isContextLoading = true;
+      this.loadingModel = model;
+    });
+    try {
+      const {resolvedMmProjPath} = await this.resolveMultimodalConfig(
+        model,
+        mmProjPath,
+      );
+      const path = await this.getModelFullPath(model);
+      const serverId = await startOnThisPc(path, resolvedMmProjPath);
+      const remote = this.remoteModels.find(
+        m => m.serverId === serverId && m.remoteModelId === path,
+      );
+      if (!remote) {
+        throw new Error('The model started but is not listed under This PC');
+      }
+      await this.setRemoteModel(remote);
+    } finally {
+      runInAction(() => {
+        this.isContextLoading = false;
+        this.loadingModel = undefined;
+      });
+    }
+  };
+
   initContext = async (model: Model, mmProjPath?: string) => {
     // Benchmark mode owns the native context lifecycle end-to-end.
     // Reject synchronously so any racing caller (ChatView auto-load, header,
@@ -2351,6 +2385,15 @@ class ModelStore {
       throw new Error(
         '[ModelStore] initContext rejected: benchmark mode is active',
       );
+    }
+
+    // Desktop app: models run in the PC's own model server (llama.cpp with
+    // the graphics card), not inside the app; the phone's in-app runner is
+    // not there. A downloaded model starts that server and is used through
+    // it, like "Run a model on this PC".
+    if (isDesktopApp()) {
+      await this.loadOnThisPc(model, mmProjPath);
+      return;
     }
 
     // === Phase 1: Pre-flight checks OUTSIDE mutex ===
@@ -3154,13 +3197,18 @@ class ModelStore {
       if (!server) {
         continue;
       }
-      // Use the remote model ID as the display name
+      // Use the remote model ID as the display name ("This PC": its file
+      // name, not the whole path).
       models.push(
         createRemoteModel({
           serverId: selected.serverId,
           serverName: server.name,
           remoteModelId: selected.remoteModelId,
-          modelName: selected.remoteModelId,
+          modelName:
+            server.name === THIS_PC
+              ? selected.remoteModelId.split(/[\\/]/).pop() ||
+                selected.remoteModelId
+              : selected.remoteModelId,
         }),
       );
     }

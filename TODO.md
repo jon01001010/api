@@ -588,6 +588,11 @@ Instead of react-native-windows (most native libraries need stubs there, and not
 - [ ] Read the card from the next Windows build and fix what it names.
 - [ ] (old suspect, ruled out) Suspect: a synchronous wait for WebView2's graphics process during the first screen (the UI library measures text with a canvas). Test on the PC: start once with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--disable-gpu`. The card now also times canvas setup. If confirmed, fix in the app (e.g. a web view flag, or no canvas during start).
 
+**Downloaded models on the PC (user, 2026-11-09):**
+- [x] Loading a downloaded model on the PC failed: "Running a model on this device is not available on this device (Windows)" (the phone's in-app runner isn't in the desktop app). Load now starts the PC's model server (llama.cpp, graphics card via Vulkan) for that file and switches to it under "This PC" (shown by its file name). The vision part goes along (`--mmproj`) and is used again when the server is restarted after the app was closed. Files the app downloaded need no question; picked files still ask.
+- [ ] Check on Windows: download → Load → chat, and a picture with a vision model.
+- [ ] Model error report on the PC: shows "OS: Android" (it only knows phones), and "Submit Report" goes to PocketPal's Firebase report service (needs Google's app check; it fails, nothing is sent). No Google anywhere: replace with "Copy report" (to paste where the user wants) and show the real system.
+
 **Model memory on the PC (user, 2026-11-09):**
 - [x] A 4B model showed "Memory Warning" on a 16 GB PC: the limit was the phone's rule (what was free on the first day, kept forever). The desktop limit is now all memory but 3 GB for Windows (never less than what is free now), read fresh every start.
 - [ ] Count the graphics card's own memory (8 GB on the user's PC; the Windows model runner uses it through Vulkan) when telling what fits; part of "Find the fit".

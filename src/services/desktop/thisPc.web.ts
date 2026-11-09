@@ -34,28 +34,50 @@ async function waitUntilReady(url: string, apiKey: string): Promise<boolean> {
   return false;
 }
 
-export async function runModelOnThisPc(): Promise<{
-  ok: boolean;
-  message: string;
-}> {
-  if (!isDesktopApp()) {
-    return {ok: false, message: 'Only in the Windows app.'};
+/**
+ * The vision part each model was started with, so a restart (the server
+ * stops when the app closes) starts it the same way. This PC only.
+ */
+const PROJECTIONS_KEY = 'pa-this-pc-projections';
+function projectionFor(modelPath: string): string | undefined {
+  try {
+    return JSON.parse(localStorage.getItem(PROJECTIONS_KEY) || '{}')[modelPath];
+  } catch {
+    return undefined;
   }
-  const modelPath = await invoke<string | null>('pick_model_file');
-  if (!modelPath) {
-    return {ok: false, message: 'No model chosen.'};
+}
+function rememberProjection(modelPath: string, projection?: string) {
+  try {
+    const all = JSON.parse(localStorage.getItem(PROJECTIONS_KEY) || '{}');
+    if (projection) {
+      all[modelPath] = projection;
+    } else {
+      delete all[modelPath];
+    }
+    localStorage.setItem(PROJECTIONS_KEY, JSON.stringify(all));
+  } catch {
+    // Without it a restart runs the model without its vision part.
   }
+}
+
+/**
+ * Starts the model server for a model file (a downloaded model's own path,
+ * or a file the user picked) and lists it under the server "This PC".
+ * Returns the server's id; the model's id there is `modelPath`.
+ */
+export async function startOnThisPc(
+  modelPath: string,
+  projectionPath?: string,
+): Promise<string> {
   const {url, apiKey} = await invoke<{url: string; apiKey: string}>(
     'model_server_start',
-    {modelPath, context: 8192},
+    {modelPath, context: 8192, projectionPath: projectionPath ?? null},
   );
   if (!(await waitUntilReady(url, apiKey))) {
     await stopModelOnThisPc();
-    return {
-      ok: false,
-      message: 'The model did not start. Is it a valid .gguf file?',
-    };
+    throw new Error('The model did not start. Is it a valid .gguf file?');
   }
+  rememberProjection(modelPath, projectionPath);
   // A model on this PC reads the whole prompt before it starts answering;
   // with tools that can take minutes on a slow PC, so wait up to 10 minutes
   // (cloud servers keep the usual 30 seconds).
@@ -76,9 +98,25 @@ export async function runModelOnThisPc(): Promise<{
       });
   await serverStore.setApiKey(serverId, apiKey);
   await serverStore.fetchModelsForServer(serverId);
-  const models = serverStore.serverModels.get(serverId) || [];
-  for (const model of models) {
-    serverStore.addUserSelectedModel(serverId, model.id);
+  serverStore.addUserSelectedModel(serverId, modelPath);
+  return serverId;
+}
+
+export async function runModelOnThisPc(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  if (!isDesktopApp()) {
+    return {ok: false, message: 'Only in the Windows app.'};
+  }
+  const modelPath = await invoke<string | null>('pick_model_file');
+  if (!modelPath) {
+    return {ok: false, message: 'No model chosen.'};
+  }
+  try {
+    await startOnThisPc(modelPath);
+  } catch (e) {
+    return {ok: false, message: e instanceof Error ? e.message : String(e)};
   }
   const name = modelPath.split(/[\\/]/).pop();
   return {
@@ -133,7 +171,11 @@ export async function prepareThisPcModel(
   }
   const {url, apiKey} = await invoke<{url: string; apiKey: string}>(
     'model_server_start',
-    {modelPath, context: 8192},
+    {
+      modelPath,
+      context: 8192,
+      projectionPath: projectionFor(modelPath) ?? null,
+    },
   );
   if (!(await waitUntilReady(url, apiKey))) {
     await stopModelOnThisPc();

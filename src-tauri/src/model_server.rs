@@ -71,8 +71,17 @@ fn free_port() -> Result<u16, String> {
 }
 
 /// The server's fixed settings: only the model file and context size vary.
-pub fn server_args(model: &str, port: u16, key: &str, context: u32) -> Vec<String> {
-    vec![
+/// `model` is the real file; `name` is what the screens call it (the id the
+/// server answers with); `projection` the vision part, if any.
+pub fn server_args(
+    model: &str,
+    name: &str,
+    projection: Option<&str>,
+    port: u16,
+    key: &str,
+    context: u32,
+) -> Vec<String> {
+    let mut args: Vec<String> = vec![
         "--model".into(),
         model.into(),
         "--host".into(),
@@ -88,7 +97,24 @@ pub fn server_args(model: &str, port: u16, key: &str, context: u32) -> Vec<Strin
         // without one llama.cpp runs on the processor.
         "--n-gpu-layers".into(),
         "999".into(),
-    ]
+    ];
+    // The server answers with this name (commas would split it in two).
+    if name != model && !name.contains(',') {
+        args.push("--alias".into());
+        args.push(name.into());
+    }
+    if let Some(projection) = projection {
+        args.push("--mmproj".into());
+        args.push(projection.into());
+    }
+    args
+}
+
+fn is_gguf(path: &std::path::Path) -> bool {
+    path.extension()
+        .map(|e| e.eq_ignore_ascii_case("gguf"))
+        .unwrap_or(false)
+        && path.is_file()
 }
 
 /// The user picks a model file (picking it is their consent to use it).
@@ -115,20 +141,29 @@ pub async fn model_server_start(
     server: State<'_, ModelServer>,
     model_path: String,
     context: Option<u32>,
+    projection_path: Option<String>,
 ) -> Result<Started, String> {
-    let model = PathBuf::from(&model_path);
-    let is_gguf = model
-        .extension()
-        .map(|e| e.eq_ignore_ascii_case("gguf"))
-        .unwrap_or(false);
-    if !model.is_absolute() || !is_gguf || !model.is_file() {
+    // A model the app downloaded is named by its own path (/pocketagent/…,
+    // in the app's folder: no question); a file the user picked is a real
+    // path (asks unless always allowed).
+    let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let located = crate::files::locate(&root, &model_path)?;
+    let model: PathBuf = located.real;
+    if !model.is_absolute() || !is_gguf(&model) {
         return Err("Choose a .gguf model file".into());
     }
-    let own_models = app
-        .path()
-        .app_data_dir()
-        .map(|d| model.starts_with(d))
-        .unwrap_or(false);
+    let own_models = located.own || model.starts_with(&root);
+    // The vision part: only one the app downloaded itself (no question).
+    let projection = match projection_path.as_deref() {
+        Some(p) => {
+            let found = crate::files::locate(&root, p)?;
+            if !found.own || !is_gguf(&found.real) {
+                return Err("The vision file must be one the app downloaded".into());
+            }
+            Some(found.real)
+        }
+        None => None,
+    };
     // Outside the app folder: ask, unless the user chose "Always allow this
     // file" for this exact file before (same path, size and time).
     let now = crate::remembered::fingerprint(&model);
@@ -159,7 +194,14 @@ pub async fn model_server_start(
     if let Some(dir) = exe.parent() {
         command.current_dir(dir);
     }
-    command.args(server_args(&model_path, port, &key, context.unwrap_or(8192)));
+    command.args(server_args(
+        &model.to_string_lossy(),
+        &model_path,
+        projection.as_ref().map(|p| p.to_string_lossy()).as_deref(),
+        port,
+        &key,
+        context.unwrap_or(8192),
+    ));
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -192,7 +234,7 @@ mod tests {
 
     #[test]
     fn server_listens_on_this_pc_only_with_a_password() {
-        let args = server_args("C:/m.gguf", 5000, "abc", 4096).join(" ");
+        let args = server_args("C:/m.gguf", "m", None, 5000, "abc", 4096).join(" ");
         assert!(args.contains("--host 127.0.0.1"));
         assert!(args.contains("--api-key abc"));
         assert!(!args.contains("0.0.0.0"));
@@ -200,10 +242,32 @@ mod tests {
 
     #[test]
     fn context_size_is_kept_in_a_safe_range() {
-        assert!(server_args("m", 1, "k", 1).join(" ").contains("--ctx-size 512"));
-        assert!(server_args("m", 1, "k", u32::MAX)
+        assert!(server_args("m", "m", None, 1, "k", 1)
+            .join(" ")
+            .contains("--ctx-size 512"));
+        assert!(server_args("m", "m", None, 1, "k", u32::MAX)
             .join(" ")
             .contains("--ctx-size 131072"));
+    }
+
+    #[test]
+    fn a_downloaded_model_keeps_its_app_name_and_vision_part() {
+        let args = server_args(
+            "C:/Users/u/AppData/m.gguf",
+            "/pocketagent/Documents/models/m.gguf",
+            Some("C:/Users/u/AppData/mmproj.gguf"),
+            1,
+            "k",
+            4096,
+        )
+        .join(" ");
+        assert!(args.contains("--model C:/Users/u/AppData/m.gguf"));
+        assert!(args.contains("--alias /pocketagent/Documents/models/m.gguf"));
+        assert!(args.contains("--mmproj C:/Users/u/AppData/mmproj.gguf"));
+        let plain = server_args("m", "m", None, 1, "k", 4096);
+        assert!(!plain.contains(&"--mmproj".to_string()));
+        assert!(!plain.contains(&"--alias".to_string()));
+        assert!(!server_args("m", "a,b", None, 1, "k", 4096).contains(&"--alias".to_string()));
     }
 
     #[test]
