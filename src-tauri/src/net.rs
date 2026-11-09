@@ -24,13 +24,26 @@ pub enum NetEvent {
     Error { message: String },
 }
 
-/// Only plain web addresses: no files, no other schemes.
+/// Only plain web addresses: no files, no other schemes, and never the
+/// app's own internal addresses (`*.localhost`: the native bridge
+/// `ipc.localhost`, the app `tauri.localhost`, previews `pa-preview.localhost`).
+/// This PC's servers are reached by number (127.0.0.1), which stays allowed.
 pub fn check_url(url: &str) -> Result<reqwest::Url, String> {
     let parsed = reqwest::Url::parse(url).map_err(|e| format!("Bad address: {e}"))?;
     match parsed.scheme() {
-        "http" | "https" => Ok(parsed),
-        other => Err(format!("Only http and https are allowed, not {other}")),
+        "http" | "https" => {}
+        other => return Err(format!("Only http and https are allowed, not {other}")),
     }
+    let host = parsed.host_str().unwrap_or("").trim_end_matches('.').to_ascii_lowercase();
+    if host.ends_with(".localhost") {
+        return Err(format!("Not an outside address: {host}"));
+    }
+    Ok(parsed)
+}
+
+/// The native bridge's per-start key never leaves the app.
+pub fn header_allowed(name: &str) -> bool {
+    !name.eq_ignore_ascii_case("tauri-invoke-key")
 }
 
 /// Text from a byte stream, keeping a multi-byte character that is split
@@ -74,7 +87,7 @@ pub async fn http_request(
     let task = tauri::async_runtime::spawn(async move {
         let client = reqwest::Client::new();
         let mut request = client.request(method, url);
-        for (name, value) in headers {
+        for (name, value) in headers.into_iter().filter(|(n, _)| header_allowed(n)) {
             request = request.header(name, value);
         }
         if let Some(body) = body {
@@ -143,6 +156,21 @@ mod tests {
         assert!(check_url("file:///C:/Windows/win.ini").is_err());
         assert!(check_url("javascript:alert(1)").is_err());
         assert!(check_url("not a url").is_err());
+    }
+
+    #[test]
+    fn the_apps_own_addresses_are_never_fetched_from_here() {
+        for url in [
+            "http://ipc.localhost/http_request",
+            "http://IPC.LOCALHOST./fs_read",
+            "https://tauri.localhost/",
+            "http://pa-preview.localhost/x",
+        ] {
+            assert!(check_url(url).is_err(), "{url}");
+        }
+        assert!(check_url("http://127.0.0.1:5000/v1").is_ok());
+        assert!(!header_allowed("Tauri-Invoke-Key"));
+        assert!(header_allowed("Authorization"));
     }
 
     #[test]

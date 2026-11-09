@@ -451,6 +451,18 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
   });
 
   it('network from the native side is http/https only', () => {
-    expect(tauri('src/net.rs')).toMatch(/"http" \| "https" => Ok\(parsed\)/);
+    const net = tauri('src/net.rs');
+    expect(net).toMatch(/"http" \| "https" => \{\}/);
+    expect(net).toMatch(/other => return Err/);
+  });
+
+  it("never fetches the app's own addresses or passes on the bridge's key", () => {
+    const net = tauri('src/net.rs');
+    // The native bridge (ipc.localhost), the app and previews are *.localhost.
+    expect(net).toMatch(/host\.ends_with\("\.localhost"\)/);
+    expect(net).toMatch(/eq_ignore_ascii_case\("tauri-invoke-key"\)/);
+    expect(net).toMatch(/filter\(\|\(n, _\)\| header_allowed\(n\)\)/);
+    // The page's network layer leaves them alone too (the 40 s Windows start).
+    expect(read('web/tauriNet.js')).toMatch(/!host\.endsWith\('\.localhost'\)/);
   });
 });

@@ -11,13 +11,21 @@ import {Channel, invoke} from '@tauri-apps/api/core';
 
 let nextId = 1;
 
-/** True for addresses that leave the app (http/https elsewhere). */
+/**
+ * True for addresses that leave the app (http/https elsewhere). The app's
+ * own addresses are never outside: on Windows the native bridge itself is
+ * `http://ipc.localhost/…` (and the app `http://tauri.localhost`); sending
+ * those through the bridge made every native call call itself until the
+ * page gave up (the 40 s Windows start).
+ */
 export function isOutside(url, origin) {
   try {
     const parsed = new URL(url, origin);
+    const host = parsed.hostname.replace(/\.$/, '').toLowerCase();
     return (
       (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
-      parsed.origin !== origin
+      parsed.origin !== origin &&
+      !host.endsWith('.localhost')
     );
   } catch (e) {
     return false;
