@@ -26,7 +26,7 @@ const native = () => NativeModules.HomeLink;
 export const homeLinkInBuild = (): boolean => !!native();
 
 async function ask<T>(
-  method: 'pair' | 'status' | 'openTunnel' | 'closeTunnel',
+  method: 'pair' | 'status' | 'startModel' | 'openTunnel' | 'closeTunnel',
   ...args: string[]
 ): Promise<Answer<T>> {
   const mod = native();
@@ -62,7 +62,44 @@ export const pcStatus = (pc: string) =>
     apiKey: string | null;
     events?: PairingEvent[];
     build?: string | null;
+    /** The model the PC would start if asked (file name). */
+    lastModel?: string | null;
+    /** How this phone reaches the PC: "direct, 12 ms", "relay, 80 ms", … */
+    route?: string;
   }>('status', pc);
+
+/**
+ * Asks the PC to start the model it last ran. The PC decides which, and
+ * refuses one that would need an "Allow?" on the PC (nobody may be there).
+ */
+export const startPcModel = (pc: string) => ask<{}>('startModel', pc);
+
+/**
+ * Waits until the PC's model has loaded (its server answers /health), up
+ * to `limitMs` (big models take minutes to load).
+ */
+export async function waitForPcModel(
+  url: string,
+  apiKey: string,
+  limitMs = 5 * 60 * 1000,
+  pauseMs = 1000,
+): Promise<boolean> {
+  const until = Date.now() + limitMs;
+  while (Date.now() < until) {
+    try {
+      const r = await fetch(`${url}/health`, {
+        headers: {Authorization: `Bearer ${apiKey}`},
+      });
+      if (r.ok) {
+        return true;
+      }
+    } catch {
+      // Not answering yet.
+    }
+    await new Promise(resolve => setTimeout(resolve, pauseMs));
+  }
+  return false;
+}
 
 const seenKey = (pc: string) => `homeLink.lastEvent.${pc}`;
 

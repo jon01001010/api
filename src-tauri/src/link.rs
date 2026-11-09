@@ -11,7 +11,9 @@
 //!   PC then asks the user in a native dialog. Only after "Pair" is the
 //!   phone's key saved.
 //! - After pairing, only saved phones are let in, and they can do exactly
-//!   two things: ask whether a model is running ("status"), and pass HTTP
+//!   three things: ask whether a model is running ("status"), start the
+//!   model this PC last ran ("start": never a file the phone names, and
+//!   never one that would need an "Allow?" on the PC), and pass HTTP
 //!   requests to this PC's own model server on 127.0.0.1 ("http"). Nothing
 //!   else on the PC is reachable: no files, no tools, no other ports.
 //! - The PC's link key and the paired phones are kept where the screens
@@ -52,6 +54,8 @@ pub struct Phone {
 pub enum Request {
     Pair { code: String, name: String },
     Status,
+    /// Start the model this PC last ran (takes nothing from the phone).
+    Start,
     Http,
 }
 
@@ -389,9 +393,34 @@ async fn serve_stream(
                     "events": load_events(&app),
                     // So the phone can say when the two apps' builds differ.
                     "build": pc_build(),
+                    // The model a phone may start ("start"), by file name.
+                    "lastModel": crate::model_server::load_last_model(&app)
+                        .map(|m| m.model_path.rsplit(['/', '\\']).next().unwrap_or("").to_string()),
                 }),
             )
             .await;
+        }
+        Some(Request::Start) if paired => {
+            let answer = if app.state::<crate::model_server::ModelServer>().address().is_some() {
+                serde_json::json!({"ok": true})
+            } else {
+                match crate::model_server::load_last_model(&app) {
+                    None => serde_json::json!({"ok": false, "error": "No model has been run on the PC yet"}),
+                    Some(last) => match crate::model_server::start_model(
+                        &app,
+                        last.model_path,
+                        Some(last.context),
+                        last.projection_path,
+                        crate::model_server::StartedBy::Phone,
+                    )
+                    .await
+                    {
+                        Ok(_) => serde_json::json!({"ok": true}),
+                        Err(error) => serde_json::json!({"ok": false, "error": error}),
+                    },
+                }
+            };
+            reply(&mut send, answer).await;
         }
         Some(Request::Http) if paired => {
             let Some((port, _)) = app.state::<crate::model_server::ModelServer>().address() else {
@@ -508,6 +537,12 @@ mod tests {
     fn requests_are_one_small_json_line() {
         assert_eq!(parse_request(br#"{"op":"status"}"#), Some(Request::Status));
         assert_eq!(parse_request(br#"{"op":"http"}"#), Some(Request::Http));
+        assert_eq!(parse_request(br#"{"op":"start"}"#), Some(Request::Start));
+        // "start" takes nothing from the phone: any file it names is ignored.
+        assert_eq!(
+            parse_request(br#"{"op":"start","model":"C:/x.gguf"}"#),
+            Some(Request::Start)
+        );
         assert_eq!(
             parse_request(br#"{"op":"pair","code":"ab","name":"Pixel"}"#),
             Some(Request::Pair { code: "ab".into(), name: "Pixel".into() })

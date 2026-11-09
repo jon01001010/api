@@ -119,7 +119,24 @@ pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_status(
             "apiKey": s.api_key,
             "events": s.events,
             "build": s.build,
+            "lastModel": s.last_model,
+            "route": s.route,
         }),
+        Err(e) => fail(e),
+    });
+    answer(&mut env, value)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_startModel(
+    mut env: JNIEnv,
+    _class: JClass,
+    key_file: JString,
+    pc: JString,
+) -> jstring {
+    let (key_file, pc) = (text(&mut env, &key_file), text(&mut env, &pc));
+    let value = guarded(|| match phone(&key_file).and_then(|p| p.start_model(&pc)) {
+        Ok(()) => serde_json::json!({"ok": true}),
         Err(e) => fail(e),
     });
     answer(&mut env, value)

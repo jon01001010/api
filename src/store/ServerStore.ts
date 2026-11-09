@@ -21,7 +21,9 @@ import {
   noticePairingActivity,
   openTunnel,
   pcStatus,
+  startPcModel,
   tunnelUrl,
+  waitForPcModel,
 } from '../services/homeLink/homeLink';
 
 const KEYCHAIN_SERVICE_PREFIX = 'pocketpal-server-';
@@ -306,9 +308,13 @@ class ServerStore {
    * tunnel to the PC (its port changes each time the app starts) and take
    * the model's current password from the PC (it changes when the PC starts
    * a model). Does nothing for other servers. Never throws.
+   *
+   * `start` (Load): when no model runs on the PC, ask it to start the one it
+   * last ran and wait until it has loaded. Listing models never starts one.
    */
   async prepareHomeLink(
     serverId: string,
+    {start = false}: {start?: boolean} = {},
   ): Promise<{ok: boolean; error?: string}> {
     const server = this.servers.find(s => s.id === serverId);
     if (!server?.homeLinkPc) {
@@ -330,10 +336,28 @@ class ServerStore {
     await noticePairingActivity(server.homeLinkPc, status.events);
     // Phone and PC apps built from different commits: say so once.
     await noticeBuildMismatch(server.homeLinkPc, status.build);
-    if (!status.running || !status.apiKey) {
+    let running = status.running && status.apiKey ? status : null;
+    if (!running && start) {
+      const started = await startPcModel(server.homeLinkPc);
+      if (!started.ok) {
+        return {ok: false, error: started.error};
+      }
+      const after = await pcStatus(server.homeLinkPc);
+      if (!after.ok) {
+        return {ok: false, error: after.error};
+      }
+      running = after.running && after.apiKey ? after : null;
+      if (running && !(await waitForPcModel(url, running.apiKey!))) {
+        return {
+          ok: false,
+          error: 'The model on your PC did not finish loading',
+        };
+      }
+    }
+    if (!running || !running.apiKey) {
       return {ok: false, error: 'No model is running on your PC'};
     }
-    await this.setApiKey(serverId, status.apiKey);
+    await this.setApiKey(serverId, running.apiKey);
     return {ok: true};
   }
 

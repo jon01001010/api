@@ -8,7 +8,9 @@
  *    built, so the HTML parser never creates a frame.
  * 2. `PREVIEW_GUARD_SCRIPT` runs first in the page: removes WebRTC for good
  *    (non-configurable), blocks pop-ups, and removes any frame a script adds
- *    before the script can reach it.
+ *    before the script can reach it. It also gives the page a storage that
+ *    lives only while it is open (the real one throws in the no-origin
+ *    preview and stopped pages' scripts; nothing is saved or shared).
  */
 const FRAME_TAG =
   /<(\/?)(iframe|frameset|frame|object|embed|portal|fencedframe)(?=[\s/>]|$)/gi;
@@ -36,6 +38,35 @@ export const PREVIEW_GUARD_SCRIPT = `(function () {
   lockRealm(window);
   // No pop-ups: a new window would be a fresh copy of everything above.
   try { Object.defineProperty(window, 'open', {value: function () { return null; }, writable: false, configurable: false}); } catch (e) {}
+  // Pages often keep a score or a setting (localStorage). The preview has no
+  // origin (by design), so the browser's storage throws and the page's own
+  // script stops (a game's START button did nothing, 2026-11-09). Give it a
+  // storage that lives only while the page is open: nothing is saved, and
+  // nothing is shared with the app or other previews.
+  function memoryStorage() {
+    var data = {};
+    var has = function (k) { return Object.prototype.hasOwnProperty.call(data, k); };
+    var s = {
+      getItem: function (k) { k = String(k); return has(k) ? data[k] : null; },
+      setItem: function (k, v) { data[String(k)] = String(v); },
+      removeItem: function (k) { delete data[String(k)]; },
+      clear: function () { data = {}; },
+      key: function (i) { var ks = Object.keys(data); return i >= 0 && i < ks.length ? ks[i] : null; }
+    };
+    Object.defineProperty(s, 'length', {get: function () { return Object.keys(data).length; }});
+    return s;
+  }
+  ['localStorage', 'sessionStorage'].forEach(function (name) {
+    var works = false;
+    try { works = !!window[name]; } catch (e) {}
+    if (!works) {
+      try { Object.defineProperty(window, name, {value: memoryStorage(), writable: false, configurable: false}); } catch (e) {}
+    }
+  });
+  try { void document.cookie; } catch (e) {
+    var jar = '';
+    try { Object.defineProperty(document, 'cookie', {get: function () { return jar; }, set: function () {}, configurable: false}); } catch (e2) {}
+  }
   var FRAMES = 'iframe,frame,object,embed,portal,fencedframe';
   function sweep() {
     var found = document.querySelectorAll(FRAMES);

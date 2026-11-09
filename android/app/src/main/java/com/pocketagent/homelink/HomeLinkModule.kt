@@ -57,6 +57,10 @@ class HomeLinkModule(private val context: ReactApplicationContext) :
         call(promise) { HomeLinkNative.status(keyFile(), pc) }
 
     @ReactMethod
+    fun startModel(pc: String, promise: Promise) =
+        call(promise) { HomeLinkNative.startModel(keyFile(), pc) }
+
+    @ReactMethod
     fun openTunnel(pc: String, promise: Promise) =
         call(promise) { HomeLinkNative.openTunnel(keyFile(), pc) }
 

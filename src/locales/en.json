@@ -744,6 +744,9 @@
       "additionalInfoLabel": "Additional context (optional)",
       "additionalInfoPlaceholder": "Any additional details that might help us understand the issue...",
       "submit": "Submit Report",
+      "copyNote": "Copy these details to share them where you choose (for example in a GitHub issue). Nothing is sent from the app. Untick anything you'd rather not include.",
+      "copy": "Copy report",
+      "copied": "Copied. Paste it wherever you'd like to report the problem.",
       "success": {
         "title": "Report Submitted",
         "message": "Thank you for helping us improve PocketAgent. Your report will help us fix this issue."

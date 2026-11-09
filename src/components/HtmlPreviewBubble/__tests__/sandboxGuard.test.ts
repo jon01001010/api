@@ -37,3 +37,16 @@ describe('HTML preview lock: no WebRTC, frames or pop-ups', () => {
     expect(PREVIEW_GUARD_SCRIPT).toContain('MutationObserver');
   });
 });
+
+describe('page storage in the preview', () => {
+  const {PREVIEW_GUARD_SCRIPT: guard} = require('../sandboxGuard');
+  it('gives pages a storage that lives only while they are open', () => {
+    // The real storage throws in the no-origin preview and stopped a game's
+    // script (2026-11-09); checked in Chromium with the sandboxed frame.
+    expect(guard).toMatch(/function memoryStorage\(\)/);
+    expect(guard).toMatch(/\['localStorage', 'sessionStorage'\]/);
+    // Only when the real one fails, and it can't be swapped afterwards.
+    expect(guard).toMatch(/if \(!works\)/);
+    expect(guard).toMatch(/writable: false, configurable: false/);
+  });
+});

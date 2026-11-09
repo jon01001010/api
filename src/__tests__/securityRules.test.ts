@@ -360,7 +360,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
 
   it('home link: paired phones reach only the model server, pairing asks', () => {
     const link = tauri('src/link.rs');
-    // Exactly three requests exist, and only "pair" works before pairing.
+    // Exactly four requests exist, and only "pair" works before pairing.
     const ops = link.slice(
       link.indexOf('pub enum Request'),
       link.indexOf('pub fn parse_request'),
@@ -370,8 +370,19 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         .match(/^\s{4}(\w+)/gm)!
         .map(o => o.trim())
         .sort(),
-    ).toEqual(['Http', 'Pair', 'Status']);
+    ).toEqual(['Http', 'Pair', 'Start', 'Status']);
     expect(link).toContain('Some(Request::Status) if paired =>');
+    // "start": paired phones only; takes nothing from the phone (a unit
+    // variant: the PC picks its last model); never shows a dialog.
+    expect(link).toContain('Some(Request::Start) if paired =>');
+    expect(ops).toMatch(/^\s{4}Start,$/m);
+    expect(link).toMatch(
+      /Some\(Request::Start\) if paired =>[\s\S]*?load_last_model\(&app\)[\s\S]*?StartedBy::Phone/,
+    );
+    const server = tauri('src/model_server.rs');
+    expect(server).toMatch(
+      /if !own_models && !remembered && by == StartedBy::Phone \{\s*return Err/,
+    );
     expect(link).toContain('Some(Request::Http) if paired =>');
     // Pairing: the one-time code, then the native dialog, then saved.
     expect(link).toMatch(
@@ -403,9 +414,15 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(tag(pc)).toBe('PA1:P:');
     expect(phone).toContain('TcpListener::bind(("127.0.0.1", 0))');
     expect(phone).toContain('if !from.ip().is_loopback() {');
-    // The phone only ever asks for status, pairing or the model server.
+    // The phone only ever asks for status, pairing, starting the PC's own
+    // last model, or the model server.
     const ops = [...phone.matchAll(/"op\\?":\s*\\?"(\w+)/g)].map(m => m[1]);
-    expect([...new Set(ops)].sort()).toEqual(['http', 'pair', 'status']);
+    expect([...new Set(ops)].sort()).toEqual([
+      'http',
+      'pair',
+      'start',
+      'status',
+    ]);
     // Key kept out of cloud backups.
     expect(
       read(
@@ -421,7 +438,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // Every door from Android goes through guarded(), and iroh gets the
     // app context first (it needs it to read the network settings).
     const doors = android.match(/pub extern "system" fn Java_\w+/g) || [];
-    expect(doors.length).toBe(5);
+    expect(doors.length).toBe(6);
     for (const door of doors) {
       const body = android.slice(android.indexOf(door));
       const next = body.indexOf('pub extern "system"', 10);

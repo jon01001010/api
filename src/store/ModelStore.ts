@@ -3247,7 +3247,14 @@ class ModelStore {
       // (src/services/desktop/thisPc.web.ts). Nothing on the phone.
       await prepareThisPcModel(model.serverId!, model.remoteModelId!);
       // Phone: a "Home PC" model reopens its tunnel to the PC first.
-      await serverStore.prepareHomeLink(model.serverId!);
+      // Load: if no model runs on the PC, it starts the one it last ran.
+      const link = await serverStore.prepareHomeLink(model.serverId!, {
+        start: true,
+      });
+      if (!link.ok && link.error) {
+        // E.g. the PC is off, or its model needs an OK on the PC first.
+        Alert.alert('Home PC', link.error);
+      }
       const apiKey = await serverStore.getApiKey(model.serverId!);
       const server = serverStore.servers.find(s => s.id === model.serverId);
       if (!server) {

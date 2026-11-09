@@ -5,6 +5,10 @@ import {ContextParams} from 'llama.rn';
 import DeviceInfo from 'react-native-device-info';
 import {Text, Button, Checkbox, ActivityIndicator} from 'react-native-paper';
 
+import Clipboard from '@react-native-clipboard/clipboard';
+// Kept for reference, not used: it sent reports to PocketPal's Firebase
+// service (Google). PocketAgent copies the report instead (no Google).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import {submitModelLoadErrorReport} from '../../api/feedback';
 
 import {useTheme} from '../../hooks';
@@ -14,6 +18,22 @@ import {createStyles} from './styles';
 import {ErrorState, L10nContext, formatBytes} from '../../utils';
 
 import {Sheet, TextInput} from '..';
+
+/** The real system: the desktop app runs on the web engine (Windows or Linux). */
+function systemName(): string {
+  if (Platform.OS === 'ios') {
+    return 'iOS';
+  }
+  if (Platform.OS === 'web') {
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    return /Windows/i.test(ua)
+      ? 'Windows'
+      : /Linux/i.test(ua)
+        ? 'Linux'
+        : 'Desktop';
+  }
+  return 'Android';
+}
 
 interface ModelErrorReportSheetProps {
   isVisible: boolean;
@@ -85,10 +105,10 @@ export const ModelErrorReportSheet: React.FC<ModelErrorReportSheetProps> = ({
       if (isMounted) {
         setDeviceData({
           deviceModel: DeviceInfo.getModel(),
-          systemName: Platform.OS === 'ios' ? 'iOS' : 'Android',
+          systemName: systemName(),
           systemVersion:
             Platform.OS === 'ios'
-              ? Platform.Version.toString()
+              ? String(Platform.Version ?? '')
               : DeviceInfo.getSystemVersion(),
           totalMemory,
           cpuArch,
@@ -112,11 +132,12 @@ export const ModelErrorReportSheet: React.FC<ModelErrorReportSheetProps> = ({
     onClose();
   }, [onClose]);
 
+  // Copies the ticked details as text; nothing is sent from the app.
   const handleSubmit = async () => {
     setIsSubmitting(true);
 
     try {
-      await submitModelLoadErrorReport({
+      const report = {
         reportType: 'model-load-error',
         version: 1,
         errorMessage: errorMessage,
@@ -140,11 +161,11 @@ export const ModelErrorReportSheet: React.FC<ModelErrorReportSheetProps> = ({
             }
           : undefined,
         additionalInfo: additionalInfo.trim() || undefined,
-      });
-
+      };
+      Clipboard.setString(JSON.stringify(report, null, 2));
       Alert.alert(
-        l10n.components.modelErrorReportSheet.success.title,
-        l10n.components.modelErrorReportSheet.success.message,
+        l10n.components.modelErrorReportSheet.copy,
+        l10n.components.modelErrorReportSheet.copied,
         [{text: l10n.common.ok, onPress: handleClose}],
       );
     } catch (err) {
@@ -243,7 +264,7 @@ export const ModelErrorReportSheet: React.FC<ModelErrorReportSheetProps> = ({
       <Sheet.ScrollView contentContainerStyle={styles.container}>
         {/* Privacy Note */}
         <Text variant="bodySmall" style={styles.privacyNote}>
-          {l10n.components.modelErrorReportSheet.privacyNote}
+          {l10n.components.modelErrorReportSheet.copyNote}
         </Text>
 
         {/* Error Message - always included */}
@@ -328,7 +349,7 @@ export const ModelErrorReportSheet: React.FC<ModelErrorReportSheetProps> = ({
             {isSubmitting ? (
               <ActivityIndicator size="small" />
             ) : (
-              l10n.components.modelErrorReportSheet.submit
+              l10n.components.modelErrorReportSheet.copy
             )}
           </Button>
         </View>

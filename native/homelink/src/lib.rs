@@ -62,6 +62,11 @@ pub struct Status {
     pub events: serde_json::Value,
     /// Which commit the PC app was built from (to tell when phone and PC differ).
     pub build: Option<String>,
+    /// The model the PC would start if asked (its file name), if any.
+    pub last_model: Option<String>,
+    /// How this phone reaches the PC right now: "direct", "relay", "mixed"
+    /// or "unknown".
+    pub route: String,
 }
 
 pub struct Phone {
@@ -199,7 +204,50 @@ impl Phone {
             api_key: answer.get("apiKey").and_then(|v| v.as_str()).map(String::from),
             events: answer.get("events").cloned().unwrap_or(serde_json::json!([])),
             build: answer.get("build").and_then(|v| v.as_str()).map(String::from),
+            last_model: answer.get("lastModel").and_then(|v| v.as_str()).map(String::from),
+            route: self.route(pc),
         })
+    }
+
+    /// How the open connection to this PC goes right now: "direct" (straight
+    /// to the PC, e.g. over Wi-Fi or a hotspot), "relay" (through a relay
+    /// that can't read it), with the round-trip time; "not connected" when
+    /// there is no open connection.
+    fn route(&self, pc: EndpointId) -> String {
+        let guard = self.connection.lock().unwrap();
+        let Some((id, conn)) = guard.as_ref() else {
+            return "not connected".into();
+        };
+        if *id != pc || conn.close_reason().is_some() {
+            return "not connected".into();
+        }
+        let paths = conn.paths();
+        let selected = paths.iter().find(|p| p.is_selected());
+        match selected {
+            Some(p) => {
+                let kind = if p.is_ip() { "direct" } else if p.is_relay() { "relay" } else { "other" };
+                format!("{kind}, {} ms", p.rtt().as_millis())
+            }
+            None => "connecting".into(),
+        }
+    }
+
+    /// Asks the PC to start the model it last ran (the PC decides which; it
+    /// refuses one that would need an "Allow?" on the PC).
+    pub fn start_model(&self, pc: &str) -> Result<(), String> {
+        let pc: EndpointId = pc.parse().map_err(|_| "Bad PC key".to_string())?;
+        let answer = self
+            .runtime
+            .block_on(self.ask(pc, serde_json::json!({"op": "start"})))?;
+        if answer_ok(&answer) {
+            Ok(())
+        } else {
+            Err(answer
+                .get("error")
+                .and_then(|e| e.as_str())
+                .unwrap_or("The PC did not start the model")
+                .to_string())
+        }
     }
 
     /// Opens (or returns) the local port on 127.0.0.1 that leads to the

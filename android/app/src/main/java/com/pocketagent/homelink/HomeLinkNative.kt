@@ -18,6 +18,7 @@ object HomeLinkNative {
     @JvmStatic external fun init(context: android.content.Context): String
     @JvmStatic external fun pair(keyFile: String, qr: String, name: String): String
     @JvmStatic external fun status(keyFile: String, pc: String): String
+    @JvmStatic external fun startModel(keyFile: String, pc: String): String
     @JvmStatic external fun openTunnel(keyFile: String, pc: String): String
     @JvmStatic external fun closeTunnel(): String
 }

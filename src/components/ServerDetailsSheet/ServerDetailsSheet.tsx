@@ -8,6 +8,7 @@ import React, {
   useRef,
 } from 'react';
 import {View, Alert} from 'react-native';
+import {HomeLinkRoute} from '../HomeLinkRoute/HomeLinkRoute';
 import {
   Text,
   Button,
@@ -223,6 +224,11 @@ export const ServerDetailsSheet: React.FC<ServerDetailsSheetProps> = observer(
         title={server.name}
         snapPoints={['70%']}>
         <Sheet.ScrollView contentContainerStyle={styles.container}>
+          {server.homeLinkPc ? (
+            <View style={styles.inputSpacing}>
+              <HomeLinkRoute pc={server.homeLinkPc} />
+            </View>
+          ) : null}
           {/* URL Input */}
           <View style={styles.inputSpacing}>
             <TextInput
