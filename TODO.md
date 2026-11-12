@@ -680,6 +680,15 @@ No Android sandbox on the PC: the native side (Rust) can use Windows directly (a
 - [ ] Web pages and search from the native side (no browser limits), same tool as the phone's.
 - [ ] Read pages that need JavaScript with a hidden, locked-down web view.
 
+**Image generation (user, 2026-11-12)**
+- [ ] Make pictures on the PC with **stable-diffusion.cpp** (same ggml family as llama.cpp; reads GGUF image models; Vulkan for the graphics card), bundled next to the model server, pinned and checksum-checked like llama.cpp.
+- [ ] An "image" tool (off until switched on): prompt, size, steps; the picture shows in the chat and can be saved (Save a copy as…). Runs on this PC only; nothing is uploaded.
+- [ ] Image models are several parts: the main model (often GGUF, e.g. quantized SD 1.5 / SDXL / SD 3.5 / Flux), text encoders (CLIP; T5 for Flux) and a VAE. Download them as one set, like a vision model and its extra file. Show size and "Find the fit" before download (the user's 8 GB card: SD 1.5 / SDXL fine, Flux in small quantizations).
+- [ ] Rough speed to check on the user's PC: SD 1.5 about 5–20 s per picture, SDXL / Flux longer (depends on size and steps).
+- [ ] The phone over the home link: ask the PC for a picture (the PC runs it, the picture comes back), off until switched on on both devices.
+- [ ] Later: on the phone itself (slow; newest phones only).
+- [ ] Diffusion *text* models (LLaDA, Dream): llama.cpp has them only as an experimental separate tool, not in its server; wait until the server supports them.
+
 **Models and voice**
 - [ ] Use the graphics card fully (Vulkan now; check CUDA / ROCm builds), bigger context, two models at once (a small fast one and a big one).
 - [ ] Voice: whisper.cpp for listening, a local voice (Piper or Windows' own) for speaking; push-to-talk key.
