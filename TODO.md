@@ -4,6 +4,39 @@
 
 Updated: 2026-11-03. This document tracks planned work. Items marked done are done in code (with tests) on the open PR stack (#3 → #4 → #5 → todo-batch); anything that still needs checking on the phone is listed under **Phone checks**.
 
+## Pre-release: can't release until (decided 2026-11-12)
+
+Nothing goes to other people (testers included, beyond the owner) until every box here is ticked. Details are in the sections they point to.
+
+**Security**
+- [ ] Full security audit of both apps and the link: every door, approval, stored secret and way in (see "Before releasing to people").
+- [ ] Model server password off the command line (see "Home link: ways in").
+- [ ] Phone tunnel: only model requests, password required for everything (see "Home link: ways in").
+- [ ] Optional PIN / fingerprint before the Home PC is used, or a decision not to.
+- [ ] Keys at rest and metadata written down plainly for users; PC link key sealed to the PC considered.
+- [ ] Old / reused pairing codes refused (test).
+- [ ] Every outside connection checked on the phone too (its real traffic at start-up; SECURITY.md rule 7); Google Sign-In and Play billing unlinked on Android.
+- [ ] Report / feedback / share-benchmark buttons replaced with Copy or hidden (they only say "off" now).
+- [ ] Public security policy (how to report a problem privately, scope, response times) and a changelog of security fixes.
+
+**Builds and installs**
+- [ ] Signed builds: Windows installer and APK signed with our own keys; checksums published for every download.
+- [ ] Clean installs and updates: a version per build, upgrades in place, nothing lost.
+- [ ] Phone and PC builds always match (done: one build request starts all three) and the app says when they differ (done).
+- [ ] Licences screen up to date (a test enforces it) and llama.cpp's licence updated with each llama.cpp update.
+
+**Checked on real devices** (not just tests here)
+- [ ] Windows: every desktop tool once (the "Check on Windows" items in "DesktopAgent tools"), downloaded models, the start-up time, the preview game.
+- [ ] Phone: remote start of the PC's model, the route line, the thinking limit, the memory fix.
+- [ ] The home link away from home on mobile data (relay), at least once.
+- [ ] Linux build: starts, runs a model.
+
+**Testers**
+- [ ] A small group of invited testers tries to break it; findings fixed before the release widens; testers credited.
+
+**Out of scope for release**
+- iPhone / Apple: not made (decided: no Apple).
+
 ## Roadmap (agreed 2026-11-08)
 
 **No point in any of this without real security.** Every step keeps the rules in SECURITY.md (off until switched on; anything outside the app asks, natively, every time), and each new ability gets its rule test before it ships.
