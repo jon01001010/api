@@ -16,6 +16,7 @@ import type {
   ToolDefinition,
 } from './types';
 import {
+  actionAsksItself,
   describeFailure,
   findContacts,
   listInstalledApps,
@@ -790,7 +791,9 @@ export class PhoneActionsEngine implements TalentEngine {
       };
     }
     const quiet = ctx?.inApprovedShortcut === true;
-    if (!quiet) {
+    // Desktop: opening a page, draft or settings page asks in a native
+    // dialog with the exact address (src-tauri/src/open.rs); not twice.
+    if (!quiet && !actionAsksItself(plan.action)) {
       // Approval needs PocketAgent on screen. After an action opens another
       // app it is not, and that is not the user saying no.
       if (AppState.currentState !== 'active') {
@@ -841,7 +844,14 @@ export class PhoneActionsEngine implements TalentEngine {
       };
     }
     recentlyDone.set(key, Date.now());
-    return {type: 'text', summary: `Done: ${plan.done} ${STOP}`};
+    // The desktop says what it did its own way (e.g. a timer kept by the app).
+    const note = 'note' in result && result.note ? result.note : undefined;
+    return {
+      type: 'text',
+      summary: note
+        ? `Done (${plan.what}): ${note} ${STOP}`
+        : `Done: ${plan.done} ${STOP}`,
+    };
   }
 
   toToolDefinition(): ToolDefinition {

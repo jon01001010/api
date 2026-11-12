@@ -17,6 +17,7 @@ const COMMANDS: &[&str] = &[
     "secret_delete",
     "http_request",
     "http_abort",
+    "open_external",
     "pick_model_file",
     "model_server_start",
     "model_server_stop",

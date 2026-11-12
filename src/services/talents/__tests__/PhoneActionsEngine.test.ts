@@ -18,6 +18,7 @@ jest.mock('../../phoneActions/native', () => ({
   performPhoneAction: jest.fn(),
   listInstalledApps: jest.fn(),
   findContacts: jest.fn().mockResolvedValue([]),
+  actionAsksItself: () => false,
   describeFailure: jest.requireActual('../../phoneActions/native')
     .describeFailure,
 }));
@@ -68,6 +69,16 @@ describe('phone action tools', () => {
     expect(formatDuration(900)).toBe('15 min');
     expect(formatDuration(5400)).toBe('1 h 30 min');
     expect(formatDuration(45)).toBe('45 s');
+  });
+
+  it("uses the desktop's own words for what it did", async () => {
+    perform.mockResolvedValueOnce({
+      ok: true,
+      note: 'Timer set in DesktopAgent. It goes off while DesktopAgent is open.',
+    });
+    const result = await run('set_timer', {minutes: 5});
+    expect(result.summary).toMatch(/Timer set in DesktopAgent/);
+    expect(result.summary).not.toMatch(/Clock app/);
   });
 
   describe('set_timer', () => {

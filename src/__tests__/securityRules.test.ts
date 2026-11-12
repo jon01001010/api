@@ -211,6 +211,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'secret_delete',
         'http_request',
         'http_abort',
+        'open_external',
         'pick_model_file',
         'model_server_start',
         'model_server_stop',
@@ -471,6 +472,21 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     const net = tauri('src/net.rs');
     expect(net).toMatch(/"http" \| "https" => \{\}/);
     expect(net).toMatch(/other => return Err/);
+  });
+
+  it('opening things outside: pages, e-mail drafts, settings pages only, and it asks', () => {
+    const open = tauri('src/open.rs');
+    // Checked first, then the native dialog with the exact target, then opened.
+    expect(open).toMatch(
+      /let target = check_target\(&target\)\?;\s*if !crate::approval::ask\(&app, &question\(&target\)\)\.await \{\s*return Err/,
+    );
+    // Web pages go through the same check as the network door (no *.localhost).
+    expect(open).toContain('crate::net::check_url(target)?');
+    // No shell: the system's own handler (Windows) or one argument (Linux).
+    expect(open).toContain('ShellExecuteW(');
+    expect(open).not.toMatch(/Command::new\("(cmd|powershell|sh|bash)"/);
+    // E-mail: a draft only, never attachments.
+    expect(open).toMatch(/\["to", "cc", "bcc", "subject", "body"\]/);
   });
 
   it("never fetches the app's own addresses or passes on the bridge's key", () => {

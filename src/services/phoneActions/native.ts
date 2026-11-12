@@ -24,7 +24,7 @@ export type PhoneAction =
   | 'search';
 
 export type PhoneActionResult =
-  | {ok: true}
+  | {ok: true; note?: string}
   | {ok: false; reason: 'no_app' | 'bad_args' | 'failed' | 'unsupported'};
 
 export interface InstalledApp {
@@ -48,6 +48,9 @@ const native = (): NativePhoneActions | undefined =>
   Platform.OS === 'android'
     ? (NativeModules.PhoneActions as NativePhoneActions | undefined)
     : undefined;
+
+/** Phone: every action is asked about by the tool (desktop: native.web.ts). */
+export const actionAsksItself = (_action: PhoneAction): boolean => false;
 
 /** False on iOS, or in an APK built before the module existed. */
 export const phoneActionsAvailable = (): boolean => !!native();

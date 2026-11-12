@@ -13,6 +13,7 @@ mod link;
 mod link;
 mod model_server;
 mod net;
+mod open;
 mod preview;
 mod profile;
 mod remembered;
@@ -70,6 +71,7 @@ pub fn run() {
             secrets::secret_delete,
             net::http_request,
             net::http_abort,
+            open::open_external,
             model_server::pick_model_file,
             model_server::model_server_start,
             model_server::model_server_stop,

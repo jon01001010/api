@@ -39,7 +39,7 @@ link = ["dep:iroh", "dep:qrcode"]
 keyring = { version = "3.6.3", features = ["windows-native"] }
 # The page's own profiler at start-up (profile.rs): the same versions Tauri uses.
 webview2-com = "=0.39.1"
-windows = "=0.62.2"
+windows = { version = "=0.62.2", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(not(windows))'.dependencies]
 keyring = { version = "3.6.3", features = ["linux-native"] }

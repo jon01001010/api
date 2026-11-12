@@ -23,6 +23,7 @@
     "allow-secret-delete",
     "allow-http-request",
     "allow-http-abort",
+    "allow-open-external",
     "allow-pick-model-file",
     "allow-model-server-start",
     "allow-model-server-stop",

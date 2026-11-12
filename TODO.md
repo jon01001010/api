@@ -647,6 +647,13 @@ No Android sandbox on the PC: the native side (Rust) can use Windows directly (a
 - [ ] Tidy up: rename / move many workspace files from one list the user checks and approves at once.
 - [ ] Ask your documents: a local search index (embeddings on this PC) over the workspace, so the model can answer from your own files.
 
+**First desktop tools (2026-11-12): the phone's actions, the PC's way**
+- [x] The phone action tools work in DesktopAgent (`src/services/phoneActions/native.web.ts`), same Toolbox switches: timers, alarms (also weekly) and reminders are kept by DesktopAgent and pop up with a sound when due (while the app is open); maps open OpenStreetMap and web search opens DuckDuckGo in the browser (no Google); e-mail opens a draft in the mail app; settings pages open Windows Settings; share text copies it. Calls, texts, camera, music and other apps answer "that needs the phone".
+- [x] One native door for opening things (`open_external`, SECURITY.md rule 6): pages, e-mail drafts and a fixed list of settings pages only; a native dialog with the exact address; no shell. Tests pin it.
+- [ ] Check on Windows: each action once (timer pops up; maps / search / e-mail draft / Wi-Fi settings open after the dialog).
+- [ ] Timers and reminders kept when the app closes (today only while it is open); a Windows notification when the app is in the background.
+- [ ] Tool descriptions say "phone" (e.g. "the phone's Settings"): word them for the device they run on.
+
 **Apps and the system**
 - [ ] Open an app or web page, or a workspace file in its app (asks each time, shows what opens).
 - [ ] Run a PowerShell / shell command: shown in full, asks every time, output shown in the chat; a short list of read-only commands (e.g. disk space, IP address) can be allowed once.
