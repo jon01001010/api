@@ -74,6 +74,16 @@ Updated: 2026-11-03. This document tracks planned work. Items marked done are do
 - [ ] Invite testers: early users run the test builds and try to break it; credit them. Fix before widening the release.
 - [ ] Builds anyone can check: published checksums for every download (signing optional, our own key).
 
+**Home link: ways in (review 2026-11-12)**. The link itself is encrypted end to end (QUIC + TLS 1.3, each device pinned by its key; relays see only encrypted bytes). The weak points are the two ends and the metadata:
+- [ ] **Model server password in the process list:** llama-server gets its random password as a command-line argument, which any program on the PC can read. Pass it by environment variable or a file only the app can read instead.
+- [ ] **Phone tunnel reachable by other apps on the phone:** it listens on 127.0.0.1, so any app on the phone can connect; llama-server's `/health` answers without the password (tells whether a model runs). Pass only model requests through the tunnel and require the password on everything (or a per-start token on the local port).
+- [ ] **Stolen, unlocked phone:** it can use the PC's model (nothing else). Optional PIN / fingerprint before the Home PC is used; "remove this phone" stays the fix on the PC.
+- [ ] **Keys at rest:** the PC's link key is in Windows Credential Manager (readable by any program running as the same user); the phone's key is in the app's no-backup folder (readable on a rooted phone). Malware on either end sees everything; document it plainly, and consider sealing the PC key to this PC (DPAPI / TPM) so a copied key is useless elsewhere.
+- [ ] **Metadata:** ISP, Wi-Fi / hotspot and number0's relay and discovery servers see that the two devices talk, their IP addresses, when, and how much (not the content). Document it; consider padding / an own relay later.
+- [ ] **Pairing:** the QR code is one-time, 10 minutes, and the PC asks; the phone is told about every new code. Keep; test that an old or reused code is refused.
+- [ ] **Signed builds:** sign the Windows installer and the APK with our own keys and publish checksums, so a swapped download is caught.
+- [x] iPhone / web version: not made (decided 2026-11-12: no Apple, no iPhone).
+
 ## Ready-made loops: timer + next steps, for beginners (idea 2026-11-08, write-up only)
 
 A loop is a small agent job that comes back on a timer: it does its part, shows the result, and ends with **next steps** the user can tap. Ready-made ones in a gallery, so nobody has to know what an "agentic loop" is.
