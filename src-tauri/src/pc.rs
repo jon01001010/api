@@ -239,7 +239,9 @@ mod tests {
     #[test]
     fn a_command_runs_in_the_given_folder_with_its_output() {
         let dir = std::env::temp_dir();
-        let ran = run("echo hello && pwd", &dir, Duration::from_secs(10)).unwrap();
+        // PowerShell on Windows (Windows PowerShell 5.1 has no `&&`), sh elsewhere.
+        let cmd = if cfg!(windows) { "echo hello; Get-Location" } else { "echo hello && pwd" };
+        let ran = run(cmd, &dir, Duration::from_secs(10)).unwrap();
         assert_eq!(ran.exit_code, Some(0));
         assert!(ran.output.contains("hello"));
         assert!(!ran.timed_out);
@@ -247,13 +249,19 @@ mod tests {
 
     #[test]
     fn a_long_command_is_stopped() {
-        let ran = run("sleep 30", &std::env::temp_dir(), Duration::from_millis(300)).unwrap();
+        let cmd = if cfg!(windows) { "Start-Sleep -Seconds 30" } else { "sleep 30" };
+        let ran = run(cmd, &std::env::temp_dir(), Duration::from_millis(300)).unwrap();
         assert!(ran.timed_out);
     }
 
     #[test]
     fn errors_and_long_output_come_back_cut() {
-        let ran = run("yes x | head -c 100000; echo oops 1>&2; exit 3", &std::env::temp_dir(), Duration::from_secs(10)).unwrap();
+        let cmd = if cfg!(windows) {
+            "'x' * 100000; [Console]::Error.WriteLine('oops'); exit 3"
+        } else {
+            "yes x | head -c 100000; echo oops 1>&2; exit 3"
+        };
+        let ran = run(cmd, &std::env::temp_dir(), Duration::from_secs(10)).unwrap();
         assert_eq!(ran.exit_code, Some(3));
         assert!(ran.output.contains("[… output cut]"));
         assert!(ran.output.contains("oops"));

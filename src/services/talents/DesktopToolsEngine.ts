@@ -111,7 +111,7 @@ const DEFINITIONS: Record<DesktopTool, ToolDefinition['function']> = {
   run_command: {
     name: 'run_command',
     description:
-      'Run one command on this PC (PowerShell on Windows, the shell on Linux), in the workspace folder. The user sees the whole command and must allow it every time; prefer read-only commands and explain what it does first. Output comes back (cut if long; stopped after 60 s).',
+      'Run one command on this PC (PowerShell on Windows, the shell on Linux), in the workspace folder. The user sees the whole command and must allow it every time; prefer read-only commands and explain what it does first. Output comes back (cut if long; stopped after 60 s). On Windows chain commands with ; (Windows PowerShell has no &&).',
     parameters: {
       type: 'object',
       properties: {
