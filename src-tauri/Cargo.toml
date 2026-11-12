@@ -28,6 +28,9 @@ sysinfo = { version = "=0.39.6", default-features = false, features = ["system",
 # Devices dial each other by key; end-to-end encrypted; relays can't read it.
 iroh = { version = "=1.4.1", optional = true }
 qrcode = { version = "=0.14.1", default-features = false, features = ["svg"], optional = true }
+# PC to PC: this PC as the other end of a home link (link_client.rs), with
+# the phone's own link library.
+homelink = { path = "../native/homelink", optional = true }
 zip = { version = "=9.5.1", default-features = false, features = ["deflate"] }
 pdf-extract = "=0.12.1"
 quick-xml = "=0.42.0"
@@ -40,7 +43,7 @@ png = "=0.18.1"
 default = ["link"]
 # Off only for the Windows type-check on Linux, which has no Windows C
 # compiler for iroh's crypto library (the real Windows build has one).
-link = ["dep:iroh", "dep:qrcode"]
+link = ["dep:iroh", "dep:qrcode", "dep:homelink"]
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3.6.3", features = ["windows-native"] }

@@ -46,6 +46,11 @@
     "allow-link-on",
     "allow-link-off",
     "allow-link-status",
-    "allow-link-forget"
+    "allow-link-forget",
+    "allow-homelink-pair",
+    "allow-homelink-status",
+    "allow-homelink-start-model",
+    "allow-homelink-open-tunnel",
+    "allow-homelink-close-tunnel"
   ]
 }

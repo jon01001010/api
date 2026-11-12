@@ -164,3 +164,35 @@ describe('where a model runs on a PC', () => {
     expect(pcFit(14 * GB, noCard)).toBe('too-big');
   });
 });
+
+describe("PC to PC: the phone's HomeLink module on the desktop", () => {
+  it('goes to the native link commands with the same answers', async () => {
+    jest.resetModules();
+    const calls = [];
+    jest.doMock('../tauri', () => ({
+      isTauri: () => true,
+      invoke: async (cmd, args) => {
+        calls.push([cmd, args]);
+        return JSON.stringify({ok: true, port: 5000});
+      },
+    }));
+    const {NativeModules} = jest.requireActual('../react-native.js');
+    const link = NativeModules.HomeLink;
+    await link.pair('PA1:P:x:y');
+    await link.status('pc');
+    await link.startModel('pc');
+    expect(JSON.parse(await link.openTunnel('pc'))).toEqual({
+      ok: true,
+      port: 5000,
+    });
+    await link.closeTunnel();
+    expect(calls.map(c => c[0])).toEqual([
+      'homelink_pair',
+      'homelink_status',
+      'homelink_start_model',
+      'homelink_open_tunnel',
+      'homelink_close_tunnel',
+    ]);
+    expect(calls[0][1]).toEqual({qr: 'PA1:P:x:y'});
+  });
+});

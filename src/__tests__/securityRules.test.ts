@@ -235,6 +235,11 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'link_off',
         'link_status',
         'link_forget',
+        'homelink_pair',
+        'homelink_status',
+        'homelink_start_model',
+        'homelink_open_tunnel',
+        'homelink_close_tunnel',
       ].sort(),
     );
     // The window is allowed exactly those, plus Tauri's core basics.
@@ -513,6 +518,22 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'tauri_plugin_global_shortcut::Builder::new().build()',
     );
     expect(lib).not.toMatch(/with_shortcut|register\(QUICK_KEY\)/);
+  });
+
+  it("PC to PC: this PC as the other end uses the phone's own link library, unchanged", () => {
+    const client = tauri('src/link_client.rs');
+    expect(client).toContain('use homelink::Phone;');
+    // Its own key (not the PC's link key), no address hint (dials by key).
+    expect(client).toMatch(/join\("client\.key"\)/);
+    expect(client).toContain('Phone::new(&key, None)');
+    // Failures come back as errors, never close the app.
+    expect(client).toContain('catch_unwind');
+    // The phone library's rules apply as they are (127.0.0.1 only, the PC's
+    // QR tag only; pinned for the phone above).
+    const cargo = tauri('Cargo.toml');
+    expect(cargo).toContain(
+      'homelink = { path = "../native/homelink", optional = true }',
+    );
   });
 
   it("the PC's own tools: commands ask every time, files stay in the workspace", () => {

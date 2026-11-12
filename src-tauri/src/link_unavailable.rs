@@ -25,3 +25,31 @@ pub async fn link_status() -> Result<(), String> {
 pub async fn link_forget(_id: String) -> Result<(), String> {
     Err("The home link is not in this build".into())
 }
+
+// PC to PC (link_client.rs): not in this build either.
+const OFF: &str = r#"{"ok":false,"error":"The home link is not in this build"}"#;
+
+#[tauri::command]
+pub async fn homelink_pair(_qr: String) -> String {
+    OFF.into()
+}
+
+#[tauri::command]
+pub async fn homelink_status(_pc: String) -> String {
+    OFF.into()
+}
+
+#[tauri::command]
+pub async fn homelink_start_model(_pc: String) -> String {
+    OFF.into()
+}
+
+#[tauri::command]
+pub async fn homelink_open_tunnel(_pc: String) -> String {
+    OFF.into()
+}
+
+#[tauri::command]
+pub async fn homelink_close_tunnel() -> String {
+    OFF.into()
+}

@@ -130,6 +130,23 @@ describe('RemoteModelSheet', () => {
     expect(getByTestId('remote-url-input')).toBeTruthy();
   });
 
+  it("a home PC's pairing code pasted in the address box pairs (PC to PC)", () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const {getByTestId} = render(
+      <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,
+    );
+    const code = `PA1:P:${'a'.repeat(64)}:${'b'.repeat(32)}`;
+    fireEvent.changeText(getByTestId('remote-url-input'), ` ${code}\n`);
+    expect(alert).toHaveBeenCalledWith(
+      'Pair with your PC?',
+      expect.stringContaining('This device'),
+      expect.anything(),
+    );
+    // Not kept as a server address.
+    expect(getByTestId('remote-url-input').props.value).toBe('');
+    alert.mockRestore();
+  });
+
   it('the Claude button fills in Anthropic and waits for the key', async () => {
     const {getByTestId} = render(
       <RemoteModelSheet isVisible={true} onDismiss={jest.fn()} />,

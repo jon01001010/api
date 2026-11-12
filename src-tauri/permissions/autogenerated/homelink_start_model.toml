@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-homelink-start-model"
+description = "Enables the homelink_start_model command without any pre-configured scope."
+commands.allow = ["homelink_start_model"]
+
+[[permission]]
+identifier = "deny-homelink-start-model"
+description = "Denies the homelink_start_model command without any pre-configured scope."
+commands.deny = ["homelink_start_model"]

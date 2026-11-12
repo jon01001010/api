@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-homelink-status"
+description = "Enables the homelink_status command without any pre-configured scope."
+commands.allow = ["homelink_status"]
+
+[[permission]]
+identifier = "deny-homelink-status"
+description = "Denies the homelink_status command without any pre-configured scope."
+commands.deny = ["homelink_status"]

@@ -28,6 +28,16 @@ const {makeStub} = require('../windows/_stub');
 const QUIET = {
   // Keeping a phone screen on while a reply is generated.
   KeepAwakeModule: {activate: async () => {}, deactivate: async () => {}},
+  // PC to PC: this PC as the other end of a home link
+  // (src-tauri/src/link_client.rs): the same answers as the phone's module,
+  // so src/services/homeLink works unchanged. Outside the .exe: not there.
+  HomeLink: {
+    pair: qr => require('./tauri').invoke('homelink_pair', {qr}),
+    status: pc => require('./tauri').invoke('homelink_status', {pc}),
+    startModel: pc => require('./tauri').invoke('homelink_start_model', {pc}),
+    openTunnel: pc => require('./tauri').invoke('homelink_open_tunnel', {pc}),
+    closeTunnel: () => require('./tauri').invoke('homelink_close_tunnel'),
+  },
   // The PC's real memory and cores (src-tauri/src/system.rs), so model
   // memory checks are right. In a plain browser: unknown, fail as before.
   HardwareInfo: {

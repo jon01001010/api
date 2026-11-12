@@ -12,6 +12,10 @@ mod link;
 #[cfg(not(feature = "link"))]
 #[path = "link_unavailable.rs"]
 mod link;
+#[cfg(feature = "link")]
+mod link_client;
+#[cfg(not(feature = "link"))]
+use link as link_client;
 mod model_server;
 mod net;
 mod open;
@@ -107,6 +111,11 @@ pub fn run() {
             link::link_off,
             link::link_status,
             link::link_forget,
+            link_client::homelink_pair,
+            link_client::homelink_status,
+            link_client::homelink_start_model,
+            link_client::homelink_open_tunnel,
+            link_client::homelink_close_tunnel,
         ])
         .build(tauri::generate_context!())
         .expect("error while building PocketAgent");
@@ -150,6 +159,7 @@ mod tests {
             include_str!("preview.rs"),
             include_str!("link.rs"),
             include_str!("link_unavailable.rs"),
+            include_str!("link_client.rs"),
         ];
         for source in sources {
             let lines: Vec<&str> = source.lines().collect();

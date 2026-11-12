@@ -41,6 +41,11 @@ const COMMANDS: &[&str] = &[
     "link_off",
     "link_status",
     "link_forget",
+    "homelink_pair",
+    "homelink_status",
+    "homelink_start_model",
+    "homelink_open_tunnel",
+    "homelink_close_tunnel",
 ];
 
 fn main() {

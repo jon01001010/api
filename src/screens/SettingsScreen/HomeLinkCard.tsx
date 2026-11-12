@@ -1,3 +1,4 @@
+import Clipboard from '@react-native-clipboard/clipboard';
 import React, {useCallback, useEffect, useState} from 'react';
 import {Image, StyleSheet, View} from 'react-native';
 import {Button, Card, Text} from 'react-native-paper';
@@ -97,7 +98,7 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
           disabled={busy}
           testID="home-link-pair"
           onPress={() => run(async () => setPairing(await linkPair()))}>
-          Pair a phone
+          Pair a phone or PC
         </Button>
         {pairing ? (
           <View style={styles.qrBox} testID="home-link-qr">
@@ -111,6 +112,21 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
               {Math.round(pairing.expiresInSecs / 60)} minutes; this PC asks you
               before pairing.
             </Text>
+            {/* Another PC (no camera): copy the code and paste it into its
+                DesktopAgent (Models → add a server, address box). */}
+            <Text
+              variant="bodySmall"
+              selectable
+              style={styles.code}
+              testID="home-link-code">
+              {pairing.qr}
+            </Text>
+            <Button
+              compact
+              testID="home-link-copy-code"
+              onPress={() => Clipboard.setString(pairing.qr)}>
+              Copy the code (for another PC)
+            </Button>
           </View>
         ) : null}
         <Button
@@ -168,6 +184,7 @@ const styles = StyleSheet.create({
   state: {marginVertical: 8},
   qrBox: {alignItems: 'center', marginVertical: 12},
   qr: {width: 240, height: 240, marginBottom: 8, backgroundColor: '#ffffff'},
+  code: {marginTop: 6, fontFamily: 'monospace', fontSize: 10},
   phone: {flexDirection: 'row', alignItems: 'center'},
   phoneName: {flex: 1},
 });

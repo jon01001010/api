@@ -239,7 +239,7 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
           // Home PC: ask here first; the PC asks its user too.
           Alert.alert(
             'Pair with your PC?',
-            'This phone will be able to use the model running on your PC (DesktopAgent), from anywhere. Your PC asks you to allow it too.',
+            'This device will be able to use the model running on your PC (DesktopAgent), from anywhere. Your PC asks you to allow it too.',
             [
               {text: 'Cancel', style: 'cancel'},
               {
@@ -609,6 +609,12 @@ export const RemoteModelSheet: React.FC<RemoteModelSheetProps> = observer(
                   label={l10n.settings.serverUrl}
                   value={url}
                   onChangeText={text => {
+                    // A home PC's pairing code pasted here (PC to PC: a
+                    // laptop has no camera to scan the QR) pairs like a scan.
+                    if (isPairingCode(text)) {
+                      handleScanned(text.trim());
+                      return;
+                    }
                     setUrl(text);
                     // A new address is a new server, not the selected chip's.
                     if (selectedServerId) {
