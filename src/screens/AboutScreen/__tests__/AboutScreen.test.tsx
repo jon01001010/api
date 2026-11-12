@@ -6,7 +6,7 @@ import {
   act,
 } from '../../../../jest/test-utils';
 import {AboutScreen} from '../AboutScreen';
-import {submitFeedback} from '../../../api/feedback';
+import Clipboard from '@react-native-clipboard/clipboard';
 import {l10n} from '../../../locales';
 
 const render = (ui: React.ReactElement, options: any = {}) =>
@@ -26,11 +26,6 @@ jest.mock('@react-native-clipboard/clipboard', () => ({
 // Mock Linking - need to spy on the actual Linking object
 const mockOpenURL = jest.fn().mockImplementation(() => Promise.resolve());
 jest.spyOn(Linking, 'openURL').mockImplementation(mockOpenURL);
-
-// Mock feedback API
-jest.mock('../../../api/feedback', () => ({
-  submitFeedback: jest.fn().mockResolvedValue(undefined),
-}));
 
 jest.spyOn(Alert, 'alert');
 
@@ -137,21 +132,23 @@ describe('AboutScreen', () => {
     fireEvent.press(dailyButton);
 
     // Submit form
-    const submitButton = await findByText(l10n.en.feedback.submit);
+    const submitButton = await findByText('Copy feedback');
     await act(async () => {
       fireEvent.press(submitButton);
     });
 
-    expect(submitFeedback).toHaveBeenCalledWith({
+    // Copied, never sent.
+    expect(
+      JSON.parse((Clipboard.setString as jest.Mock).mock.calls.at(-1)[0]),
+    ).toEqual({
       useCase: 'Test use case',
       featureRequests: 'Test feature request',
       generalFeedback: 'Test feedback',
       usageFrequency: 'daily',
     });
-
     expect(Alert.alert).toHaveBeenCalledWith(
-      'Success',
-      'Thank you for your feedback!',
+      'Feedback copied',
+      expect.stringMatching(/Nothing was sent/),
     );
   });
 
@@ -162,7 +159,7 @@ describe('AboutScreen', () => {
     fireEvent.press(getByText(l10n.en.feedback.shareThoughtsButton));
 
     // Submit empty form
-    const submitButton = await findByText(l10n.en.feedback.submit);
+    const submitButton = await findByText('Copy feedback');
     await act(async () => {
       fireEvent.press(submitButton);
     });
@@ -170,31 +167,6 @@ describe('AboutScreen', () => {
     expect(Alert.alert).toHaveBeenCalledWith(
       l10n.en.feedback.validation.required,
     );
-    expect(submitFeedback).not.toHaveBeenCalled();
-  });
-
-  it('handles feedback submission error', async () => {
-    (submitFeedback as jest.Mock).mockRejectedValueOnce(new Error('API Error'));
-
-    const {getByText, findByText, findByPlaceholderText} = render(
-      <AboutScreen />,
-    );
-
-    // Open feedback form
-    fireEvent.press(getByText(l10n.en.feedback.shareThoughtsButton));
-
-    // Fill out form
-    fireEvent.changeText(
-      await findByPlaceholderText(l10n.en.feedback.useCase.placeholder),
-      'Test use case',
-    );
-
-    // Submit form
-    const submitButton = await findByText(l10n.en.feedback.submit);
-    await act(async () => {
-      fireEvent.press(submitButton);
-    });
-
-    expect(Alert.alert).toHaveBeenCalledWith('Error', 'API Error');
+    expect(Clipboard.setString).not.toHaveBeenCalled();
   });
 });

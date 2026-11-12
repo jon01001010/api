@@ -303,7 +303,10 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // The exact file: path, size and time must all match.
     expect(remembered).toContain('.map(|saved| &saved == now)');
     expect(server).toContain('"127.0.0.1".into()');
-    expect(server).toContain('"--api-key".into()');
+    // The password goes by environment, never on the command line.
+    expect(server).toContain('pub const PASSWORD_ENV: &str = "LLAMA_API_KEY";');
+    expect(server).toContain('command.env(PASSWORD_ENV, &key);');
+    expect(server).not.toContain('"--api-key".into()');
   });
 
   it('the window itself has no internet access; its only frames are HTML previews', () => {

@@ -7,7 +7,7 @@ import {Text, Button, SegmentedButtons} from 'react-native-paper';
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import {BuildInfo} from 'llama.rn';
 
-import {submitFeedback} from '../../api/feedback';
+import {copyReport} from '../../utils/copyReport';
 
 import {CopyIcon, GithubIcon, ChevronRightIcon} from '../../assets/icons';
 
@@ -72,13 +72,13 @@ export const AboutScreen: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      await submitFeedback({
+      // Copied, not sent (no outside service; utils/copyReport.ts).
+      copyReport('Feedback copied', {
         useCase,
         featureRequests,
         generalFeedback,
         usageFrequency,
       });
-      Alert.alert('Success', l10n.feedback.success);
       setShowFeedback(false);
       // Clear form
       setUseCase('');
@@ -264,7 +264,7 @@ export const AboutScreen: React.FC = () => {
             onPress={handleSubmit}
             loading={isSubmitting}
             disabled={isSubmitting}>
-            {l10n.feedback.submit}
+            Copy feedback
           </Button>
         </Sheet.Actions>
       </Sheet>

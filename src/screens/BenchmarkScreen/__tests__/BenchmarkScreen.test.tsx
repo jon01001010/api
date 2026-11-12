@@ -3,7 +3,7 @@ import React from 'react';
 import {cloneDeep} from 'lodash';
 import {LlamaContext} from 'llama.rn';
 
-import {submitBenchmark} from '../../../api/benchmark';
+import Clipboard from '@react-native-clipboard/clipboard';
 
 import {
   act,
@@ -143,7 +143,7 @@ describe('BenchmarkScreen', () => {
       fireEvent.press(confirmButton);
 
       await waitFor(() => {
-        expect(submitBenchmark).toHaveBeenCalled();
+        expect(Clipboard.setString).toHaveBeenCalled();
       });
     });
 
@@ -382,13 +382,16 @@ describe('BenchmarkScreen', () => {
 
       // Verify device info is included in submission
       await waitFor(() => {
-        expect(submitBenchmark).toHaveBeenCalledWith(
+        // Copied (never sent), with the device info.
+        const copied = JSON.parse(
+          (Clipboard.setString as jest.Mock).mock.calls.at(-1)[0],
+        );
+        expect(copied.deviceInfo).toEqual(
           expect.objectContaining({
             model: expect.any(String),
             systemName: expect.any(String),
             systemVersion: expect.any(String),
           }),
-          expect.any(Object),
         );
       });
     });
@@ -429,7 +432,7 @@ describe('BenchmarkScreen', () => {
 
       // wait for the submission to be called
       await waitFor(() => {
-        expect(submitBenchmark).toHaveBeenCalled();
+        expect(Clipboard.setString).toHaveBeenCalled();
       });
 
       await waitForElementToBeRemoved(
@@ -456,7 +459,7 @@ describe('BenchmarkScreen', () => {
       uiStore.benchmarkShareDialog.shouldShow = false;
 
       // Share another result
-      const submitButton2 = getByTestId('submit-benchmark-button');
+      const submitButton2 = getAllByTestId('submit-benchmark-button')[0];
       fireEvent.press(submitButton2);
 
       expect(queryByTestId('share-benchmark-dialog')).toBeNull();
@@ -490,7 +493,7 @@ describe('BenchmarkScreen', () => {
 
       // wait for the submission to be called
       await waitFor(() => {
-        expect(submitBenchmark).toHaveBeenCalled();
+        expect(Clipboard.setString).toHaveBeenCalled();
       });
 
       await act(async () => {
@@ -507,7 +510,7 @@ describe('BenchmarkScreen', () => {
       uiStore.benchmarkShareDialog.shouldShow = true;
 
       // Share another result
-      const submitButton2 = getByTestId('submit-benchmark-button');
+      const submitButton2 = getAllByTestId('submit-benchmark-button')[0];
       fireEvent.press(submitButton2);
 
       await waitFor(() => {

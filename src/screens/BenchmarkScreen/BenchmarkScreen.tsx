@@ -8,7 +8,7 @@ import Slider from '@react-native-community/slider';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Text, Button, Card, ActivityIndicator, Icon} from 'react-native-paper';
 
-import {submitBenchmark} from '../../api/benchmark';
+import {copyReport} from '../../utils/copyReport';
 
 import {Menu, Dialog, Checkbox} from '../../components';
 
@@ -244,17 +244,8 @@ export const BenchmarkScreen: React.FC = observer(() => {
     if (!deviceInfo) {
       throw new Error('Device information not available');
     }
-    if (result.submitted) {
-      throw new Error('This benchmark has already been submitted');
-    }
-    try {
-      const response = await submitBenchmark(deviceInfo, result);
-      console.log('Benchmark submitted successfully:', response);
-      benchmarkStore.markAsSubmitted(result.uuid);
-    } catch (error) {
-      console.error('Failed to submit benchmark:', error);
-      throw error;
-    }
+    // Copied, not sent (no outside service; utils/copyReport.ts).
+    copyReport('Benchmark copied', {deviceInfo, result});
   };
 
   const handleSharePress = async (result: BenchmarkResult) => {
@@ -469,9 +460,8 @@ export const BenchmarkScreen: React.FC = observer(() => {
         },
         {
           testID: 'share-benchmark-dialog-confirm-button',
-          label: isSubmitting
-            ? l10n.benchmark.buttons.sharing
-            : l10n.benchmark.buttons.share,
+          // Copied, not sent (utils/copyReport.ts).
+          label: 'Copy',
           onPress: handleConfirmShare,
           mode: 'contained',
           loading: isSubmitting,

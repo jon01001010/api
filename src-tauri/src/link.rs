@@ -341,6 +341,59 @@ async fn read_line(recv: &mut iroh::endpoint::RecvStream) -> Option<Vec<u8>> {
     None
 }
 
+/// Model requests a paired phone may pass to this PC's model server.
+const MODEL_REQUESTS: &[(&str, &str)] = &[
+    ("GET", "/health"),
+    ("GET", "/props"),
+    ("GET", "/models"),
+    ("GET", "/v1/models"),
+    ("POST", "/chat/completions"),
+    ("POST", "/v1/chat/completions"),
+    ("POST", "/completions"),
+    ("POST", "/v1/completions"),
+];
+const MAX_HEAD: usize = 16 * 1024;
+
+/// The first request's head (up to the blank line), as sent.
+async fn read_head(recv: &mut iroh::endpoint::RecvStream) -> Option<Vec<u8>> {
+    let mut head = Vec::new();
+    let mut chunk = [0u8; 1024];
+    while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+        if head.len() > MAX_HEAD {
+            return None;
+        }
+        match recv.read(&mut chunk).await {
+            Ok(Some(n)) if n > 0 => head.extend_from_slice(&chunk[..n]),
+            _ => return None,
+        }
+    }
+    Some(head)
+}
+
+/// A model request (a known path) with the model's current password.
+pub fn check_head(head: &[u8], key: &str) -> Result<(), &'static str> {
+    let text = std::str::from_utf8(head).map_err(|_| "not text")?;
+    let mut lines = text.split("\r\n");
+    let mut first = lines.next().unwrap_or("").split(' ');
+    let (method, target) = (first.next().unwrap_or(""), first.next().unwrap_or(""));
+    let path = target.split('?').next().unwrap_or("");
+    if !MODEL_REQUESTS.contains(&(method, path)) {
+        return Err("not a model request");
+    }
+    let expected = format!("Bearer {key}");
+    let authorised = !key.is_empty()
+        && lines.any(|l| {
+            l.split_once(':').is_some_and(|(name, value)| {
+                name.trim().eq_ignore_ascii_case("authorization") && value.trim() == expected
+            })
+        });
+    if authorised {
+        Ok(())
+    } else {
+        Err("no password")
+    }
+}
+
 async fn reply(send: &mut iroh::endpoint::SendStream, value: serde_json::Value) {
     let mut text = value.to_string();
     text.push('\n');
@@ -432,7 +485,25 @@ async fn serve_stream(
                 .await
                 .map_err(|e| e.to_string())?;
             reply(&mut send, serde_json::json!({"ok": true})).await;
+            // The first request on this connection must be a model request
+            // with the model's current password; anything else (e.g. another
+            // app on the phone that found the phone's local port) is refused
+            // before a byte reaches the model server.
+            let (_, key) = app.state::<crate::model_server::ModelServer>().address().unwrap_or_default();
+            let head = match read_head(&mut recv).await {
+                Some(head) if check_head(&head, &key).is_ok() => head,
+                _ => {
+                    let _ = send
+                        .write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                        .await;
+                    let _ = send.finish();
+                    return Ok(());
+                }
+            };
             let (mut from_model, mut to_model) = tcp.into_split();
+            tokio::io::AsyncWriteExt::write_all(&mut to_model, &head)
+                .await
+                .map_err(|e| e.to_string())?;
             let up = async {
                 let _ = tokio::io::copy(&mut recv, &mut to_model).await;
                 let _ = tokio::io::AsyncWriteExt::shutdown(&mut to_model).await;
@@ -532,6 +603,23 @@ pub async fn link_forget(app: AppHandle, id: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_model_requests_with_the_password_pass() {
+        let ok = b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer k1\r\n\r\n";
+        assert!(check_head(ok, "k1").is_ok());
+        let health = b"GET /health HTTP/1.1\r\nauthorization:  Bearer k1 \r\n\r\n";
+        assert!(check_head(health, "k1").is_ok());
+        // No password, a wrong one, or none set on the PC: refused.
+        assert!(check_head(b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n", "k1").is_err());
+        assert!(check_head(b"GET /health HTTP/1.1\r\nAuthorization: Bearer nope\r\n\r\n", "k1").is_err());
+        assert!(check_head(b"GET /health HTTP/1.1\r\nAuthorization: Bearer \r\n\r\n", "").is_err());
+        // Anything but the model's requests: refused, even with the password.
+        for bad in ["GET /slots", "POST /slots/0?action=save", "GET /metrics", "POST /v1/chat/completions/../../x", "DELETE /v1/models"] {
+            let head = format!("{bad} HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n");
+            assert!(check_head(head.as_bytes(), "k1").is_err(), "{bad}");
+        }
+    }
 
     #[test]
     fn requests_are_one_small_json_line() {

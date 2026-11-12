@@ -10,18 +10,19 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
 
 **Security**
 - [ ] Full security audit of both apps and the link: every door, approval, stored secret and way in (see "Before releasing to people").
-- [ ] Model server password off the command line (see "Home link: ways in").
-- [ ] Phone tunnel: only model requests, password required for everything (see "Home link: ways in").
+- [x] Model server password off the command line (2026-11-12: by environment, `LLAMA_API_KEY`; tested).
+- [x] Phone tunnel: only model requests, password required for everything (2026-11-12: the PC checks the first request on each connection; 403 otherwise; tested).
 - [ ] Optional PIN / fingerprint before the Home PC is used, or a decision not to.
 - [ ] Keys at rest and metadata written down plainly for users; PC link key sealed to the PC considered.
 - [ ] Old / reused pairing codes refused (test).
 - [ ] Every outside connection checked on the phone too (its real traffic at start-up; SECURITY.md rule 7); Google Sign-In and Play billing unlinked on Android.
-- [ ] Report / feedback / share-benchmark buttons replaced with Copy or hidden (they only say "off" now).
+- [x] Report / feedback / share-benchmark buttons copy the text instead of sending (2026-11-12).
 - [ ] Public security policy (how to report a problem privately, scope, response times) and a changelog of security fixes.
 
 **Builds and installs**
-- [ ] Signed builds: Windows installer and APK signed with our own keys; checksums published for every download.
-- [ ] Clean installs and updates: a version per build, upgrades in place, nothing lost.
+- [ ] Signed builds: Windows installer and APK signed with our own keys; checksums published for every download. Today the APK is signed with React Native's public debug key (committed), so updates install in place but anyone could sign a look-alike update: a private release key (kept as a GitHub secret) before release; that one change means one reinstall.
+- [x] A version per build (2026-11-12): 1.21.<commit count>, the same on the phone and the PC from one commit, higher for every later commit; Android version code 1000 + count (above PocketPal's 151); shown in App Info.
+- [ ] Clean installs and updates checked on devices: the Windows installer upgrades in place with chats and models kept; the APK updates over the last one.
 - [ ] Phone and PC builds always match (done: one build request starts all three) and the app says when they differ (done).
 - [ ] Licences screen up to date (a test enforces it) and llama.cpp's licence updated with each llama.cpp update.
 
@@ -108,8 +109,8 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
 - [ ] Builds anyone can check: published checksums for every download (signing optional, our own key).
 
 **Home link: ways in (review 2026-11-12)**. The link itself is encrypted end to end (QUIC + TLS 1.3, each device pinned by its key; relays see only encrypted bytes). The weak points are the two ends and the metadata:
-- [ ] **Model server password in the process list:** llama-server gets its random password as a command-line argument, which any program on the PC can read. Pass it by environment variable or a file only the app can read instead.
-- [ ] **Phone tunnel reachable by other apps on the phone:** it listens on 127.0.0.1, so any app on the phone can connect; llama-server's `/health` answers without the password (tells whether a model runs). Pass only model requests through the tunnel and require the password on everything (or a per-start token on the local port).
+- [x] **Model server password in the process list** (fixed 2026-11-12): llama-server gets its random password as a command-line argument, which any program on the PC can read. Pass it by environment variable or a file only the app can read instead.
+- [x] **Phone tunnel reachable by other apps on the phone** (fixed 2026-11-12): it listens on 127.0.0.1, so any app on the phone can connect; llama-server's `/health` answers without the password (tells whether a model runs). Pass only model requests through the tunnel and require the password on everything (or a per-start token on the local port).
 - [ ] **Stolen, unlocked phone:** it can use the PC's model (nothing else). Optional PIN / fingerprint before the Home PC is used; "remove this phone" stays the fix on the PC.
 - [ ] **Keys at rest:** the PC's link key is in Windows Credential Manager (readable by any program running as the same user); the phone's key is in the app's no-backup folder (readable on a rooted phone). Malware on either end sees everything; document it plainly, and consider sealing the PC key to this PC (DPAPI / TPM) so a copied key is useless elsewhere.
 - [ ] **Metadata:** ISP, Wi-Fi / hotspot and number0's relay and discovery servers see that the two devices talk, their IP addresses, when, and how much (not the content). Document it; consider padding / an own relay later.

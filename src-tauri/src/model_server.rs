@@ -71,6 +71,9 @@ fn free_port() -> Result<u16, String> {
 }
 
 /// The server's fixed settings: only the model file and context size vary.
+/// llama-server reads its password from this variable (not `--api-key`).
+pub const PASSWORD_ENV: &str = "LLAMA_API_KEY";
+
 /// `model` is the real file; `name` is what the screens call it (the id the
 /// server answers with); `projection` the vision part, if any.
 pub fn server_args(
@@ -78,7 +81,6 @@ pub fn server_args(
     name: &str,
     projection: Option<&str>,
     port: u16,
-    key: &str,
     context: u32,
 ) -> Vec<String> {
     let mut args: Vec<String> = vec![
@@ -88,8 +90,6 @@ pub fn server_args(
         "127.0.0.1".into(),
         "--port".into(),
         port.to_string(),
-        "--api-key".into(),
-        key.into(),
         "--ctx-size".into(),
         context.clamp(512, 131_072).to_string(),
         "--jinja".into(),
@@ -252,9 +252,11 @@ pub async fn start_model(
         &model_path,
         projection.as_ref().map(|p| p.to_string_lossy()).as_deref(),
         port,
-        &key,
         context.unwrap_or(8192),
     ));
+    // The password by environment, never on the command line (any program on
+    // the PC can read a process's command line).
+    command.env(PASSWORD_ENV, &key);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -295,25 +297,27 @@ mod tests {
 
     #[test]
     fn server_listens_on_this_pc_only_with_a_password() {
-        let args = server_args("C:/m.gguf", "m", None, 5000, "abc", 4096).join(" ");
+        let args = server_args("C:/m.gguf", "m", None, 5000, 4096).join(" ");
         assert!(args.contains("--host 127.0.0.1"));
-        assert!(args.contains("--api-key abc"));
+        // The password is never on the command line (PASSWORD_ENV instead).
+        assert!(!args.contains("--api-key"));
+        assert!(!args.contains("abc"));
         assert!(!args.contains("0.0.0.0"));
     }
 
     #[test]
     fn llama_cpp_fits_the_model_to_the_graphics_card() {
-        let args = server_args("m", "m", None, 1, "k", 4096).join(" ");
+        let args = server_args("m", "m", None, 1, 4096).join(" ");
         assert!(args.contains("--fit on"));
         assert!(!args.contains("--n-gpu-layers"));
     }
 
     #[test]
     fn context_size_is_kept_in_a_safe_range() {
-        assert!(server_args("m", "m", None, 1, "k", 1)
+        assert!(server_args("m", "m", None, 1, 1)
             .join(" ")
             .contains("--ctx-size 512"));
-        assert!(server_args("m", "m", None, 1, "k", u32::MAX)
+        assert!(server_args("m", "m", None, 1, u32::MAX)
             .join(" ")
             .contains("--ctx-size 131072"));
     }
@@ -325,17 +329,16 @@ mod tests {
             "/pocketagent/Documents/models/m.gguf",
             Some("C:/Users/u/AppData/mmproj.gguf"),
             1,
-            "k",
             4096,
         )
         .join(" ");
         assert!(args.contains("--model C:/Users/u/AppData/m.gguf"));
         assert!(args.contains("--alias /pocketagent/Documents/models/m.gguf"));
         assert!(args.contains("--mmproj C:/Users/u/AppData/mmproj.gguf"));
-        let plain = server_args("m", "m", None, 1, "k", 4096);
+        let plain = server_args("m", "m", None, 1, 4096);
         assert!(!plain.contains(&"--mmproj".to_string()));
         assert!(!plain.contains(&"--alias".to_string()));
-        assert!(!server_args("m", "a,b", None, 1, "k", 4096).contains(&"--alias".to_string()));
+        assert!(!server_args("m", "a,b", None, 1, 4096).contains(&"--alias".to_string()));
     }
 
     #[test]

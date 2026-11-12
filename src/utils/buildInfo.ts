@@ -5,9 +5,13 @@
  */
 const info = require('../assets/build-info.json') as {
   commit: string;
+  version?: string;
   run: string;
   builtAt: string;
 };
+
+/** "1.21.338": the same on the phone and the PC built from one commit. */
+export const buildVersion = (): string => info.version || 'dev';
 
 export const buildCommit = (): string => info.commit || 'dev';
 

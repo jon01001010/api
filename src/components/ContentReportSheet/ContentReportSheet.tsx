@@ -5,7 +5,7 @@ import {Text, Button, Switch, ActivityIndicator} from 'react-native-paper';
 
 import {Sheet} from '../Sheet/Sheet';
 
-import {submitContentReport} from '../../api/feedback';
+import {copyReport} from '../../utils/copyReport';
 
 import {ChevronDownIcon} from '../../assets/icons';
 
@@ -81,20 +81,14 @@ export const ContentReportSheet: React.FC<ContentReportSheetProps> = ({
     setIsSubmitting(true);
 
     try {
-      await submitContentReport({
+      // Copied, not sent (no outside service; utils/copyReport.ts).
+      copyReport('Report copied', {
         category: selectedCategory,
         description: description.trim(),
-        includeModelInfo,
         modelId: includeModelInfo ? activeModel?.id : undefined,
         modelOid: includeModelInfo ? activeModel?.hfModelFile?.oid : undefined,
-        isContentReport: true,
       });
-
-      Alert.alert(
-        l10n.components.contentReportSheet.success.title,
-        l10n.components.contentReportSheet.success.message,
-        [{text: l10n.common.ok, onPress: handleClose}],
-      );
+      handleClose();
     } catch (error) {
       console.error('Content report submission error:', error);
       Alert.alert(
@@ -215,11 +209,7 @@ export const ContentReportSheet: React.FC<ContentReportSheetProps> = ({
             onPress={handleSubmit}
             disabled={isSubmitting}
             style={styles.button}>
-            {isSubmitting ? (
-              <ActivityIndicator size="small" />
-            ) : (
-              l10n.components.contentReportSheet.submit
-            )}
+            {isSubmitting ? <ActivityIndicator size="small" /> : 'Copy report'}
           </Button>
         </View>
       </Sheet.Actions>
