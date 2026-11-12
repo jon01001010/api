@@ -2,4 +2,4 @@ Change this file on the windows branch to build the phone app (APK) and the
 desktop apps (Windows, Linux) together, from the same commit, so they match.
 Each app shows its build in App Info; the home link says when phone and PC
 differ.
-Requested: 2026-11-11T04:47:41Z (home link start + route, preview storage, copy report, no outside connections)
+Requested: 2026-11-12T05:13:17Z (desktop tools x3, link fixes, copy reports, versions)
