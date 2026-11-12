@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pick-import-file"
+description = "Enables the pick_import_file command without any pre-configured scope."
+commands.allow = ["pick_import_file"]
+
+[[permission]]
+identifier = "deny-pick-import-file"
+description = "Denies the pick_import_file command without any pre-configured scope."
+commands.deny = ["pick_import_file"]

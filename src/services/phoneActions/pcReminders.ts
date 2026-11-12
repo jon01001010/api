@@ -1,7 +1,8 @@
 /**
  * Timers, alarms and reminders in the desktop app: kept by DesktopAgent and
- * shown as a dialog with a sound when due. Only while the app is open (said
- * so to the user when one is set). Nothing leaves the PC.
+ * shown as a dialog with a sound when due. Saved on the PC (the page's own
+ * storage), so they survive closing the app: one that came due while it was
+ * closed shows when it opens again ("missed"). Nothing leaves the PC.
  */
 import {Alert} from 'react-native';
 
@@ -73,15 +74,35 @@ export function nextAlarmTime(
   return now.getTime() + 24 * 3600 * 1000;
 }
 
-function fire(id: number) {
+const SAVE_KEY = 'pa-desktop-reminders-v1';
+
+function save() {
+  try {
+    globalThis.localStorage?.setItem(
+      SAVE_KEY,
+      JSON.stringify([...pending.values()].map(p => p.item)),
+    );
+  } catch {
+    // Not saved: still goes off while the app is open.
+  }
+}
+
+function fire(id: number, missed = false) {
   const entry = pending.get(id);
   if (!entry) {
     return;
   }
   pending.delete(id);
+  save();
   const {item} = entry;
   beep();
-  Alert.alert(TITLE[item.kind], item.label || TITLE[item.kind]);
+  const when = new Date(item.at).toLocaleString();
+  Alert.alert(
+    missed ? `${TITLE[item.kind]} (missed while closed)` : TITLE[item.kind],
+    missed
+      ? `${item.label || TITLE[item.kind]}\nWas due ${when}.`
+      : item.label || TITLE[item.kind],
+  );
   // A repeating alarm sets itself again for its next day.
   if (item.kind === 'alarm' && item.days && item.days.length) {
     const at = new Date(item.at);
@@ -101,7 +122,33 @@ export function add(item: Omit<PcReminder, 'id'> & {id?: number}): PcReminder {
     item: full,
     timer: setTimeout(() => fire(full.id), wait),
   });
+  nextId = Math.max(nextId, full.id + 1);
+  save();
   return full;
+}
+
+/**
+ * At start: sets the saved ones again; one that came due while the app was
+ * closed shows now, marked missed.
+ */
+export function restore(now = Date.now()): void {
+  let saved: PcReminder[] = [];
+  try {
+    saved = JSON.parse(globalThis.localStorage?.getItem(SAVE_KEY) || '[]');
+  } catch {
+    return;
+  }
+  for (const item of Array.isArray(saved) ? saved : []) {
+    if (!item || typeof item.at !== 'number' || pending.has(item.id)) {
+      continue;
+    }
+    if (item.at <= now) {
+      pending.set(item.id, {item, timer: setTimeout(() => {}, 0)});
+      fire(item.id, true);
+    } else {
+      add(item);
+    }
+  }
 }
 
 export function list(): PcReminder[] {
@@ -113,6 +160,7 @@ export function cancelAll(): void {
     clearTimeout(timer);
   }
   pending.clear();
+  save();
 }
 
 /** One line per pending item, for "show timers". */

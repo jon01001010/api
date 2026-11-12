@@ -222,7 +222,7 @@ const ToolboxScreenBody: React.FC = () => {
         <Card mode="outlined" testID="toolbox-phone-actions">
           <Card.Content>
             <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8}}>
-              <Text variant="titleMedium" style={{flex: 1}}>Phone actions ({PHONE_TOOL_NAMES.length})</Text>
+              <Text variant="titleMedium" style={{flex: 1}}>{(globalThis as any).__TAURI_INTERNALS__ ? 'Actions on this PC' : 'Phone actions'} ({PHONE_TOOL_NAMES.length})</Text>
               <Switch
                 testID="toolbox-toggle-phone-actions"
                 disabled={!settingsLoaded || savingTool !== null}

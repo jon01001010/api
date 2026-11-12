@@ -64,7 +64,7 @@ fn question(target: &str) -> String {
 }
 
 #[cfg(windows)]
-fn launch(target: &str) -> Result<(), String> {
+pub fn launch(target: &str) -> Result<(), String> {
     use windows::core::HSTRING;
     use windows::Win32::UI::Shell::ShellExecuteW;
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
@@ -88,7 +88,7 @@ fn launch(target: &str) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-fn launch(target: &str) -> Result<(), String> {
+pub fn launch(target: &str) -> Result<(), String> {
     // The desktop's own handler; the address is one argument, no shell.
     std::process::Command::new("xdg-open")
         .arg(target)

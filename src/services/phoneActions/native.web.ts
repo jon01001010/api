@@ -16,6 +16,9 @@ import Clipboard from '@react-native-clipboard/clipboard';
 
 import * as reminders from './pcReminders';
 
+// Timers, alarms and reminders saved from earlier: set again now.
+setTimeout(() => reminders.restore(), 0);
+
 export type PhoneAction =
   | 'set_timer'
   | 'show_timers'
@@ -123,7 +126,8 @@ async function open(target: string): Promise<PhoneActionResult> {
   }
 }
 
-const WHILE_OPEN = 'It goes off while DesktopAgent is open.';
+const WHILE_OPEN =
+  'It pops up on the PC when due (if DesktopAgent is closed then, it shows when it next opens).';
 
 export async function performPhoneAction(
   action: PhoneAction,

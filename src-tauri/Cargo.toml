@@ -23,11 +23,14 @@ futures-util = "0.3"
 tokio = { version = "1", features = ["sync", "fs", "io-util", "net", "macros"] }
 base64 = "0.22"
 getrandom = "0.3"
-sysinfo = { version = "=0.39.6", default-features = false, features = ["system"] }
+sysinfo = { version = "=0.39.6", default-features = false, features = ["system", "disk"] }
 # Home link: use this PC's model from the phone, from anywhere (link.rs).
 # Devices dial each other by key; end-to-end encrypted; relays can't read it.
 iroh = { version = "=1.4.1", optional = true }
 qrcode = { version = "=0.14.1", default-features = false, features = ["svg"], optional = true }
+zip = { version = "=9.5.1", default-features = false, features = ["deflate"] }
+pdf-extract = "=0.12.1"
+quick-xml = "=0.42.0"
 
 [features]
 default = ["link"]

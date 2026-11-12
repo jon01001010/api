@@ -23,10 +23,12 @@ const STUBS = {
   // Phone hardware.
   'react-native-vision-camera': W('native.js'),
   'react-native-worklets-core': W('native.js'),
-  'react-native-image-picker': W('native.js'),
-  'react-native-share': W('native.js'),
+  // Inside the .exe: native file dialogs (stubs/web/image-picker.js,
+  // share.js = "Save a copy as…", documents-picker.js).
+  'react-native-image-picker': path.join(__dirname, 'image-picker.js'),
+  'react-native-share': path.join(__dirname, 'share.js'),
   'react-native-haptic-feedback': W('haptics.js'),
-  '@react-native-documents/picker': W('native.js'),
+  '@react-native-documents/picker': path.join(__dirname, 'documents-picker.js'),
   // Inside the .exe: Windows Credential Manager (stubs/web/keychain.js).
   'react-native-keychain': path.join(__dirname, 'keychain.js'),
   // Google / Apple / store services: not used (no Google, no Apple).

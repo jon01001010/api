@@ -6,6 +6,7 @@ import {ReadUrlEngine} from './ReadUrlEngine';
 import {FileToolsEngine, FILE_OPERATIONS} from './FileToolsEngine';
 import {MemoryToolsEngine} from './MemoryToolsEngine';
 import {PhoneActionsEngine, PHONE_TOOL_NAMES} from './PhoneActionsEngine';
+import {DesktopToolsEngine, DESKTOP_TOOL_NAMES} from './DesktopToolsEngine';
 import {ToolMakerEngine, TOOL_MAKER_NAMES} from './ToolMakerEngine';
 import {talentRegistry} from './TalentRegistry';
 import type {SearchAccess} from './searchAccess';
@@ -78,6 +79,12 @@ export function registerDefaultTalents(): void {
   // Phone actions: off by default like every global tool; each call asks.
   for (const name of PHONE_TOOL_NAMES) {
     talentRegistry.register(new PhoneActionsEngine(name));
+  }
+  // The PC's own tools: only in the desktop app (off until switched on).
+  if ((globalThis as any).__TAURI_INTERNALS__) {
+    for (const name of DESKTOP_TOOL_NAMES) {
+      talentRegistry.register(new DesktopToolsEngine(name));
+    }
   }
   // Custom tools: the model may propose one; the user approves; it starts off.
   for (const name of TOOL_MAKER_NAMES) {

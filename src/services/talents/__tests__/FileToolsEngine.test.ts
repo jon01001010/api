@@ -43,6 +43,15 @@ jest.mock('../fileApprovalGate', () => ({
   requestFileApproval: (...args: unknown[]) => mockApproval(...args),
 }));
 
+// Documents (desktop: converted on the PC by src-tauri/src/docs.rs).
+jest.mock('../documentText', () => ({
+  ...jest.requireActual('../documentText'),
+  readDocumentText: jest.fn(async (path: string) =>
+    path.endsWith('report.docx')
+      ? 'Quarterly report\nTea costs 3.50'
+      : Promise.reject(new Error('not a document')),
+  ),
+}));
 import {FileToolsEngine, FILE_OPERATIONS} from '../FileToolsEngine';
 import {diffLines} from '../lineDiff';
 import {MAX_SNAPSHOTS} from '../fileHistory';
@@ -247,4 +256,32 @@ it('registers every file tool', () => {
       'file_undo',
     ]),
   );
+});
+
+describe('documents and searching inside files', () => {
+  it('reads a Word file as text, also in ranges', async () => {
+    mockFiles.set(ROOT + '/report.docx', 'PK-binary');
+    expect((await run('file_read', {filename: 'report.docx'})).summary).toBe(
+      'Quarterly report\nTea costs 3.50',
+    );
+    expect(
+      (
+        await run('file_read_range', {
+          filename: 'report.docx',
+          start_line: 2,
+          line_count: 1,
+        })
+      ).summary,
+    ).toBe('2: Tea costs 3.50');
+  });
+
+  it('finds words inside text files and documents when asked', async () => {
+    mockFiles.set(ROOT + '/report.docx', 'PK-binary');
+    mockFiles.set(ROOT + '/notes.md', 'buy milk\nbring tea bags');
+    const byName = await run('file_search', {query: 'tea'});
+    expect(byName.summary).toBe('No matching filenames');
+    const inside = await run('file_search', {query: 'tea', in_files: true});
+    expect(inside.summary).toContain('notes.md:2: bring tea bags');
+    expect(inside.summary).toContain('report.docx:2: Tea costs 3.50');
+  });
 });

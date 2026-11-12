@@ -1,3 +1,4 @@
+import {isDocumentName, readDocumentText} from './documentText';
 import * as RNFS from '@dr.pogodin/react-native-fs';
 import type {
   TalentEngine,
@@ -41,6 +42,21 @@ export const FILE_OPERATIONS = [
 ] as const;
 type FileOperation = (typeof FILE_OPERATIONS)[number];
 type WriteAction = FileProposal['action'];
+
+/**
+ * A workspace file as text: text files as they are; Word, Excel,
+ * PowerPoint, OpenDocument and PDF converted (desktop app; read only).
+ */
+async function readAny(name: string): Promise<string> {
+  if (!isDocumentName(name)) {
+    return readWorkspace(name);
+  }
+  const text = await readDocumentText(workspacePath(name));
+  const max = getWorkspaceLimits().maxToolTextBytes;
+  return text.length > max
+    ? text.slice(0, max) + '\n[… cut here: read the rest with file_read_range]'
+    : text;
+}
 
 function failed(error: unknown): TalentResult {
   const message = error instanceof Error ? error.message : String(error);
@@ -96,14 +112,39 @@ export class FileToolsEngine implements TalentEngine {
         if (typeof query !== 'string' || !query.trim() || query.length > 200)
           throw new Error('Search query must be 1–200 characters');
         const entries = await RNFS.readDir(FILE_ROOT);
-        const matches = entries
+        const needle = query.toLowerCase();
+        const byName = entries
           .filter(
             entry =>
-              entry.isFile() &&
-              entry.name.toLowerCase().includes(query.toLowerCase()),
+              entry.isFile() && entry.name.toLowerCase().includes(needle),
           )
-          .map(entry => entry.name)
-          .slice(0, 100);
+          .map(entry => entry.name);
+        // Also inside files (text files, and documents in the desktop app):
+        // the file name and the first line that has it.
+        const inside: string[] = [];
+        if (args.in_files === true) {
+          for (const entry of entries) {
+            if (!entry.isFile() || byName.includes(entry.name)) {
+              continue;
+            }
+            if (inside.length >= 50) {
+              break;
+            }
+            try {
+              const text = await readAny(entry.name);
+              const lines = splitLines(text);
+              const at = lines.findIndex(l => l.toLowerCase().includes(needle));
+              if (at >= 0) {
+                inside.push(
+                  `${entry.name}:${at + 1}: ${lines[at].trim().slice(0, 160)}`,
+                );
+              }
+            } catch {
+              // Not readable as text: skipped.
+            }
+          }
+        }
+        const matches = [...byName, ...inside].slice(0, 100);
         return {
           type: 'text',
           summary: matches.length
@@ -136,7 +177,7 @@ export class FileToolsEngine implements TalentEngine {
           count > 200
         )
           throw new Error('Use start_line >= 1 and line_count 1–200');
-        const lines = splitLines(await readWorkspace(name));
+        const lines = splitLines(await readAny(name));
         return {
           type: 'text',
           summary:
@@ -147,7 +188,7 @@ export class FileToolsEngine implements TalentEngine {
         };
       }
       if (this.name === 'file_read') {
-        return {type: 'text', summary: await readWorkspace(name)};
+        return {type: 'text', summary: await readAny(name)};
       }
       if (this.name === 'file_history') {
         const snapshots = await listFileHistory(name);
@@ -345,13 +386,13 @@ export class FileToolsEngine implements TalentEngine {
       file_list:
         'List the files in your private workspace. Use it first when you need a file name you do not know. No arguments.',
       file_search:
-        'Find workspace files whose name contains `query` (ignores upper/lower case). Example: "notes" finds notes.md and old-notes.txt.',
+        'Find workspace files whose name contains `query` (ignores upper/lower case). Example: "notes" finds notes.md and old-notes.txt. With `in_files: true` it also looks inside files and shows the first matching line.',
       file_info:
         "Show a workspace file's size and whether it can be edited as text. Read only.",
       file_read_range:
         'Read part of a long text file, with line numbers. Example: start_line 1, line_count 50 reads lines 1-50; then start_line 51 for the next part.',
       file_read:
-        'Read a whole text file from your private workspace. Always read a file before changing it. For very long files use file_read_range.',
+        'Read a whole text file from your private workspace. Word, Excel, PowerPoint and PDF files are read as text too (read only). Always read a file before changing it. For very long files use file_read_range.',
       file_create:
         'Make a NEW text file. Only when the user asks for a new file. How: a name with an extension (notes.md, list.txt, page.html) and the full text in `content`. The user approves it. It fails if the name exists: then tell the user; never change a different file instead.',
       file_edit:
@@ -381,6 +422,12 @@ export class FileToolsEngine implements TalentEngine {
         type: 'string',
         description: 'Part of the file name to look for, e.g. "notes"',
       };
+    if (n === 'file_search') {
+      props.in_files = {
+        type: 'boolean',
+        description: 'Also look inside the files (slower)',
+      };
+    }
     if (n === 'file_read_range') {
       props.start_line = {
         type: 'integer',

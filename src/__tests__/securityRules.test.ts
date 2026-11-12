@@ -212,6 +212,12 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'http_request',
         'http_abort',
         'open_external',
+        'pc_info',
+        'run_command',
+        'open_workspace_file',
+        'doc_to_text',
+        'pick_import_file',
+        'save_copy',
         'pick_model_file',
         'model_server_start',
         'model_server_stop',
@@ -472,6 +478,36 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     const net = tauri('src/net.rs');
     expect(net).toMatch(/"http" \| "https" => \{\}/);
     expect(net).toMatch(/other => return Err/);
+  });
+
+  it("the PC's own tools: commands ask every time, files stay in the workspace", () => {
+    const pc = tauri('src/pc.rs');
+    // run_command: checked, then the native dialog with the whole command,
+    // every time (approval::ask: Allow / Don't allow, never "always").
+    expect(pc).toMatch(
+      /let command = check_command\(&command\)\?;[\s\S]*?if !crate::approval::ask\(&app, &command_question\(&command\)\)\.await \{\s*return Err/,
+    );
+    expect(pc).not.toContain('ask_with_always');
+    expect(pc).not.toContain('remember');
+    // Runs in the workspace folder, with a time limit.
+    expect(pc).toMatch(/run\(&command, &dir, COMMAND_TIME_LIMIT\)/);
+    // open_workspace_file: never programs or scripts, and it asks.
+    expect(pc).toMatch(/if !openable\(&name\) \{\s*return Err/);
+    for (const ext of ['exe', 'bat', 'cmd', 'ps1', 'lnk', 'js', 'vbs', 'msi']) {
+      expect(
+        pc.slice(pc.indexOf('const OPENABLE'), pc.indexOf('pub fn openable')),
+      ).not.toContain(`"${ext}"`);
+    }
+    // Documents: the app's own folder only.
+    const docs = tauri('src/docs.rs');
+    expect(docs).toMatch(/if !located\.own \{\s*return Err/);
+    // Files in and out only through the user's own choice in a native dialog.
+    const transfer = tauri('src/transfer.rs');
+    expect(transfer).toContain('blocking_pick_file()');
+    expect(transfer).toContain('blocking_save_file()');
+    expect(transfer).toMatch(
+      /if !located\.own \|\| !located\.real\.is_file\(\) \{\s*return Err/,
+    );
   });
 
   it('opening things outside: pages, e-mail drafts, settings pages only, and it asks', () => {

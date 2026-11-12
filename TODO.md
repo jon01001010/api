@@ -654,6 +654,16 @@ No Android sandbox on the PC: the native side (Rust) can use Windows directly (a
 - [ ] Timers and reminders kept when the app closes (today only while it is open); a Windows notification when the app is in the background.
 - [ ] Tool descriptions say "phone" (e.g. "the phone's Settings"): word them for the device they run on.
 
+**Second desktop batch (2026-11-12)**
+- [x] Files in and out on the desktop: "Add a file" and "Gallery" open native file dialogs (a copy goes into the app's folder, then the workspace or the chat, as on the phone); every "share" (workspace files, HTML pages, exports) becomes **Save a copy as…** (native save dialog); plain text is copied.
+- [x] Word, Excel, PowerPoint, OpenDocument and PDF in the workspace read as text (`file_read`, `file_read_range`; read only). Checked on real files made with LibreOffice (accents, &, tables). On the phone: not yet.
+- [x] `file_search` can look inside files (`in_files`): text files, and documents in the desktop app.
+- [x] PC tools (desktop only, Toolbox switches): `pc_info` (system, processor, memory, graphics cards, disks), `run_command` (PowerShell / shell; native dialog with the whole command every time; workspace folder; 60 s; output cut at 32 KB), `open_file` (a workspace file in its app; never programs or scripts; asks).
+- [x] Timers, alarms and reminders survive closing the app; missed ones show at the next start.
+- [x] Toolbox: "Actions on this PC" instead of "Phone actions" in the desktop app.
+- [ ] Check on Windows: add a .docx / .xlsx / .pdf and ask about it; Save as from the workspace and an HTML page; pc_info; a run_command (e.g. "Get-Volume") with its dialog; open_file on a picture.
+- [ ] Still to do from the list below: clipboard reading (asks), screenshot + vision, Windows notifications, media keys, print, tray / hotkey quick chat, scheduled tasks, Python scripts, code helper, "ask your documents" index, whisper / Piper voice, the phone using the PC's tools.
+
 **Apps and the system**
 - [ ] Open an app or web page, or a workspace file in its app (asks each time, shows what opens).
 - [ ] Run a PowerShell / shell command: shown in full, asks every time, output shown in the chat; a short list of read-only commands (e.g. disk space, IP address) can be allowed once.

@@ -15,6 +15,14 @@ import * as reminders from '../pcReminders';
 
 const invoke = jest.fn(async () => null);
 
+const store: Record<string, string> = {};
+(globalThis as any).localStorage = {
+  getItem: (k: string) => store[k] ?? null,
+  setItem: (k: string, v: string) => {
+    store[k] = v;
+  },
+};
+
 beforeEach(() => {
   invoke.mockClear();
   (globalThis as any).__TAURI_INTERNALS__ = {invoke};
@@ -62,7 +70,7 @@ it('timers go off in the app with a dialog', async () => {
   const r = await performPhoneAction('set_timer', {seconds: 60, label: 'Tea'});
   expect(r).toEqual({
     ok: true,
-    note: expect.stringMatching(/while DesktopAgent is open/),
+    note: expect.stringMatching(/pops up on the PC when due/),
   });
   expect(reminders.describeAll()).toMatch(/Tea, in 1 min/);
   jest.advanceTimersByTime(60_000);
@@ -96,4 +104,24 @@ it('share copies; calls, texts, camera and apps need the phone', async () => {
     expect(describeFailure(r, 'call')).toMatch(/needs the phone/);
   }
   expect(invoke).not.toHaveBeenCalled();
+});
+
+it('timers survive closing the app; missed ones show at the next start', () => {
+  jest.useFakeTimers();
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  const now = Date.now();
+  reminders.add({kind: 'reminder', label: 'Call mum', at: now + 60_000});
+  reminders.add({kind: 'timer', label: 'Tea', at: now + 3_600_000});
+  const saved = (globalThis as any).localStorage.getItem(
+    'pa-desktop-reminders-v1',
+  );
+  // The app closes (nothing pending in memory) and opens 2 minutes later.
+  reminders.cancelAll();
+  (globalThis as any).localStorage.setItem('pa-desktop-reminders-v1', saved);
+  reminders.restore(now + 120_000);
+  expect(alert).toHaveBeenCalledWith(
+    'Reminder (missed while closed)',
+    expect.stringContaining('Call mum'),
+  );
+  expect(reminders.list().map(r => r.label)).toEqual(['Tea']);
 });

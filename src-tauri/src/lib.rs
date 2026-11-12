@@ -4,6 +4,7 @@
 //! Anything outside the app's own folder asks the user first (approval.rs).
 
 mod approval;
+mod docs;
 mod download;
 mod files;
 #[cfg(feature = "link")]
@@ -14,12 +15,14 @@ mod link;
 mod model_server;
 mod net;
 mod open;
+mod pc;
 mod preview;
 mod profile;
 mod remembered;
 mod secrets;
 mod system;
 mod timing;
+mod transfer;
 
 use tauri::Manager;
 
@@ -64,6 +67,7 @@ pub fn run() {
             files::fs_remove,
             files::fs_copy,
             files::fs_move,
+            docs::doc_to_text,
             download::fs_download,
             download::fs_download_cancel,
             secrets::secret_get,
@@ -72,11 +76,16 @@ pub fn run() {
             net::http_request,
             net::http_abort,
             open::open_external,
+            pc::pc_info,
+            pc::run_command,
+            pc::open_workspace_file,
             model_server::pick_model_file,
             model_server::model_server_start,
             model_server::model_server_stop,
             system::system_info,
             timing::startup_timing,
+            transfer::pick_import_file,
+            transfer::save_copy,
             preview::preview_put,
             link::link_pair,
             link::link_on,
@@ -117,6 +126,11 @@ mod tests {
             include_str!("model_server.rs"),
             include_str!("system.rs"),
             include_str!("timing.rs"),
+            include_str!("docs.rs"),
+            include_str!("transfer.rs"),
+            include_str!("open.rs"),
+            include_str!("pc.rs"),
+            include_str!("profile.rs"),
             include_str!("preview.rs"),
             include_str!("link.rs"),
             include_str!("link_unavailable.rs"),

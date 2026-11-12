@@ -139,6 +139,11 @@ fn list_devices(app: &AppHandle) -> Vec<Gpu> {
 /// Graphics cards, read once per app start.
 static GPUS: OnceLock<Vec<Gpu>> = OnceLock::new();
 
+/// The graphics cards (read once per app start).
+pub fn gpus(app: &AppHandle) -> Vec<Gpu> {
+    GPUS.get_or_init(|| list_devices(app)).clone()
+}
+
 #[tauri::command(async)]
 pub fn system_info(app: AppHandle) -> SystemInfo {
     let (total_memory, available_memory) = memory();
@@ -148,7 +153,7 @@ pub fn system_info(app: AppHandle) -> SystemInfo {
         cpu_cores: std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(1),
-        gpus: GPUS.get_or_init(|| list_devices(&app)).clone(),
+        gpus: gpus(&app),
     }
 }
 
