@@ -215,6 +215,12 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'pc_info',
         'run_command',
         'open_workspace_file',
+        'clipboard_read',
+        'notify',
+        'media_key',
+        'print_file',
+        'take_screenshot',
+        'quick_key_set',
         'doc_to_text',
         'pick_import_file',
         'save_copy',
@@ -478,6 +484,32 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     const net = tauri('src/net.rs');
     expect(net).toMatch(/"http" \| "https" => \{\}/);
     expect(net).toMatch(/other => return Err/);
+  });
+
+  it('clipboard, screenshot, print, media keys and the quick key: each asks or is limited', () => {
+    const x = tauri('src/pc_extra.rs');
+    // Clipboard: the dialog shows the text itself before the model gets it.
+    expect(x).toMatch(
+      /if !crate::approval::ask\(&app, &clipboard_question\(&text\)\)\.await \{\s*return Err/,
+    );
+    expect(x).toMatch(/fn clipboard_question[\s\S]*?preview\(text, 600\)/);
+    // Screenshot: asks first; nothing is taken on "no".
+    expect(x).toMatch(
+      /pub async fn take_screenshot[\s\S]*?if !crate::approval::ask\(&app, question\)\.await \{\s*return Ok\(None\);/,
+    );
+    // Print: documents and pictures only, and it asks.
+    expect(x).toMatch(/if !printable\(&name\) \{\s*return Err/);
+    expect(x).toMatch(
+      /pub async fn print_file[\s\S]*?approval::ask\(&app, &question\)\.await/,
+    );
+    // Media keys: a fixed list, never any other key.
+    expect(x).toMatch(/let vk = media_vk\(&key\)\.ok_or/);
+    // The quick key is registered only when the user switches it on.
+    const lib = tauri('src/lib.rs');
+    expect(lib).toContain(
+      'tauri_plugin_global_shortcut::Builder::new().build()',
+    );
+    expect(lib).not.toMatch(/with_shortcut|register\(QUICK_KEY\)/);
   });
 
   it("the PC's own tools: commands ask every time, files stay in the workspace", () => {

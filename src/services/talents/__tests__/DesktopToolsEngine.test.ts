@@ -8,6 +8,11 @@ import {
   DESKTOP_TOOL_NAMES,
 } from '../DesktopToolsEngine';
 import {registerDefaultTalents, resetRegisteredFlag} from '..';
+
+const mockApprove = jest.fn();
+jest.mock('../fileApprovalGate', () => ({
+  requestFileApproval: (...a: unknown[]) => mockApprove(...a),
+}));
 import {talentRegistry} from '../TalentRegistry';
 
 const invoke = jest.fn();
@@ -78,4 +83,37 @@ it('the PC tools exist only in the desktop app', () => {
   resetRegisteredFlag();
   registerDefaultTalents();
   expect(DESKTOP_TOOL_NAMES.some(n => talentRegistry.get(n))).toBe(false);
+});
+
+it('reads the clipboard only through the native dialog', async () => {
+  invoke.mockResolvedValueOnce('meeting at 3');
+  const r = await new DesktopToolsEngine('clipboard_read').execute({});
+  expect(invoke).toHaveBeenCalledWith('clipboard_read', undefined);
+  expect(r.summary).toContain('meeting at 3');
+});
+
+it('media keys ask first; only known keys', async () => {
+  mockApprove.mockResolvedValueOnce(false);
+  const no = await new DesktopToolsEngine('media_control').execute({
+    action: 'next',
+  });
+  expect(no.summary).toMatch(/said no/);
+  expect(invoke).not.toHaveBeenCalled();
+  mockApprove.mockResolvedValueOnce(true);
+  invoke.mockResolvedValueOnce(null);
+  const yes = await new DesktopToolsEngine('media_control').execute({
+    action: 'play_pause',
+  });
+  expect(invoke).toHaveBeenCalledWith('media_key', {key: 'play_pause'});
+  expect(yes.summary).toMatch(/play or pause/);
+  const bad = await new DesktopToolsEngine('media_control').execute({
+    action: 'alt_f4',
+  });
+  expect(bad.type).toBe('error');
+});
+
+it('prints through the native side, which asks', async () => {
+  invoke.mockResolvedValueOnce(null);
+  await new DesktopToolsEngine('print_file').execute({filename: 'letter.docx'});
+  expect(invoke).toHaveBeenCalledWith('print_file', {name: 'letter.docx'});
 });

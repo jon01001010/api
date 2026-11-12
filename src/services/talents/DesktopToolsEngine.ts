@@ -7,13 +7,20 @@
  * - run_command: one command, shown in full in a native dialog every time.
  * - open_file: a workspace file in its app (documents, pictures, text and
  *   media only; never programs or scripts). Asks.
+ * - clipboard_read: the clipboard's text, after a native dialog showing it.
+ * - media_control: play / pause, next, previous, volume. Asks in the app.
+ * - print_file: a workspace document or picture printed. Asks.
  */
 import {TalentEngine, TalentResult, ToolDefinition} from './types';
+import {requestFileApproval} from './fileApprovalGate';
 
 export const DESKTOP_TOOL_NAMES = [
   'pc_info',
   'run_command',
   'open_file',
+  'clipboard_read',
+  'media_control',
+  'print_file',
 ] as const;
 type DesktopTool = (typeof DESKTOP_TOOL_NAMES)[number];
 
@@ -51,7 +58,50 @@ export function describePc(info: any): string {
   return lines.join('\n');
 }
 
+export const MEDIA_ACTIONS: Record<string, string> = {
+  play_pause: 'play or pause',
+  next: 'skip to the next track',
+  previous: 'go back a track',
+  stop: 'stop the music',
+  volume_up: 'turn the volume up',
+  volume_down: 'turn the volume down',
+  mute: 'mute or unmute',
+};
+
 const DEFINITIONS: Record<DesktopTool, ToolDefinition['function']> = {
+  clipboard_read: {
+    name: 'clipboard_read',
+    description:
+      "Read the text the user copied (the clipboard). The user sees the text and must allow it first. Use it when they say 'what I copied' or 'the clipboard'.",
+    parameters: {type: 'object', properties: {}, required: []},
+  },
+  media_control: {
+    name: 'media_control',
+    description:
+      'Press a media key on this PC for whatever is playing (music, video): play_pause, next, previous, stop, volume_up, volume_down, mute. The user is asked first.',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: {type: 'string', enum: Object.keys(MEDIA_ACTIONS)},
+      },
+      required: ['action'],
+    },
+  },
+  print_file: {
+    name: 'print_file',
+    description:
+      'Print a workspace document or picture on the default printer (its own app prints it). The user is asked first.',
+    parameters: {
+      type: 'object',
+      properties: {
+        filename: {
+          type: 'string',
+          description: 'Exact workspace file name, e.g. letter.docx.',
+        },
+      },
+      required: ['filename'],
+    },
+  },
   pc_info: {
     name: 'pc_info',
     description:
@@ -117,7 +167,40 @@ export class DesktopToolsEngine implements TalentEngine {
           summary: `${how}\n${ran.output.trim() || '(no output)'}\n${STOP}`,
         };
       }
+      if (this.name === 'clipboard_read') {
+        const text = await invoke<string>('clipboard_read');
+        return {
+          type: 'text',
+          summary: `The clipboard (the user allowed it):\n${text}`,
+        };
+      }
+      if (this.name === 'media_control') {
+        const action = String(args.action ?? '');
+        const what = MEDIA_ACTIONS[action];
+        if (!what) {
+          throw new Error(
+            `\`action\` must be one of: ${Object.keys(MEDIA_ACTIONS).join(', ')}.`,
+          );
+        }
+        const ok = await requestFileApproval({
+          action: 'phone_action',
+          filename: `On this PC: ${what}?`,
+          content: '',
+        });
+        if (!ok) {
+          throw new Error('The user said no.');
+        }
+        await invoke('media_key', {key: action});
+        return {type: 'text', summary: `Done: ${what}. ${STOP}`};
+      }
       const filename = typeof args.filename === 'string' ? args.filename : '';
+      if (this.name === 'print_file') {
+        await invoke('print_file', {name: filename});
+        return {
+          type: 'text',
+          summary: `Sent ${filename} to the printer (its app may show a print window). ${STOP}`,
+        };
+      }
       await invoke('open_workspace_file', {name: filename});
       return {type: 'text', summary: `Opened ${filename} on the PC. ${STOP}`};
     } catch (e) {

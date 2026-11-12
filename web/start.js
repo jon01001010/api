@@ -58,6 +58,18 @@ AppRegistry.registerComponent(DESKTOP_APP, () => () => (
 AppRegistry.runApplication(DESKTOP_APP, {
   rootTag: document.getElementById('root'),
 });
+// The quick-chat key (Settings), if the user switched it on.
+try {
+  if (
+    window.__TAURI_INTERNALS__ &&
+    window.localStorage.getItem('pa-quick-key') === 'on'
+  ) {
+    window.__TAURI_INTERNALS__
+      .invoke('quick_key_set', {enabled: true})
+      .catch(() => {});
+  }
+} catch (e) {}
+
 // All the app's start-up code has run (the first screen is drawn later).
 if (globalThis.__paBoot) {
   globalThis.__paBoot.codeDone = performance.now();

@@ -96,6 +96,14 @@ function fire(id: number, missed = false) {
   save();
   const {item} = entry;
   beep();
+  // Also a system notification, for when DesktopAgent is behind other windows.
+  const tauri = (globalThis as any).__TAURI_INTERNALS__;
+  tauri
+    ?.invoke('notify', {
+      title: TITLE[item.kind],
+      body: item.label || TITLE[item.kind],
+    })
+    .catch(() => {});
   const when = new Date(item.at).toLocaleString();
   Alert.alert(
     missed ? `${TITLE[item.kind]} (missed while closed)` : TITLE[item.kind],

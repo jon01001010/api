@@ -56,6 +56,7 @@ import {SettingsLinks} from './SettingsLinks';
 import {ThisPcModelCard} from './ThisPcModelCard';
 import {StartupTimingCard} from './StartupTimingCard';
 import {HomeLinkCard} from './HomeLinkCard';
+import {QuickKeyCard} from './QuickKeyCard';
 
 import {useTheme} from '../../hooks';
 
@@ -385,6 +386,7 @@ export const SettingsScreen: React.FC = observer(() => {
           {/* Windows app only: run a model with the bundled llama.cpp server. */}
           <ThisPcModelCard cardStyle={styles.card} />
           <HomeLinkCard cardStyle={styles.card} />
+          <QuickKeyCard cardStyle={styles.card} />
           <StartupTimingCard cardStyle={styles.card} />
 
           {/* Chat: generation settings and export/import (moved from the

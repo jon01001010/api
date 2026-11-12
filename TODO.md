@@ -662,7 +662,9 @@ No Android sandbox on the PC: the native side (Rust) can use Windows directly (a
 - [x] Timers, alarms and reminders survive closing the app; missed ones show at the next start.
 - [x] Toolbox: "Actions on this PC" instead of "Phone actions" in the desktop app.
 - [ ] Check on Windows: add a .docx / .xlsx / .pdf and ask about it; Save as from the workspace and an HTML page; pc_info; a run_command (e.g. "Get-Volume") with its dialog; open_file on a picture.
-- [ ] Still to do from the list below: clipboard reading (asks), screenshot + vision, Windows notifications, media keys, print, tray / hotkey quick chat, scheduled tasks, Python scripts, code helper, "ask your documents" index, whisper / Piper voice, the phone using the PC's tools.
+- [x] Third batch (2026-11-12): `clipboard_read` (native dialog shows the text), `media_control` (media keys; asks), `print_file` (documents / pictures; asks); "Screenshot" in place of Camera (asks, hides the app, attaches the picture; Windows only); Windows notifications for timers and reminders; tray icon (open / quit); quick chat key Ctrl+Shift+Space (Settings, off by default).
+- [ ] Check on Windows: screenshot (multi-monitor too) and "what's on my screen?" with a vision model; clipboard_read dialog; media keys with music playing; print a .docx; tray; the quick key; a timer notification with the app behind other windows.
+- [ ] Still to do: scheduled tasks, Python scripts, code helper, "ask your documents" index, whisper / Piper voice, the phone using the PC's tools; screenshot on Linux.
 
 **Apps and the system**
 - [ ] Open an app or web page, or a workspace file in its app (asks each time, shows what opens).

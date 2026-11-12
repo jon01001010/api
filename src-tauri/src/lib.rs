@@ -16,6 +16,7 @@ mod model_server;
 mod net;
 mod open;
 mod pc;
+mod pc_extra;
 mod preview;
 mod profile;
 mod remembered;
@@ -37,6 +38,14 @@ fn link_state() {}
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        // The quick-chat key: registered only when switched on (pc_extra.rs).
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        // Tray icon by the clock: open DesktopAgent, or quit.
+        .setup(|app| {
+            let _ = pc_extra::tray(app);
+            Ok(())
+        })
         .manage(timing::Timing::new())
         .manage(profile::StartupProfile::default())
         .on_page_load(|webview, payload| {
@@ -79,6 +88,12 @@ pub fn run() {
             pc::pc_info,
             pc::run_command,
             pc::open_workspace_file,
+            pc_extra::clipboard_read,
+            pc_extra::notify,
+            pc_extra::media_key,
+            pc_extra::print_file,
+            pc_extra::take_screenshot,
+            pc_extra::quick_key_set,
             model_server::pick_model_file,
             model_server::model_server_start,
             model_server::model_server_stop,
@@ -130,6 +145,7 @@ mod tests {
             include_str!("transfer.rs"),
             include_str!("open.rs"),
             include_str!("pc.rs"),
+            include_str!("pc_extra.rs"),
             include_str!("profile.rs"),
             include_str!("preview.rs"),
             include_str!("link.rs"),

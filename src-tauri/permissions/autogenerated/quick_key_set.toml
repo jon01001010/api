@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-quick-key-set"
+description = "Enables the quick_key_set command without any pre-configured scope."
+commands.allow = ["quick_key_set"]
+
+[[permission]]
+identifier = "deny-quick-key-set"
+description = "Denies the quick_key_set command without any pre-configured scope."
+commands.deny = ["quick_key_set"]
