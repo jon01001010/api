@@ -16,6 +16,7 @@ Audit of 2026-11-06: every place where untrusted input (model output, downloaded
 - An assistant, including a downloaded one, may add only `calculate`, `datetime` and `render_html` by itself. Every other tool needs its Toolbox switch.
 - Tools the model saves, and tools imported later (QR, file, mods), are saved switched off and re-checked every time they load.
 - Phone actions ask every time. Nothing calls, sends or pays by itself.
+- Ready-made loops (`src/services/loops`) never run by themselves: when one is due the app asks (Skip / Later / Run now), and a run is an ordinary message in the loop's own chat, under every rule above. A loop is data (a shipped prompt with the user's blanks as plain text, a schedule and limits); the model has no tool to start, change or reschedule one. Hard limits: 60 runs, 60 days, 10 loops.
 
 ## 3. The HTML preview is a closed box
 

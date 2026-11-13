@@ -73,7 +73,7 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
   - Model choice and per-device settings (model files, GPU, storage, permissions) stay per device.
 - [ ] Desktop tools in the workspace folder only; voice; quick chat on a hotkey.
 
-- [ ] **Ready-made loops** for people who don't write prompts (idea 2026-11-08): pick one, fill in the blanks, it runs on a timer and ends each run with next steps. See "Ready-made loops" below.
+- [x] **Ready-made loops**, first version (built 2026-11-13; check on the phone and PC): **Toolbox → Loops**. Pick one of 7 starter loops, fill in the blanks, choose how often (every hour / 3 hours / day at a time / week), how many runs and days, press Start. When one is due (checked every minute while the app is open) the app asks **Skip / Later (1 h) / Run now**; a run is a message in the loop's own chat ("Loop: …"), so every tool switch and "Allow?" still applies. Each reply ends with "Next steps:", shown as tap buttons under it. Running loops: next time, runs so far, last log lines, Run now / Pause / Stop. Still to do from the write-up below: "Make a loop" from one sentence, plans as step programs with a dry run, Android job scheduler (runs while the app is closed), notifications, sharing, battery guards. See "Ready-made loops" below.
 
 - [ ] **Reasoning that doesn't loop** (first real use 2026-11-08: a 2B model with Think on went back and forth "wait, I should…" and never answered "hi"):
   - A thinking budget: a cap on reasoning tokens (setting, default small for small models; llama-server's reasoning budget), then it must answer.
@@ -160,25 +160,25 @@ A loop is a small agent job that comes back on a timer: it does its part, shows 
 - [ ] **Still asks the user**, whatever the plan says: ask-the-user steps can't be skipped by the model; anything outside the app, any phone action, and anything dangerous (send, buy, delete, run a command) asks every time; no answer = the plan waits.
 
 **How it looks to the user**
-- [ ] A **Loops** gallery: each card says in one line what it does, how often, and what it may use. Pick one, fill in the blanks (topic, time, how long), press Start. No prompt writing.
+- [x] A **Loops** gallery: each card says in one line what it does, how often, and what it may use. Pick one, fill in the blanks (topic, time, how long), press Start. No prompt writing.
 - [ ] Before it starts, a plain summary: "Runs every day at 7:00 for 2 weeks. May use: weather, calendar, memory (read). Never sends, buys or deletes anything."
-- [ ] Each run ends with a short result and 1–3 **next steps** as buttons ("Do step 2 now", "Remind me at 5", "Done, skip ahead"). Tapping one continues the loop; ignoring it is fine.
-- [ ] A **Running loops** list: next run time, runs so far, Pause / Stop / Edit; a notification per run (can be turned off).
+- [x] Each run ends with a short result and 1–3 **next steps** as buttons ("Do step 2 now", "Remind me at 5", "Done, skip ahead"). Tapping one continues the loop; ignoring it is fine.
+- [ ] A **Running loops** list: next run time, runs so far, Pause / Stop / Edit; a notification per run (can be turned off). (Built: next time, runs, log, Run now / Pause / Stop. Not yet: Edit, notifications.)
 
 **Starter loops (examples)**
-- [ ] Morning brief: weather, today's calendar, reminders from memory → three things to do first.
-- [ ] Focus timer: 25 min work / 5 min break; at each break asks what got done and suggests the next small step.
-- [ ] Goal planner: give a goal ("learn Spanish basics", "clean the garage"); it breaks it into steps and each day offers the next one, checking what's done.
-- [ ] Evening review: what went well, what's left; tomorrow's first steps saved to memory (asks before saving).
-- [ ] Watch a page: checks a web page every few hours and tells you only when it changes.
-- [ ] Habit check-in: a daily question ("water? walk?"), a streak, and a gentle next step.
-- [ ] Learn something: a short lesson a day on a topic, with a quiz question; the next lesson builds on the answers.
+- [x] Morning brief: weather, today's calendar, reminders from memory → three things to do first.
+- [x] Focus timer: 25 min work / 5 min break; at each break asks what got done and suggests the next small step.
+- [x] Goal planner: give a goal ("learn Spanish basics", "clean the garage"); it breaks it into steps and each day offers the next one, checking what's done.
+- [x] Evening review: what went well, what's left; tomorrow's first steps saved to memory (asks before saving).
+- [x] Watch a page: checks a web page every few hours and tells you only when it changes.
+- [x] Habit check-in: a daily question ("water? walk?"), a streak, and a gentle next step.
+- [x] Learn something: a short lesson a day on a topic, with a quiz question; the next lesson builds on the answers.
 - [ ] With DesktopAgent (home link): a long job runs on the PC overnight (summarise a workspace folder, a long draft) and the phone gets the result and next steps in the morning.
 
 **Rules (same as everything else; a loop is data, never code)**
 - [ ] A loop is a ready-made custom tool with a timer: built-in tools only, each still behind its Toolbox switch; phone actions and anything outside the app still ask every time. Installed off; shown in full before starting.
-- [ ] Hard limits on every loop: how often, how many runs, an end date, a time/battery budget per run (phone: only on the charger for heavy ones); stops by itself when reached.
-- [ ] A loop can't start other loops, change its own tools or timer, or raise its limits; only the user can.
+- [ ] Hard limits on every loop: how often, how many runs, an end date (built: runs ≤ 60, days ≤ 60, at most 10 loops, never more often than its interval, counted before it runs; not yet: time/battery budget), a time/battery budget per run (phone: only on the charger for heavy ones); stops by itself when reached.
+- [x] A loop can't start other loops, change its own tools or timer, or raise its limits; only the user can. (A loop is saved data the model never sees as editable; there is no tool for loops.)
 - [ ] Every run is logged (what it did, which tools); the log shows on the loop's card.
 - [ ] Phone: runs through Android's job scheduler (may be a few minutes late; exact times only for alarms the user sets). Desktop: runs while DesktopAgent is open (tray later).
 - [ ] Sharing loops: as a QR / file like tools (`PA1:L:` later), reviewed before install, installed off.

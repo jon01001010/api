@@ -12,6 +12,7 @@ import {PHONE_TOOL_NAMES} from '../services/talents/PhoneActionsEngine';
 const MEMORY_TOOL_NAMES = ['memory_get', 'memory_replace', 'memory_history', 'memory_restore'];
 import {CustomToolEngine} from '../services/talents/customTools';
 import {CustomToolsSection} from './CustomToolsSection';
+import {LoopsSection} from './LoopsSection';
 import {useTheme} from '../hooks';
 import {useIsFocused} from '@react-navigation/native';
 import {MemorySection} from '../components/PalsSheets/MemorySection';
@@ -169,6 +170,7 @@ const ToolboxScreenBody: React.FC = () => {
       <ScrollView contentContainerStyle={{padding: 16, gap: 12}}>
         <Text variant="titleLarge">Toolbox</Text>
         <Text variant="bodyMedium">Installed tools and custom tool drafts. Built-in tools cannot be modified. Custom text tools can be tested locally, but cannot yet be called by the agent.</Text>
+        <LoopsSection />
         <Text variant="titleMedium">Background inference (experimental)</Text>
         <Switch value={backgroundEnabled} onValueChange={value => {
           setBackgroundInferenceEnabled(value).then(() => setBackgroundEnabled(value))

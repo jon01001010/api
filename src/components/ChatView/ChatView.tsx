@@ -101,6 +101,7 @@ import {
 } from '../../assets/icons';
 import {themeColor} from '../../theme/phosphor';
 import {PhosphorCursor} from '../PhosphorCursor';
+import {loopOfSession, nextStepsOf} from '../../services/loops/loops';
 
 type MenuItem = {
   label: string;
@@ -471,6 +472,23 @@ export const ChatView = observer(
     const suggestedPromptsAnimatedStyle = useAnimatedStyle(() => ({
       transform: [{translateY: -keyboardOcclusion.value}],
     }));
+
+    // A loop's chat: its next steps from the newest reply, as buttons.
+    const [isLoopChat, setIsLoopChat] = React.useState(false);
+    const loopSessionId = chatSessionStore.activeSessionId ?? undefined;
+    React.useEffect(() => {
+      let live = true;
+      loopOfSession(loopSessionId).then(l => {
+        if (live) {
+          setIsLoopChat(!!l);
+        }
+      });
+      return () => {
+        live = false;
+      };
+    }, [loopSessionId, messages.length]);
+    const newestReply = messages.find(m => m.author?.id !== user.id) as any;
+    const loopSteps = isLoopChat ? nextStepsOf(newestReply?.text ?? '') : [];
 
     // ============ SCROLL TRACKING & SCROLL-TO-BOTTOM ============
     // Shared values for tracking scroll position and content overflow
@@ -1278,6 +1296,24 @@ export const ChatView = observer(
                 ]}>
                 <SuggestedPromptsRow
                   prompts={activePal.greeting.suggestedPrompts}
+                  onSelect={prompt =>
+                    wrappedOnSendPress({type: 'text', text: prompt})
+                  }
+                />
+              </Reanimated.View>
+            ) : null}
+
+            {/* A loop's next steps (src/services/loops): tap one to go on. */}
+            {loopSteps.length > 0 && !isStreaming && messages.length > 0 ? (
+              <Reanimated.View
+                pointerEvents="box-none"
+                style={[
+                  styles.suggestedPromptsOverlay,
+                  suggestedPromptsAnimatedStyle,
+                  {bottom: chatInputHeight.height},
+                ]}>
+                <SuggestedPromptsRow
+                  prompts={loopSteps}
                   onSelect={prompt =>
                     wrappedOnSendPress({type: 'text', text: prompt})
                   }

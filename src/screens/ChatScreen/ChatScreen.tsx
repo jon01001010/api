@@ -32,6 +32,9 @@ import {ErrorState} from '../../utils/errors';
 import {user, assistant} from '../../utils/chat';
 
 import {VideoPalScreen} from './VideoPalScreen';
+import {useNavigation} from '@react-navigation/native';
+import {ROUTES} from '../../utils/navigationConstants';
+import {setLoopSender, startLoopWatch} from '../../services/loops/loopRunner';
 import {VisionSwitchNotice} from '../../components/VisionSwitchNotice';
 
 const renderBubble = ({
@@ -79,6 +82,20 @@ export const ChatScreen: React.FC = observer(() => {
     user,
     assistant,
   );
+
+  // Ready-made loops run here, as messages in the loop's own chat
+  // (src/services/loops): the same sending, tools and questions as typing.
+  const navigation = useNavigation();
+  const sendRef = useRef(handleSendPress);
+  sendRef.current = handleSendPress;
+  React.useEffect(() => {
+    setLoopSender(
+      text => sendRef.current({type: 'text', text} as any),
+      () => (navigation as any).navigate(ROUTES.CHAT),
+    );
+    startLoopWatch();
+    return () => setLoopSender(null, null);
+  }, [navigation]);
 
   // Handle deep linking for message prefill
   const {pendingMessage, clearPendingMessage} = usePendingMessage();
