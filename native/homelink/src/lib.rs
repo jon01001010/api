@@ -111,6 +111,14 @@ fn answer_ok(answer: &serde_json::Value) -> bool {
     answer.get("ok").and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
+fn error_of(answer: &serde_json::Value, otherwise: &str) -> String {
+    answer
+        .get("error")
+        .and_then(|e| e.as_str())
+        .unwrap_or(otherwise)
+        .to_string()
+}
+
 impl Phone {
     /// `key_file`: where the phone's own key lives (the app's private folder).
     pub fn new(key_file: &Path, pc_addr_hint: Option<SocketAddr>) -> Result<Phone, String> {
@@ -272,6 +280,34 @@ impl Phone {
                 .and_then(|e| e.as_str())
                 .unwrap_or("The PC did not start the model")
                 .to_string())
+        }
+    }
+
+    /// The PC's "Allow?" questions waiting for an answer (only while the
+    /// user lets devices answer them on the PC). The PC's answer as it is:
+    /// {"ok": true, "questions": [{"id", "text", "secondsLeft"}]}.
+    pub fn questions(&self, pc: &str) -> Result<serde_json::Value, String> {
+        let pc: EndpointId = pc.parse().map_err(|_| "Bad PC key".to_string())?;
+        let answer = self
+            .runtime
+            .block_on(self.ask(pc, serde_json::json!({"op": "questions"})))?;
+        if answer_ok(&answer) {
+            Ok(answer)
+        } else {
+            Err(error_of(&answer, "The PC refused"))
+        }
+    }
+
+    /// Answers one of the PC's questions: yes or no, for that question only.
+    pub fn answer_question(&self, pc: &str, id: u64, yes: bool) -> Result<(), String> {
+        let pc: EndpointId = pc.parse().map_err(|_| "Bad PC key".to_string())?;
+        let answer = self.runtime.block_on(
+            self.ask(pc, serde_json::json!({"op": "answer", "id": id, "yes": yes})),
+        )?;
+        if answer_ok(&answer) {
+            Ok(())
+        } else {
+            Err(error_of(&answer, "The PC did not take the answer"))
         }
     }
 

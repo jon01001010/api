@@ -10,6 +10,10 @@ import {
   syncWithPcOn,
 } from '../../services/sync/deviceSync';
 import {describeKeys} from '../../services/sync/promptSync';
+import {
+  answerForPcOn,
+  setAnswerForPc,
+} from '../../services/homeLink/pcQuestions';
 
 /**
  * A paired home PC: keep the system prompt, memory, assistants and custom tools in step with it
@@ -19,12 +23,14 @@ import {describeKeys} from '../../services/sync/promptSync';
 export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
   const [on, setOn] = useState(false);
   const [mirror, setMirror] = useState(false);
+  const [answer, setAnswer] = useState(false);
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState('');
 
   useEffect(() => {
     syncWithPcOn(pc).then(setOn);
     mirrorChatsOn(pc).then(setMirror);
+    answerForPcOn(pc).then(setAnswer);
   }, [pc]);
 
   const syncNow = async () => {
@@ -102,6 +108,20 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
           Sync now
         </Button>
       ) : null}
+      <View style={styles.row}>
+        <Text variant="bodySmall" style={styles.text}>
+          Show this PC's "Allow?" questions here and answer them (allow once or
+          refuse). The PC must allow it too.
+        </Text>
+        <Switch
+          value={answer}
+          onValueChange={async v => {
+            await setAnswerForPc(pc, v);
+            setAnswer(v);
+          }}
+          testID="home-link-answer-switch"
+        />
+      </View>
       {line ? (
         <Text variant="bodySmall" testID="home-link-sync-result">
           {line}

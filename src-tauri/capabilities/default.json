@@ -49,11 +49,14 @@
     "allow-link-forget",
     "allow-link-sync-allow",
     "allow-link-sync-reply",
+    "allow-link-answers-allow",
     "allow-homelink-pair",
     "allow-homelink-status",
     "allow-homelink-start-model",
     "allow-homelink-open-tunnel",
     "allow-homelink-sync",
+    "allow-homelink-questions",
+    "allow-homelink-answer-question",
     "allow-homelink-close-tunnel"
   ]
 }

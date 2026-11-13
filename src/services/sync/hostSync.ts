@@ -12,3 +12,9 @@ export async function hostMirrorAllowed(): Promise<boolean> {
 }
 
 export async function setHostMirrorAllowed(_allowed: boolean): Promise<void> {}
+
+export async function hostAnswersAllowed(): Promise<boolean> {
+  return false;
+}
+
+export async function setHostAnswersAllowed(_allowed: boolean): Promise<void> {}

@@ -5,8 +5,10 @@ import {Button, Card, Switch, Text} from 'react-native-paper';
 
 import {describeEvent} from '../../services/homeLink/homeLink';
 import {
+  hostAnswersAllowed,
   hostMirrorAllowed,
   hostSyncAllowed,
+  setHostAnswersAllowed,
   setHostMirrorAllowed,
   setHostSyncAllowed,
 } from '../../services/sync/hostSync';
@@ -33,9 +35,11 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
   const [message, setMessage] = useState('');
   const [syncAllowed, setSyncAllowed] = useState(false);
   const [mirrorAllowed, setMirrorAllowed] = useState(false);
+  const [answersAllowed, setAnswersAllowed] = useState(false);
   useEffect(() => {
     hostSyncAllowed().then(setSyncAllowed);
     hostMirrorAllowed().then(setMirrorAllowed);
+    hostAnswersAllowed().then(setAnswersAllowed);
   }, []);
 
   const refresh = useCallback(() => {
@@ -187,6 +191,24 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
             />
           </View>
         ) : null}
+        <View style={styles.syncRow}>
+          <Text variant="bodySmall" style={styles.syncText}>
+            Let paired devices answer this PC's "Allow?" questions too: they see
+            the same words and can allow once or refuse; the first answer wins.
+            Pairing a new device is only asked here. Each device must switch it
+            on too.
+          </Text>
+          <Switch
+            value={answersAllowed}
+            testID="home-link-answers-allow"
+            onValueChange={v =>
+              run(async () => {
+                await setHostAnswersAllowed(v);
+                setAnswersAllowed(v);
+              })
+            }
+          />
+        </View>
         {status.phones.length > 0 ? (
           <Text variant="labelMedium" style={styles.state}>
             Paired phones

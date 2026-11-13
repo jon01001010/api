@@ -35,6 +35,10 @@ const QUIET = {
     pair: qr => require('./tauri').invoke('homelink_pair', {qr}),
     status: pc => require('./tauri').invoke('homelink_status', {pc}),
     startModel: pc => require('./tauri').invoke('homelink_start_model', {pc}),
+    sync: (pc, body) => require('./tauri').invoke('homelink_sync', {pc, body}),
+    questions: pc => require('./tauri').invoke('homelink_questions', {pc}),
+    answerQuestion: (pc, id, yes) =>
+      require('./tauri').invoke('homelink_answer_question', {pc, id, yes}),
     openTunnel: pc => require('./tauri').invoke('homelink_open_tunnel', {pc}),
     closeTunnel: () => require('./tauri').invoke('homelink_close_tunnel'),
   },

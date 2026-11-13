@@ -160,6 +160,40 @@ pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_sync(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_questions(
+    mut env: JNIEnv,
+    _class: JClass,
+    key_file: JString,
+    pc: JString,
+) -> jstring {
+    let (key_file, pc) = (text(&mut env, &key_file), text(&mut env, &pc));
+    let value = guarded(|| match phone(&key_file).and_then(|p| p.questions(&pc)) {
+        Ok(answer) => answer,
+        Err(e) => fail(e),
+    });
+    answer(&mut env, value)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_answerQuestion(
+    mut env: JNIEnv,
+    _class: JClass,
+    key_file: JString,
+    pc: JString,
+    id: jni::sys::jlong,
+    yes: jni::sys::jboolean,
+) -> jstring {
+    let (key_file, pc) = (text(&mut env, &key_file), text(&mut env, &pc));
+    let id = u64::try_from(id).unwrap_or(0);
+    let yes = yes != 0;
+    let value = guarded(|| match phone(&key_file).and_then(|p| p.answer_question(&pc, id, yes)) {
+        Ok(()) => serde_json::json!({"ok": true}),
+        Err(e) => fail(e),
+    });
+    answer(&mut env, value)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_openTunnel(
     mut env: JNIEnv,
     _class: JClass,

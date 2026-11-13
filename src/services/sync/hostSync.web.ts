@@ -35,6 +35,22 @@ export async function setHostMirrorAllowed(allowed: boolean): Promise<void> {
   globalThis.localStorage?.setItem(MIRROR_SETTING, allowed ? 'on' : 'off');
 }
 
+const ANSWERS_SETTING = 'pa-link-answers';
+
+/** Paired devices may answer this PC's "Allow?" questions (off by default). */
+export async function hostAnswersAllowed(): Promise<boolean> {
+  try {
+    return globalThis.localStorage?.getItem(ANSWERS_SETTING) === 'on';
+  } catch {
+    return false;
+  }
+}
+
+export async function setHostAnswersAllowed(allowed: boolean): Promise<void> {
+  globalThis.localStorage?.setItem(ANSWERS_SETTING, allowed ? 'on' : 'off');
+  await invoke('link_answers_allow', {allowed});
+}
+
 const isDesktop = () => !!(globalThis as any).__TAURI_INTERNALS__;
 
 export async function hostSyncAllowed(): Promise<boolean> {
@@ -105,6 +121,9 @@ export function startHostSync(): void {
   started = true;
   hostSyncAllowed().then(allowed =>
     invoke('link_sync_allow', {allowed}).catch(() => {}),
+  );
+  hostAnswersAllowed().then(allowed =>
+    invoke('link_answers_allow', {allowed}).catch(() => {}),
   );
   listen<{id: number; device: string; body: string}>('link-sync', async e => {
     const {id, device, body} = e.payload;

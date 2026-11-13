@@ -43,11 +43,14 @@ const COMMANDS: &[&str] = &[
     "link_forget",
     "link_sync_allow",
     "link_sync_reply",
+    "link_answers_allow",
     "homelink_pair",
     "homelink_status",
     "homelink_start_model",
     "homelink_open_tunnel",
     "homelink_sync",
+    "homelink_questions",
+    "homelink_answer_question",
     "homelink_close_tunnel",
 ];
 

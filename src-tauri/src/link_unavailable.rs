@@ -60,6 +60,16 @@ pub async fn homelink_sync(_pc: String, _body: String) -> String {
 }
 
 #[tauri::command]
+pub async fn homelink_questions(_pc: String) -> String {
+    OFF.into()
+}
+
+#[tauri::command]
+pub async fn homelink_answer_question(_pc: String, _id: u64, _yes: bool) -> String {
+    OFF.into()
+}
+
+#[tauri::command]
 pub async fn link_sync_allow(_allowed: bool) {}
 
 #[tauri::command]

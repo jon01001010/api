@@ -237,11 +237,14 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'link_forget',
         'link_sync_allow',
         'link_sync_reply',
+        'link_answers_allow',
         'homelink_pair',
         'homelink_status',
         'homelink_start_model',
         'homelink_open_tunnel',
         'homelink_sync',
+        'homelink_questions',
+        'homelink_answer_question',
         'homelink_close_tunnel',
       ].sort(),
     );
@@ -384,7 +387,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
 
   it('home link: paired phones reach only the model server, pairing asks', () => {
     const link = tauri('src/link.rs');
-    // Exactly five requests exist, and only "pair" works before pairing.
+    // Exactly these requests exist, and only "pair" works before pairing.
     const ops = link.slice(
       link.indexOf('pub enum Request'),
       link.indexOf('pub fn parse_request'),
@@ -394,7 +397,38 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         .match(/^\s{4}(\w+)/gm)!
         .map(o => o.trim())
         .sort(),
-    ).toEqual(['Http', 'Pair', 'Start', 'Status', 'Sync']);
+    ).toEqual([
+      'Answer',
+      'Http',
+      'Pair',
+      'Questions',
+      'Start',
+      'Status',
+      'Sync',
+    ]);
+    // "questions" / "answer" (the PC asks, a device can answer): paired
+    // devices only, only while the user allows it here; an answer is yes or
+    // no to one question; a device's yes allows once, never "always"; and
+    // pairing a new device is asked on this PC only.
+    expect(link).toMatch(
+      /Some\(Request::Questions\) if paired =>[\s\S]*?if questions\.allowed\(\)/,
+    );
+    expect(link).toMatch(
+      /Some\(Request::Answer \{ id, yes \}\) if paired =>[\s\S]*?if !questions\.allowed\(\)/,
+    );
+    expect(ops).toMatch(/^\s{4}Answer \{ id: u64, yes: bool \},$/m);
+    const approval = tauri('src/approval.rs');
+    expect(approval).toMatch(
+      /pub fn device_answer\(yes: bool\) -> Answer \{\s*if yes \{\s*Answer::Once\s*\} else \{\s*Answer::No/,
+    );
+    expect(approval).not.toMatch(/from_device\(.*Always/);
+    const remote = tauri('src/remote_ask.rs');
+    expect(remote).toContain(
+      'pub const WAIT: Duration = Duration::from_secs(120);',
+    );
+    expect(remote).toMatch(
+      /pub fn open\([^)]*\)[^{]*\{\s*if !self\.allowed\(\) \{\s*return None;/,
+    );
     // "sync": paired devices only, only while the user allows it here,
     // size-capped, and answered by the screens (which merge and keep history).
     expect(link).toContain('Some(Request::Sync) if paired =>');
@@ -417,7 +451,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(link).toContain('Some(Request::Http) if paired =>');
     // Pairing: the one-time code, then the native dialog, then saved.
     expect(link).toMatch(
-      /let code_ok = try_code\(&link\.pair_code, &code\);[\s\S]*?code_ok && \{[\s\S]*?approval::ask\(&app, &question\)\.await[\s\S]*?save_phones/,
+      /let code_ok = try_code\(&link\.pair_code, &code\);[\s\S]*?code_ok && \{[\s\S]*?approval::ask_on_this_pc\(&app, &question\)\.await[\s\S]*?save_phones/,
     );
     // The model server on this PC only, on its own port.
     expect(link).toContain(
@@ -445,12 +479,15 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(tag(pc)).toBe('PA1:P:');
     expect(phone).toContain('TcpListener::bind(("127.0.0.1", 0))');
     expect(phone).toContain('if !from.ip().is_loopback() {');
-    // The phone only ever asks for status, pairing, starting the PC's own
+    // The phone only ever asks for status, pairing, the PC's questions
+    // and its answer to one, starting the PC's own
     // last model, or the model server.
     const ops = [...phone.matchAll(/"op\\?":\s*\\?"(\w+)/g)].map(m => m[1]);
     expect([...new Set(ops)].sort()).toEqual([
+      'answer',
       'http',
       'pair',
+      'questions',
       'start',
       'status',
       'sync',
@@ -470,7 +507,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // Every door from Android goes through guarded(), and iroh gets the
     // app context first (it needs it to read the network settings).
     const doors = android.match(/pub extern "system" fn Java_\w+/g) || [];
-    expect(doors.length).toBe(7);
+    expect(doors.length).toBe(9);
     for (const door of doors) {
       const body = android.slice(android.indexOf(door));
       const next = body.indexOf('pub extern "system"', 10);

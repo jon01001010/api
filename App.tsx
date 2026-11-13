@@ -111,6 +111,11 @@ const App = observer(() => {
     initLocale(uiStore.language);
   }, []);
 
+  // A paired PC's "Allow?" questions, if switched on for it (home link).
+  React.useEffect(() => {
+    require('./src/services/homeLink/pcQuestions').startQuestionWatch();
+  }, []);
+
   // Initialize TTS store (memory gate + AppState/session listeners).
   // Fire-and-forget: `init()` is idempotent and swallows its own errors.
   React.useEffect(() => {

@@ -65,6 +65,15 @@ class HomeLinkModule(private val context: ReactApplicationContext) :
         call(promise) { HomeLinkNative.sync(keyFile(), pc, body) }
 
     @ReactMethod
+    fun questions(pc: String, promise: Promise) =
+        call(promise) { HomeLinkNative.questions(keyFile(), pc) }
+
+    /** Yes or no to one of the PC's questions (never "always"). */
+    @ReactMethod
+    fun answerQuestion(pc: String, id: Double, yes: Boolean, promise: Promise) =
+        call(promise) { HomeLinkNative.answerQuestion(keyFile(), pc, id.toLong(), yes) }
+
+    @ReactMethod
     fun openTunnel(pc: String, promise: Promise) =
         call(promise) { HomeLinkNative.openTunnel(keyFile(), pc) }
 

@@ -108,6 +108,21 @@ pub async fn homelink_sync(app: AppHandle, pc: String, body: String) -> String {
 }
 
 #[tauri::command]
+pub async fn homelink_questions(app: AppHandle, pc: String) -> String {
+    answer(app, move |p| p.questions(&pc)).await
+}
+
+/// Yes or no to one of the other PC's questions (never "always").
+#[tauri::command]
+pub async fn homelink_answer_question(app: AppHandle, pc: String, id: u64, yes: bool) -> String {
+    answer(app, move |p| {
+        p.answer_question(&pc, id, yes)?;
+        Ok(serde_json::json!({"ok": true}))
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn homelink_open_tunnel(app: AppHandle, pc: String) -> String {
     answer(app, move |p| {
         let port = p.open_tunnel(&pc)?;

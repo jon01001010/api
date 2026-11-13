@@ -60,6 +60,11 @@ pub enum Request {
     /// Keep the system prompt and memory in step (the items follow the
     /// request line; only while the user allows it on this PC).
     Sync,
+    /// The "Allow?" questions waiting on this PC (only while the user lets
+    /// devices answer them; remote_ask.rs).
+    Questions,
+    /// A device's yes or no to one of them.
+    Answer { id: u64, yes: bool },
     Http,
 }
 
@@ -269,6 +274,8 @@ pub struct Link {
     sync_next: std::sync::atomic::AtomicU64,
 }
 
+const OFF_ANSWERS: &str = "Answering this PC's questions is off on the PC (Settings → Use this PC's model from your phone)";
+
 /// Most bytes one sync may carry (the device library's own limit too).
 pub const MAX_SYNC: usize = 4 * 1024 * 1024;
 
@@ -433,7 +440,7 @@ async fn serve_stream(
                     "Pair with the phone \u{201c}{name}\u{201d}?\n\nIt will be able to use the model running on this PC, from anywhere. It can't reach your files or anything else on this PC.\n\nPhone key: {}",
                     &remote[..remote.len().min(16)]
                 );
-                if crate::approval::ask(&app, &question).await {
+                if crate::approval::ask_on_this_pc(&app, &question).await {
                     let mut phones = load_phones(&app);
                     add_phone(&mut phones, Phone { id: remote.clone(), name: name.clone() });
                     let saved = save_phones(&app, &phones).is_ok();
@@ -522,6 +529,33 @@ async fn serve_stream(
                 }
             };
             let _ = send.write_all(answer.as_bytes()).await;
+        }
+        Some(Request::Questions) if paired => {
+            let questions = app.state::<crate::remote_ask::RemoteQuestions>();
+            let answer = if questions.allowed() {
+                serde_json::json!({"ok": true, "questions": questions.list()})
+            } else {
+                serde_json::json!({"ok": false, "error": OFF_ANSWERS})
+            };
+            reply(&mut send, answer).await;
+        }
+        Some(Request::Answer { id, yes }) if paired => {
+            let questions = app.state::<crate::remote_ask::RemoteQuestions>();
+            let answer = if !questions.allowed() {
+                serde_json::json!({"ok": false, "error": OFF_ANSWERS})
+            } else {
+                let name = load_phones(&app)
+                    .into_iter()
+                    .find(|p| p.id == remote)
+                    .map(|p| p.name)
+                    .unwrap_or_else(|| "a device".into());
+                if questions.answer(id, yes, &name) {
+                    serde_json::json!({"ok": true})
+                } else {
+                    serde_json::json!({"ok": false, "error": "That question was already answered or has expired"})
+                }
+            };
+            reply(&mut send, answer).await;
         }
         Some(Request::Http) if paired => {
             let Some((port, _)) = app.state::<crate::model_server::ModelServer>().address() else {
@@ -696,6 +730,14 @@ mod tests {
         assert_eq!(parse_request(br#"{"op":"http"}"#), Some(Request::Http));
         assert_eq!(parse_request(br#"{"op":"start"}"#), Some(Request::Start));
         assert_eq!(parse_request(br#"{"op":"sync"}"#), Some(Request::Sync));
+        assert_eq!(parse_request(br#"{"op":"questions"}"#), Some(Request::Questions));
+        assert_eq!(
+            parse_request(br#"{"op":"answer","id":3,"yes":true}"#),
+            Some(Request::Answer { id: 3, yes: true })
+        );
+        // An answer must say which question and yes or no, nothing else.
+        assert_eq!(parse_request(br#"{"op":"answer","id":3}"#), None);
+        assert_eq!(parse_request(br#"{"op":"answer","id":3,"yes":"always"}"#), None);
         // "start" takes nothing from the phone: any file it names is ignored.
         assert_eq!(
             parse_request(br#"{"op":"start","model":"C:/x.gguf"}"#),

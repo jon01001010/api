@@ -31,9 +31,11 @@ async function ask<T>(
     | 'status'
     | 'startModel'
     | 'sync'
+    | 'questions'
+    | 'answerQuestion'
     | 'openTunnel'
     | 'closeTunnel',
-  ...args: string[]
+  ...args: (string | number | boolean)[]
 ): Promise<Answer<T>> {
   const mod = native();
   if (!mod || typeof mod[method] !== 'function') {
@@ -50,6 +52,21 @@ async function ask<T>(
     return {ok: false, error: String(e)};
   }
 }
+
+/** One of the PC's "Allow?" questions, word for word. */
+export interface PcQuestion {
+  id: number;
+  text: string;
+  secondsLeft: number;
+}
+
+/** The PC's questions waiting for an answer (only while allowed on the PC). */
+export const pcQuestions = (pc: string) =>
+  ask<{questions: PcQuestion[]}>('questions', pc);
+
+/** Yes or no to one question, that one only (never "always"). */
+export const answerPcQuestion = (pc: string, id: number, yes: boolean) =>
+  ask<{}>('answerQuestion', pc, id, yes);
 
 /** Pairs from the PC's QR code; the PC asks its user first. */
 export const pairWithPc = (qr: string) => ask<{pc: string}>('pair', qr.trim());

@@ -20,6 +20,8 @@ object HomeLinkNative {
     @JvmStatic external fun status(keyFile: String, pc: String): String
     @JvmStatic external fun startModel(keyFile: String, pc: String): String
     @JvmStatic external fun sync(keyFile: String, pc: String, body: String): String
+    @JvmStatic external fun questions(keyFile: String, pc: String): String
+    @JvmStatic external fun answerQuestion(keyFile: String, pc: String, id: Long, yes: Boolean): String
     @JvmStatic external fun openTunnel(keyFile: String, pc: String): String
     @JvmStatic external fun closeTunnel(): String
 }

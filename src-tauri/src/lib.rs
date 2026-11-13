@@ -24,6 +24,7 @@ mod pc_extra;
 mod preview;
 mod profile;
 mod remembered;
+mod remote_ask;
 mod secrets;
 mod system;
 mod timing;
@@ -67,6 +68,7 @@ pub fn run() {
         .manage(preview::Previews::default())
         // Home link: off until the user switches it on (link.rs).
         .manage(link_state())
+        .manage(remote_ask::RemoteQuestions::default())
         .register_uri_scheme_protocol(preview::SCHEME, |ctx, request| {
             preview::respond(&ctx.app_handle().state::<preview::Previews>(), &request)
         })
@@ -113,11 +115,14 @@ pub fn run() {
             link::link_forget,
             link::link_sync_allow,
             link::link_sync_reply,
+            remote_ask::link_answers_allow,
             link_client::homelink_pair,
             link_client::homelink_status,
             link_client::homelink_start_model,
             link_client::homelink_open_tunnel,
             link_client::homelink_sync,
+            link_client::homelink_questions,
+            link_client::homelink_answer_question,
             link_client::homelink_close_tunnel,
         ])
         .build(tauri::generate_context!())
@@ -163,6 +168,7 @@ mod tests {
             include_str!("link.rs"),
             include_str!("link_unavailable.rs"),
             include_str!("link_client.rs"),
+            include_str!("remote_ask.rs"),
         ];
         for source in sources {
             let lines: Vec<&str> = source.lines().collect();
