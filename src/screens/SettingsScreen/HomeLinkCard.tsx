@@ -150,9 +150,9 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
         </Button>
         <View style={styles.syncRow}>
           <Text variant="bodySmall" style={styles.syncText}>
-            Let paired devices keep the system prompt and memory in step with
-            this PC (the newer edit wins; the other is kept in history). Each
-            device must switch it on too.
+            Let paired devices keep the system prompt, memory, assistants and
+            custom tools in step with this PC (the newer edit wins; the other is
+            kept in history). Each device must switch it on too.
           </Text>
           <Switch
             value={syncAllowed}

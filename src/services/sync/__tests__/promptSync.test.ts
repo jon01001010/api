@@ -31,6 +31,18 @@ jest.mock('../../talents/agentMemory', () => ({
   },
 }));
 
+const mockSources = {assistants: '[]', customTools: '[]'};
+jest.mock('../syncSources', () => ({
+  readAssistants: async () => mockSources.assistants,
+  readCustomTools: async () => mockSources.customTools,
+  writeAssistants: async (t: string) => {
+    mockSources.assistants = t;
+  },
+  writeCustomTools: async (t: string) => {
+    mockSources.customTools = t;
+  },
+}));
+
 import {
   applyItems,
   cleanItems,
@@ -130,7 +142,7 @@ it('drops malformed or oversized items from the other device', () => {
     cleanItems([
       {key: 'systemPrompt', text: 'ok', updatedAt: 1},
       {key: 'userMemory', text: 5, updatedAt: 1},
-      {key: 'modelMemory', text: 'x'.repeat(300 * 1024), updatedAt: 1},
+      {key: 'modelMemory', text: 'x'.repeat(2 * 1024 * 1024), updatedAt: 1},
       {key: 'other', text: 'x', updatedAt: 1},
     ]),
   ).toEqual([item('systemPrompt', 'ok', 1)]);

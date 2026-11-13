@@ -10,7 +10,7 @@ import {
 import {describeKeys} from '../../services/sync/promptSync';
 
 /**
- * A paired home PC: keep the system prompt and memory in step with it
+ * A paired home PC: keep the system prompt, memory, assistants and custom tools in step with it
  * (off until switched on; the PC must allow it too). "Sync now" and the
  * result; it also runs when the PC's model is loaded.
  */
@@ -51,8 +51,9 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
     <View testID="home-link-sync">
       <View style={styles.row}>
         <Text variant="bodySmall" style={styles.text}>
-          Keep the system prompt and memory in step with this PC (the newer edit
-          wins; the other is kept in history). The PC must allow it too.
+          Keep the system prompt, memory, assistants and custom tools in step
+          with this PC (the newer edit wins; the other is kept in history). The
+          PC must allow it too.
         </Text>
         <Switch
           value={on}

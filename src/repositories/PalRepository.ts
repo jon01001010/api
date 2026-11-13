@@ -149,12 +149,17 @@ class PalRepository {
 
   async createPal(
     palData: Omit<Pal, 'id' | 'created_at' | 'updated_at'>,
+    /** Keep this id (an assistant synced from another device). */
+    id?: string,
   ): Promise<Pal> {
     try {
       const newPal = await database.write(async () => {
         return await database.collections
           .get<LocalPal>('local_pals')
           .create((record: LocalPal) => {
+            if (id) {
+              record._raw.id = id;
+            }
             record.name = palData.name;
             record.description = palData.description;
             record.thumbnailUrl = palData.thumbnail_url;

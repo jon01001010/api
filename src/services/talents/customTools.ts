@@ -389,6 +389,27 @@ export async function saveCustomTool(
   return checked;
 }
 
+/**
+ * Replaces all custom tools with a list from another device (keeping in
+ * step). Each goes through the same checks as a saved tool; bad ones are
+ * left out. Tools stay off until switched on here (Toolbox).
+ */
+export async function replaceCustomTools(input: unknown[]): Promise<void> {
+  await ensureCustomToolsLoaded();
+  const builtIns = builtInToolNames();
+  const list: CustomTool[] = [];
+  for (const item of input) {
+    const checked = checkCustomTool(item, {
+      builtIns,
+      existing: list.map(t => t.name),
+    });
+    if (typeof checked !== 'string') {
+      list.push(checked);
+    }
+  }
+  await persist(list);
+}
+
 export async function deleteCustomTool(name: string): Promise<boolean> {
   await ensureCustomToolsLoaded();
   if (!tools.some(t => t.name === name)) {

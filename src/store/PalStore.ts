@@ -170,6 +170,9 @@ class PalStore {
     }
   }
 
+  /** Reload from the database (after assistants were added by a sync). */
+  reloadFromDatabase = () => this.loadPalsFromDatabase();
+
   /**
    * Load pals from database into MobX store
    */
@@ -790,8 +793,6 @@ class PalStore {
       throw error;
     }
   };
-
-
 }
 
 export const palStore = new PalStore();

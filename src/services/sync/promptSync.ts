@@ -24,17 +24,26 @@ import {
   userMemoryReplace,
 } from '../talents/agentMemory';
 
-export type SyncKey = 'systemPrompt' | 'userMemory' | 'modelMemory';
+export type SyncKey =
+  | 'systemPrompt'
+  | 'userMemory'
+  | 'modelMemory'
+  | 'assistants'
+  | 'customTools';
 export const SYNC_KEYS: SyncKey[] = [
   'systemPrompt',
   'userMemory',
   'modelMemory',
+  'assistants',
+  'customTools',
 ];
 
 export const SYNC_LABEL: Record<SyncKey, string> = {
   systemPrompt: 'System prompt',
   userMemory: 'Your memory notes',
   modelMemory: "The model's memory notes",
+  assistants: 'Assistants',
+  customTools: 'Custom tools',
 };
 
 export interface SyncItem {
@@ -46,7 +55,12 @@ export interface SyncItem {
 
 const STATE_KEY = '@pocketagent/sync/state/v1';
 const PROMPT_HISTORY_KEY = '@pocketagent/sync/prompt-history/v1';
-const MAX_TEXT = 256 * 1024;
+const historyKey = (key: SyncKey) =>
+  key === 'systemPrompt'
+    ? PROMPT_HISTORY_KEY
+    : `@pocketagent/sync/history/${key}/v1`;
+/** Biggest item taken from another device. */
+const MAX_TEXT = 1024 * 1024;
 
 /** A short fingerprint of a text (FNV-1a), to notice local edits. */
 export function fingerprint(text: string): string {
@@ -61,7 +75,11 @@ export function fingerprint(text: string): string {
 /** Nothing written yet (empty, or memory's starting template). */
 export function isEmpty(key: SyncKey, text: string): boolean {
   const t = text.trim();
-  return t === '' || (key === 'modelMemory' && t === DEFAULT_MEMORY.trim());
+  return (
+    t === '' ||
+    t === '[]' ||
+    (key === 'modelMemory' && t === DEFAULT_MEMORY.trim())
+  );
 }
 
 type State = Partial<Record<SyncKey, {print: string; updatedAt: number}>>;
@@ -75,10 +93,18 @@ async function loadState(): Promise<State> {
 }
 
 async function readText(key: SyncKey): Promise<string> {
-  if (key === 'systemPrompt') {
-    return readGlobalPrompt();
+  switch (key) {
+    case 'systemPrompt':
+      return readGlobalPrompt();
+    case 'userMemory':
+      return userMemoryGet();
+    case 'modelMemory':
+      return memoryGet();
+    case 'assistants':
+      return require('./syncSources').readAssistants();
+    case 'customTools':
+      return require('./syncSources').readCustomTools();
   }
-  return key === 'userMemory' ? userMemoryGet() : memoryGet();
 }
 
 /**
@@ -165,18 +191,29 @@ export function merge(local: SyncItem[], remote: SyncItem[]): Merged {
   return result;
 }
 
-async function keepPromptHistory(previous: string) {
+async function keepHistory(key: SyncKey, previous: string) {
   try {
     const list: {at: number; text: string}[] = JSON.parse(
-      (await AsyncStorage.getItem(PROMPT_HISTORY_KEY)) || '[]',
+      (await AsyncStorage.getItem(historyKey(key))) || '[]',
     );
     list.unshift({at: Date.now(), text: previous});
     await AsyncStorage.setItem(
-      PROMPT_HISTORY_KEY,
+      historyKey(key),
       JSON.stringify(list.slice(0, 10)),
     );
   } catch {
     // History is a courtesy; the sync still goes on.
+  }
+}
+
+/** Earlier versions of an item replaced by a sync (newest first). */
+export async function syncHistory(
+  key: SyncKey,
+): Promise<{at: number; text: string}[]> {
+  try {
+    return JSON.parse((await AsyncStorage.getItem(historyKey(key))) || '[]');
+  } catch {
+    return [];
   }
 }
 
@@ -201,19 +238,25 @@ export async function applyItems(items: SyncItem[]): Promise<SyncKey[]> {
     const current = await readText(item.key);
     if (current !== item.text) {
       if (item.key === 'systemPrompt') {
-        await keepPromptHistory(current);
+        await keepHistory('systemPrompt', current);
         await writeGlobalPrompt(item.text);
       } else if (item.key === 'userMemory') {
         await userMemoryReplace(item.text, current);
-      } else {
+      } else if (item.key === 'modelMemory') {
         await memoryReplace(item.text, current);
+      } else {
+        await keepHistory(item.key, current);
+        const sources = require('./syncSources');
+        await (item.key === 'assistants'
+          ? sources.writeAssistants(item.text)
+          : sources.writeCustomTools(item.text));
       }
       changed.push(item.key);
     }
-    state[item.key] = {
-      print: fingerprint(item.text),
-      updatedAt: item.updatedAt,
-    };
+    // What it is here now (assistants are added, never deleted: the list
+    // here may hold more than what came).
+    const now = await readText(item.key);
+    state[item.key] = {print: fingerprint(now), updatedAt: item.updatedAt};
   }
   await AsyncStorage.setItem(STATE_KEY, JSON.stringify(state));
   return changed;

@@ -1,6 +1,6 @@
 # DesktopAgent for Linux: the same Tauri app as Windows (src-tauri), as an
 # AppImage (runs on most Linux systems) and a .deb, with the pinned llama.cpp
-# server (Vulkan + CPU) for local models.
+# server for local models: x64 (Vulkan + CPU) and arm64 (CPU; e.g. PineTab 2).
 # Runs ONLY when asked: a manual run, or a change to
 # .github/linux-build-request on the windows branch.
 name: DesktopAgent Linux
@@ -17,15 +17,32 @@ concurrency:
   group: desktopagent-linux-${{ github.ref }}
   cancel-in-progress: false
 env:
-  # Pinned llama.cpp release (15 Oct 2026), Linux build, and its checksum.
+  # Pinned llama.cpp release (15 Oct 2026).
   LLAMA_TAG: b11662
-  LLAMA_TAR: llama-b11662-bin-ubuntu-vulkan-x64.tar.gz
-  LLAMA_SHA256: f1f99964b67e3f8ca8efc9564db7c12d038862d1ca22b9311fc971544ccac446
 jobs:
   linux:
-    # 22.04: the oldest supported base, so the app runs on more systems.
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    # Two builds: regular PCs (x64) and ARM (arm64: e.g. a PineTab 2).
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04: the oldest supported base, so the app runs on more systems.
+          - arch: x64
+            runner: ubuntu-22.04
+            llama_tar: llama-b11662-bin-ubuntu-vulkan-x64.tar.gz
+            llama_sha256: f1f99964b67e3f8ca8efc9564db7c12d038862d1ca22b9311fc971544ccac446
+          # ARM: llama.cpp's processor-only build (the graphics chips on ARM
+          # tablets have unfinished Vulkan on Linux). It is built on 24.04,
+          # so this needs glibc 2.39 or newer (Arch-based systems are fine).
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            llama_tar: llama-b11662-bin-ubuntu-arm64.tar.gz
+            llama_sha256: fe476ad75e27ffe610a96cab3453f39c2da41f0c04d9ef8e7befcd69de3cec64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      LLAMA_TAR: ${{ matrix.llama_tar }}
+      LLAMA_SHA256: ${{ matrix.llama_sha256 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -126,7 +143,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/tauri
-          key: tauri-tools-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          key: tauri-tools-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('yarn.lock') }}
       - name: Build the Linux packages
         timeout-minutes: 40
         shell: bash
@@ -145,11 +162,11 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/tauri
-          key: tauri-tools-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          key: tauri-tools-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('yarn.lock') }}
       - name: Upload the packages
         uses: actions/upload-artifact@v4
         with:
-          name: desktopagent-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          name: desktopagent-linux-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           path: |
             src-tauri/target/release/bundle/appimage/*.AppImage
             src-tauri/target/release/bundle/deb/*.deb
@@ -159,15 +176,16 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: desktopagent-linux-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          name: desktopagent-linux-logs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           path: linux-build.log
           if-no-files-found: ignore
           retention-days: 3
 
   # Publishes the packages as a pre-release with direct download links.
+  # Whatever built is published (an ARM failure doesn't hold back x64).
   release:
     needs: linux
-    if: success()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -176,7 +194,8 @@ jobs:
       - name: Download the packages
         uses: actions/download-artifact@v4
         with:
-          name: desktopagent-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          pattern: desktopagent-linux-${{ github.run_id }}-${{ github.run_attempt }}-*
+          merge-multiple: true
           path: pkg
       - name: Publish pre-release
         env:
@@ -194,6 +213,7 @@ jobs:
           safe_branch=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')
           tag="linux-${safe_branch}-${RUN_ID}-${RUN_ATTEMPT}"
           files=$(find pkg -type f \( -name '*.AppImage' -o -name '*.deb' \))
+          if [ -z "$files" ]; then echo "Nothing built"; exit 1; fi
           gh release create "$tag" $files \
             --target "$SHA" \
             --prerelease \

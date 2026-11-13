@@ -2,6 +2,18 @@
  * Both ends of keeping in step: the device sends its items and takes the
  * agreed ones; the PC merges, writes, answers (and says what changed).
  */
+const mockSources = {assistants: '[]', customTools: '[]'};
+jest.mock('../syncSources', () => ({
+  readAssistants: async () => mockSources.assistants,
+  readCustomTools: async () => mockSources.customTools,
+  writeAssistants: async (t: string) => {
+    mockSources.assistants = t;
+  },
+  writeCustomTools: async (t: string) => {
+    mockSources.customTools = t;
+  },
+}));
+
 import {Alert, NativeModules} from 'react-native';
 
 const mockStore: Record<string, string> = {};
@@ -101,6 +113,8 @@ it('the device sends its items and takes the agreed ones back', async () => {
     'systemPrompt',
     'userMemory',
     'modelMemory',
+    'assistants',
+    'customTools',
   ]);
   expect(r).toEqual({
     ok: true,
