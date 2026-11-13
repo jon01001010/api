@@ -120,6 +120,8 @@ it('the device sends its items and takes the agreed ones back', async () => {
     ok: true,
     changedHere: ['systemPrompt', 'userMemory'],
     changedOnPc: [],
+    chatsReceived: 0,
+    chatsSent: 0,
   });
   expect(mockText.prompt).toBe('Be brief.');
   expect(mockText.user).toBe('PC notes');

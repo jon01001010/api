@@ -5,7 +5,9 @@ import {Button, Card, Switch, Text} from 'react-native-paper';
 
 import {describeEvent} from '../../services/homeLink/homeLink';
 import {
+  hostMirrorAllowed,
   hostSyncAllowed,
+  setHostMirrorAllowed,
   setHostSyncAllowed,
 } from '../../services/sync/hostSync';
 import {
@@ -30,8 +32,10 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [syncAllowed, setSyncAllowed] = useState(false);
+  const [mirrorAllowed, setMirrorAllowed] = useState(false);
   useEffect(() => {
     hostSyncAllowed().then(setSyncAllowed);
+    hostMirrorAllowed().then(setMirrorAllowed);
   }, []);
 
   const refresh = useCallback(() => {
@@ -165,6 +169,24 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
             }
           />
         </View>
+        {syncAllowed ? (
+          <View style={styles.syncRow}>
+            <Text variant="bodySmall" style={styles.syncText}>
+              Mirror chats with paired devices too (each device must switch it
+              on as well). Deleting a chat isn't mirrored yet.
+            </Text>
+            <Switch
+              value={mirrorAllowed}
+              testID="home-link-mirror-allow"
+              onValueChange={v =>
+                run(async () => {
+                  await setHostMirrorAllowed(v);
+                  setMirrorAllowed(v);
+                })
+              }
+            />
+          </View>
+        ) : null}
         {status.phones.length > 0 ? (
           <Text variant="labelMedium" style={styles.state}>
             Paired phones

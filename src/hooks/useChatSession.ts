@@ -1,5 +1,6 @@
 import {buildMemoryContext} from '../services/talents/agentMemory';
 import {applyThinkingBudget, readThinkingLength} from '../utils/thinkingBudget';
+import {mirrorAfterReply} from '../services/sync/deviceSync';
 import {messagesForModel} from '../services/chatSummary';
 import React, {useRef} from 'react';
 import {AccessibilityInfo, DeviceEventEmitter, Platform} from 'react-native';
@@ -709,6 +710,11 @@ export const useChatSession = (
         isStopped: () => uiStopped,
       });
       completedNormally = !lease.signal.aborted;
+      // Mirrored chats: a reply from a Home PC model goes to the PC soon
+      // after (only if switched on for that PC; quiet).
+      if (completedNormally) {
+        mirrorAfterReply();
+      }
       return result;
     } finally {
       cancelSubscription?.remove();

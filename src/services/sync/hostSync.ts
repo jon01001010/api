@@ -6,3 +6,9 @@ export async function hostSyncAllowed(): Promise<boolean> {
 }
 
 export async function setHostSyncAllowed(_allowed: boolean): Promise<void> {}
+
+export async function hostMirrorAllowed(): Promise<boolean> {
+  return false;
+}
+
+export async function setHostMirrorAllowed(_allowed: boolean): Promise<void> {}

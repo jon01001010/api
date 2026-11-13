@@ -9,6 +9,8 @@ import {Alert} from 'react-native';
 import {invoke} from '@tauri-apps/api/core';
 import {listen} from '@tauri-apps/api/event';
 
+import {mirrorOnPc, SYNC_ROOM} from './chatSync';
+
 import {
   applyItems,
   cleanItems,
@@ -18,6 +20,20 @@ import {
 } from './promptSync';
 
 const SETTING = 'pa-link-sync';
+const MIRROR_SETTING = 'pa-link-mirror';
+
+/** Mirror chats with paired devices (its own switch; off by default). */
+export async function hostMirrorAllowed(): Promise<boolean> {
+  try {
+    return globalThis.localStorage?.getItem(MIRROR_SETTING) === 'on';
+  } catch {
+    return false;
+  }
+}
+
+export async function setHostMirrorAllowed(allowed: boolean): Promise<void> {
+  globalThis.localStorage?.setItem(MIRROR_SETTING, allowed ? 'on' : 'off');
+}
 
 const isDesktop = () => !!(globalThis as any).__TAURI_INTERNALS__;
 
@@ -40,8 +56,11 @@ export async function answerSync(
   device: string,
 ): Promise<string> {
   let remote: unknown;
+  let chats: any;
   try {
-    remote = JSON.parse(body)?.items;
+    const parsed = JSON.parse(body);
+    remote = parsed?.items;
+    chats = parsed?.chats;
   } catch {
     return JSON.stringify({ok: false, error: 'Not readable'});
   }
@@ -54,7 +73,26 @@ export async function answerSync(
       `${describeKeys(changed)} updated from ${device || 'a paired device'}. The earlier versions are kept in history.`,
     );
   }
-  return JSON.stringify({ok: true, items: merged.items, takenByPc: changed});
+  // Chats, only if mirroring is allowed here too.
+  let send: unknown[] = [];
+  if (chats && (await hostMirrorAllowed())) {
+    const room = SYNC_ROOM - JSON.stringify(merged.items).length;
+    const r = await mirrorOnPc(
+      chats.sessions,
+      chats.versions,
+      Math.max(room, 0),
+    );
+    send = r.send;
+    if (r.taken) {
+      await require('../../store').chatSessionStore.loadSessionList();
+    }
+  }
+  return JSON.stringify({
+    ok: true,
+    items: merged.items,
+    takenByPc: changed,
+    chats: {sessions: send},
+  });
 }
 
 let started = false;

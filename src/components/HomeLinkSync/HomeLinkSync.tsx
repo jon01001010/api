@@ -3,6 +3,8 @@ import {StyleSheet, View} from 'react-native';
 import {Button, Switch, Text} from 'react-native-paper';
 
 import {
+  mirrorChatsOn,
+  setMirrorChats,
   setSyncWithPc,
   syncWithPc,
   syncWithPcOn,
@@ -16,11 +18,13 @@ import {describeKeys} from '../../services/sync/promptSync';
  */
 export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
   const [on, setOn] = useState(false);
+  const [mirror, setMirror] = useState(false);
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState('');
 
   useEffect(() => {
     syncWithPcOn(pc).then(setOn);
+    mirrorChatsOn(pc).then(setMirror);
   }, [pc]);
 
   const syncNow = async () => {
@@ -33,6 +37,8 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
       return;
     }
     const parts = [
+      r.chatsReceived ? `${r.chatsReceived} chat(s) from the PC` : '',
+      r.chatsSent ? `${r.chatsSent} chat(s) to the PC` : '',
       r.changedHere.length
         ? `${describeKeys(r.changedHere)} taken from the PC`
         : '',
@@ -67,6 +73,25 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
           testID="home-link-sync-switch"
         />
       </View>
+      {on ? (
+        <View style={styles.row}>
+          <Text variant="bodySmall" style={styles.text}>
+            Mirror chats with this PC too: your chats show up on both, and a
+            reply here reaches the PC a moment later. The PC must allow it too.
+          </Text>
+          <Switch
+            value={mirror}
+            onValueChange={async v => {
+              await setMirrorChats(pc, v);
+              setMirror(v);
+              if (v) {
+                syncNow();
+              }
+            }}
+            testID="home-link-mirror-switch"
+          />
+        </View>
+      ) : null}
       {on ? (
         <Button
           compact
