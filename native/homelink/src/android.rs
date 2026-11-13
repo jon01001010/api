@@ -143,6 +143,23 @@ pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_startModel(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_sync(
+    mut env: JNIEnv,
+    _class: JClass,
+    key_file: JString,
+    pc: JString,
+    body: JString,
+) -> jstring {
+    let (key_file, pc, body) = (text(&mut env, &key_file), text(&mut env, &pc), text(&mut env, &body));
+    let value = guarded(|| match phone(&key_file).and_then(|p| p.sync(&pc, &body)) {
+        // The PC's answer is JSON already; pass it on as it is.
+        Ok(answer) => serde_json::from_str(&answer).unwrap_or_else(|_| fail("The PC's answer was not readable")),
+        Err(e) => fail(e),
+    });
+    answer(&mut env, value)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_openTunnel(
     mut env: JNIEnv,
     _class: JClass,

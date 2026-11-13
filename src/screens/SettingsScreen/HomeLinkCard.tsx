@@ -1,9 +1,13 @@
 import Clipboard from '@react-native-clipboard/clipboard';
 import React, {useCallback, useEffect, useState} from 'react';
 import {Image, StyleSheet, View} from 'react-native';
-import {Button, Card, Text} from 'react-native-paper';
+import {Button, Card, Switch, Text} from 'react-native-paper';
 
 import {describeEvent} from '../../services/homeLink/homeLink';
+import {
+  hostSyncAllowed,
+  setHostSyncAllowed,
+} from '../../services/sync/hostSync';
 import {
   homeLinkAvailable,
   linkForget,
@@ -25,6 +29,10 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
   const [pairing, setPairing] = useState<LinkPairing | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [syncAllowed, setSyncAllowed] = useState(false);
+  useEffect(() => {
+    hostSyncAllowed().then(setSyncAllowed);
+  }, []);
 
   const refresh = useCallback(() => {
     linkStatus()
@@ -140,6 +148,23 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
           }>
           {status.on ? 'Switch off' : 'Switch on'}
         </Button>
+        <View style={styles.syncRow}>
+          <Text variant="bodySmall" style={styles.syncText}>
+            Let paired devices keep the system prompt and memory in step with
+            this PC (the newer edit wins; the other is kept in history). Each
+            device must switch it on too.
+          </Text>
+          <Switch
+            value={syncAllowed}
+            testID="home-link-sync-allow"
+            onValueChange={v =>
+              run(async () => {
+                await setHostSyncAllowed(v);
+                setSyncAllowed(v);
+              })
+            }
+          />
+        </View>
         {status.phones.length > 0 ? (
           <Text variant="labelMedium" style={styles.state}>
             Paired phones
@@ -185,6 +210,8 @@ const styles = StyleSheet.create({
   qrBox: {alignItems: 'center', marginVertical: 12},
   qr: {width: 240, height: 240, marginBottom: 8, backgroundColor: '#ffffff'},
   code: {marginTop: 6, fontFamily: 'monospace', fontSize: 10},
+  syncRow: {flexDirection: 'row', alignItems: 'center', marginVertical: 6},
+  syncText: {flex: 1, paddingRight: 12},
   phone: {flexDirection: 'row', alignItems: 'center'},
   phoneName: {flex: 1},
 });

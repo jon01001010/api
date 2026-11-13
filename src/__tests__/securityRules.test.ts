@@ -235,10 +235,13 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'link_off',
         'link_status',
         'link_forget',
+        'link_sync_allow',
+        'link_sync_reply',
         'homelink_pair',
         'homelink_status',
         'homelink_start_model',
         'homelink_open_tunnel',
+        'homelink_sync',
         'homelink_close_tunnel',
       ].sort(),
     );
@@ -381,7 +384,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
 
   it('home link: paired phones reach only the model server, pairing asks', () => {
     const link = tauri('src/link.rs');
-    // Exactly four requests exist, and only "pair" works before pairing.
+    // Exactly five requests exist, and only "pair" works before pairing.
     const ops = link.slice(
       link.indexOf('pub enum Request'),
       link.indexOf('pub fn parse_request'),
@@ -391,7 +394,14 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         .match(/^\s{4}(\w+)/gm)!
         .map(o => o.trim())
         .sort(),
-    ).toEqual(['Http', 'Pair', 'Start', 'Status']);
+    ).toEqual(['Http', 'Pair', 'Start', 'Status', 'Sync']);
+    // "sync": paired devices only, only while the user allows it here,
+    // size-capped, and answered by the screens (which merge and keep history).
+    expect(link).toContain('Some(Request::Sync) if paired =>');
+    expect(link).toMatch(
+      /Some\(Request::Sync\) if paired =>[\s\S]*?if !link\.sync_allowed\.load\(Ordering::SeqCst\)[\s\S]*?read_to_end\(MAX_SYNC\)/,
+    );
+    expect(link).toMatch(/sync_allowed: std::sync::atomic::AtomicBool/);
     expect(link).toContain('Some(Request::Status) if paired =>');
     // "start": paired phones only; takes nothing from the phone (a unit
     // variant: the PC picks its last model); never shows a dialog.
@@ -443,6 +453,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'pair',
       'start',
       'status',
+      'sync',
     ]);
     // Key kept out of cloud backups.
     expect(
@@ -459,7 +470,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // Every door from Android goes through guarded(), and iroh gets the
     // app context first (it needs it to read the network settings).
     const doors = android.match(/pub extern "system" fn Java_\w+/g) || [];
-    expect(doors.length).toBe(6);
+    expect(doors.length).toBe(7);
     for (const door of doors) {
       const body = android.slice(android.indexOf(door));
       const next = body.indexOf('pub extern "system"', 10);

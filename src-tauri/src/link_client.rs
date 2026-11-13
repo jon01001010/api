@@ -99,6 +99,15 @@ pub async fn homelink_start_model(app: AppHandle, pc: String) -> String {
 }
 
 #[tauri::command]
+pub async fn homelink_sync(app: AppHandle, pc: String, body: String) -> String {
+    answer(app, move |p| {
+        let reply = p.sync(&pc, &body)?;
+        serde_json::from_str(&reply).map_err(|_| "The PC's answer was not readable".to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn homelink_open_tunnel(app: AppHandle, pc: String) -> String {
     answer(app, move |p| {
         let port = p.open_tunnel(&pc)?;

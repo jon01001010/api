@@ -25,6 +25,8 @@ pub const ALPN: &[u8] = b"pocketagent/home-link/1";
 pub const QR_PREFIX: &str = "PA1:P:";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(45);
 const MAX_LINE: usize = 4096;
+/// Most bytes sent or received by one sync (prompt + memories, 256 KiB each).
+pub const MAX_SYNC: usize = 4 * 1024 * 1024;
 
 /// What a pairing QR code holds.
 #[derive(Debug, PartialEq)]
@@ -230,6 +232,29 @@ impl Phone {
             }
             None => "connecting".into(),
         }
+    }
+
+    /// Keeps the system prompt and memory in step with the PC (only when the
+    /// user switched it on, on both devices; the PC refuses otherwise).
+    /// Sends this device's items after the request line; the PC answers with
+    /// the agreed items (both are JSON, decided by the app's screens).
+    pub fn sync(&self, pc: &str, body: &str) -> Result<String, String> {
+        let pc: EndpointId = pc.parse().map_err(|_| "Bad PC key".to_string())?;
+        if body.len() > MAX_SYNC {
+            return Err("Too much to keep in step".into());
+        }
+        self.runtime.block_on(async {
+            let conn = self.connection(pc).await?;
+            let (mut send, mut recv) = conn.open_bi().await.map_err(|e| e.to_string())?;
+            send.write_all(b"{\"op\":\"sync\"}\n").await.map_err(|e| e.to_string())?;
+            send.write_all(body.as_bytes()).await.map_err(|e| e.to_string())?;
+            let _ = send.finish();
+            let answer = tokio::time::timeout(Duration::from_secs(60), recv.read_to_end(MAX_SYNC))
+                .await
+                .map_err(|_| "The PC did not answer".to_string())?
+                .map_err(|e| e.to_string())?;
+            String::from_utf8(answer).map_err(|e| e.to_string())
+        })
     }
 
     /// Asks the PC to start the model it last ran (the PC decides which; it

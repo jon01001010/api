@@ -26,7 +26,13 @@ const native = () => NativeModules.HomeLink;
 export const homeLinkInBuild = (): boolean => !!native();
 
 async function ask<T>(
-  method: 'pair' | 'status' | 'startModel' | 'openTunnel' | 'closeTunnel',
+  method:
+    | 'pair'
+    | 'status'
+    | 'startModel'
+    | 'sync'
+    | 'openTunnel'
+    | 'closeTunnel',
   ...args: string[]
 ): Promise<Answer<T>> {
   const mod = native();
@@ -73,6 +79,13 @@ export const pcStatus = (pc: string) =>
  * refuses one that would need an "Allow?" on the PC (nobody may be there).
  */
 export const startPcModel = (pc: string) => ask<{}>('startModel', pc);
+
+/**
+ * Sends this device's prompt and memory items to the PC, which answers with
+ * the agreed ones (src/services/sync). Only while allowed on both devices.
+ */
+export const syncRawWithPc = (pc: string, body: string) =>
+  ask<{items: unknown; takenByPc?: string[]}>('sync', pc, body);
 
 /**
  * Waits until the PC's model has loaded (its server answers /health), up

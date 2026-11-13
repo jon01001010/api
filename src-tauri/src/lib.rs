@@ -111,10 +111,13 @@ pub fn run() {
             link::link_off,
             link::link_status,
             link::link_forget,
+            link::link_sync_allow,
+            link::link_sync_reply,
             link_client::homelink_pair,
             link_client::homelink_status,
             link_client::homelink_start_model,
             link_client::homelink_open_tunnel,
+            link_client::homelink_sync,
             link_client::homelink_close_tunnel,
         ])
         .build(tauri::generate_context!())

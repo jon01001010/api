@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-link-sync-allow"
+description = "Enables the link_sync_allow command without any pre-configured scope."
+commands.allow = ["link_sync_allow"]
+
+[[permission]]
+identifier = "deny-link-sync-allow"
+description = "Denies the link_sync_allow command without any pre-configured scope."
+commands.deny = ["link_sync_allow"]

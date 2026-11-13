@@ -47,10 +47,13 @@
     "allow-link-off",
     "allow-link-status",
     "allow-link-forget",
+    "allow-link-sync-allow",
+    "allow-link-sync-reply",
     "allow-homelink-pair",
     "allow-homelink-status",
     "allow-homelink-start-model",
     "allow-homelink-open-tunnel",
+    "allow-homelink-sync",
     "allow-homelink-close-tunnel"
   ]
 }

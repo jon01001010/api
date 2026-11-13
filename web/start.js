@@ -58,6 +58,9 @@ AppRegistry.registerComponent(DESKTOP_APP, () => () => (
 AppRegistry.runApplication(DESKTOP_APP, {
   rootTag: document.getElementById('root'),
 });
+// Keeping in step with paired devices (off unless allowed in Settings).
+require('../src/services/sync/hostSync').startHostSync();
+
 // The quick-chat key (Settings), if the user switched it on.
 try {
   if (

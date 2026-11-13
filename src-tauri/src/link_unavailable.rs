@@ -53,3 +53,16 @@ pub async fn homelink_open_tunnel(_pc: String) -> String {
 pub async fn homelink_close_tunnel() -> String {
     OFF.into()
 }
+
+#[tauri::command]
+pub async fn homelink_sync(_pc: String, _body: String) -> String {
+    OFF.into()
+}
+
+#[tauri::command]
+pub async fn link_sync_allow(_allowed: bool) {}
+
+#[tauri::command]
+pub async fn link_sync_reply(_id: u64, _body: String) -> Result<(), String> {
+    Err("The home link is not in this build".into())
+}

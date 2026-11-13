@@ -11,7 +11,8 @@
 //!   PC then asks the user in a native dialog. Only after "Pair" is the
 //!   phone's key saved.
 //! - After pairing, only saved phones are let in, and they can do exactly
-//!   three things: ask whether a model is running ("status"), start the
+//!   four things (the fourth, "sync", only while the user allows it here:
+//!   the system prompt and memory kept in step, merged by the screens): ask whether a model is running ("status"), start the
 //!   model this PC last ran ("start": never a file the phone names, and
 //!   never one that would need an "Allow?" on the PC), and pass HTTP
 //!   requests to this PC's own model server on 127.0.0.1 ("http"). Nothing
@@ -56,6 +57,9 @@ pub enum Request {
     Status,
     /// Start the model this PC last ran (takes nothing from the phone).
     Start,
+    /// Keep the system prompt and memory in step (the items follow the
+    /// request line; only while the user allows it on this PC).
+    Sync,
     Http,
 }
 
@@ -257,7 +261,16 @@ pub fn pc_build() -> String {
 pub struct Link {
     running: tokio::sync::Mutex<Option<iroh::protocol::Router>>,
     pair_code: Mutex<Option<PairCode>>,
+    /// Paired devices may keep the system prompt and memory in step (the
+    /// user's switch on this PC; off by default).
+    sync_allowed: std::sync::atomic::AtomicBool,
+    /// Syncs waiting for the screens' answer, by id.
+    sync_waiting: Mutex<std::collections::HashMap<u64, tokio::sync::oneshot::Sender<String>>>,
+    sync_next: std::sync::atomic::AtomicU64,
 }
+
+/// Most bytes one sync may carry (the device library's own limit too).
+pub const MAX_SYNC: usize = 4 * 1024 * 1024;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -475,6 +488,41 @@ async fn serve_stream(
             };
             reply(&mut send, answer).await;
         }
+        Some(Request::Sync) if paired => {
+            use std::sync::atomic::Ordering;
+            let link = app.state::<Link>();
+            let answer = if !link.sync_allowed.load(Ordering::SeqCst) {
+                serde_json::json!({"ok": false, "error": "Keeping in step is off on the PC (Settings → Use this PC's model from your phone)"}).to_string()
+            } else {
+                match recv.read_to_end(MAX_SYNC).await {
+                    Err(_) => serde_json::json!({"ok": false, "error": "Too much to keep in step"}).to_string(),
+                    Ok(body) => {
+                        // The screens hold the prompt and memory: they merge
+                        // and answer (src/services/sync/hostSync.web.ts).
+                        let id = link.sync_next.fetch_add(1, Ordering::SeqCst);
+                        let (tx, rx) = tokio::sync::oneshot::channel();
+                        link.sync_waiting.lock().unwrap().insert(id, tx);
+                        let name = load_phones(&app)
+                            .into_iter()
+                            .find(|p| p.id == remote)
+                            .map(|p| p.name)
+                            .unwrap_or_default();
+                        use tauri::Emitter;
+                        let _ = app.emit(
+                            "link-sync",
+                            serde_json::json!({"id": id, "device": name, "body": String::from_utf8_lossy(&body)}),
+                        );
+                        let reply = tokio::time::timeout(Duration::from_secs(30), rx).await;
+                        link.sync_waiting.lock().unwrap().remove(&id);
+                        match reply {
+                            Ok(Ok(text)) => text,
+                            _ => serde_json::json!({"ok": false, "error": "The PC app did not answer"}).to_string(),
+                        }
+                    }
+                }
+            };
+            let _ = send.write_all(answer.as_bytes()).await;
+        }
         Some(Request::Http) if paired => {
             let Some((port, _)) = app.state::<crate::model_server::ModelServer>().address() else {
                 reply(&mut send, serde_json::json!({"ok": false, "error": "no model running"})).await;
@@ -564,6 +612,27 @@ pub async fn link_pair(app: AppHandle) -> Result<Pairing, String> {
 }
 
 /// Switches the link on for already paired phones (no new pairing).
+/// The user's switch on this PC: may paired devices keep in step?
+#[tauri::command(async)]
+pub fn link_sync_allow(link: State<'_, Link>, allowed: bool) {
+    link.sync_allowed.store(allowed, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// The screens' answer to a sync (the agreed items, as JSON).
+#[tauri::command(async)]
+pub fn link_sync_reply(link: State<'_, Link>, id: u64, body: String) -> Result<(), String> {
+    if body.len() > MAX_SYNC {
+        return Err("Too much to keep in step".into());
+    }
+    match link.sync_waiting.lock().unwrap().remove(&id) {
+        Some(tx) => {
+            let _ = tx.send(body);
+            Ok(())
+        }
+        None => Err("That sync is no longer waiting".into()),
+    }
+}
+
 #[tauri::command]
 pub async fn link_on(app: AppHandle) -> Result<(), String> {
     start(&app).await.map(|_| ())
@@ -626,6 +695,7 @@ mod tests {
         assert_eq!(parse_request(br#"{"op":"status"}"#), Some(Request::Status));
         assert_eq!(parse_request(br#"{"op":"http"}"#), Some(Request::Http));
         assert_eq!(parse_request(br#"{"op":"start"}"#), Some(Request::Start));
+        assert_eq!(parse_request(br#"{"op":"sync"}"#), Some(Request::Sync));
         // "start" takes nothing from the phone: any file it names is ignored.
         assert_eq!(
             parse_request(br#"{"op":"start","model":"C:/x.gguf"}"#),

@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import {View, Alert} from 'react-native';
 import {HomeLinkRoute} from '../HomeLinkRoute/HomeLinkRoute';
+import {HomeLinkSync} from '../HomeLinkSync/HomeLinkSync';
 import {
   Text,
   Button,
@@ -227,6 +228,7 @@ export const ServerDetailsSheet: React.FC<ServerDetailsSheetProps> = observer(
           {server.homeLinkPc ? (
             <View style={styles.inputSpacing}>
               <HomeLinkRoute pc={server.homeLinkPc} />
+              <HomeLinkSync pc={server.homeLinkPc} />
             </View>
           ) : null}
           {/* URL Input */}

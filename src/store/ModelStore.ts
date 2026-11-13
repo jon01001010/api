@@ -74,6 +74,8 @@ import {classify, ClassifyPlatform} from '../services/deviceRules/classify';
 import {deriveUrl, parseDeviceRules} from '../services/deviceRules/parse';
 import {fetchRules} from '../services/deviceRules/rules';
 import {ONLINE_DEVICE_RULES} from '../config/outside';
+import {syncWithPc, syncWithPcOn} from '../services/sync/deviceSync';
+import {describeKeys} from '../services/sync/promptSync';
 import {readDeviceSignals} from '../services/deviceRules/signals';
 import {
   DeviceRules,
@@ -3260,6 +3262,20 @@ class ModelStore {
       if (!link.ok && link.error) {
         // E.g. the PC is off, or its model needs an OK on the PC first.
         Alert.alert('Home PC', link.error);
+      }
+      // Keep the system prompt and memory in step, if switched on for this
+      // PC (and allowed there). Before the first message, so it uses them.
+      const linkPc = serverStore.servers.find(
+        s => s.id === model.serverId,
+      )?.homeLinkPc;
+      if (link.ok && linkPc && (await syncWithPcOn(linkPc))) {
+        const synced = await syncWithPc(linkPc);
+        if (synced.ok && synced.changedHere.length) {
+          Alert.alert(
+            'Kept in step with your PC',
+            `${describeKeys(synced.changedHere)} updated from your PC. The earlier versions are kept in history.`,
+          );
+        }
       }
       const apiKey = await serverStore.getApiKey(model.serverId!);
       const server = serverStore.servers.find(s => s.id === model.serverId);
