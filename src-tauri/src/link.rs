@@ -7,7 +7,7 @@
 //! can't read them.
 //!
 //! - Pairing: the PC shows a QR code with its public key and a one-time
-//!   code (10 minutes, one try). The phone connects and sends the code; the
+//!   code (10 minutes, 3 wrong tries). The phone connects and sends the code; the
 //!   PC then asks the user in a native dialog. Only after "Pair" is the
 //!   phone's key saved.
 //! - After pairing, only saved phones are let in, and they can do exactly

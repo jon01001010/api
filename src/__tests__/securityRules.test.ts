@@ -645,13 +645,13 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /fn tools_allowed\(app: &AppHandle\) -> bool \{\s*read_entry\(app, TOOLS_ENTRY\)\.as_deref\(\) == Some\("on"\)/,
     );
     expect(link).toMatch(
-      /async fn may_read_now[\s\S]*?read_grants[\s\S]*?crate::approval::ask\(app, &read_question\(device, chat\)\)\.await[\s\S]*?if !tools_allowed\(app\) \|\| !may_read\(&load_phones\(app\), remote\) \{\s*return false;/,
+      /async fn may_read_now[\s\S]*?read_grants[\s\S]*?crate::approval::ask\(app, &read_question\(device, chat, allowed_now\)\)\.await[\s\S]*?if !tools_allowed\(app\) \|\| !may_read\(&load_phones\(app\), remote\) \{\s*return false;/,
     );
     expect(link).toContain(
       'const READ_GRANT_TIME: Duration = Duration::from_secs(12 * 60 * 60);',
     );
     expect(link).toMatch(
-      /async fn tool_for[\s\S]*?if call != RemoteCall::PcInfo && !may_read_now\(app, remote, device, chat\)\.await \{\s*return Err[\s\S]*?crate::pc::pc_info\(a\)[\s\S]*?crate::pc_files::list\(&dir\)[\s\S]*?crate::pc::workspace_file\(app, &file\)\?[\s\S]*?crate::pc_files::read\(&path, &name\)[\s\S]*?log_use[\s\S]*?notification\(\)[\s\S]*?read_note\(/,
+      /async fn tool_for[\s\S]*?if call != RemoteCall::PcInfo && !may_read_now\(app, remote, device, chat\)\.await \{\s*return Err[\s\S]*?crate::pc::pc_info\(a\)[\s\S]*?crate::pc_files::list\(&dir\)[\s\S]*?crate::pc::workspace_file\(app, &file\)\?[\s\S]*?crate::pc_files::read_for_device\(&path, &name, crate::pc_files::DEVICE_READ_TIME\)[\s\S]*?log_use[\s\S]*?notification\(\)[\s\S]*?read_note\(/,
     );
     expect(link).toMatch(
       /pub async fn link_forget[\s\S]*?read_grants\.lock\(\)\.unwrap\(\)\.forget_device\(&id\)/,
@@ -1066,7 +1066,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(gen).toContain('target_arch = "aarch64"');
     const win = read('.github/workflows/pocketagent-windows.yml');
     expect(win).toMatch(
-      /echo "\$\{SD_SHA256\}  \$\{SD_ZIP\}" \| sha256sum -c -/,
+      /echo "\$\{SD_SHA256\} {2}\$\{SD_ZIP\}" \| sha256sum -c -/,
     );
     expect(win).toContain('rm -f src-tauri/sd/sd-server.exe');
     // Only commercially usable models are listed.
@@ -1231,5 +1231,78 @@ describe('Rule 2: phone actions ask every time, in a chain too', () => {
       'Step 2 of 2: Open maps for "Home"?',
     ]);
     expect(result.summary).toMatch(/^All 2 steps done/);
+  });
+});
+
+describe('security review 2 (2026-11-15), app code', () => {
+  it('"Recently deleted" keeps versions, counts UTF-8 bytes and never saves over an unreadable list', () => {
+    const chats = read('src/services/sync/chatDeletes.ts');
+    expect(chats).toContain('export const MAX_VERSIONS = 3;');
+    expect(chats).toContain(
+      'loadRecent: () => loadChunked<RecentlyDeleted>(RECENT_KEY_V2, RECENT_KEY),',
+    );
+    expect(chats).not.toMatch(/readJson<RecentlyDeleted/);
+    const kept = read('src/services/sync/keptStore.ts');
+    expect(kept).toContain('export const CHUNK_BYTES = 900_000;');
+    expect(kept).toContain('throw new UnreadableStore(key);');
+    for (const file of [
+      'src/services/sync/assistantDeletes.ts',
+      'src/services/sync/loopSync.ts',
+    ]) {
+      expect(read(file)).toMatch(/\? readStrict\(key, fallback\)/);
+      expect(read(file)).toContain('const n = jsonBytes(entry) + 1;');
+    }
+  });
+
+  it('the PIN wait counts only time the app measured', () => {
+    const lock = read('src/services/homeLink/homePcLock.ts');
+    expect(lock).toContain('performance.now()');
+    expect(lock).toMatch(
+      /Math\.max\(0, Math\.min\(wall, mono - last\.mono\)\)/,
+    );
+    expect(lock).toContain('r.waitLeft = wait;');
+  });
+
+  it('memory search reads only messages typed on this device', () => {
+    expect(read('src/services/talents/pastChats.ts')).toContain(
+      'if (isMirrored(row._raw?.metadata ?? row.metadata)) {',
+    );
+    expect(read('src/services/sync/deviceSync.ts')).toContain(
+      "await writeChats(incoming, {from: 'the PC'});",
+    );
+    expect(read('src/services/sync/hostSync.web.ts')).toContain(
+      'write: list => writeChats(list, {from})',
+    );
+  });
+
+  it('a synced change pauses a running loop', () => {
+    expect(read('src/services/sync/loopSync.ts')).toMatch(
+      /\{\.\.\.r\.loop, paused: true, pausedWhy: `changed on \$\{from\}`\}/,
+    );
+  });
+
+  it("a shortcut checks each step's Toolbox switch", () => {
+    const tools = read('src/services/talents/customTools.ts');
+    expect(tools).toMatch(
+      /const off = await switchedOffSteps\(steps\.map\(s => s\.tool\)\);\s*if \(off\.length\) \{\s*return switchedOff/,
+    );
+    expect(tools).toContain("'is switched off in the Toolbox',");
+  });
+
+  it('the PC: pairing tries, read grants, paths, PDFs and the answers log', () => {
+    const link = read('src-tauri/src/link.rs');
+    expect(link).toContain('const PAIR_CODE_WRONG_TRIES: u32 = 3;');
+    expect(link).toContain('pub const MAX_CHAT_GRANTS_PER_DEVICE: usize = 3;');
+    expect(
+      link.match(/let error = error_for_device\(&app, &error\);/g),
+    ).toHaveLength(2);
+    expect(link).toContain('crate::pc_files::read_for_device(');
+    expect(link).not.toMatch(/crate::pc_files::read\(&path/);
+    expect(read('src-tauri/src/pc_files.rs')).toContain(
+      'if crate::docs::kind_of(name) == Some("pdf") {',
+    );
+    const ask = read('src-tauri/src/remote_ask.rs');
+    expect(ask).toContain('one_line(&loggable(question))');
+    expect(ask).toContain('rotate(&file, MAX_LOG_BYTES);');
   });
 });
