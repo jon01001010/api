@@ -14,6 +14,7 @@ import type {
   TokenDelta,
 } from './AgentRunner.types';
 import type {TalentResult} from '../talents/types';
+import {STOPPED_ASKING, type ToolGuard} from './chatGuard';
 
 export const DEFAULT_MAX_TURNS = 5;
 
@@ -134,6 +135,9 @@ async function executeOne(
   allowedTalentNames: string[],
   talentLookup: (name: string) => ReturnType<AgentRunOptions['talentLookup']>,
   signal?: AbortSignal,
+  guard?: ToolGuard,
+  thinking?: string,
+  onStop?: () => void,
 ): Promise<AgentToolOutcome> {
   const fnName = call.function?.name ?? '';
   const callId = call.id;
@@ -174,10 +178,41 @@ async function executeOne(
     return {callId, toolName: fnName, result, responseContent: summary};
   }
 
+  // The chat's guards (chatGuard.ts): "allow nothing more", the ask-rate
+  // limit and, after private data was read, a question before anything
+  // goes out. Refused here, before the tool is called.
+  const guardCall = {name: fnName, args: parsedArgs, engine: handler, thinking};
+  if (guard) {
+    const verdict = await guard.before(guardCall);
+    if (!verdict.ok) {
+      if (verdict.stop) {
+        onStop?.();
+      }
+      const result: TalentResult = {type: 'text', summary: verdict.message};
+      return {
+        callId,
+        toolName: fnName,
+        result,
+        responseContent: verdict.message,
+      };
+    }
+  }
+
+  // The tool's own question shows the thinking and offers "allow nothing
+  // more in this chat" (thinking and chat are for the question only).
+  const ctx =
+    signal || guard || thinking
+      ? {
+          signal: signal ?? new AbortController().signal,
+          ...(thinking ? {thinking} : {}),
+          ...(guard ? {chat: guard.chat} : {}),
+        }
+      : undefined;
   try {
-    const toolResult = await (signal
-      ? handler.execute(parsedArgs, {signal})
+    const toolResult = await (ctx
+      ? handler.execute(parsedArgs, ctx)
       : handler.execute(parsedArgs));
+    guard?.after(guardCall, toolResult);
     return {
       callId,
       toolName: fnName,
@@ -208,6 +243,7 @@ export function runToolCall(
   allowedTalentNames: string[],
   talentLookup: (name: string) => ReturnType<AgentRunOptions['talentLookup']>,
   signal?: AbortSignal,
+  guard?: ToolGuard,
 ): Promise<AgentToolOutcome> {
   return executeOne(
     {
@@ -218,6 +254,7 @@ export function runToolCall(
     allowedTalentNames,
     talentLookup,
     signal,
+    guard,
   );
 }
 
@@ -286,6 +323,7 @@ export async function* runAgent(
     messageId,
     maxTurns = DEFAULT_MAX_TURNS,
     signal,
+    guard,
   } = options;
 
   yield {type: 'run_started', messageId};
@@ -338,6 +376,9 @@ export async function* runAgent(
       // finalisation. Reset every iteration via the surrounding `let`s.
       let toolCallTokenCount = 0;
       let toolCallStartedAt: number | null = null;
+      // The model's thinking this step, shown with the questions its tool
+      // calls bring up (chatGuard.thinkingShown).
+      let thinkingThisStep = '';
 
       // Bridge engine streaming callback into the iterator.
       const queue = new EventQueue<AgentEvent>();
@@ -351,6 +392,8 @@ export async function* runAgent(
       // settled promise — never rejects — by capturing the error in
       // `engineError` for surface above.
       let engineError: Error | null = null;
+      // A chat that read private data, talking to a cloud model: one line.
+      guard?.beforeModelRequest();
       const completionPromise = engine
         .completion(turnParams, data => {
           // llama.rn's stopCompletion is non-blocking — native can keep
@@ -371,6 +414,9 @@ export async function* runAgent(
             // this explicit sequence for a marker that straddles two
             // chunks.
             queue.push({type: 'token', delta});
+            if (delta.reasoningContent) {
+              thinkingThisStep += delta.reasoningContent;
+            }
             if (delta.toolCalls && delta.toolCalls.length > 0) {
               if (toolCallStartedAt === null) {
                 toolCallStartedAt = Date.now();
@@ -473,21 +519,37 @@ export async function* runAgent(
         break;
       }
 
+      const thinking =
+        finishedResult.reasoning_content || thinkingThisStep || undefined;
+      let stopRun = false;
       const outcomes: AgentToolOutcome[] = [];
       for (const call of calls) {
         yield {type: 'tool_call_started', call};
-        const outcome = await executeOne(
-          call,
-          allowedTalentNames,
-          talentLookup,
-          signal,
-        );
+        const outcome = stopRun
+          ? {
+              callId: call.id,
+              toolName: call.function?.name ?? '',
+              result: {type: 'text', summary: STOPPED_ASKING} as TalentResult,
+              responseContent: STOPPED_ASKING,
+            }
+          : await executeOne(
+              call,
+              allowedTalentNames,
+              talentLookup,
+              signal,
+              guard,
+              thinking,
+              () => {
+                stopRun = true;
+              },
+            );
         outcomes.push(outcome);
         yield {type: 'tool_call_finished', outcome};
       }
 
       // Tools cancel themselves via ctx.signal; the runner only stops at the turn boundary.
-      if (signal?.aborted) {
+      // "Stop" on "The model is asking a lot" ends the run here too.
+      if (signal?.aborted || stopRun) {
         break;
       }
 

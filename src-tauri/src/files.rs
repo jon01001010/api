@@ -111,13 +111,13 @@ async fn allowed(app: &AppHandle, input: &str, what: &str) -> Result<PathBuf, St
     let real = match crate::outside::checked(app, &located.real) {
         Ok(real) => real,
         Err(e) => {
-            crate::outside::audit(app, "app", what, "refused", &located.real.to_string_lossy());
+            crate::outside::audit(app, "app", what, "refused", &located.real.to_string_lossy(), None);
             return Err(e);
         }
     };
     let question = format!("DesktopAgent wants to {what}, outside its own folder:\n\n{}", real.display());
     let yes = ask(app, &question).await;
-    crate::outside::audit(app, "app", what, if yes { "allowed" } else { "said no" }, &real.to_string_lossy());
+    crate::outside::audit(app, "app", what, if yes { "allowed" } else { "said no" }, &real.to_string_lossy(), None);
     if !yes {
         return Err("The user said no. Nothing was done.".into());
     }

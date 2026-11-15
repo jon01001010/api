@@ -75,6 +75,7 @@ import {
   type AgentUiState,
   type TokenDelta,
 } from '../services/agent';
+import {inAppGuard, isCloudServer} from '../services/agent/guardQuestions';
 // Helper function to prepare completion parameters using OpenAI-compatible
 // messages API. Creates the empty `assistant_turn` row up-front so the
 // active-vs-persisted predicate sees the right "last message" before the
@@ -955,6 +956,24 @@ export const useChatSession = (
         triggerMarkers,
         messageId: messageInfo.id,
         signal: lease.signal,
+        // Per chat: read-then-leak, ask-rate limit, "allow nothing more"
+        // (services/agent/chatGuard.ts).
+        guard: inAppGuard(messageInfo.sessionId, lease.signal, {
+          isCloudModel: () =>
+            isCloudServer(
+              serverStore.servers.find(
+                s => s.id === modelStore.activeModel?.serverId,
+              ),
+            ),
+          notice: text =>
+            uiStore.setChatWarning({
+              code: 'unknown',
+              message: text,
+              context: 'chat',
+              recoverable: true,
+              severity: 'warning',
+            }),
+        }),
       });
 
       // The chunk-cycle would otherwise run entirely via microtask

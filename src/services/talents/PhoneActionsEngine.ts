@@ -9,6 +9,7 @@ import {AppState} from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 
 import {requestFileApproval} from './fileApprovalGate';
+import {fromContext} from '../agent/chatGuard';
 import type {
   TalentEngine,
   TalentExecuteContext,
@@ -834,6 +835,7 @@ export class PhoneActionsEngine implements TalentEngine {
           action: 'phone_action',
           filename: step ? chainAsk(plan.ask, step) : plan.ask,
           content: plan.details ?? '',
+          ...fromContext(ctx),
         },
         ctx?.signal,
       );

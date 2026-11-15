@@ -597,6 +597,17 @@ impl Phone {
             }
             args.insert("bytes".into(), text.len().into());
         }
+        // The model's thinking from just before the request, for the PC's
+        // question only (it is shown there under "The model was
+        // thinking:", never parsed): its end, cut so the line still fits.
+        if let Some(thinking) = given.get("thinking").and_then(|v| v.as_str()) {
+            let base = serde_json::json!({"op": "tool", "name": name, "chat": chat, "args": args}).to_string().len();
+            // `,"thinking":""` and the line break.
+            let room = MAX_LINE.saturating_sub(base + 16);
+            if let Some(fit) = fit_thinking(thinking, room) {
+                args.insert("thinking".into(), fit.into());
+            }
+        }
         let request = serde_json::json!({"op": "tool", "name": name, "chat": chat, "args": args});
         let line = format!("{request}\n");
         if line.len() > MAX_LINE {
@@ -692,6 +703,33 @@ impl Phone {
 
 #[cfg(feature = "android")]
 mod android;
+
+/// The end of the model's thinking that fits in `room` bytes of JSON
+/// (as written in the request line), starting with "…" when cut;
+/// None when nothing fits or there is none.
+pub fn fit_thinking(thinking: &str, room: usize) -> Option<String> {
+    let thinking = thinking.trim();
+    let width = |c: char| serde_json::Value::from(c.to_string()).to_string().len() - 2;
+    let total: usize = thinking.chars().map(width).sum();
+    if total <= room {
+        return (!thinking.is_empty()).then(|| thinking.to_string());
+    }
+    let mark = '…';
+    let mut used = width(mark);
+    let mut kept: Vec<char> = Vec::new();
+    for c in thinking.chars().rev() {
+        if used + width(c) > room {
+            break;
+        }
+        used += width(c);
+        kept.push(c);
+    }
+    if kept.is_empty() {
+        return None;
+    }
+    kept.push(mark);
+    Some(kept.into_iter().rev().collect())
+}
 
 #[cfg(test)]
 mod tests {
@@ -1006,6 +1044,19 @@ mod tests {
             serde_json::json!({"op": "tool", "name": "pc_run_command", "chat": "chat-0123456789abcdef", "args": {"command": "Get-Date"}})
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_thinking_is_cut_to_fit_the_line() {
+        assert_eq!(fit_thinking("  short  ", 100).as_deref(), Some("short"));
+        assert_eq!(fit_thinking("", 100), None);
+        assert_eq!(fit_thinking("abc", 0), None);
+        let cut = fit_thinking(&format!("{}{}", "a".repeat(500), "b".repeat(50)), 60).unwrap();
+        assert!(cut.starts_with('\u{2026}') && cut.ends_with(&"b".repeat(50)), "{cut}");
+        assert!(serde_json::Value::from(cut.clone()).to_string().len() - 2 <= 60, "{cut}");
+        // Quotes and control characters take more room in JSON.
+        let cut = fit_thinking(&"\"\n".repeat(100), 40).unwrap();
+        assert!(serde_json::Value::from(cut).to_string().len() - 2 <= 40);
     }
 
     #[test]

@@ -505,10 +505,17 @@ pub fn question(action: Action, path: &str, facts: &Facts, reason: Option<&str>)
 }
 
 /// One line of the log: when, who asked (the model, or the app's own
-/// screens), the action, the outcome and the path; never contents.
-pub fn log_line(when: u64, who: &str, action: &str, outcome: &str, path: &str) -> String {
+/// screens), the action, the outcome and the path; never contents. For
+/// the model, the thinking behind the request (its last
+/// approval::MAX_THINKING characters) at the end, escaped.
+pub fn log_line(when: u64, who: &str, action: &str, outcome: &str, path: &str, thinking: Option<&str>) -> String {
     use crate::remote_ask::one_line;
-    format!("{when}\t{who}\t{}\t{}\t{}", one_line(action), one_line(outcome), one_line(path))
+    let mut line = format!("{when}\t{who}\t{}\t{}\t{}", one_line(action), one_line(outcome), one_line(path));
+    if let Some(thinking) = thinking.map(str::trim).filter(|t| !t.is_empty()) {
+        line.push_str("\tthe model was thinking: ");
+        line.push_str(&one_line(&crate::approval::thinking_words(thinking)));
+    }
+    line
 }
 
 // ------------------------------------------------------------ on this PC
@@ -625,8 +632,8 @@ pub fn checked(app: &AppHandle, path: &Path) -> Result<PathBuf, String> {
 }
 
 /// Writes one line to the log of access outside the workspace.
-pub fn audit(app: &AppHandle, who: &str, action: &str, outcome: &str, path: &str) {
-    crate::remote_ask::log_outside(app, |when| log_line(when, who, action, outcome, path));
+pub fn audit(app: &AppHandle, who: &str, action: &str, outcome: &str, path: &str, thinking: Option<&str>) {
+    crate::remote_ask::log_outside(app, |when| log_line(when, who, action, outcome, path, thinking));
 }
 
 #[derive(Debug, Serialize)]
@@ -757,8 +764,12 @@ pub async fn outside_files(
     path: String,
     content: Option<String>,
     reason: Option<String>,
+    thinking: Option<String>,
 ) -> Result<Outcome, String> {
     let action = Action::parse(&action)?;
+    // The model's thinking: shown last in the question, kept in the log;
+    // never parsed.
+    let thinking = thinking.as_deref();
     let named = match place.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
         Some(place) => format!("{place}: {path}"),
         None => path.clone(),
@@ -767,7 +778,7 @@ pub async fn outside_files(
         Ok(real) => real,
         Err(e) => {
             let outcome = if e == NEVER { "refused: never reachable" } else { "refused" };
-            audit(&app, "model", action.word(), outcome, &named);
+            audit(&app, "model", action.word(), outcome, &named, thinking);
             return Err(e);
         }
     };
@@ -775,21 +786,21 @@ pub async fn outside_files(
     let (before, facts) = match facts_for(action, &real, content.as_deref()) {
         Ok(found) => found,
         Err(e) => {
-            audit(&app, "model", action.word(), "refused", &shown);
+            audit(&app, "model", action.word(), "refused", &shown, thinking);
             return Err(e);
         }
     };
     let was = stamp(&real);
-    let question = question(action, &shown, &facts, reason.as_deref());
+    let question = crate::approval::with_thinking(&question(action, &shown, &facts, reason.as_deref()), thinking);
     // On this PC only (never a device), every time, never "always".
     if !crate::approval::ask_on_this_pc(&app, &question).await {
-        audit(&app, "model", action.word(), "said no", &shown);
+        audit(&app, "model", action.word(), "said no", &shown, thinking);
         return Err(SAID_NO.into());
     }
     // Nothing may have moved while the question was up.
     let again = locate(&app, place.as_deref(), &path);
     if again.as_ref() != Ok(&real) || stamp(&real) != was {
-        audit(&app, "model", action.word(), "refused: changed while asked", &shown);
+        audit(&app, "model", action.word(), "refused: changed while asked", &shown, thinking);
         return Err("The file or folder changed while you were asked; nothing was done".into());
     }
     let app2 = app.clone();
@@ -824,7 +835,7 @@ pub async fn outside_files(
     .await
     .map_err(|e| e.to_string())
     .and_then(|r| r);
-    audit(&app, "model", action.word(), if done.is_ok() { "allowed, done" } else { "allowed, failed" }, &shown);
+    audit(&app, "model", action.word(), if done.is_ok() { "allowed, done" } else { "allowed, failed" }, &shown, thinking);
     done.map(|mut o| {
         o.path = shown;
         o
@@ -1117,8 +1128,13 @@ mod tests {
 
     #[test]
     fn the_log_has_no_contents_and_one_line() {
-        let line = log_line(7, "model", "read", "said no", "/home/me/a\nb.txt");
+        let line = log_line(7, "model", "read", "said no", "/home/me/a\nb.txt", None);
         assert_eq!(line, "7\tmodel\tread\tsaid no\t/home/me/a\\nb.txt");
+        // The thinking behind the request, escaped and capped, at the end.
+        let line = log_line(8, "model", "read", "allowed, done", "/home/me/a.txt", Some("they asked\nfor it"));
+        assert_eq!(line, "8\tmodel\tread\tallowed, done\t/home/me/a.txt\tthe model was thinking: they asked\\\\nfor it");
+        let line = log_line(9, "model", "read", "said no", "/x", Some(&"t".repeat(2000)));
+        assert!(line.contains("[\u{2026} 1400 characters before]") && line.lines().count() == 1, "{line}");
     }
 
     #[test]

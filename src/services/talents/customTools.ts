@@ -13,6 +13,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {requestFileApproval} from './fileApprovalGate';
+import {fromContext} from '../agent/chatGuard';
 import {talentRegistry} from './TalentRegistry';
 import type {
   TalentEngine,
@@ -308,6 +309,7 @@ export class CustomToolEngine implements TalentEngine {
         content: steps
           .map((s, i) => `${i + 1}. ${s.tool} ${JSON.stringify(s.args)}`)
           .join('\n'),
+        ...fromContext(ctx),
       },
       ctx?.signal,
     );
@@ -335,6 +337,7 @@ export class CustomToolEngine implements TalentEngine {
       const result = await engine.execute(step.args, {
         signal: ctx?.signal ?? new AbortController().signal,
         inApprovedShortcut: true,
+        ...(ctx?.chat ? {chat: ctx.chat} : {}),
       });
       if (result.type === 'error' || /said no|Not done/.test(result.summary)) {
         return stopped(tool.name, i, step.tool, result.summary, done);

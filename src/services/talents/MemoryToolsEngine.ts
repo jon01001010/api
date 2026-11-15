@@ -1,6 +1,7 @@
 import type {TalentEngine, TalentExecuteContext, TalentResult, ToolDefinition} from './types';
 import {memoryGet, memoryReplace, memoryHistory, memoryReadSnapshot} from './agentMemory';
 import {requestFileApproval} from './fileApprovalGate';
+import {fromContext} from '../agent/chatGuard';
 
 /**
  * The stale-edit check compares words, not spacing: small models often
@@ -68,6 +69,7 @@ export class MemoryToolsEngine implements TalentEngine {
       const approved = await requestFileApproval({
         action: 'file_edit', filename: 'PocketAgent memory (internal)',
         previous, content: next,
+        ...fromContext(ctx),
       }, ctx?.signal);
       if (!approved || ctx?.signal?.aborted) throw new Error('Memory change denied or cancelled');
       await memoryReplace(next, previous);

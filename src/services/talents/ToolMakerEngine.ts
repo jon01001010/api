@@ -6,6 +6,7 @@
  * never runs before the user has seen it.
  */
 import {requestFileApproval} from './fileApprovalGate';
+import {fromContext} from '../agent/chatGuard';
 import {
   builtInToolNames,
   checkCustomTool,
@@ -52,6 +53,7 @@ export class ToolMakerEngine implements TalentEngine {
           action: 'custom_tool',
           filename: `Delete the custom tool "${name}"?`,
           content: describeCustomTool(tool),
+          ...fromContext(ctx),
         },
         ctx?.signal,
       );
@@ -83,6 +85,7 @@ export class ToolMakerEngine implements TalentEngine {
         action: 'custom_tool',
         filename: `${replacing ? 'Replace' : 'Save'} the custom tool "${checked.name}"? It starts switched off.`,
         content: describeCustomTool(checked),
+        ...fromContext(ctx),
       },
       ctx?.signal,
     );

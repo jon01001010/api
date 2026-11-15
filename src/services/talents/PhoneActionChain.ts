@@ -9,6 +9,7 @@
 import {AppState, type AppStateStatus} from 'react-native';
 
 import {requestFileApproval} from './fileApprovalGate';
+import {fromContext} from '../agent/chatGuard';
 import {
   PHONE_TOOLS,
   PHONE_TOOL_NAMES,
@@ -169,6 +170,7 @@ export class PhoneActionChainEngine implements TalentEngine {
           action: 'phone_action',
           filename: `Do these ${total} steps? Each one asks again before it runs.`,
           content: plan,
+          ...fromContext(ctx),
         },
         signal,
       ));
