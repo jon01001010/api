@@ -144,6 +144,10 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
 
 **3. It learns you (later)**
 - [ ] Daily personal training (PC trains, phone learns, raw data deletable). Small models keep improving; style and habits first, exact facts stay in memory notes.
+  - **Research (2026-11-15; times are estimates from public figures, nothing measured):** an 8 GB NVIDIA card can train small models overnight with PyTorch + PEFT/TRL (Apache-2.0) and bitsandbytes (MIT): QLoRA on a 4B model about 4–6 GB of graphics memory; a day's new examples in minutes, a full 1–5k-turn retrain in about 15 min–3 h. Unsloth: core Apache-2.0 only (its Studio is AGPL). llama.cpp's own LoRA training isn't merged yet (CPU-only pull request, Nov 2026). AMD training on Windows is unproven. Base model: Qwen3 (Apache-2.0); not Gemma (Google) or Llama (not permissive).
+  - Back to the phone: a rank-16 adapter is about 35 MB (1.7B) / 66 MB (4B) as GGUF; llama.rn (in this repo) and llama-server can load adapters at run time, so no merging and instant rollback.
+  - Safe data: only the user's own words and replies they liked (no tool output, web pages, notes or other people's messages); secrets filtered on the phone and duplicates removed; each adapter checked before use (own test prompts, tool calls still valid, secret probes); dated versions to roll back.
+  - Recommendation: better memory first (search over notes and past chats instead of sending all notes); adapter loading on both devices; then training as an optional NVIDIA-only "Trainer" download (about 3 GB, pinned, built in Actions), never bundled in the installer. **Owner questions:** which graphics card; which model family both devices share; is a 3 GB optional download OK; delete all raw data, or keep a small encrypted set for retraining.
 
 **4. Further, optional**
 - [ ] More devices (laptop, second phone, an always-on home box); a family sharing one home model, each with their own space; errands across devices under the same rules.
@@ -863,7 +867,7 @@ Research (2026-11-07): **iroh 1.x** (Rust, MIT/Apache, 1.0 in June 2026; we pin 
 
 ## PocketAgent Desktop: companion app and phone ↔ desktop link (idea 2026-11-06, write-up only)
 
-A desktop app that pairs with the phone: trains the personal LoRA, runs bigger models (14B–30B) for the phone, and takes heavy jobs. **Platforms (decided 2026-11-07): Windows first; Linux not planned; no Apple at all (no Mac, no iPhone).** Open source, no Google, no account, no cloud.
+A desktop app that pairs with the phone: trains the personal LoRA, runs bigger models (14B–30B) for the phone, and takes heavy jobs. **Platforms (decided 2026-11-07, updated 2026-11-12): Windows first, then Linux (x64 and ARM builds exist now); Linux not planned; no Apple at all (no Mac, no iPhone).** Open source, no Google, no account, no cloud.
 
 ### How they talk (the link)
 
