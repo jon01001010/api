@@ -48,7 +48,7 @@ import {
 } from '../services/loops/makeLoop';
 import {isLoopNotifyOn} from '../services/loops/loopNotify';
 import {ensureNotificationPermission} from '../utils/androidPermission';
-import {BatteryPicker, LoopDryRun} from './LoopParts';
+import {BatteryPicker, LoopDryRun, useSwitchedOnTools} from './LoopParts';
 
 const EVERY: Every[] = ['hour', '3hours', 'day', 'week'];
 const LEVELS: DetailLevel[] = ['short', 'normal', 'detailed'];
@@ -84,10 +84,11 @@ export const LoopDraftEditor: React.FC<{
   saveLabel,
   saveTestID = 'make-loop-start',
   runsDone,
-  describe = d => summary(previewOf(d)),
+  describe,
   onBack,
   onSave,
 }) => {
+  const tools = useSwitchedOnTools();
   const [draft, setDraft] = useState<LoopDraft>(initial);
   const [time, setTime] = useState(timeText(initial.at));
   const [runs, setRuns] = useState(String(initial.maxRuns));
@@ -271,7 +272,11 @@ export const LoopDraftEditor: React.FC<{
           ) : null}
         </>
       ) : null}
-      <Text variant="bodySmall">{describe(current, prompt)}</Text>
+      <Text variant="bodySmall" testID="make-loop-summary">
+        {describe
+          ? describe(current, prompt)
+          : summary(previewOf(current), tools)}
+      </Text>
       <Text variant="titleSmall">What the model gets each run</Text>
       <Text variant="bodySmall" selectable testID="make-loop-prompt">
         {prompt || '(empty)'}

@@ -156,16 +156,23 @@ export function shareableTool(tool: CustomTool): Record<string, unknown> {
       };
 }
 
-/** A tool → its share code (`PA1:T:1:z:…` or `PA1:T:1:j:…`, the shorter). */
-export function packTool(tool: CustomTool): string {
-  const json = JSON.stringify(shareableTool(tool));
-  const packed = `${PREFIX}z:${bytesToBase64(deflateRaw(utf8Encode(json)))}`;
+/**
+ * JSON → `<prefix>z:<deflated base64>` or `<prefix>j:<plain JSON>`, the
+ * shorter. Also used by shared loops (loopShare.ts, `PA1:L:`).
+ */
+export function packPayload(prefix: string, json: string): string {
+  const packed = `${prefix}z:${bytesToBase64(deflateRaw(utf8Encode(json)))}`;
   // ASCII only, so every character is one byte in the QR.
-  const plain = `${PREFIX}j:${json.replace(
+  const plain = `${prefix}j:${json.replace(
     /[\u007f-\uffff]/g,
     c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'),
   )}`;
   return plain.length <= packed.length ? plain : packed;
+}
+
+/** A tool → its share code (`PA1:T:1:z:…` or `PA1:T:1:j:…`, the shorter). */
+export function packTool(tool: CustomTool): string {
+  return packPayload(PREFIX, JSON.stringify(shareableTool(tool)));
 }
 
 /** True when the code fits in one QR; otherwise share it as a file or text. */
@@ -205,6 +212,37 @@ function boundedInflate(data: Uint8Array, limit: number): Uint8Array | null {
   return out;
 }
 
+/**
+ * A code's form letter and body → its JSON text (not parsed). Size-capped
+ * before and while inflating (zip-bomb guard). Never runs anything.
+ */
+export function readPayload(
+  form: string,
+  body: string,
+  maxBytes: number,
+):
+  | {ok: true; json: string}
+  | {ok: false; why: 'too_big' | 'damaged' | 'damaged_or_big' | 'form'} {
+  if (form === 'j') {
+    return utf8Encode(body).length > maxBytes
+      ? {ok: false, why: 'too_big'}
+      : {ok: true, json: body};
+  }
+  if (form !== 'z') {
+    return {ok: false, why: 'form'};
+  }
+  const packed = base64ToBytes(body);
+  if (!packed) {
+    return {ok: false, why: 'damaged'};
+  }
+  const bytes = boundedInflate(packed, maxBytes);
+  if (!bytes) {
+    return {ok: false, why: 'damaged_or_big'};
+  }
+  const json = utf8Decode(bytes);
+  return json === null ? {ok: false, why: 'damaged'} : {ok: true, json};
+}
+
 export type UnpackResult =
   | {ok: true; tool: Record<string, unknown>}
   | {ok: false; error: string};
@@ -232,28 +270,19 @@ export function unpackTool(code: string): UnpackResult {
       'This tool code is from a newer PocketAgent. Update the app to read it.',
     );
   }
-  let json: string | null;
-  if (m[2] === 'j') {
-    json = m[3];
-    if (utf8Encode(json).length > MAX_TOOL_BYTES) {
-      return fail('This tool is too big.');
-    }
-  } else if (m[2] === 'z') {
-    const packed = base64ToBytes(m[3]);
-    if (!packed) {
-      return fail('This tool code is damaged.');
-    }
-    const bytes = boundedInflate(packed, MAX_TOOL_BYTES);
-    if (!bytes) {
-      return fail('This tool code is damaged or the tool is too big.');
-    }
-    json = utf8Decode(bytes);
-    if (json === null) {
-      return fail('This tool code is damaged.');
-    }
-  } else {
-    return fail('This tool code uses a form this app does not know.');
+  const read = readPayload(m[2], m[3], MAX_TOOL_BYTES);
+  if (!read.ok) {
+    return fail(
+      read.why === 'too_big'
+        ? 'This tool is too big.'
+        : read.why === 'form'
+          ? 'This tool code uses a form this app does not know.'
+          : read.why === 'damaged_or_big'
+            ? 'This tool code is damaged or the tool is too big.'
+            : 'This tool code is damaged.',
+    );
   }
+  const json = read.json;
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
@@ -313,13 +342,19 @@ function checkShape(v: unknown): Record<string, unknown> | string {
   return 'This code holds an unknown kind of tool.';
 }
 
+/** A shared loop's tag (src/services/loops/loopShare.ts). */
+export const LOOP_TAG = 'PA1:L:';
+
 /** What a scanned or pasted PocketAgent code is. Unknown tags are refused. */
-export type CodeKind = 'tool' | 'pairing' | 'unknown';
+export type CodeKind = 'tool' | 'loop' | 'pairing' | 'unknown';
 
 export function codeKind(text: string): CodeKind {
   const t = (text ?? '').trim();
   if (t.startsWith(TOOL_TAG)) {
     return 'tool';
+  }
+  if (t.startsWith(LOOP_TAG)) {
+    return 'loop';
   }
   if (isPairingCode(t)) {
     return 'pairing';

@@ -107,6 +107,20 @@ describe('Rule 2: switches are off unless the user turns them on', () => {
     expect(ui).toMatch(/describeCustomTool\(review\.tool\)/);
     expect(ui).not.toMatch(/\.execute\(|talentRegistry/);
   });
+
+  it('a shared loop (PA1:L:) is data, shown in full, installed paused and not started', () => {
+    const src = read('src/services/loops/loopShare.ts');
+    expect(src).not.toMatch(/talentRegistry|\.execute\(|eval\(|new Function/);
+    // Built like any loop (same hard limits), then held back.
+    expect(src).toMatch(/buildLoop\(/);
+    const install = src.slice(
+      src.indexOf('export async function installSharedLoop'),
+    );
+    expect(install).toMatch(/paused: true,\s*notStarted: true,\s*runs: 0/);
+    // A loop that hasn't been started can't be run.
+    const runner = read('src/services/loops/loopRunner.ts');
+    expect(runner).toMatch(/if \(loop\.notStarted\) \{\s*return /);
+  });
 });
 
 describe('Rule 3: the HTML preview is a closed box', () => {

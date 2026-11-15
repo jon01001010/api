@@ -2,15 +2,16 @@
  * Toolbox → Custom tools: share a tool (QR, file, copied code) and read any
  * PocketAgent code (camera, file or pasted text). TODO.md "One QR scanner
  * for everything". A code is data only: a tool is checked like tool_save,
- * shown in full and installed switched off; a pairing code goes to the
- * existing pairing (pairHomePc). Nothing from a code is ever run.
+ * shown in full and installed switched off; a loop (`PA1:L:`) is shown in
+ * full with its dry run and installed paused, not started; a pairing code
+ * goes to the existing pairing (pairHomePc). Nothing from a code is ever
+ * run.
  */
 import React, {useEffect, useRef, useState} from 'react';
 import {Alert, Platform, ScrollView, View} from 'react-native';
 import {Button, Dialog, Portal, Text, TextInput} from 'react-native-paper';
 import Clipboard from '@react-native-clipboard/clipboard';
 import * as RNFS from '@dr.pogodin/react-native-fs';
-import Share from 'react-native-share';
 import {
   errorCodes,
   isErrorWithCode,
@@ -25,8 +26,9 @@ import {
   useCodeScanner,
 } from 'react-native-vision-camera';
 
-import {QrCodeView} from '../components/QrCodeView';
 import {pairHomePc} from '../services/homeLink/pairHomePc';
+import type {Loop} from '../services/loops/loops';
+import {installSharedLoop, reviewLoopCode} from '../services/loops/loopShare';
 import {
   describeCustomTool,
   type CustomTool,
@@ -37,13 +39,9 @@ import {
   reviewToolCode,
   type ReviewResult,
 } from '../services/talents/toolImport';
-import {
-  MAX_CODE_CHARS,
-  QR_MAX_CHARS,
-  codeKind,
-  fitsOneQr,
-  packTool,
-} from '../services/talents/toolQr';
+import {MAX_CODE_CHARS, codeKind, packTool} from '../services/talents/toolQr';
+import {SharedLoopReview} from './LoopCodeDialogs';
+import {ShareCodeDialog} from './ShareCodeDialog';
 
 /** No camera scanning in the desktop app: there you paste or open a file. */
 export const canScanWithCamera = () => Platform.OS !== 'web';
@@ -56,89 +54,18 @@ export const toolCodeFilename = (name: string) =>
 export const ToolShareDialog: React.FC<{
   tool: CustomTool | null;
   onDismiss: () => void;
-}> = ({tool, onDismiss}) => {
-  const [note, setNote] = useState('');
-  const code = tool ? packTool(tool) : '';
-  const fits = !!code && fitsOneQr(code);
-
-  const copy = () => {
-    Clipboard.setString(code);
-    setNote('Code copied. Paste it in Toolbox → Scan or paste a code.');
-  };
-
-  const shareFile = async () => {
-    if (!tool) {
-      return;
-    }
-    try {
-      const name = toolCodeFilename(tool.name);
-      const path = RNFS.CachesDirectoryPath + '/' + name;
-      if (await RNFS.exists(path)) {
-        await RNFS.unlink(path);
-      }
-      await RNFS.writeFile(path, code, 'utf8');
-      await Share.open({
-        url: 'file://' + path,
-        filename: name,
-        title: 'Share the tool ' + tool.name,
-        type: 'text/plain',
-        failOnCancel: false,
-      });
-    } catch (e) {
-      setNote(
-        'Could not share the file: ' + String((e as Error)?.message ?? e),
-      );
-    }
-  };
-
-  return (
-    <Dialog
-      visible={tool !== null}
-      onDismiss={() => {
-        setNote('');
-        onDismiss();
-      }}>
-      <Dialog.Title>Share {tool?.name}</Dialog.Title>
-      <Dialog.ScrollArea>
-        <ScrollView style={{maxHeight: 480}}>
-          {fits ? (
-            <View style={{alignItems: 'center', paddingVertical: 8}}>
-              <QrCodeView value={code} size={260} testID="tool-share-qr" />
-            </View>
-          ) : (
-            <Text variant="bodyMedium" testID="tool-share-too-big">
-              {`This tool is too big for one QR code (${code.length} of about ${QR_MAX_CHARS} characters). Share it as a file or copy the code instead.`}
-            </Text>
-          )}
-          <Text variant="bodySmall" style={{marginTop: 6}}>
-            The other device scans this in Toolbox → Scan QR, or pastes the
-            code. It sees every step first, and the tool arrives switched off.
-          </Text>
-          {note ? (
-            <Text variant="bodySmall" style={{marginTop: 6}}>
-              {note}
-            </Text>
-          ) : null}
-        </ScrollView>
-      </Dialog.ScrollArea>
-      <Dialog.Actions style={{flexWrap: 'wrap'}}>
-        <Button testID="tool-share-copy" onPress={copy}>
-          Copy code
-        </Button>
-        <Button testID="tool-share-file" onPress={shareFile}>
-          Share as file
-        </Button>
-        <Button
-          onPress={() => {
-            setNote('');
-            onDismiss();
-          }}>
-          Close
-        </Button>
-      </Dialog.Actions>
-    </Dialog>
-  );
-};
+}> = ({tool, onDismiss}) => (
+  <ShareCodeDialog
+    visible={tool !== null}
+    title={'Share ' + (tool?.name ?? '')}
+    code={tool ? packTool(tool) : ''}
+    filename={toolCodeFilename(tool?.name ?? 'tool')}
+    what="tool"
+    hint="The other device scans this in Toolbox → Scan QR, or pastes the code. It sees every step first, and the tool arrives switched off."
+    testPrefix="tool-share"
+    onDismiss={onDismiss}
+  />
+);
 
 // --- receive -----------------------------------------------------------------
 
@@ -187,15 +114,15 @@ const CodeCamera: React.FC<{onCode: (value: string) => void}> = ({onCode}) => {
       />
       {unknown ? (
         <Text variant="bodySmall" testID="code-scanner-unknown">
-          Not a PocketAgent code. Only PocketAgent tools and PC pairing codes
-          are read.
+          Not a PocketAgent code. Only PocketAgent tools, loops and PC pairing
+          codes are read.
         </Text>
       ) : null}
     </View>
   );
 };
 
-/** Reads a picked file's text (a shared tool file), capped in size. */
+/** Reads a picked file's text (a shared tool or loop), capped in size. */
 async function readCodeFile(): Promise<string | null> {
   try {
     const [file] = await pick({type: [types.allFiles]});
@@ -203,7 +130,7 @@ async function readCodeFile(): Promise<string | null> {
       return null;
     }
     if (typeof file.size === 'number' && file.size > MAX_CODE_CHARS * 4) {
-      throw new Error('This file is too big to hold a tool.');
+      throw new Error('This file is too big to hold a code.');
     }
     return await RNFS.readFile(file.uri, 'utf8');
   } catch (e) {
@@ -235,6 +162,8 @@ export const ToolReceiveDialog: React.FC<ReceiveProps> = ({
   const [pasted, setPasted] = useState('');
   const [error, setError] = useState('');
   const [review, setReview] = useState<ReviewResult | null>(null);
+  /** A shared loop read from a code, before it is installed. */
+  const [loopReview, setLoopReview] = useState<Loop | null>(null);
   const [newName, setNewName] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -243,6 +172,7 @@ export const ToolReceiveDialog: React.FC<ReceiveProps> = ({
     setPasted('');
     setError('');
     setReview(null);
+    setLoopReview(null);
     setNewName('');
     setBusy(false);
   };
@@ -295,7 +225,7 @@ export const ToolReceiveDialog: React.FC<ReceiveProps> = ({
     );
   };
 
-  /** Any PocketAgent code: a tool to review, or a pairing. */
+  /** Any PocketAgent code: a tool or a loop to review, or a pairing. */
   const read = async (value: string) => {
     const text = value.trim();
     setCamera(false);
@@ -305,9 +235,18 @@ export const ToolReceiveDialog: React.FC<ReceiveProps> = ({
       pair(text);
       return;
     }
+    if (kind === 'loop') {
+      const shared = reviewLoopCode(text);
+      if (!shared.ok) {
+        setError(shared.error);
+        return;
+      }
+      setLoopReview(shared.loop);
+      return;
+    }
     if (kind !== 'tool') {
       setError(
-        'Not a PocketAgent code. Paste a tool code (starts with PA1:T:) or a PC pairing code (PA1:P:).',
+        'Not a PocketAgent code. Paste a tool code (starts with PA1:T:), a loop code (PA1:L:) or a PC pairing code (PA1:P:).',
       );
       return;
     }
@@ -351,6 +290,25 @@ export const ToolReceiveDialog: React.FC<ReceiveProps> = ({
     close();
   };
 
+  /** Saves the shared loop paused; the user presses Start on its card. */
+  const installLoop = async () => {
+    if (!loopReview) {
+      return;
+    }
+    setBusy(true);
+    const saved = await installSharedLoop(loopReview);
+    setBusy(false);
+    if (typeof saved === 'string') {
+      setError(saved);
+      return;
+    }
+    close();
+    Alert.alert(
+      `Installed, not started: ${saved.title}`,
+      'It is in Toolbox → Loops, paused. Press Start on its card when you want it to begin.',
+    );
+  };
+
   const fromFile = async () => {
     setError('');
     try {
@@ -371,17 +329,24 @@ export const ToolReceiveDialog: React.FC<ReceiveProps> = ({
   };
 
   const reviewing = review !== null && review.status !== 'refused';
+  const reviewingLoop = loopReview !== null;
 
   return (
     <Dialog visible={visible} onDismiss={close}>
       <Dialog.Title>
-        {reviewing ? 'Install a shared tool?' : 'Scan or paste a code'}
+        {reviewingLoop
+          ? 'Install a shared loop?'
+          : reviewing
+            ? 'Install a shared tool?'
+            : 'Scan or paste a code'}
       </Dialog.Title>
       <Dialog.ScrollArea>
         <ScrollView
           style={{maxHeight: 480}}
           keyboardShouldPersistTaps="handled">
-          {reviewing && review ? (
+          {reviewingLoop && loopReview ? (
+            <SharedLoopReview loop={loopReview} />
+          ) : reviewing && review ? (
             <View testID="tool-receive-review" style={{gap: 6}}>
               <Text variant="bodySmall">
                 Check every step. Nothing has run; the tool is installed
@@ -414,8 +379,8 @@ export const ToolReceiveDialog: React.FC<ReceiveProps> = ({
               {camera ? <CodeCamera onCode={read} /> : null}
               <Text variant="bodySmall">
                 {canScanWithCamera()
-                  ? 'Scan a PocketAgent QR (a shared tool or a PC pairing code), or paste the code.'
-                  : 'Paste a PocketAgent code (a shared tool or a PC pairing code) or open a shared tool file. Scanning needs a phone camera.'}
+                  ? 'Scan a PocketAgent QR (a shared tool or loop, or a PC pairing code), or paste the code.'
+                  : 'Paste a PocketAgent code (a shared tool or loop, or a PC pairing code) or open a shared file. Scanning needs a phone camera.'}
               </Text>
               <TextInput
                 testID="tool-receive-paste"
@@ -468,7 +433,15 @@ export const ToolReceiveDialog: React.FC<ReceiveProps> = ({
             Install (off)
           </Button>
         ) : null}
-        {!reviewing ? (
+        {reviewingLoop ? (
+          <Button
+            testID="loop-receive-install"
+            disabled={busy}
+            onPress={installLoop}>
+            Install (paused)
+          </Button>
+        ) : null}
+        {!reviewing && !reviewingLoop ? (
           <Button
             testID="tool-receive-read"
             disabled={!pasted.trim()}
