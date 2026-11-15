@@ -11,6 +11,7 @@ import {DesktopToolsEngine, DESKTOP_TOOL_NAMES} from './DesktopToolsEngine';
 import {PcPictureEngine} from './PcPictureEngine';
 import {PcToolsEngine, PC_TOOL_NAMES} from './PcToolsEngine';
 import {ToolMakerEngine, TOOL_MAKER_NAMES} from './ToolMakerEngine';
+import {AskOtherModelEngine} from './AskOtherModelEngine';
 import {talentRegistry} from './TalentRegistry';
 import type {SearchAccess} from './searchAccess';
 import type {ToolDefinition, SystemPromptContext} from './types';
@@ -104,6 +105,9 @@ export function registerDefaultTalents(): void {
   for (const name of TOOL_MAKER_NAMES) {
     talentRegistry.register(new ToolMakerEngine(name));
   }
+  // Hand a task to another model the user set up (off until switched on;
+  // asks every time; the other model gets no tools).
+  talentRegistry.register(new AskOtherModelEngine());
   const searchAccess = createSearchAccess();
   talentRegistry.register(new WebSearchEngine(searchAccess));
   talentRegistry.register(new ReadUrlEngine(searchAccess));

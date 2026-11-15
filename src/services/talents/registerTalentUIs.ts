@@ -2,6 +2,7 @@ import {talentUIRegistry} from './TalentUIRegistry';
 import {RenderHtmlTalentUI} from './RenderHtmlTalentUI';
 import {WebSearchTalentUI} from './WebSearchTalentUI';
 import {ImageTalentUI} from './ImageTalentUI';
+import {ModelAnswerTalentUI} from './ModelAnswerTalentUI';
 
 let registered = false;
 
@@ -14,6 +15,7 @@ export function registerDefaultTalentUIs(): void {
   talentUIRegistry.register(new RenderHtmlTalentUI());
   talentUIRegistry.register(new WebSearchTalentUI());
   talentUIRegistry.register(new ImageTalentUI());
+  talentUIRegistry.register(new ModelAnswerTalentUI());
   registered = true;
 }
 

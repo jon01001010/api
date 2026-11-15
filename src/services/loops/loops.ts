@@ -365,6 +365,7 @@ const TOOL_WORDS: Record<string, string> = {
   outside_files: 'files outside the workspace',
   tool_save: 'save tools',
   tool_delete: 'delete tools',
+  ask_other_model: 'ask another model',
 };
 
 export function toolWords(names: string[]): string[] {

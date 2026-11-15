@@ -7,6 +7,7 @@ import {
   decideFileApproval,
 } from '../services/talents/fileApprovalGate';
 import {MODEL_THINKING} from '../services/agent/chatGuard';
+import {MODEL_SAYS} from '../services/agent/subAgent';
 
 const ACTION_LABEL: Record<FileProposal['action'], string> = {
   file_create: 'creation',
@@ -18,7 +19,30 @@ const ACTION_LABEL: Record<FileProposal['action'], string> = {
   custom_tool: 'custom tool',
   sends_out: 'sending',
   too_many: 'questions',
+  ask_other_model: 'hand-off',
+  handoff_cap: 'hand-offs',
 };
+
+/** An app-written warning, in red, with the facts. */
+function RedAlert({proposal}: {proposal: FileProposal}) {
+  return proposal.alert ? (
+    <Text variant="bodyMedium" style={styles.warning} testID="approval-alert">
+      {proposal.alert}
+    </Text>
+  ) : null;
+}
+
+/** After the facts: the model's own words for the request. */
+function ModelSays({proposal}: {proposal: FileProposal}) {
+  return proposal.modelSays ? (
+    <View style={styles.thinking}>
+      <Text variant="labelMedium">{MODEL_SAYS}</Text>
+      <Text variant="bodySmall" selectable testID="approval-model-says">
+        {proposal.modelSays}
+      </Text>
+    </View>
+  ) : null;
+}
 
 /**
  * After the facts: the model's thinking from just before the request
@@ -69,12 +93,16 @@ function NothingMore({proposal}: {proposal: FileProposal}) {
 export function FileApprovalHost(): React.JSX.Element {
   const [proposal, setProposal] = React.useState<FileProposal | null>(null);
   React.useEffect(() => subscribeFileApprovals(setProposal), []);
-  if (proposal?.action === 'too_many') {
+  if (proposal?.action === 'too_many' || proposal?.action === 'handoff_cap') {
     // Not answerable by the model: only these two buttons.
     return (
       <Portal>
         <Dialog visible dismissable={false} testID="too-many-questions">
-          <Dialog.Title>The model is asking a lot</Dialog.Title>
+          <Dialog.Title>
+            {proposal.action === 'handoff_cap'
+              ? 'Hand-off limit reached'
+              : 'The model is asking a lot'}
+          </Dialog.Title>
           <Dialog.Content>
             <Text variant="bodyMedium">{proposal.filename}</Text>
           </Dialog.Content>
@@ -82,6 +110,43 @@ export function FileApprovalHost(): React.JSX.Element {
             <Button onPress={() => decideFileApproval(false)}>Stop</Button>
             <Button mode="contained" onPress={() => decideFileApproval(true)}>
               Continue
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+    );
+  }
+  if (proposal?.action === 'ask_other_model') {
+    // Facts first (app-written), the exact text, then the model's words.
+    return (
+      <Portal>
+        <Dialog visible dismissable={false} testID="ask-other-model-approval">
+          <Dialog.Title>Hand this to another model?</Dialog.Title>
+          <Dialog.Content>
+            <ScrollView style={styles.scroll} nestedScrollEnabled>
+              <RedAlert proposal={proposal} />
+              <Text variant="bodyMedium" selectable>
+                {proposal.filename}
+              </Text>
+              <Text variant="labelMedium" style={styles.thinking}>
+                Exactly this text will be sent:
+              </Text>
+              <Text
+                variant="bodySmall"
+                selectable
+                style={styles.sent}
+                testID="approval-sent-text">
+                {proposal.content}
+              </Text>
+              <ModelSays proposal={proposal} />
+              <Thinking proposal={proposal} />
+            </ScrollView>
+          </Dialog.Content>
+          <Dialog.Actions style={styles.actions}>
+            <NothingMore proposal={proposal} />
+            <Button onPress={() => decideFileApproval(false)}>Deny</Button>
+            <Button mode="contained" onPress={() => decideFileApproval(true)}>
+              Allow once
             </Button>
           </Dialog.Actions>
         </Dialog>
@@ -181,6 +246,7 @@ export function FileApprovalHost(): React.JSX.Element {
 const styles = StyleSheet.create({
   diff: {fontFamily: 'JetBrainsMono-Regular', marginBottom: 12},
   scroll: {maxHeight: 420},
+  sent: {fontFamily: 'JetBrainsMono-Regular', marginTop: 4},
   thinking: {marginTop: 12},
   warning: {color: '#C62828', fontWeight: 'bold', marginBottom: 6},
   actions: {flexWrap: 'wrap'},

@@ -13,6 +13,7 @@ export interface WebSearchResultItem {
  * - `type: 'image'` means a picture was made (`path`: the app's own path,
  *   /pocketagent/…; shown in the chat, can be saved with Save a copy).
  * - `type: 'audio'` means an audio file was produced (future TTS support).
+ * - `type: 'model_answer'` is another model's answer (ask_other_model).
  * - `type: 'error'` means the engine failed; errorMessage describes what went wrong.
  * `summary` is always present and is what gets fed back to the model as the
  * `{role: 'tool', content}` payload on subsequent turns.
@@ -28,6 +29,15 @@ export type TalentResult =
     }
   | {type: 'image'; path: string; name: string; summary: string}
   | {type: 'audio'; audioUri: string; summary: string}
+  // Another model's answer (ask_other_model): shown to the user labelled
+  // with the model's name; the model reads `summary` (wrapped untrusted).
+  | {
+      type: 'model_answer';
+      model: string;
+      where: string;
+      answer: string;
+      summary: string;
+    }
   | {type: 'error'; summary: string; errorMessage: string};
 
 /** OpenAI function-calling tool schema shape. */

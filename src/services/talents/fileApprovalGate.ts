@@ -25,7 +25,12 @@ export type FileProposal = {
     // (chatGuard.ts): `filename` the question, `content` exactly what.
     | 'sends_out'
     // "The model is asking a lot": Continue / Stop (chatGuard.ts).
-    | 'too_many';
+    | 'too_many'
+    // Handing a task to another model (ask_other_model): `filename` the
+    // facts, `content` exactly the text that goes.
+    | 'ask_other_model'
+    // A chat's hand-off limit reached: Continue / Stop (subAgent.ts).
+    | 'handoff_cap';
   filename: string;
   content: string;
   previous?: string;
@@ -36,6 +41,12 @@ export type FileProposal = {
   thinking?: string;
   /** Shown in red above the thinking (chatGuard.thinkingWarning). */
   warning?: string | null;
+  /** An app-written warning shown in red with the facts (e.g. private
+   *  data read in this chat, and this goes to a cloud model). */
+  alert?: string;
+  /** The model's own words for the request, under "The model says:",
+   *  after the facts. */
+  modelSays?: string;
   /** The chat asking: offers "Don't allow anything more in this chat". */
   chat?: string;
   /** The tool's context (fromContext): the raw thinking and the chat,

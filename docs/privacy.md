@@ -18,6 +18,7 @@ All of it is in the app's private storage, which other apps can't read (unless t
 | The phone's home link key (who this phone is to your PC) | A file only the app can read, in a folder that is never backed up. Readable on a rooted phone. |
 | Paired PCs | The app's settings (private storage): their public key and name. |
 | Settings, assistants, custom tools | The app's private storage. |
+| The hand-off log (`ask_other_model`: when, which model, where it ran, sizes sent and received, allowed or not; never the text) | The app's private storage (the newest 200); shown in the Toolbox. On the PC the same, in the app's web storage. |
 
 ## On the PC (DesktopAgent)
 
