@@ -18,6 +18,7 @@ import {
   knownTombstones,
 } from './chatDeletes';
 import {describeAssistantDeletes} from './assistantDeletes';
+import {describeLoopReport, type LoopReport} from './loopSync';
 import {mirrorOnPc, readAllChats, SYNC_ROOM, writeChats} from './chatSync';
 
 import {
@@ -139,7 +140,10 @@ export async function answerSync(
   }
   const local = await readItems();
   const merged = merge(local, cleanItems(remote));
-  const report = {assistantsDeleted: 0, assistantsHeld: 0};
+  const report: {
+    assistantsDeleted: number;
+    assistantsHeld: number;
+  } & LoopReport = {assistantsDeleted: 0, assistantsHeld: 0};
   const changed = await applyItems(merged.items, Date.now(), {
     from: device || 'a paired device',
     report,
@@ -153,6 +157,10 @@ export async function answerSync(
     keptInStepNotice(
       `${describeAssistantDeletes(report.assistantsDeleted, device || 'a paired device')}.`,
     );
+  }
+  // Loops arrive paused and not started: say where to start them.
+  for (const line of describeLoopReport(report, device || 'a paired device')) {
+    keptInStepNotice(`${line}.`);
   }
   // Chats, only if mirroring is allowed here too.
   let send: unknown[] = [];

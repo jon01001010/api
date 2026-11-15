@@ -121,6 +121,7 @@ it('the device sends its items and takes the agreed ones back', async () => {
     'modelMemory',
     'assistants',
     'customTools',
+    'loops',
   ]);
   expect(r).toEqual({
     ok: true,

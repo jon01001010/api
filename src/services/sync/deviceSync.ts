@@ -23,6 +23,7 @@ import {
   within,
   writeChats,
 } from './chatSync';
+import type {LoopReport} from './loopSync';
 import {
   applyItems,
   cleanItems,
@@ -88,6 +89,8 @@ export type SyncOutcome =
       assistantsDeleted?: number;
       /** Assistant deletions from the PC waiting for the user's answer. */
       assistantsHeld?: number;
+      /** Loops from the PC (installed paused), stopped there, or waiting. */
+      loops?: LoopReport;
     }
   | {ok: false; error: string};
 
@@ -133,7 +136,10 @@ export async function syncWithPc(pc: string): Promise<SyncOutcome> {
     if (!agreed.length) {
       return {ok: false, error: "The PC's answer had nothing in it"};
     }
-    const report = {assistantsDeleted: 0, assistantsHeld: 0};
+    const report: {
+      assistantsDeleted: number;
+      assistantsHeld: number;
+    } & LoopReport = {assistantsDeleted: 0, assistantsHeld: 0};
     const changedHere = await applyItems(agreed, Date.now(), {
       from: 'the PC',
       report,
@@ -209,6 +215,19 @@ export async function syncWithPc(pc: string): Promise<SyncOutcome> {
         ? {assistantsDeleted: report.assistantsDeleted}
         : {}),
       ...(report.assistantsHeld ? {assistantsHeld: report.assistantsHeld} : {}),
+      ...(report.loopsAdded ||
+      report.loopsDeleted ||
+      report.loopsHeld ||
+      report.loopsNoRoom
+        ? {
+            loops: {
+              loopsAdded: report.loopsAdded,
+              loopsDeleted: report.loopsDeleted,
+              loopsHeld: report.loopsHeld,
+              loopsNoRoom: report.loopsNoRoom,
+            },
+          }
+        : {}),
     };
   } catch (e) {
     return {ok: false, error: e instanceof Error ? e.message : String(e)};

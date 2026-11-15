@@ -12,7 +12,9 @@ import {
 import {describeKeys} from '../../services/sync/promptSync';
 import {describeDeletes} from '../../services/sync/chatDeletes';
 import {describeAssistantDeletes} from '../../services/sync/assistantDeletes';
+import {describeLoopReport} from '../../services/sync/loopSync';
 import {RecentlyDeletedAssistants} from './RecentlyDeletedAssistants';
+import {RecentlyDeletedLoops} from './RecentlyDeletedLoops';
 import {RecentlyDeletedChats} from './RecentlyDeletedChats';
 import {
   answerForPcOn,
@@ -20,7 +22,7 @@ import {
 } from '../../services/homeLink/pcQuestions';
 
 /**
- * A paired home PC: keep the system prompt, memory, assistants and custom tools in step with it
+ * A paired home PC: keep the system prompt, memory, assistants, custom tools and loops in step with it
  * (off until switched on; the PC must allow it too). "Sync now" and the
  * result; it also runs when the PC's model is loaded.
  */
@@ -55,6 +57,7 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
       r.assistantsHeld
         ? `${r.assistantsHeld} assistants deleted on the PC wait for your answer`
         : '',
+      ...(r.loops ? describeLoopReport(r.loops, 'the PC') : []),
       r.chatsDeleted ? describeDeletes(r.chatsDeleted, 'the PC') : '',
       r.chatsHeld
         ? `${r.chatsHeld} chats deleted on the PC wait for your answer`
@@ -79,10 +82,12 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
     <View testID="home-link-sync">
       <View style={styles.row}>
         <Text variant="bodySmall" style={styles.text}>
-          Keep the system prompt, memory, assistants and custom tools in step
-          with this PC (the newer edit wins; the other is kept in history).
-          Deleting one of your assistants deletes it on the PC too (unless
-          changed there since). The PC must allow it too.
+          Keep the system prompt, memory, assistants, custom tools and loops in
+          step with this PC (the newer edit wins; the other is kept in history).
+          Deleting one of your assistants or loops deletes it on the PC too
+          (unless changed there since). A loop from the PC arrives paused: start
+          it here under Toolbox → Loops. Toolbox switches stay per device. The
+          PC must allow it too.
         </Text>
         <Switch
           value={on}
@@ -119,6 +124,7 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
       ) : null}
       {on && mirror ? <RecentlyDeletedChats refresh={synced} /> : null}
       {on ? <RecentlyDeletedAssistants refresh={synced} /> : null}
+      {on ? <RecentlyDeletedLoops refresh={synced} /> : null}
       {on ? (
         <Button
           compact
