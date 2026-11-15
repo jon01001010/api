@@ -79,6 +79,11 @@ export const createStyles = (theme: Theme, isProjectionModel) =>
       color: theme.colors.onSurfaceVariant,
       //fontWeight: '500',
     },
+    fitText: {
+      fontSize: 12,
+      color: theme.colors.onSurfaceVariant,
+      marginTop: 4,
+    },
     fileSizeSeparator: {
       fontSize: 13,
       color: theme.colors.onSurfaceVariant,

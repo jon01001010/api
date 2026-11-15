@@ -32,6 +32,7 @@ import {
   ModelOrigin,
 } from '../../../../../utils/types';
 import {VisionDownloadSheet} from '../../../../../components';
+import {FitLabel} from '../../../../../components/FitLabel';
 import {ChevronRightIcon} from '../../../../../assets/icons';
 import {themeColor} from '../../../../../theme/phosphor';
 
@@ -251,10 +252,10 @@ export const ModelFileCard: FC<ModelFileCardProps> = observer(
       setShowWarning(false);
     };
 
-    // Get enhanced size display for vision models
-    const getEnhancedSizeDisplay = () => {
+    // Size with the vision part for vision models
+    const getTotalSize = () => {
       if (!modelFile.size) {
-        return '';
+        return 0;
       }
 
       // Check if this is a vision model
@@ -265,11 +266,16 @@ export const ModelFileCard: FC<ModelFileCardProps> = observer(
       if (isVisionLLM) {
         const sizeBreakdown = getVisionModelSizeBreakdown(modelFile, hfModel);
         if (sizeBreakdown.hasProjection) {
-          return `${formatBytes(sizeBreakdown.totalSize, 2, false, true)}`;
+          return sizeBreakdown.totalSize;
         }
       }
 
-      return formatBytes(modelFile.size, 2, false, true);
+      return modelFile.size;
+    };
+
+    const getEnhancedSizeDisplay = () => {
+      const total = getTotalSize();
+      return total ? formatBytes(total, 2, false, true) : '';
     };
 
     return (
@@ -340,6 +346,16 @@ export const ModelFileCard: FC<ModelFileCardProps> = observer(
                   </View>
                 )}
               </View>
+
+              {/* Find the fit: memory needed and where it runs here */}
+              {isModelInfoReady && !isProjection && !!modelFile.size && (
+                <FitLabel
+                  fileBytes={getTotalSize()}
+                  name={`${hfModel.id} ${modelFile.rfilename}`}
+                  params={hfModel.specs?.gguf?.total}
+                  style={styles.fitText}
+                />
+              )}
 
               {/* Vision indicator chip for multimodal models */}
               {convertedModel.supportsMultimodal && (

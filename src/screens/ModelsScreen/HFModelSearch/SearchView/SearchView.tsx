@@ -27,6 +27,7 @@ import {
   L10nContext,
   isVisionRepo,
 } from '../../../../utils';
+import {MOE_TEXT, isMixtureOfExperts} from '../../../../utils/modelFit';
 
 interface SearchViewProps {
   testID?: string;
@@ -122,6 +123,18 @@ export const SearchView = observer(
                 {formatNumber(item.likes)}
               </Text>
             </View>
+            {isMixtureOfExperts(item.id) && (
+              <View style={styles.statItem} testID="moe-label">
+                <Icon
+                  name="memory"
+                  size={12}
+                  color={theme.colors.onSurfaceVariant}
+                />
+                <Text variant="labelSmall" style={styles.statText}>
+                  {MOE_TEXT}
+                </Text>
+              </View>
+            )}
             {Boolean(item.gated) && (
               <Chip compact mode="outlined" textStyle={styles.gatedChipText}>
                 <Icon name="lock" size={12} color={theme.colors.primary} />{' '}

@@ -98,6 +98,11 @@ export const createStyles = (theme: Theme) =>
       color: theme.colors.onSurfaceVariant,
       marginLeft: 4,
     },
+    fitText: {
+      fontSize: 12,
+      color: theme.colors.onSurfaceVariant,
+      marginBottom: 4,
+    },
     serverLink: {
       flexDirection: 'row',
       alignItems: 'center',
