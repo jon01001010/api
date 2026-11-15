@@ -9,6 +9,9 @@ import * as toolImport from '../../services/talents/toolImport';
 import {packTool, QR_MAX_CHARS} from '../../services/talents/toolQr';
 import {pairHomePc} from '../../services/homeLink/pairHomePc';
 import type {CustomTool} from '../../services/talents/customTools';
+import * as globalTools from '../../utils/globalToolSettings';
+import * as loops from '../../services/loops/loops';
+import {packLoop} from '../../services/loops/loopShare';
 
 jest.mock('../../services/homeLink/pairHomePc', () => ({
   pairHomePc: jest.fn(async () => ({ok: true, message: 'paired'})),
@@ -196,5 +199,95 @@ describe('reading a code', () => {
     } finally {
       Object.defineProperty(Platform, 'OS', {value: os, configurable: true});
     }
+  });
+});
+
+describe('reading a shared loop code', () => {
+  const NOW = Date.now();
+  const shared = (): loops.Loop => {
+    const goal = 'Help me get fit';
+    const steps = ['Walk 10 minutes', 'Stretch'];
+    const r = loops.buildLoop({
+      templateId: 'custom',
+      values: {},
+      custom: {
+        title: 'Get fit',
+        prompt: require('../../services/loops/makeLoop').loopPromptOf({
+          title: 'Get fit',
+          prompt: goal,
+          steps,
+          every: 'day',
+          maxRuns: 9,
+          days: 9,
+        }),
+        plan: {goal, steps},
+      },
+      every: 'day',
+      at: {hour: 7, minute: 0},
+      maxRuns: 9,
+      days: 9,
+      now: NOW,
+    });
+    if (!r.ok) {
+      throw new Error(r.error);
+    }
+    return {...r.loop, runs: 3, sessionId: 'their-chat'};
+  };
+
+  it('shows the whole loop and its dry run, then installs it paused (not started)', async () => {
+    jest
+      .spyOn(globalTools, 'readGlobalTools')
+      .mockResolvedValue(['web_search']);
+    jest.spyOn(loops, 'loadLoops').mockResolvedValue([]);
+    const save = jest.spyOn(loops, 'saveLoops').mockResolvedValue();
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const {getByTestId, queryByTestId, getAllByText} = await loaded();
+    fireEvent.press(getByTestId('custom-tool-paste'));
+    fireEvent.changeText(getByTestId('tool-receive-paste'), packLoop(shared()));
+    fireEvent.press(getByTestId('tool-receive-read'));
+    await waitFor(() => getByTestId('loop-receive-review'));
+    expect(getByTestId('loop-receive-title').props.children).toBe('Get fit');
+    expect(getByTestId('loop-receive-step-0').props.children).toEqual([
+      1,
+      '. ',
+      'Walk 10 minutes',
+    ]);
+    expect(getByTestId('loop-receive-step-1')).toBeTruthy();
+    await waitFor(() =>
+      expect(getByTestId('loop-receive-summary').props.children).toMatch(
+        /every day at 07:00, at most 9 times.*May use: web search/,
+      ),
+    );
+    expect(getByTestId('loop-dry-run-message').props.children).toContain(
+      '1. Walk 10 minutes',
+    );
+    expect(getAllByText(/May use: web search/).length).toBeGreaterThan(0);
+    expect(queryByTestId('tool-receive-install')).toBeNull();
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.press(getByTestId('loop-receive-install'));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const [list] = save.mock.calls[0] as any;
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      title: 'Get fit',
+      paused: true,
+      notStarted: true,
+      runs: 0,
+    });
+    expect(list[0].sessionId).toBeUndefined();
+    expect(String(alert.mock.calls[0][0])).toContain('Installed, not started');
+    expect(installed).toHaveLength(0);
+  });
+
+  it('says why a damaged loop code is refused', async () => {
+    const {getByTestId} = await loaded();
+    fireEvent.press(getByTestId('custom-tool-paste'));
+    fireEvent.changeText(getByTestId('tool-receive-paste'), 'PA1:L:1:j:{bad');
+    fireEvent.press(getByTestId('tool-receive-read'));
+    await waitFor(() =>
+      expect(getByTestId('tool-receive-error').props.children).toMatch(
+        /loop code is damaged/,
+      ),
+    );
   });
 });

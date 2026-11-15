@@ -3,7 +3,7 @@
  * (MakeLoopSheet): the battery guard picker and the dry run shown before
  * Start. The dry run only shows; it sends nothing and runs nothing.
  */
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {View} from 'react-native';
 import {Button, Chip, Text} from 'react-native-paper';
 
@@ -14,6 +14,33 @@ import {
   dryRunOf,
   type Loop,
 } from '../services/loops/loops';
+import {
+  onToolSwitchesChanged,
+  readGlobalTools,
+} from '../utils/globalToolSettings';
+
+/**
+ * The tools switched on in the Toolbox right now (a loop's run can use
+ * only those), kept up to date; undefined until read.
+ */
+export function useSwitchedOnTools(): string[] | undefined {
+  const [tools, setTools] = useState<string[] | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    const read = () => {
+      readGlobalTools()
+        .then(names => live && setTools(names))
+        .catch(() => live && setTools([]));
+    };
+    read();
+    const off = onToolSwitchesChanged(read);
+    return () => {
+      live = false;
+      off();
+    };
+  }, []);
+  return tools;
+}
 
 const CHOICES: {key: string; guard: BatteryGuard; label: string}[] = [
   {key: 'above20', guard: {kind: 'above', percent: 20}, label: 'Above 20%'},
@@ -65,24 +92,16 @@ const whenText = (t: number, now: number) =>
     ? 'Right after Start (it asks first)'
     : new Date(t).toLocaleString();
 
-/**
- * The dry run: what the first run's message will be (word for word), the
- * next 3 run times, the limits and guards, and what it may use. Nothing is
- * sent to the model.
- */
-export const LoopDryRun: React.FC<{
-  loop: Loop;
-  uses: string;
-  onBack: () => void;
-  onStart: () => Promise<string | undefined>;
-}> = ({loop, uses, onBack, onStart}) => {
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const dry = dryRunOf(loop, uses);
+/** The dry run's parts (also shown before installing a shared loop). */
+export const LoopDryRunDetails: React.FC<{loop: Loop; uses: string}> = ({
+  loop,
+  uses,
+}) => {
+  const tools = useSwitchedOnTools();
+  const dry = dryRunOf(loop, uses, tools);
   const now = Date.now();
   return (
-    <View style={{gap: 6}} testID="loop-dry-run">
-      <Text variant="titleSmall">Dry run: {loop.title}</Text>
+    <>
       <Text variant="bodySmall">
         Nothing has been sent to the model. If you start it, this is what
         happens.
@@ -104,7 +123,30 @@ export const LoopDryRun: React.FC<{
         </Text>
       ))}
       <Text variant="labelLarge">May use</Text>
-      <Text variant="bodySmall">{dry.uses}</Text>
+      <Text variant="bodySmall" testID="loop-dry-run-uses">
+        {dry.uses}
+      </Text>
+    </>
+  );
+};
+
+/**
+ * The dry run: what the first run's message will be (word for word), the
+ * next 3 run times, the limits and guards, and what it may use. Nothing is
+ * sent to the model.
+ */
+export const LoopDryRun: React.FC<{
+  loop: Loop;
+  uses: string;
+  onBack: () => void;
+  onStart: () => Promise<string | undefined>;
+}> = ({loop, uses, onBack, onStart}) => {
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <View style={{gap: 6}} testID="loop-dry-run">
+      <Text variant="titleSmall">Dry run: {loop.title}</Text>
+      <LoopDryRunDetails loop={loop} uses={uses} />
       {error ? <Text variant="bodySmall">{error}</Text> : null}
       <View style={{flexDirection: 'row', justifyContent: 'flex-end', gap: 4}}>
         <Button onPress={onBack} disabled={busy} testID="loop-dry-run-back">

@@ -64,6 +64,11 @@ export interface Loop {
   progress?: {steps: string; reply: string};
   /** Why it paused by itself (shown on the card); none if the user paused. */
   pausedWhy?: string;
+  /**
+   * Installed from a shared code (loopShare.ts) and not started yet: paused
+   * until the user presses Start; its days count from that Start.
+   */
+  notStarted?: boolean;
 }
 
 /**
@@ -192,6 +197,9 @@ export function afterReply(loop: Loop, reply: string, now = Date.now()): Loop {
 
 /** Pause or resume by the user (resuming forgets the last fingerprint). */
 export function togglePause(loop: Loop, now = Date.now()): Loop {
+  if (loop.notStarted) {
+    return startShared(loop, now);
+  }
   return loop.paused
     ? addLog(
         {...loop, paused: false, pausedWhy: undefined, progress: undefined},
@@ -199,6 +207,31 @@ export function togglePause(loop: Loop, now = Date.now()): Loop {
         now,
       )
     : addLog({...loop, paused: true, pausedWhy: undefined}, 'Paused', now);
+}
+
+/**
+ * Start on a loop installed from a shared code: it starts now, with the
+ * same number of days it was installed with, counted from this Start.
+ */
+export function startShared(loop: Loop, now = Date.now()): Loop {
+  const days = Math.min(
+    MAX_DAYS,
+    Math.max(1, Math.round((loop.endAt - startOf(loop, now)) / EVERY_MS.day)),
+  );
+  return addLog(
+    {
+      ...loop,
+      notStarted: undefined,
+      paused: false,
+      pausedWhy: undefined,
+      progress: undefined,
+      startedAt: now,
+      endAt: now + days * EVERY_MS.day,
+      nextAt: firstRun(loop.every, loop.at, now),
+    },
+    'Started',
+    now,
+  );
 }
 
 /**
@@ -212,14 +245,141 @@ export function replyTo(
   userId: string,
   textOf: (m: any) => string,
 ): string | undefined {
+  const reply = replyRows(messages, sent, userId, textOf)?.[0];
+  return reply ? textOf(reply) : undefined;
+}
+
+/** The rows of the reply to a message the app sent (see replyTo). */
+function replyRows(
+  messages: any[],
+  sent: string,
+  userId: string,
+  textOf: (m: any) => string,
+): any[] | undefined {
   const i = messages.findIndex(m => m?.author?.id === userId);
   if (i < 0 || textOf(messages[i]) !== sent) {
     return undefined;
   }
-  const reply = messages
+  return messages
     .slice(0, i)
-    .find(m => m?.author?.id !== userId && !m?.metadata?.system);
-  return reply ? textOf(reply) : undefined;
+    .filter(m => m?.author?.id !== userId && !m?.metadata?.system);
+}
+
+/** A tool's name as logged: a plain identifier, else not logged. */
+const TOOL_NAME = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+const MAX_LOGGED_TOOLS = 8;
+
+/**
+ * The tools called in the reply to a run's message, in order, each once
+ * (from the reply's agent steps: in memory `steps`, saved
+ * `metadata.steps`). Undefined if the reply can't be found.
+ */
+export function toolsUsedInReply(
+  messages: any[],
+  sent: string,
+  userId: string,
+  textOf: (m: any) => string,
+): string[] | undefined {
+  const rows = replyRows(messages, sent, userId, textOf);
+  if (!rows) {
+    return undefined;
+  }
+  const names: string[] = [];
+  // Oldest first, so the names are in the order they were called.
+  for (const row of [...rows].reverse()) {
+    const steps = Array.isArray(row?.steps)
+      ? row.steps
+      : Array.isArray(row?.metadata?.steps)
+        ? row.metadata.steps
+        : [];
+    for (const step of steps) {
+      const calls = Array.isArray(step?.toolCalls) ? step.toolCalls : [];
+      for (const call of calls) {
+        const name = call?.function?.name;
+        if (
+          typeof name === 'string' &&
+          TOOL_NAME.test(name) &&
+          !names.includes(name)
+        ) {
+          names.push(name);
+        }
+      }
+    }
+  }
+  return names.slice(0, MAX_LOGGED_TOOLS);
+}
+
+/** "Run 3: used web_search, read_url" (or "no tools used"). */
+export function runToolsText(run: number, tools: string[]): string {
+  return tools.length
+    ? `Run ${run}: used ${tools.join(', ')}`
+    : `Run ${run}: no tools used`;
+}
+
+/**
+ * After a run's reply is complete: what it used goes into the log, in
+ * place of that run's "Run N" line (or as a new line if that is gone).
+ */
+export function logRunTools(
+  loop: Loop,
+  run: number,
+  tools: string[],
+  now = Date.now(),
+): Loop {
+  const what = runToolsText(run, tools);
+  const i = loop.log.findIndex(e => e.what === `Run ${run}`);
+  if (i < 0) {
+    return addLog(loop, what, now);
+  }
+  return {
+    ...loop,
+    log: loop.log.map((e, j) => (j === i ? {at: e.at, what} : e)),
+  };
+}
+
+/** The newest "Run N: used …" line of the log, if any. */
+export function lastRunTools(loop: Loop): string | undefined {
+  return loop.log.find(e => /^Run \d+: /.test(e.what))?.what;
+}
+
+/** Plain words for the tools a loop may use (others: their name). */
+const TOOL_WORDS: Record<string, string> = {
+  web_search: 'web search',
+  read_url: 'read web pages',
+  calculate: 'calculator',
+  datetime: 'date and time',
+  render_html: 'show a page',
+  clipboard_read: 'read the clipboard',
+  image_generate: 'make pictures',
+  media_control: 'media controls',
+  open_file: 'open files',
+  print_file: 'print files',
+  pc_info: 'PC info',
+  run_command: 'run commands on the PC',
+  tool_save: 'save tools',
+  tool_delete: 'delete tools',
+};
+
+export function toolWords(names: string[]): string[] {
+  return [
+    ...new Set(
+      names.map(n => TOOL_WORDS[n] ?? n.replace(/[_-]+/g, ' ').trim()),
+    ),
+  ].filter(Boolean);
+}
+
+/**
+ * "May use: …": the tools switched on in the Toolbox right now (a run can
+ * use only those). Undefined when the list isn't known.
+ */
+export function mayUseText(tools: string[] | undefined): string | undefined {
+  if (!tools) {
+    return undefined;
+  }
+  const words = toolWords(tools);
+  return words.length
+    ? `May use: ${words.join(', ')} (the tools switched on in the Toolbox now; only those).`
+    : 'May use: the model only (no tools are switched on in the Toolbox now).';
 }
 
 const KEY = '@pocketagent/loops/v1';
@@ -291,8 +451,11 @@ export function isFinished(loop: Loop, now = Date.now()): boolean {
   return loop.runs >= loop.maxRuns || now > loop.endAt;
 }
 
-/** The plain summary shown before Start and on the loop's card. */
-export function summary(loop: Loop): string {
+/**
+ * The plain summary shown before Start and on the loop's card. `tools`:
+ * the tools switched on in the Toolbox now (adds the "May use" line).
+ */
+export function summary(loop: Loop, tools?: string[]): string {
   const time = loop.at
     ? ` at ${String(loop.at.hour).padStart(2, '0')}:${String(
         loop.at.minute,
@@ -307,7 +470,8 @@ export function summary(loop: Loop): string {
     `for up to ${days} day(s). Asks before each run. Uses only the tools ` +
     'you have switched on; anything outside the app still asks. Never ' +
     `changes itself. Phone: ${batteryText(loop.battery).toLowerCase()}. ` +
-    'Pauses if two runs in a row bring nothing new.'
+    'Pauses if two runs in a row bring nothing new.' +
+    (tools ? ` ${mayUseText(tools)}` : '')
   );
 }
 
@@ -375,8 +539,25 @@ function isLoop(l: any): l is Loop {
   );
 }
 
+const listeners = new Set<() => void>();
+
+/** Called after the saved loops change (e.g. one installed from a code). */
+export function onLoopsChanged(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 export async function saveLoops(loops: Loop[]): Promise<void> {
   await AsyncStorage.setItem(KEY, JSON.stringify(loops));
+  for (const l of [...listeners]) {
+    try {
+      l();
+    } catch {
+      // A screen's listener never stops a save.
+    }
+  }
   // Every change (start, run, skip, later, pause, stop) moves the phone's
   // "loop due" notifications to match (loopNotify.ts).
   await require('./loopNotify').syncLoopAlarms(loops);
@@ -540,6 +721,7 @@ export function upcomingRuns(loop: Loop, count = 3): number[] {
 export function dryRunOf(
   loop: Loop,
   uses: string,
+  tools?: string[],
 ): {message: string; times: number[]; limits: string[]; uses: string} {
   return {
     message: runMessage(loop),
@@ -552,7 +734,9 @@ export function dryRunOf(
       `Phone: ${batteryText(loop.battery).toLowerCase()}; otherwise it waits.`,
       'Pauses if two runs in a row bring nothing new.',
     ],
-    uses: `${uses} Anything outside the app still asks.`,
+    uses:
+      `${uses} Anything outside the app still asks.` +
+      (tools ? ` ${mayUseText(tools)}` : ''),
   };
 }
 

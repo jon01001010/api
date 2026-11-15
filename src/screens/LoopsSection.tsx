@@ -3,11 +3,20 @@
  * (src/services/loops). Pick one, fill in the blanks, choose how often,
  * press Start, check the dry run, "Looks right, start". Nothing runs
  * without a tap: when one is due the app asks. A running loop's card has
- * Edit (only the user edits a loop).
+ * Edit (only the user edits a loop) and Share (a `PA1:L:` code). A loop
+ * installed from a code waits, paused, for Start on its card.
  */
 import React, {useCallback, useEffect, useState} from 'react';
 import {Alert, View} from 'react-native';
-import {Button, Card, Chip, Switch, Text, TextInput} from 'react-native-paper';
+import {
+  Button,
+  Card,
+  Chip,
+  Portal,
+  Switch,
+  Text,
+  TextInput,
+} from 'react-native-paper';
 
 import {
   LOOP_TEMPLATES,
@@ -23,12 +32,14 @@ import {
   editLoop,
   type Every,
   isFinished,
+  lastRunTools,
   loadLoops,
   type Loop,
   type LoopEdit,
   type LoopInput,
   MAX_DAYS,
   MAX_RUNS,
+  onLoopsChanged,
   saveLoopEdit,
   stopLoop,
   summary,
@@ -46,7 +57,8 @@ import {
 } from '../services/loops/makeLoop';
 import {runLoopNow} from '../services/loops/loopRunner';
 import {DryRunOf, LoopDraftEditor, MakeLoopSheet} from './MakeLoopSheet';
-import {BatteryPicker} from './LoopParts';
+import {BatteryPicker, useSwitchedOnTools} from './LoopParts';
+import {LoopShareDialog} from './LoopCodeDialogs';
 import {isLoopNotifyOn, setLoopNotifyOn} from '../services/loops/loopNotify';
 import {ensureNotificationPermission} from '../utils/androidPermission';
 
@@ -197,6 +209,7 @@ const EditLoop: React.FC<{loop: Loop; onDone: () => void}> = ({
   onDone,
 }) => {
   const [initial] = useState(() => draftOfLoop(loop));
+  const tools = useSwitchedOnTools();
   const withSteps =
     loop.templateId === CUSTOM_LOOP_ID && planOfLoop(loop) !== undefined;
   const toEdit = (d: LoopDraft, prompt: string): LoopEdit => ({
@@ -225,7 +238,7 @@ const EditLoop: React.FC<{loop: Loop; onDone: () => void}> = ({
         runsDone={loop.runs}
         describe={(d, prompt) => {
           const r = editLoop(loop, toEdit(d, prompt));
-          return r.ok ? summary(r.loop) : r.error;
+          return r.ok ? summary(r.loop, tools) : r.error;
         }}
         onBack={onDone}
         onSave={async (d, prompt) => {
@@ -249,11 +262,14 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
   const [making, setMaking] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [notify, setNotify] = useState(true);
+  const [sharing, setSharing] = useState<Loop | null>(null);
   const reload = useCallback(() => {
     loadLoops().then(setLoops);
     isLoopNotifyOn().then(setNotify);
   }, []);
   useEffect(reload, [reload]);
+  // E.g. a loop installed from a code in Toolbox → Scan QR, or a run.
+  useEffect(() => onLoopsChanged(() => loadLoops().then(setLoops)), []);
 
   const runNow = async (id: string) => {
     onOpenChat?.();
@@ -310,8 +326,20 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
             <View key={l.id} testID={`loop-${l.id}`} style={{gap: 4}}>
               <Text variant="titleSmall">
                 {l.title}
-                {l.paused ? ' (paused)' : isFinished(l) ? ' (finished)' : ''}
+                {l.notStarted
+                  ? ' (not started)'
+                  : l.paused
+                    ? ' (paused)'
+                    : isFinished(l)
+                      ? ' (finished)'
+                      : ''}
               </Text>
+              {l.notStarted ? (
+                <Text variant="bodySmall" testID={`loop-not-started-${l.id}`}>
+                  Installed from a shared code. Check it with Edit, then press
+                  Start; nothing runs before that.
+                </Text>
+              ) : null}
               {l.paused && l.pausedWhy ? (
                 <Text variant="bodySmall" testID={`loop-why-${l.id}`}>
                   Paused: {l.pausedWhy}. Edit it, or Resume to try again.
@@ -334,8 +362,17 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
                   {new Date(e.at).toLocaleString()}: {e.what}
                 </Text>
               ))}
+              {(() => {
+                // What the last run did, also when newer lines push it down.
+                const last = lastRunTools(l);
+                return last && !l.log.slice(0, 3).some(e => e.what === last) ? (
+                  <Text variant="bodySmall" testID={`loop-last-run-${l.id}`}>
+                    Last run: {last}
+                  </Text>
+                ) : null;
+              })()}
               <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 4}}>
-                {!isFinished(l) ? (
+                {!isFinished(l) && !l.notStarted ? (
                   <Button compact onPress={() => runNow(l.id)}>
                     Run now
                   </Button>
@@ -351,8 +388,15 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
                   onPress={async () => {
                     await updateLoop(l.id, x => togglePause(x));
                     reload();
-                  }}>
-                  {l.paused ? 'Resume' : 'Pause'}
+                  }}
+                  testID={`loop-pause-${l.id}`}>
+                  {l.notStarted ? 'Start' : l.paused ? 'Resume' : 'Pause'}
+                </Button>
+                <Button
+                  compact
+                  onPress={() => setSharing(l)}
+                  testID={`loop-share-open-${l.id}`}>
+                  Share
                 </Button>
                 <Button
                   compact
@@ -406,6 +450,9 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
           </View>
         )}
       </Card.Content>
+      <Portal>
+        <LoopShareDialog loop={sharing} onDismiss={() => setSharing(null)} />
+      </Portal>
     </Card>
   );
 };

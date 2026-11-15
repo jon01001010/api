@@ -30,9 +30,11 @@ import {
   dueLoops,
   isFinished,
   loadLoops,
+  logRunTools,
   nextRun,
   replyTo,
   runMessage,
+  toolsUsedInReply,
   updateLoop,
   waitForBattery,
   type Loop,
@@ -65,6 +67,9 @@ export async function runLoopNow(
   const loop = (await loadLoops()).find(l => l.id === id);
   if (!loop) {
     return 'That loop was stopped';
+  }
+  if (loop.notStarted) {
+    return 'Press Start on its card first';
   }
   if (isFinished(loop, now)) {
     return 'This loop has reached its limit (runs or end date)';
@@ -107,7 +112,13 @@ export async function runLoopNow(
       `Loop: ${loop.title}`,
     );
   }
-  const reply = replyOf(sessionId, message);
+  const run = loop.runs + 1;
+  const tools = rowsOf(sessionId, message, toolsUsedInReply);
+  if (tools !== undefined) {
+    // What this run did: which tools its reply called.
+    await updateLoop(loop.id, l => logRunTools(l, run, tools));
+  }
+  const reply = rowsOf(sessionId, message, replyTo);
   if (reply !== undefined) {
     const after = await updateLoop(loop.id, l => afterReply(l, reply));
     if (after?.pausedWhy && after.paused && !loop.paused) {
@@ -122,18 +133,27 @@ export async function runLoopNow(
   return undefined;
 }
 
-/** The finished reply to the run's message in the loop's chat, if any. */
-function replyOf(
+/**
+ * Reads the finished reply to the run's message in the loop's chat (its
+ * text, or the tools it called), if any.
+ */
+function rowsOf<T>(
   sessionId: string | null | undefined,
   sent: string,
-): string | undefined {
+  read: (
+    messages: any[],
+    sent: string,
+    userId: string,
+    textOf: (m: any) => string,
+  ) => T | undefined,
+): T | undefined {
   try {
     const {chatSessionStore} = deps();
     const {derivedText, user} = require('../../utils/chat');
     const session = chatSessionStore.sessions.find(
       (s: any) => s.id === sessionId,
     );
-    return replyTo(session?.messages ?? [], sent, user.id, derivedText);
+    return read(session?.messages ?? [], sent, user.id, derivedText);
   } catch {
     return undefined;
   }

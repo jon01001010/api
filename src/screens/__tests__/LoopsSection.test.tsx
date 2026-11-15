@@ -95,4 +95,52 @@ describe('Loops section', () => {
       battery: {kind: 'above', percent: 50},
     });
   });
+
+  it('a loop from a shared code waits for Start; Share shows its code', async () => {
+    const waiting = {
+      ...running,
+      id: 'l2',
+      paused: true,
+      pausedWhy: undefined,
+      notStarted: true,
+      runs: 0,
+      log: [{at: NOW, what: 'Installed from a shared code (not started)'}],
+    };
+    (loops.loadLoops as jest.Mock).mockResolvedValue([waiting]);
+    const update = jest.spyOn(loops, 'updateLoop').mockResolvedValue(undefined);
+    const {getByTestId, queryByText, getByText} = render(<LoopsSection />);
+    await waitFor(() => getByTestId('loop-not-started-l2'));
+    expect(queryByText('Run now')).toBeNull();
+    expect(getByText('Start')).toBeTruthy();
+    fireEvent.press(getByTestId('loop-pause-l2'));
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    const change = (update.mock.calls[0] as any)[1];
+    expect(change(waiting)).toMatchObject({
+      paused: false,
+      notStarted: undefined,
+    });
+    fireEvent.press(getByTestId('loop-share-open-l2'));
+    await waitFor(() => getByTestId('loop-share-qr'));
+    expect(getByTestId('loop-share-copy')).toBeTruthy();
+  });
+
+  it('shows what the last run did, even when newer lines push it down', async () => {
+    (loops.loadLoops as jest.Mock).mockResolvedValue([
+      {
+        ...running,
+        log: [
+          {at: NOW + 3, what: 'Paused'},
+          {at: NOW + 2, what: 'Resumed'},
+          {at: NOW + 1, what: 'Edited'},
+          {at: NOW, what: 'Run 2: used web_search, read_url'},
+        ],
+      },
+    ]);
+    const {getByTestId} = render(<LoopsSection />);
+    await waitFor(() => getByTestId('loop-last-run-l1'));
+    expect(getByTestId('loop-last-run-l1').props.children).toEqual([
+      'Last run: ',
+      'Run 2: used web_search, read_url',
+    ]);
+  });
 });
