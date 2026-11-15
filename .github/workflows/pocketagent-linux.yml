@@ -19,6 +19,13 @@ concurrency:
 env:
   # Pinned llama.cpp release (15 Oct 2026).
   LLAMA_TAG: b11662
+  # Pinned stable-diffusion.cpp release (1 Nov 2026) for pictures on the PC
+  # (src-tauri/src/image_gen.rs), built here from source on x64 (its own
+  # Linux builds need Ubuntu 24.04+). CPU only for now (Vulkan: later; it
+  # needs newer Vulkan headers and glslc than 22.04 has). ARM gets none:
+  # pictures are far too slow there. Change both together, on purpose.
+  SD_TAG: master-1039-290148d
+  SD_COMMIT: 290148d2e31ca6ef9757d567905776b5f3646db5
 jobs:
   linux:
     # Two builds: regular PCs (x64) and ARM (arm64: e.g. a PineTab 2).
@@ -135,6 +142,44 @@ jobs:
         with:
           path: ${{ env.LLAMA_TAR }}
           key: llama-cpp-${{ env.LLAMA_SHA256 }}
+      - name: Restore the pinned picture maker build (cached copy)
+        id: sd-cache
+        if: matrix.arch == 'x64'
+        uses: actions/cache/restore@v4
+        with:
+          path: sd-built
+          key: sd-cpp-${{ env.SD_COMMIT }}-cpu-avx2-${{ matrix.runner }}
+      - name: Build the pinned picture maker sd-cli (x64, CPU; skipped when cached)
+        if: matrix.arch == 'x64'
+        run: |
+          set -euo pipefail
+          if [ ! -x sd-built/sd-cli ]; then
+            git clone --quiet --depth 1 --branch "$SD_TAG" --recurse-submodules \
+              --shallow-submodules https://github.com/leejet/stable-diffusion.cpp sd-src
+            # The tag must still be the pinned commit.
+            test "$(git -C sd-src rev-parse HEAD)" = "$SD_COMMIT"
+            # One self-contained program; AVX2 (PCs from 2013 on), not this
+            # runner's own processor features.
+            cmake -S sd-src -B sd-src/build -DCMAKE_BUILD_TYPE=Release \
+              -DSD_BUILD_EXAMPLES=ON -DSD_BUILD_SHARED_LIBS=OFF -DBUILD_SHARED_LIBS=OFF \
+              -DSD_WEBP=OFF -DSD_WEBM=OFF -DGGML_NATIVE=OFF \
+              -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON
+            cmake --build sd-src/build --config Release -j"$(nproc)"
+            mkdir -p sd-built
+            cp sd-src/build/bin/sd-cli sd-built/
+          fi
+          cp sd-built/sd-cli src-tauri/sd/sd-cli
+          chmod +x src-tauri/sd/sd-cli
+          ldd src-tauri/sd/sd-cli
+          ! ldd src-tauri/sd/sd-cli | grep -q 'not found'
+          # It starts (all its libraries found); its help text may end non-zero.
+          (src-tauri/sd/sd-cli --help || true) | head -5
+      - name: Keep a copy of the picture maker build
+        if: matrix.arch == 'x64' && steps.sd-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: sd-built
+          key: sd-cpp-${{ env.SD_COMMIT }}-cpu-avx2-${{ matrix.runner }}
       - name: Rust tests (native side)
         working-directory: src-tauri
         run: cargo test --locked
