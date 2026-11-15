@@ -175,7 +175,8 @@ export async function syncWithPc(pc: string): Promise<SyncOutcome> {
       });
       // A copy that drops messages here: the earlier version is kept.
       const incoming = await keepEarlierVersions(local, newer, 'the PC');
-      await writeChats(incoming);
+      // Marked as mirrored (not searched as typed here: pastChats.ts).
+      await writeChats(incoming, {from: 'the PC'});
       chatsReceived = incoming.length;
       // A chat deleted here but changed on the PC since: it is back.
       await forgetTombstones(
