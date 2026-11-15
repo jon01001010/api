@@ -197,6 +197,7 @@ describe('running custom tools', () => {
   });
 
   it('a shortcut asks once, then runs every step quietly in order', async () => {
+    mockEnabled.push('set_alarm', 'open_app');
     await saveCustomTool({
       kind: 'shortcut',
       name: 'morning',
@@ -224,6 +225,7 @@ describe('running custom tools', () => {
   });
 
   it('a denied shortcut runs nothing; a missing fill-in is asked for', async () => {
+    mockEnabled.push('set_alarm');
     await saveCustomTool({
       kind: 'shortcut',
       name: 'morning',
@@ -238,6 +240,7 @@ describe('running custom tools', () => {
   });
 
   it('a failing step stops the rest and says what was done', async () => {
+    mockEnabled.push('set_alarm', 'open_app', 'datetime');
     talentRegistry.register({
       ...fake('set_alarm'),
       execute: jest.fn(async () => ({
@@ -260,6 +263,54 @@ describe('running custom tools', () => {
     expect(result.type).toBe('error');
     expect(result.summary).toMatch(/stopped at step 2 \(set_alarm\)/);
     expect(result.summary).toMatch(/1\. datetime/);
+    expect(calls.map(c => c.tool)).toEqual(['datetime']);
+  });
+
+  it('a step whose tool is switched off in the Toolbox: refused, nothing asked or run', async () => {
+    mockEnabled.push('datetime');
+    await saveCustomTool({
+      kind: 'shortcut',
+      name: 'morning',
+      description: 'd',
+      steps: [
+        {tool: 'datetime', args: {}},
+        {tool: 'set_alarm', args: {hour: 7}},
+      ],
+    });
+    const result = await talentRegistry.get('morning')!.execute({});
+    expect(result.type).toBe('error');
+    expect(result.summary).toBe(
+      'The "morning" shortcut can\'t run: `set_alarm` is switched off in the Toolbox. Nothing was done. Switch it on in Toolbox to use this shortcut.',
+    );
+    expect(approve).not.toHaveBeenCalled();
+    expect(calls).toEqual([]);
+  });
+
+  it('a tool switched off while the shortcut runs stops it at that step', async () => {
+    mockEnabled.push('datetime', 'set_alarm');
+    talentRegistry.register({
+      ...fake('datetime'),
+      execute: jest.fn(async () => {
+        calls.push({tool: 'datetime', args: {}, ctx: {}});
+        // Switched off meanwhile (another device's sync, the Toolbox).
+        mockEnabled.splice(mockEnabled.indexOf('set_alarm'), 1);
+        return {type: 'text', summary: 'opened'};
+      }),
+    } as any);
+    await saveCustomTool({
+      kind: 'shortcut',
+      name: 'morning',
+      description: 'd',
+      steps: [
+        {tool: 'datetime', args: {}},
+        {tool: 'set_alarm', args: {hour: 7}},
+      ],
+    });
+    const result = await talentRegistry.get('morning')!.execute({});
+    expect(result.type).toBe('error');
+    expect(result.summary).toMatch(
+      /stopped at step 2 \(set_alarm\).*switched off in the Toolbox/s,
+    );
     expect(calls.map(c => c.tool)).toEqual(['datetime']);
   });
 });
