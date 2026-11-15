@@ -1,6 +1,6 @@
 //! The PC's hardware, so the app can tell whether a model fits (the phone
 //! gets these from Android): memory, processor cores, and graphics cards
-//! with their own memory. Read fresh for every app start (a PC can get a new
+//! with their own memory, and the NPU if there is one (npu.rs). Read fresh for every app start (a PC can get a new
 //! card or more memory), never kept from an earlier day.
 
 use std::process::{Command, Stdio};
@@ -29,6 +29,7 @@ pub struct SystemInfo {
     available_memory: u64,
     cpu_cores: usize,
     gpus: Vec<Gpu>,
+    npus: Vec<crate::npu::Npu>,
 }
 
 fn memory() -> (u64, u64) {
@@ -139,6 +140,9 @@ fn list_devices(app: &AppHandle) -> Vec<Gpu> {
 /// Graphics cards, read once per app start.
 static GPUS: OnceLock<Vec<Gpu>> = OnceLock::new();
 
+/// The NPUs, read once per app start.
+static NPUS: OnceLock<Vec<crate::npu::Npu>> = OnceLock::new();
+
 /// The graphics cards (read once per app start).
 pub fn gpus(app: &AppHandle) -> Vec<Gpu> {
     GPUS.get_or_init(|| list_devices(app)).clone()
@@ -154,6 +158,7 @@ pub fn system_info(app: AppHandle) -> SystemInfo {
             .map(|n| n.get())
             .unwrap_or(1),
         gpus: gpus(&app),
+        npus: NPUS.get_or_init(crate::npu::detect).clone(),
     }
 }
 
