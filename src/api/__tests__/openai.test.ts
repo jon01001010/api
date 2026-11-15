@@ -1,6 +1,8 @@
 import {
   __clearRemoteImageCache,
+  encodeMessagesForRemote,
   fetchModels,
+  isOwnImagePath,
   fetchModelsWithHeaders,
   testConnection,
   streamChatCompletion,
@@ -551,6 +553,8 @@ describe('streamChatCompletion', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     __clearRemoteImageCache();
+    // The app's own picture folder (its cache folder).
+    require('@dr.pogodin/react-native-fs').CachesDirectoryPath = '/cache';
     MockXHR.instances = [];
     originalXHR = global.XMLHttpRequest;
     (global as any).XMLHttpRequest = MockXHR;
@@ -659,7 +663,7 @@ describe('streamChatCompletion', () => {
             role: 'user',
             content: [
               {type: 'text', text: 'what is this?'},
-              {type: 'image_url', image_url: {url: 'file:///tmp/photo.png'}},
+              {type: 'image_url', image_url: {url: 'file:///cache/photo.png'}},
             ],
           },
         ],
@@ -683,7 +687,7 @@ describe('streamChatCompletion', () => {
     await resultPromise;
   });
 
-  it('passes through data: and http image urls unchanged', async () => {
+  it('passes data: images through; never passes an http(s) image url on', async () => {
     const RNFS = require('@dr.pogodin/react-native-fs');
 
     const resultPromise = streamChatCompletion(
@@ -712,9 +716,9 @@ describe('streamChatCompletion', () => {
     expect(body.messages[0].content[0].image_url.url).toBe(
       'data:image/jpeg;base64,ZZ',
     );
-    expect(body.messages[0].content[1].image_url.url).toBe(
-      'https://ex.com/a.png',
-    );
+    // The server would fetch it from its own network: left out.
+    expect(body.messages[0].content).toHaveLength(1);
+    expect(JSON.stringify(body)).not.toContain('ex.com');
     expect(RNFS.readFile).not.toHaveBeenCalled();
 
     xhr.simulateHeaders(200);
@@ -777,7 +781,7 @@ describe('streamChatCompletion', () => {
     const p1 = streamChatCompletion(
       {
         samplers: {},
-        messages: [imageMessage('file:///tmp/cached.png')],
+        messages: [imageMessage('file:///cache/cached.png')],
         model: 'm',
       },
       endpointFor(),
@@ -792,7 +796,7 @@ describe('streamChatCompletion', () => {
     const p2 = streamChatCompletion(
       {
         samplers: {},
-        messages: [imageMessage('file:///tmp/cached.png')],
+        messages: [imageMessage('file:///cache/cached.png')],
         model: 'm',
       },
       endpointFor(),
@@ -825,18 +829,18 @@ describe('streamChatCompletion', () => {
     };
 
     // Fill: A (oldest) → B → C. Caching C pushes bytes over budget and evicts A.
-    await send('file:///tmp/a.png');
-    await send('file:///tmp/b.png');
-    await send('file:///tmp/c.png');
+    await send('file:///cache/a.png');
+    await send('file:///cache/b.png');
+    await send('file:///cache/c.png');
     expect(RNFS.readFile).toHaveBeenCalledTimes(3);
 
     // The two newest paths are still resident — re-sending them is a cache hit.
-    await send('file:///tmp/c.png');
-    await send('file:///tmp/b.png');
+    await send('file:///cache/c.png');
+    await send('file:///cache/b.png');
     expect(RNFS.readFile).toHaveBeenCalledTimes(3);
 
     // The oldest path was evicted, so re-sending it re-reads from disk.
-    await send('file:///tmp/a.png');
+    await send('file:///cache/a.png');
     expect(RNFS.readFile).toHaveBeenCalledTimes(4);
   });
 
@@ -850,7 +854,7 @@ describe('streamChatCompletion', () => {
     const p1 = streamChatCompletion(
       {
         samplers: {},
-        messages: [imageMessage('file:///tmp/race.png')],
+        messages: [imageMessage('file:///cache/race.png')],
         model: 'm',
       },
       endpointFor(),
@@ -858,7 +862,7 @@ describe('streamChatCompletion', () => {
     const p2 = streamChatCompletion(
       {
         samplers: {},
-        messages: [imageMessage('file:///tmp/race.png')],
+        messages: [imageMessage('file:///cache/race.png')],
         model: 'm',
       },
       endpointFor(),
@@ -872,7 +876,7 @@ describe('streamChatCompletion', () => {
     const p3 = streamChatCompletion(
       {
         samplers: {},
-        messages: [imageMessage('file:///tmp/race.png')],
+        messages: [imageMessage('file:///cache/race.png')],
         model: 'm',
       },
       endpointFor(),
@@ -889,7 +893,7 @@ describe('streamChatCompletion', () => {
     const p = streamChatCompletion(
       {
         samplers: {},
-        messages: [imageMessage('content://media/1234')],
+        messages: [imageMessage('/cache/rn_image_picker_1234')],
         model: 'm',
       },
       endpointFor(),
@@ -902,6 +906,45 @@ describe('streamChatCompletion', () => {
     await finishStream(MockXHR.instances[0], p);
   });
 
+  it('reads only pictures in the app own picture folder', async () => {
+    const RNFS = require('@dr.pogodin/react-native-fs');
+    (RNFS.readFile as jest.Mock).mockResolvedValue('QUJD');
+    expect(isOwnImagePath('file:///cache/a.jpg')).toBe(true);
+    expect(isOwnImagePath('/cache/screens/a.png')).toBe(true);
+    for (const bad of [
+      'file:///data/user/0/app/files/secret.png',
+      '/pocketagent/link/client.key',
+      'file:///cache/../files/a.png',
+      '/cache/..',
+      '/cachex/a.png',
+      'content://media/1234',
+      'http://192.168.1.50/snapshot.jpg',
+      'https://ex.com/a.png',
+      'file://cache/a.png',
+      '/cache\\..\\a.png',
+      '',
+    ]) {
+      expect(isOwnImagePath(bad)).toBe(false);
+    }
+    const out = await encodeMessagesForRemote([
+      {
+        role: 'user',
+        content: [
+          {type: 'text', text: 'hi'},
+          {type: 'image_url', image_url: {url: 'file:///data/user/0/x.png'}},
+          {type: 'image_url', image_url: {url: 'http://10.0.0.1/cam.jpg'}},
+          {type: 'image_url', image_url: {url: 'file:///cache/ok.png'}},
+        ],
+      },
+    ] as any);
+    expect(out[0].content).toEqual([
+      {type: 'text', text: 'hi'},
+      {type: 'image_url', image_url: {url: 'data:image/png;base64,QUJD'}},
+    ]);
+    expect(RNFS.readFile).toHaveBeenCalledTimes(1);
+    expect(RNFS.readFile).toHaveBeenCalledWith('/cache/ok.png', 'base64');
+  });
+
   it('skips inlining a file whose successful stat exceeds the size cap', async () => {
     const RNFS = require('@dr.pogodin/react-native-fs');
     (RNFS.stat as jest.Mock).mockResolvedValueOnce({size: 20 * 1024 * 1024});
@@ -909,7 +952,7 @@ describe('streamChatCompletion', () => {
     const p = streamChatCompletion(
       {
         samplers: {},
-        messages: [imageMessage('file:///tmp/huge.png')],
+        messages: [imageMessage('file:///cache/huge.png')],
         model: 'm',
       },
       endpointFor(),
@@ -918,7 +961,7 @@ describe('streamChatCompletion', () => {
     const body = JSON.parse(MockXHR.instances[0].requestBody);
     // Left unchanged; the server surfaces the failure.
     expect(body.messages[0].content[0].image_url.url).toBe(
-      'file:///tmp/huge.png',
+      'file:///cache/huge.png',
     );
     expect(RNFS.readFile).not.toHaveBeenCalled();
     await finishStream(MockXHR.instances[0], p);
@@ -932,7 +975,7 @@ describe('streamChatCompletion', () => {
     const p = streamChatCompletion(
       {
         samplers: {},
-        messages: [imageMessage('file:///tmp/nostat.png')],
+        messages: [imageMessage('file:///cache/nostat.png')],
         model: 'm',
       },
       endpointFor(),
@@ -953,7 +996,7 @@ describe('streamChatCompletion', () => {
     const p = streamChatCompletion(
       {
         samplers: {},
-        messages: [imageMessage('file:///tmp/statfail.png')],
+        messages: [imageMessage('file:///cache/statfail.png')],
         model: 'm',
       },
       endpointFor(),
@@ -979,8 +1022,8 @@ describe('streamChatCompletion', () => {
           {
             role: 'user',
             content: [
-              {type: 'image_url', image_url: {url: 'file:///tmp/bad.png'}},
-              {type: 'image_url', image_url: {url: 'file:///tmp/ok.png'}},
+              {type: 'image_url', image_url: {url: 'file:///cache/bad.png'}},
+              {type: 'image_url', image_url: {url: 'file:///cache/ok.png'}},
             ],
           },
         ],
@@ -993,7 +1036,7 @@ describe('streamChatCompletion', () => {
     // The failed image is left unchanged; the sibling still encodes and the
     // completion promise does not reject.
     expect(body.messages[0].content[0].image_url.url).toBe(
-      'file:///tmp/bad.png',
+      'file:///cache/bad.png',
     );
     expect(body.messages[0].content[1].image_url.url).toBe(
       'data:image/png;base64,QUJD',

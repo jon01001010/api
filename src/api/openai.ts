@@ -322,24 +322,54 @@ export async function testConnection(
   }
 }
 
-/** A local image path needs inlining: not already a data: or http(s): url. */
-function isLocalImageUrl(url: string | undefined): url is string {
+/**
+ * The folder where the app keeps the pictures it took or was given: its own
+ * cache folder (the phone's camera and gallery copies, workspace pictures
+ * attached to a message; on the desktop, imports and screenshots).
+ */
+function ownImageFolder(): string | undefined {
+  const dir = (RNFS as {CachesDirectoryPath?: unknown}).CachesDirectoryPath;
+  return typeof dir === 'string' && dir.length > 1
+    ? dir.replace(/\/+$/, '')
+    : undefined;
+}
+
+/**
+ * A picture this app keeps itself: a plain path (or file:// address)
+ * inside its own picture folder, with no `..`. Anything else (another
+ * folder, content:, a path from another device) is never read.
+ */
+export function isOwnImagePath(url: string | undefined): url is string {
+  if (!url) {
+    return false;
+  }
+  const path = url.startsWith('file://') ? url.slice('file://'.length) : url;
+  const dir = ownImageFolder();
   return (
-    !!url &&
-    !url.startsWith('data:') &&
-    !url.startsWith('http://') &&
-    !url.startsWith('https://')
+    !!dir &&
+    !/^[a-z][a-z0-9+.-]*:/i.test(path) &&
+    !path.includes('\\') &&
+    !path.split('/').includes('..') &&
+    path.startsWith(dir + '/')
   );
 }
 
-/** True when any message carries a local-path image that must be encoded. */
+/** An image part that is not already inlined (`data:`): it needs a look. */
+function needsLook(url: string | undefined): boolean {
+  return !!url && !url.startsWith('data:');
+}
+
+/**
+ * True when any message carries an image that is not already inlined: a
+ * local picture to encode, or anything else to leave out (encodeImagePart).
+ */
 export function hasLocalImageAttachment(
   messages: OpenAIChatMessage[],
 ): boolean {
   return messages.some(
     m =>
       Array.isArray(m.content) &&
-      m.content.some(part => isLocalImageUrl(part.image_url?.url)),
+      m.content.some(part => needsLook(part.image_url?.url)),
   );
 }
 
@@ -401,19 +431,27 @@ export function __clearRemoteImageCache(): void {
 
 /**
  * Encode a single content part's local image path to a data URI. Returns the
- * part unchanged when it is not a local image, when a successful stat reports
- * an over-cap file, or when the read fails. A stat throw or a size-less result
- * FALLS THROUGH to encoding so a healthy image is never dropped on a stat
- * hiccup — only a successful over-cap stat skips.
+ * part unchanged when it is not an image or is already inlined (`data:`),
+ * when a successful stat reports an over-cap file, or when the read fails.
+ * A stat throw or a size-less result FALLS THROUGH to encoding so a healthy
+ * image is never dropped on a stat hiccup — only a successful over-cap stat
+ * skips. Returns null (the part is left out) for an image that is not this
+ * app's own picture: a web address (the server would fetch it from its own
+ * network), or a path outside the app's picture folder (it could name any
+ * file, e.g. one from a mirrored chat).
  */
 async function encodeImagePart(part: {
   type: string;
   text?: string;
   image_url?: {url?: string};
-}): Promise<typeof part> {
+}): Promise<typeof part | null> {
   const url = part.image_url?.url;
-  if (!isLocalImageUrl(url)) {
+  if (!needsLook(url)) {
     return part;
+  }
+  if (!isOwnImagePath(url)) {
+    console.warn('Left out a picture that is not one of the app own.');
+    return null;
   }
   const path = url.replace(/^file:\/\//, '');
 
@@ -446,9 +484,10 @@ async function encodeImagePart(part: {
 
 /**
  * Encode local image attachments to data: URIs for the remote wire. A remote
- * server cannot read the device filesystem, so any image_url pointing at a
- * local path is read and inlined as base64. Already-remote (http/https) or
- * already-inlined (data:) urls pass through unchanged. Remote-only: the local
+ * server cannot read the device filesystem, so any image_url pointing at one
+ * of the app's own pictures is read and inlined as base64. Already-inlined
+ * (data:) urls pass through unchanged; web (http/https) addresses and other
+ * paths are left out, never passed on. Remote-only: the local
  * llama.rn engine reads the file path natively and never routes through here.
  *
  * Encodes sequentially (outer messages and inner parts) so peak heap is one
@@ -465,7 +504,10 @@ export async function encodeMessagesForRemote(
     }
     const content: typeof message.content = [];
     for (const part of message.content) {
-      content.push(await encodeImagePart(part));
+      const one = await encodeImagePart(part);
+      if (one) {
+        content.push(one);
+      }
     }
     encoded.push({...message, content});
   }
