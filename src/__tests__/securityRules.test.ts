@@ -628,7 +628,11 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     const signers = sourceFiles(SRC)
       .filter(f => /tellRemoval\(/.test(fs.readFileSync(f, 'utf8')))
       .map(rel);
-    expect(signers).toEqual(['src/components/YourDevices/YourDevices.tsx']);
+    // Only the user's own Remove (Your devices, or a Home PC's sheet).
+    expect(signers.sort()).toEqual([
+      'src/components/ServerDetailsSheet/ServerDetailsSheet.tsx',
+      'src/components/YourDevices/YourDevices.tsx',
+    ]);
   });
 
   it('device circle stage 1: one key only by the user\'s choice, and "Your devices" gives no rights', () => {
