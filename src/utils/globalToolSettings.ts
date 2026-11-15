@@ -6,7 +6,16 @@ import {
   toolSwitchesChanged,
 } from '../services/talents/customTools';
 
-export {onToolSwitchesChanged} from '../services/talents/customTools';
+/**
+ * Called when the stored tool switches change (customTools.ts). A function,
+ * not a re-export: the two files import each other, and a re-export getter
+ * is undefined while the cycle is still loading.
+ */
+export function onToolSwitchesChanged(listener: () => void): () => void {
+  return require('../services/talents/customTools').onToolSwitchesChanged(
+    listener,
+  );
+}
 
 // Same key as GLOBAL_TOOLS_KEY in customTools.ts (which switches tools off).
 const KEY = '@pocketagent/global-tools/v1';
