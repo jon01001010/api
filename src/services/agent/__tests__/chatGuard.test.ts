@@ -18,6 +18,7 @@ import {
   readsPrivate,
   resetChatGuards,
   thinkingShown,
+  thinkTagContent,
   thinkingWarning,
   type GuardQuestion,
 } from '../chatGuard';
@@ -153,6 +154,24 @@ describe("the model's thinking", () => {
       `[… 1000 characters before] ${'b'.repeat(THINKING_SHOWN)}`,
     );
     expect(MODEL_THINKING).toBe('The model was thinking:');
+  });
+
+  it('reads <think> tags in the reply (local models)', () => {
+    expect(
+      thinkTagContent('<think> the user wants\nthe date </think>Sure.'),
+    ).toBe('the user wants\nthe date');
+    // Unclosed (cut off, or still streaming): runs to the end.
+    expect(thinkTagContent('<think>open the page')).toBe('open the page');
+    // Several blocks, <thinking> too, any case; empty ones left out.
+    expect(
+      thinkTagContent(
+        '<think>first</think> text <THINKING>second</THINKING><think> </think><thinking>third',
+      ),
+    ).toBe('first\n\nsecond\n\nthird');
+    // None.
+    expect(thinkTagContent('Just an answer.')).toBe('');
+    expect(thinkTagContent(undefined)).toBe('');
+    expect(thinkTagContent('<thinker>no</thinker>')).toBe('');
   });
 
   it('warns when it talks about hiding or getting around checks', () => {

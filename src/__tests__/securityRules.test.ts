@@ -1747,7 +1747,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     const open = tauri('src/open.rs');
     // Checked first, then the native dialog with the exact target, then opened.
     expect(open).toMatch(
-      /let target = check_target\(&target\)\?;\s*if !crate::approval::ask\(&app, &question\(&target\)\)\.await \{\s*return Err/,
+      /let target = check_target\(&target\)\?;\s*if !crate::approval::ask_for\(&app, &question\(&target\), None, thinking\.as_deref\(\)\)\.await \{\s*return Err/,
     );
     // Web pages go through the same check as the network door (no *.localhost).
     expect(open).toContain('crate::net::check_url(target)?');
@@ -2098,12 +2098,20 @@ describe('Rule 1: the model is treated as possibly hostile (chat guards, 2026-11
       /pub async fn ask_for\([^)]*thinking: Option<&str>\) -> bool \{\s*let yes = ask\(app, &with_thinking\(question, thinking\)\)\.await[^;]*;\s*crate::remote_ask::log_asked\(app, by\.map\(\|d\| d\.name\), yes, question, thinking\);/,
     );
     // Every tool question on the PC passes the thinking along.
-    for (const file of ['src/pc.rs', 'src/pc_extra.rs', 'src/link.rs']) {
+    for (const file of [
+      'src/pc.rs',
+      'src/pc_extra.rs',
+      'src/link.rs',
+      'src/open.rs',
+    ]) {
       const text = tauri(file);
       for (const m of text.matchAll(
         /crate::approval::ask_for\(([^;]*?)\)\.await/g,
       )) {
-        expect([file, m[1].trim().endsWith('thinking')]).toEqual([file, true]);
+        expect([file, /thinking(\.as_deref\(\))?$/.test(m[1].trim())]).toEqual([
+          file,
+          true,
+        ]);
       }
     }
     // The native commands take it as an optional argument.
@@ -2123,6 +2131,9 @@ describe('Rule 1: the model is treated as possibly hostile (chat guards, 2026-11
     );
     expect(extra).toContain(
       'pub async fn print_file(app: AppHandle, name: String, thinking: Option<String>)',
+    );
+    expect(tauri('src/open.rs')).toContain(
+      'pub async fn open_external(app: AppHandle, target: String, thinking: Option<String>)',
     );
     const outside = tauri('src/outside.rs');
     expect(outside).toMatch(

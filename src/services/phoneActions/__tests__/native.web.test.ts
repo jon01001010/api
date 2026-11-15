@@ -53,6 +53,13 @@ it('goes through the native "open" door, which asks itself', async () => {
   ).resolves.toEqual({ok: true});
   expect(invoke).toHaveBeenCalledWith('open_external', {
     target: 'https://www.openstreetmap.org/search?query=Victoria',
+    thinking: null,
+  });
+  // The model's thinking goes along, for the native question only.
+  await performPhoneAction('search', {query: 'rain'}, 'look it up');
+  expect(invoke).toHaveBeenLastCalledWith('open_external', {
+    target: 'https://duckduckgo.com/?q=rain',
+    thinking: 'look it up',
   });
   expect(actionAsksItself('navigate')).toBe(true);
   // Timers are kept by the app: the tool asks, as on the phone.

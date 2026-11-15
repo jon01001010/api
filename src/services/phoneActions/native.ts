@@ -58,6 +58,8 @@ export const phoneActionsAvailable = (): boolean => !!native();
 export async function performPhoneAction(
   action: PhoneAction,
   args: object = {},
+  // The model's thinking: shown in the PC's own question (native.web.ts).
+  _thinking?: string,
 ): Promise<PhoneActionResult> {
   const mod = native();
   if (!mod) {

@@ -253,6 +253,24 @@ export function hiddenChar(c: string): boolean {
 }
 
 /**
+ * The thinking a model wrote inside its reply as <think>…</think> or
+ * <thinking>…</thinking> (common for local GGUF models), blocks joined by
+ * a blank line. An unclosed tag (cut off or still streaming) runs to the
+ * end. Empty when there is none.
+ */
+export function thinkTagContent(text: string | undefined | null): string {
+  const parts: string[] = [];
+  const re = /<(think|thinking)>([\s\S]*?)(?:<\/\1>|$)/gi;
+  for (const m of String(text ?? '').matchAll(re)) {
+    const body = m[2].trim();
+    if (body) {
+      parts.push(body);
+    }
+  }
+  return parts.join('\n\n');
+}
+
+/**
  * The model's thinking as a question shows it: the last THINKING_SHOWN
  * characters (what led to the request), line breaks and hidden characters
  * written as escapes, saying how much came before. Empty when there is none.

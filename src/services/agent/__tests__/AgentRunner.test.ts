@@ -158,6 +158,64 @@ describe('runAgent', () => {
     expect((finished[0] as any).outcome.responseContent).toBe('4');
   });
 
+  it('passes <think> tags from the reply as the thinking when there is no reasoning_content', async () => {
+    const call = {
+      id: 'call-0',
+      type: 'function' as const,
+      function: {name: 'calculate', arguments: '{}'},
+    };
+    const runWith = async (
+      tokens: CompletionStreamData[],
+      result: CompletionResult,
+    ) => {
+      const seen: any[] = [];
+      const calculate: TalentEngine = {
+        ...makeTalent('calculate', () => ({type: 'text', summary: '4'})),
+        execute: async (_args, ctx) => {
+          seen.push(ctx?.thinking);
+          return {type: 'text', summary: '4'};
+        },
+      };
+      await collect(
+        runAgent({
+          engine: makeScriptedEngine({
+            scripts: [{tokens, result: {...result, tool_calls: [call]}}],
+          }),
+          initialParams: baseParams,
+          allowedTalentNames: ['calculate'],
+          talentLookup: () => calculate,
+          messageId: 'msg',
+          triggerMarkers: [],
+        }),
+      );
+      return seen[0];
+    };
+    expect(
+      await runWith([], {
+        text: '<think>add them</think>',
+        content: '<think>add them</think>',
+      }),
+    ).toBe('add them');
+    // Streamed, unclosed, with an empty final content.
+    expect(
+      await runWith([{content: '<think>still '}, {content: 'going'}], {
+        text: '',
+        content: '',
+      }),
+    ).toBe('still going');
+    // reasoning_content wins.
+    expect(
+      await runWith([], {
+        text: '<think>tag</think>',
+        content: '<think>tag</think>',
+        reasoning_content: 'real',
+      }),
+    ).toBe('real');
+    expect(await runWith([], {text: 'no tags', content: 'no tags'})).toBe(
+      undefined,
+    );
+  });
+
   it('#3 tool call but second turn yields no further tool_calls → run finishes after follow-up', async () => {
     // Note: the runner does not consult `requiresModelResponse`; it always
     // performs a follow-up turn after tool calls and only exits the loop
