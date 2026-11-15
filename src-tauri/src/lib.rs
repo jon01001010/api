@@ -128,6 +128,7 @@ pub fn run() {
             link::link_device_may_picture,
             link::link_tools_allow,
             link::link_device_may_read,
+            link::link_device_may_act,
             link_client::homelink_pair,
             link_client::homelink_status,
             link_client::homelink_start_model,

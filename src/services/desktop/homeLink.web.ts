@@ -40,3 +40,6 @@ export const linkDeviceMayRead = (
   id: string,
   allowed: boolean,
 ): Promise<void> => invoke('link_device_may_read', {id, allowed});
+/** Letting a device ask this PC to act is asked in a native dialog here. */
+export const linkDeviceMayAct = (id: string, allowed: boolean): Promise<void> =>
+  invoke('link_device_may_act', {id, allowed});

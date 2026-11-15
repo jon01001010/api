@@ -78,6 +78,27 @@ pub async fn ask(app: &AppHandle, question: &str) -> bool {
     first_answer(app, question, dialog, |yes| yes, || false).await
 }
 
+/// A paired device asking for one of this PC's tools (link.rs "tool"): its
+/// name goes into the question, and `still_allowed` is looked at again
+/// after the answer (the PC's switches or the device may have changed
+/// while the question was up).
+pub struct Device<'a> {
+    pub name: &'a str,
+    pub still_allowed: &'a (dyn Fn() -> bool + Sync),
+}
+
+/// `ask`, for one of this PC's own tools, asked by this PC's screens
+/// (`by`: None) or by a paired device: the same native "Allow?" every
+/// time (Allow or Don't allow, never "always"; a device that may answer
+/// can answer it, the asking one too: owner decision 1c). For a device,
+/// true only if it is still allowed after the answer.
+pub async fn ask_for(app: &AppHandle, question: &str, by: Option<&Device<'_>>) -> bool {
+    if !ask(app, question).await {
+        return false;
+    }
+    by.is_none_or(|d| (d.still_allowed)())
+}
+
 /// Asks on this PC only (pairing a new device).
 #[cfg_attr(not(feature = "link"), allow(dead_code))]
 pub async fn ask_on_this_pc(app: &AppHandle, question: &str) -> bool {

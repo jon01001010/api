@@ -12,6 +12,8 @@ export interface LinkPhone {
   mayPicture?: boolean;
   /** May use this PC's read-only tools (missing: no). */
   mayRead?: boolean;
+  /** May ask this PC to open, print, press media keys, read the clipboard (missing: no). */
+  mayAct?: boolean;
 }
 
 export interface LinkEvent {
@@ -63,6 +65,10 @@ export async function linkDeviceMayPicture(
 ): Promise<void> {}
 export async function linkToolsAllow(_allowed: boolean): Promise<void> {}
 export async function linkDeviceMayRead(
+  _id: string,
+  _allowed: boolean,
+): Promise<void> {}
+export async function linkDeviceMayAct(
   _id: string,
   _allowed: boolean,
 ): Promise<void> {}

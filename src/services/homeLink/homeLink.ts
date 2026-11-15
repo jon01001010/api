@@ -113,24 +113,29 @@ export const askPcForPicture = (
   }>('picture', pc, prompt, width ?? 0, height ?? 0, steps ?? 0);
 
 /**
- * Asks the PC for one of its read-only tools (`pc_info`, `workspace_list`,
- * `workspace_read`; only while the PC allows device tools, for this
- * device; it refuses otherwise with a clear message). `chat`: this chat's
- * random id (reading the workspace asks on the PC once per chat). Only a
- * file's name is sent as an argument; the PC checks it itself.
+ * Asks the PC for one of its tools (read only: `pc_info`, `workspace_list`,
+ * `workspace_read`, under "May read"; actions that ask on the PC every
+ * time: `pc_open`, `pc_print`, `pc_media`, `pc_clipboard_read`, under "May
+ * act"; only while the PC allows device tools, for this device; it refuses
+ * otherwise with a clear message). `chat`: this chat's random id (reading
+ * the workspace asks on the PC once per chat). Only a file's name and a
+ * media key are sent as arguments; the PC checks them itself.
  */
 export const askPcTool = (
   pc: string,
   name: string,
   chat: string,
-  args: {file?: string} = {},
+  args: {file?: string; key?: string} = {},
 ) =>
   ask<{result: unknown}>(
     'tool',
     pc,
     name,
     chat,
-    JSON.stringify(args.file !== undefined ? {file: args.file} : {}),
+    JSON.stringify({
+      ...(args.file !== undefined ? {file: args.file} : {}),
+      ...(args.key !== undefined ? {key: args.key} : {}),
+    }),
   );
 
 /** Pairs from the PC's QR code; the PC asks its user first. */
@@ -214,6 +219,9 @@ export function describeEvent(e: PairingEvent): string {
   }
   if (e.kind === 'may-read') {
     return `${when}: \u201c${e.name || 'a device'}\u201d may now use the PC's tools (PC info, read its workspace)`;
+  }
+  if (e.kind === 'may-act') {
+    return `${when}: “${e.name || 'a device'}” may now ask the PC to open or print a file, press a media key or give its clipboard (each asked on the PC)`;
   }
   if (e.kind === 'may-answer') {
     return `${when}: \u201c${e.name || 'a device'}\u201d may now answer the PC's \u201cAllow?\u201d questions`;

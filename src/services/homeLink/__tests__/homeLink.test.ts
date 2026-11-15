@@ -91,9 +91,19 @@ describe('home link (phone side)', () => {
       'c',
       '{"file":"a.md"}',
     );
+    await askPcTool(PC, 'pc_media', 'c', {key: 'mute'});
+    expect(tool).toHaveBeenLastCalledWith(
+      PC,
+      'pc_media',
+      'c',
+      '{"key":"mute"}',
+    );
     expect(
       describeEvent({n: 2, at: 0, kind: 'may-read', name: 'Pixel'}),
     ).toContain("“Pixel” may now use the PC's tools");
+    expect(
+      describeEvent({n: 3, at: 0, kind: 'may-act', name: 'Pixel'}),
+    ).toContain('“Pixel” may now ask the PC to open or print a file');
   });
 
   it('names a device allowed to make pictures in the pairing history', () => {

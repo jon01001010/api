@@ -24,7 +24,11 @@
 //!   And this PC's read-only tools ("tool": pc_info, the workspace's file
 //!   list and a workspace file's text, pc_files.rs), only while the user
 //!   allows device tools here and this device may read; reading the
-//!   workspace asks on this PC once per chat (see Request::Tool).
+//!   workspace asks on this PC once per chat (see Request::Tool). And,
+//!   only while this device may act, four of this PC's tools that already
+//!   ask (open or print a workspace file, a media key, the clipboard's
+//!   text): the very same functions as this PC's own, each asking here
+//!   natively every time, naming the device.
 //! - The PC's link key and the paired phones are kept where the screens
 //!   can't write: Windows Credential Manager, or on Linux a private file in
 //!   the app's settings folder (see read_entry).
@@ -49,8 +53,20 @@ pub const MAX_PICTURE: usize = 8 * 1024 * 1024;
 /// The PC's switch "Let paired devices use this PC's tools" ("on"); kept
 /// across restarts like the pictures switch.
 const TOOLS_ENTRY: &str = "DesktopAgent-link:tools";
-/// The only tools a device may ask for (stage 1: read only).
-pub const REMOTE_TOOLS: &[&str] = &["pc_info", "workspace_list", "workspace_read"];
+/// The only tools a device may ask for (stage 1: read only, under "may
+/// read"; stage 2: ACT_TOOLS, under "may act").
+pub const REMOTE_TOOLS: &[&str] = &[
+    "pc_info",
+    "workspace_list",
+    "workspace_read",
+    "pc_open",
+    "pc_print",
+    "pc_media",
+    "pc_clipboard_read",
+];
+/// The tools on REMOTE_TOOLS that act on this PC (stage 2): each is one of
+/// this PC's own tools that already asks natively, and asks every time.
+pub const ACT_TOOLS: &[&str] = &["pc_open", "pc_print", "pc_media", "pc_clipboard_read"];
 /// Largest tool answer sent (a file's text is at most 256 KB, escaped).
 pub const MAX_TOOL_ANSWER: usize = 2 * 1024 * 1024;
 /// How long "read the workspace for this chat" stays allowed.
@@ -97,6 +113,28 @@ pub struct Phone {
     /// switched on here, which asks on this PC.
     #[serde(default, rename = "mayRead", skip_serializing_if = "std::ops::Not::not")]
     pub may_read: bool,
+    /// May ask this PC to act (ACT_TOOLS: open or print a workspace file,
+    /// a media key, the clipboard; each asks here every time; while the
+    /// PC's tools switch is on too). Off for each device until switched on
+    /// here, which asks on this PC.
+    #[serde(default, rename = "mayAct", skip_serializing_if = "std::ops::Not::not")]
+    pub may_act: bool,
+}
+
+/// Whether this paired device may ask this PC to act (ACT_TOOLS).
+pub fn may_act(phones: &[Phone], id: &str) -> bool {
+    phones.iter().any(|p| p.id == id && p.may_act)
+}
+
+/// Sets one device's "may act"; false if it isn't paired.
+pub fn set_may_act(phones: &mut [Phone], id: &str, allowed: bool) -> bool {
+    match phones.iter_mut().find(|p| p.id == id) {
+        Some(p) => {
+            p.may_act = allowed;
+            true
+        }
+        None => false,
+    }
 }
 
 /// Whether this paired device may use this PC's read-only tools.
@@ -176,12 +214,13 @@ pub enum Request {
         #[serde(default)]
         steps: Option<u32>,
     },
-    /// One of this PC's read-only tools (only while the user allows device
-    /// tools here, for this device; only names on REMOTE_TOOLS). `chat`:
-    /// the device's own random id for the chat asking, so reading the
-    /// workspace is asked here once per chat. Arguments are named fields
-    /// only (anything else is ignored); a file is a workspace name, never
-    /// a path (pc_files::check_name).
+    /// One of this PC's tools (only while the user allows device tools
+    /// here, for this device: "may read" for the read-only ones, "may act"
+    /// for ACT_TOOLS; only names on REMOTE_TOOLS). `chat`: the device's own
+    /// random id for the chat asking, so reading the workspace is asked
+    /// here once per chat (an action asks every time). Arguments are named
+    /// fields only (anything else is ignored); a file is a workspace name,
+    /// never a path (pc_files::check_name); a key one of the media keys.
     Tool {
         name: String,
         chat: String,
@@ -198,12 +237,15 @@ pub fn parse_request(line: &[u8]) -> Option<Request> {
     serde_json::from_slice(line).ok()
 }
 
-/// The only argument a device's tool request carries.
+/// The only arguments a device's tool request carries.
 #[derive(Debug, Default, PartialEq, Deserialize)]
 pub struct ToolArgs {
-    /// workspace_read: the file's name in the workspace.
+    /// workspace_read, pc_open, pc_print: the file's name in the workspace.
     #[serde(default)]
     pub file: Option<String>,
+    /// pc_media: one of the media keys (pc_extra::media_vk).
+    #[serde(default)]
+    pub key: Option<String>,
 }
 
 /// A device's tool request, checked.
@@ -212,11 +254,23 @@ pub enum RemoteCall {
     PcInfo,
     WorkspaceList,
     WorkspaceRead(String),
+    Open(String),
+    Print(String),
+    Media(String),
+    ClipboardRead,
+}
+
+/// What a device may do with this PC's tools (its own flags).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct DeviceMay {
+    pub read: bool,
+    pub act: bool,
 }
 
 const OFF_TOOLS: &str = "Using this PC's tools from paired devices is off on the PC (Settings → Use this PC's model from your phone → Let paired devices use this PC's tools)";
 const NOT_THIS_DEVICE_TOOLS: &str = "This device may not use this PC's tools; allow it on the PC (Settings → Use this PC's model from your phone → Paired phones → May read)";
-const NOT_A_REMOTE_TOOL: &str = "The PC offers only pc_info, workspace_list and workspace_read to paired devices";
+const NOT_THIS_DEVICE_ACT: &str = "This device may not ask this PC to open, print, press media keys or read the clipboard; allow it on the PC (Settings → Use this PC's model from your phone → Paired phones → May act)";
+const NOT_A_REMOTE_TOOL: &str = "The PC offers only pc_info, workspace_list, workspace_read, pc_open, pc_print, pc_media and pc_clipboard_read to paired devices";
 
 /// A chat id from a device: random, opaque, 16-64 letters, digits, `-`, `_`.
 pub fn check_chat(chat: &str) -> Result<&str, String> {
@@ -228,26 +282,47 @@ pub fn check_chat(chat: &str) -> Result<&str, String> {
 }
 
 /// Checks a device's tool request, in this order: the PC's switch, this
-/// device's "may read", the tool on REMOTE_TOOLS, then its arguments.
-/// (Only paired devices get here at all.)
-pub fn check_tool(tools_on: bool, device_may_read: bool, name: &str, chat: &str, args: &ToolArgs) -> Result<RemoteCall, String> {
+/// device's flag for that tool ("may act" for ACT_TOOLS, "may read" for
+/// the others; for a name on neither list, either flag), the tool on
+/// REMOTE_TOOLS, then its arguments. (Only paired devices get here at all.)
+pub fn check_tool(tools_on: bool, may: DeviceMay, name: &str, chat: &str, args: &ToolArgs) -> Result<RemoteCall, String> {
     if !tools_on {
         return Err(OFF_TOOLS.into());
     }
-    if !device_may_read {
-        return Err(NOT_THIS_DEVICE_TOOLS.into());
+    let acts = ACT_TOOLS.contains(&name);
+    let device_may = if acts {
+        may.act
+    } else if REMOTE_TOOLS.contains(&name) {
+        may.read
+    } else {
+        may.read || may.act
+    };
+    if !device_may {
+        return Err(if acts { NOT_THIS_DEVICE_ACT } else { NOT_THIS_DEVICE_TOOLS }.into());
     }
     if !REMOTE_TOOLS.contains(&name) {
         return Err(NOT_A_REMOTE_TOOL.into());
     }
     check_chat(chat)?;
+    let file = || -> Result<String, String> {
+        let file = args.file.as_deref().ok_or("Give the file's name in the PC's workspace")?;
+        Ok(crate::pc_files::check_name(file)?.to_string())
+    };
     match name {
         "pc_info" => Ok(RemoteCall::PcInfo),
         "workspace_list" => Ok(RemoteCall::WorkspaceList),
-        _ => {
-            let file = args.file.as_deref().ok_or("Give the file's name in the PC's workspace")?;
-            Ok(RemoteCall::WorkspaceRead(crate::pc_files::check_name(file)?.to_string()))
+        "workspace_read" => Ok(RemoteCall::WorkspaceRead(file()?)),
+        "pc_open" => Ok(RemoteCall::Open(file()?)),
+        "pc_print" => Ok(RemoteCall::Print(file()?)),
+        "pc_media" => {
+            let key = args.key.as_deref().unwrap_or("");
+            if crate::pc_extra::media_vk(key).is_none() {
+                return Err("Give one media key: play_pause, next, previous, stop, volume_up, volume_down or mute".into());
+            }
+            Ok(RemoteCall::Media(key.to_string()))
         }
+        "pc_clipboard_read" => Ok(RemoteCall::ClipboardRead),
+        _ => Err(NOT_A_REMOTE_TOOL.into()),
     }
 }
 
@@ -791,10 +866,62 @@ async fn blocking(
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?
 }
 
+/// What the PC user is told when a device's action was done (the
+/// clipboard by its length only, never its text).
+pub fn act_note(device: &str, call: &RemoteCall, clipboard_chars: usize) -> String {
+    match call {
+        RemoteCall::Open(file) => format!("{device} opened {file} on this PC"),
+        RemoteCall::Print(file) => format!("{device} printed {file} on this PC"),
+        RemoteCall::Media(key) => format!("{device} pressed {} on this PC", crate::pc_extra::media_name(key)),
+        RemoteCall::ClipboardRead => format!("{device} got the text on this PC's clipboard ({clipboard_chars} characters)"),
+        _ => format!("{device} used this PC's tools"),
+    }
+}
+
+/// An action for a paired device (ACT_TOOLS): the very same function as
+/// this PC's own tool (pc::open_file, pc_extra::print_workspace_file,
+/// press_media_key, read_clipboard), which asks natively every time with
+/// the device named and checks again after the answer that tools are
+/// still on here and this device may still act. Logged (the clipboard by
+/// its length only) and told in a notification.
+async fn act_for(app: &AppHandle, remote: &str, device: &str, call: RemoteCall) -> Result<serde_json::Value, String> {
+    let still_allowed = || tools_allowed(app) && may_act(&load_phones(app), remote);
+    let by = crate::approval::Device { name: device, still_allowed: &still_allowed };
+    let (answer, clipboard_chars) = match &call {
+        RemoteCall::Open(file) => {
+            crate::pc::open_file(app, file, Some(&by)).await?;
+            (serde_json::json!({"done": true}), 0)
+        }
+        RemoteCall::Print(file) => {
+            crate::pc_extra::print_workspace_file(app, file, Some(&by)).await?;
+            (serde_json::json!({"done": true}), 0)
+        }
+        RemoteCall::Media(key) => {
+            crate::pc_extra::press_media_key(app, key, Some(&by)).await?;
+            (serde_json::json!({"done": true}), 0)
+        }
+        RemoteCall::ClipboardRead => {
+            let text = crate::pc_extra::read_clipboard(app, Some(&by)).await?;
+            let chars = text.chars().count();
+            (serde_json::json!({"text": text}), chars)
+        }
+        _ => return Err(NOT_A_REMOTE_TOOL.into()),
+    };
+    let note = act_note(device, &call, clipboard_chars);
+    crate::remote_ask::log_use(app, device, &note);
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app.notification().builder().title(format!("{device} used this PC")).body(note).show();
+    Ok(answer)
+}
+
 /// Runs a checked tool request for a paired device: the same functions as
 /// this PC's own tools (pc::pc_info, pc::workspace_file, docs.rs through
-/// pc_files::read). Each use is logged with the answers log.
+/// pc_files::read; actions through act_for). Each use is logged with the
+/// answers log.
 async fn tool_for(app: &AppHandle, remote: &str, device: &str, chat: &str, call: RemoteCall) -> Result<serde_json::Value, String> {
+    if matches!(call, RemoteCall::Open(_) | RemoteCall::Print(_) | RemoteCall::Media(_) | RemoteCall::ClipboardRead) {
+        return act_for(app, remote, device, call).await;
+    }
     if call != RemoteCall::PcInfo && !may_read_now(app, remote, device, chat).await {
         return Err("Not allowed on the PC: reading its workspace for this chat was refused".into());
     }
@@ -835,6 +962,8 @@ async fn tool_for(app: &AppHandle, remote: &str, device: &str, chat: &str, call:
                 .show();
             Ok(read)
         }
+        // Actions went to act_for above.
+        _ => Err(NOT_A_REMOTE_TOOL.into()),
     }
 }
 
@@ -1227,7 +1356,7 @@ async fn serve_stream(
                     let mut phones = load_phones(&app);
                     add_phone(
                         &mut phones,
-                        Phone { id: remote.clone(), name: name.clone(), may_answer: false, may_picture: false, may_read: false },
+                        Phone { id: remote.clone(), name: name.clone(), may_answer: false, may_picture: false, may_read: false, may_act: false },
                     );
                     let saved = save_phones(&app, &phones).is_ok();
                     if saved {
@@ -1382,7 +1511,8 @@ async fn serve_stream(
         }
         Some(Request::Tool { name, chat, args }) if paired => {
             let phones = load_phones(&app);
-            let checked = check_tool(tools_allowed(&app), may_read(&phones, &remote), &name, &chat, &args);
+            let may = DeviceMay { read: may_read(&phones, &remote), act: may_act(&phones, &remote) };
+            let checked = check_tool(tools_allowed(&app), may, &name, &chat, &args);
             let answer = match checked {
                 Err(error) => Err(error),
                 Ok(call) => {
@@ -1690,6 +1820,45 @@ pub async fn link_device_may_read(app: AppHandle, id: String, allowed: bool) -> 
         record(&app, "may-read", Some(name));
     } else {
         app.state::<Link>().read_grants.lock().unwrap().forget_device(&id);
+    }
+    Ok(())
+}
+
+/// The question asked on this PC before a device may act here.
+pub fn may_act_question(name: &str, key: &str) -> String {
+    format!(
+        "Let \u{201c}{name}\u{201d} ask to act on this PC?\n\nWhile this is on, it can ask this PC to open or print a file in DesktopAgent's workspace folder (documents, pictures, text and media; never programs or scripts), press a media key (play, pause, next, volume) or give it the text on the clipboard. This PC asks you every time, naming the device, before anything is done (a device that may answer this PC's questions can answer it, this one too). This PC shows a notification for each.\n\nDevice key: {key}"
+    )
+}
+
+/// Lets one paired device ask this PC to act (ACT_TOOLS: open or print a
+/// workspace file, a media key, the clipboard; each still asks here every
+/// time), or stops it. Letting it is asked on this PC (a native dialog no
+/// device can answer); paired devices see it in the pairing history.
+/// Stopping it asks nothing.
+#[tauri::command]
+pub async fn link_device_may_act(app: AppHandle, id: String, allowed: bool) -> Result<(), String> {
+    const NOT_PAIRED: &str = "That device is not paired with this PC";
+    let name = load_phones(&app)
+        .into_iter()
+        .find(|p| p.id == id)
+        .map(|p| p.name)
+        .ok_or(NOT_PAIRED)?;
+    if allowed {
+        let key: String = id.chars().take(16).collect();
+        let question = may_act_question(&name, &key);
+        if !crate::approval::ask_on_this_pc(&app, &question).await {
+            return Err("Not allowed on this PC".into());
+        }
+    }
+    // Read again after the dialog (the list may have changed meanwhile).
+    let mut phones = load_phones(&app);
+    if !set_may_act(&mut phones, &id, allowed) {
+        return Err(NOT_PAIRED.into());
+    }
+    save_phones(&app, &phones)?;
+    if allowed {
+        record(&app, "may-act", Some(name));
     }
     Ok(())
 }
@@ -2006,10 +2175,10 @@ mod tests {
         assert_eq!(clean_name(&"x".repeat(100)).len(), 40);
         let mut phones = Vec::new();
         for i in 0..(MAX_PHONES + 3) {
-            add_phone(&mut phones, Phone { id: format!("{i}"), name: "p".into(), may_answer: false, may_picture: false, may_read: false });
+            add_phone(&mut phones, Phone { id: format!("{i}"), name: "p".into(), may_answer: false, may_picture: false, may_read: false, may_act: false });
         }
         assert_eq!(phones.len(), MAX_PHONES);
-        add_phone(&mut phones, Phone { id: "5".into(), name: "again".into(), may_answer: false, may_picture: false, may_read: false });
+        add_phone(&mut phones, Phone { id: "5".into(), name: "again".into(), may_answer: false, may_picture: false, may_read: false, may_act: false });
         assert_eq!(phones.iter().filter(|p| p.id == "5").count(), 1);
     }
 
@@ -2034,7 +2203,7 @@ mod tests {
         assert!(set_may_answer(&mut phones, "a", false));
         assert!(!may_answer(&phones, "a"));
         // Pairing again starts over (not allowed).
-        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false });
+        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false, may_act: false });
         assert!(!may_answer(&phones, "a"));
     }
 
@@ -2058,7 +2227,7 @@ mod tests {
         let back: Vec<Phone> = serde_json::from_str(&json).unwrap();
         assert_eq!(back, phones);
         // Pairing again starts over (not allowed).
-        add_phone(&mut phones, Phone { id: "b".into(), name: "Laptop".into(), may_answer: false, may_picture: false, may_read: false });
+        add_phone(&mut phones, Phone { id: "b".into(), name: "Laptop".into(), may_answer: false, may_picture: false, may_read: false, may_act: false });
         assert!(!may_picture(&phones, "b"));
     }
 
@@ -2108,8 +2277,12 @@ mod tests {
             Some(Request::Tool {
                 name: "workspace_read".into(),
                 chat: CHAT.into(),
-                args: ToolArgs { file: Some("notes.md".into()) },
+                args: ToolArgs { file: Some("notes.md".into()), key: None },
             })
+        );
+        assert_eq!(
+            parse_request(br#"{"op":"tool","name":"pc_media","chat":"c0ffee-chat_0123456789","args":{"key":"mute","command":"x"}}"#),
+            Some(Request::Tool { name: "pc_media".into(), chat: CHAT.into(), args: ToolArgs { file: None, key: Some("mute".into()) } })
         );
         assert_eq!(
             parse_request(br#"{"op":"tool","name":"pc_info","chat":"c0ffee-chat_0123456789"}"#),
@@ -2121,29 +2294,88 @@ mod tests {
 
     #[test]
     fn tool_checks_go_switch_then_device_then_list_then_arguments() {
-        let read = |file: &str| ToolArgs { file: Some(file.into()) };
+        let read = |file: &str| ToolArgs { file: Some(file.into()), key: None };
+        const NONE: DeviceMay = DeviceMay { read: false, act: false };
+        const READ: DeviceMay = DeviceMay { read: true, act: false };
+        const ACT: DeviceMay = DeviceMay { read: false, act: true };
+        const BOTH: DeviceMay = DeviceMay { read: true, act: true };
         // Each check wins over every later one, whatever else is wrong.
-        assert_eq!(check_tool(false, true, "pc_info", CHAT, &ToolArgs::default()), Err(OFF_TOOLS.into()));
-        assert_eq!(check_tool(false, false, "run_command", "x", &read("../x")), Err(OFF_TOOLS.into()));
-        assert_eq!(check_tool(true, false, "run_command", "x", &read("../x")), Err(NOT_THIS_DEVICE_TOOLS.into()));
-        assert_eq!(check_tool(true, true, "run_command", "x", &read("../x")), Err(NOT_A_REMOTE_TOOL.into()));
-        assert!(check_tool(true, true, "workspace_read", "x", &read("notes.md")).is_err());
-        // Only the fixed list, read only.
-        assert_eq!(REMOTE_TOOLS, ["pc_info", "workspace_list", "workspace_read"]);
-        for name in ["run_command", "open_file", "print_file", "clipboard_read", "fs_read", "", "PC_INFO"] {
-            assert_eq!(check_tool(true, true, name, CHAT, &ToolArgs::default()), Err(NOT_A_REMOTE_TOOL.into()), "{name}");
-        }
-        assert_eq!(check_tool(true, true, "pc_info", CHAT, &ToolArgs::default()), Ok(RemoteCall::PcInfo));
-        assert_eq!(check_tool(true, true, "workspace_list", CHAT, &read("x")), Ok(RemoteCall::WorkspaceList));
+        assert_eq!(check_tool(false, BOTH, "pc_info", CHAT, &ToolArgs::default()), Err(OFF_TOOLS.into()));
+        assert_eq!(check_tool(false, NONE, "run_command", "x", &read("../x")), Err(OFF_TOOLS.into()));
+        assert_eq!(check_tool(false, BOTH, "pc_open", "x", &read("../x")), Err(OFF_TOOLS.into()));
+        assert_eq!(check_tool(true, NONE, "run_command", "x", &read("../x")), Err(NOT_THIS_DEVICE_TOOLS.into()));
+        assert_eq!(check_tool(true, NONE, "pc_open", "x", &read("../x")), Err(NOT_THIS_DEVICE_ACT.into()));
+        assert_eq!(check_tool(true, BOTH, "run_command", "x", &read("../x")), Err(NOT_A_REMOTE_TOOL.into()));
+        assert_eq!(check_tool(true, READ, "run_command", "x", &read("../x")), Err(NOT_A_REMOTE_TOOL.into()));
+        assert_eq!(check_tool(true, ACT, "run_command", "x", &read("../x")), Err(NOT_A_REMOTE_TOOL.into()));
+        assert!(check_tool(true, BOTH, "workspace_read", "x", &read("notes.md")).is_err());
+        assert!(check_tool(true, BOTH, "pc_open", "x", &read("notes.md")).is_err());
+        // Only the fixed list: stage 1's reads and stage 2's actions.
         assert_eq!(
-            check_tool(true, true, "workspace_read", CHAT, &read("budget 2026.xlsx")),
+            REMOTE_TOOLS,
+            ["pc_info", "workspace_list", "workspace_read", "pc_open", "pc_print", "pc_media", "pc_clipboard_read"]
+        );
+        assert_eq!(ACT_TOOLS, &REMOTE_TOOLS[3..]);
+        for name in ["run_command", "open_file", "print_file", "clipboard_read", "media_key", "take_screenshot", "fs_read", "", "PC_INFO", "PC_OPEN"] {
+            assert_eq!(check_tool(true, BOTH, name, CHAT, &ToolArgs::default()), Err(NOT_A_REMOTE_TOOL.into()), "{name}");
+        }
+        // "May read" alone can't act, "may act" alone can't read.
+        for name in ACT_TOOLS {
+            assert_eq!(check_tool(true, READ, name, CHAT, &read("notes.md")), Err(NOT_THIS_DEVICE_ACT.into()), "{name}");
+        }
+        for name in ["pc_info", "workspace_list", "workspace_read"] {
+            assert_eq!(check_tool(true, ACT, name, CHAT, &read("notes.md")), Err(NOT_THIS_DEVICE_TOOLS.into()), "{name}");
+        }
+        assert_eq!(check_tool(true, READ, "pc_info", CHAT, &ToolArgs::default()), Ok(RemoteCall::PcInfo));
+        assert_eq!(check_tool(true, READ, "workspace_list", CHAT, &read("x")), Ok(RemoteCall::WorkspaceList));
+        assert_eq!(
+            check_tool(true, READ, "workspace_read", CHAT, &read("budget 2026.xlsx")),
             Ok(RemoteCall::WorkspaceRead("budget 2026.xlsx".into()))
         );
+        assert_eq!(check_tool(true, ACT, "pc_open", CHAT, &read("budget.xlsx")), Ok(RemoteCall::Open("budget.xlsx".into())));
+        assert_eq!(check_tool(true, ACT, "pc_print", CHAT, &read("letter.docx")), Ok(RemoteCall::Print("letter.docx".into())));
+        assert_eq!(check_tool(true, ACT, "pc_clipboard_read", CHAT, &read("x")), Ok(RemoteCall::ClipboardRead));
+        let key = |k: &str| ToolArgs { file: None, key: Some(k.into()) };
+        assert_eq!(check_tool(true, ACT, "pc_media", CHAT, &key("volume_up")), Ok(RemoteCall::Media("volume_up".into())));
+        for bad in ["enter", "alt_f4", "", "PLAY_PAUSE"] {
+            assert!(check_tool(true, ACT, "pc_media", CHAT, &key(bad)).is_err(), "{bad}");
+        }
+        assert!(check_tool(true, ACT, "pc_media", CHAT, &ToolArgs::default()).is_err());
         // A path, `..`, a folder, a hidden or system name: refused.
         for bad in ["../secret.txt", "..", "a/b.txt", "a\\b.txt", "C:/Windows/win.ini", "/etc/passwd", ".env", "desktop.ini", "CON.txt"] {
-            assert!(check_tool(true, true, "workspace_read", CHAT, &read(bad)).is_err(), "{bad}");
+            assert!(check_tool(true, READ, "workspace_read", CHAT, &read(bad)).is_err(), "{bad}");
+            assert!(check_tool(true, ACT, "pc_open", CHAT, &read(bad)).is_err(), "{bad}");
+            assert!(check_tool(true, ACT, "pc_print", CHAT, &read(bad)).is_err(), "{bad}");
         }
-        assert!(check_tool(true, true, "workspace_read", CHAT, &ToolArgs::default()).is_err());
+        assert!(check_tool(true, READ, "workspace_read", CHAT, &ToolArgs::default()).is_err());
+        assert!(check_tool(true, ACT, "pc_open", CHAT, &ToolArgs::default()).is_err());
+    }
+
+    #[test]
+    fn each_device_may_act_only_once_allowed() {
+        let old: Vec<Phone> = serde_json::from_str(r#"[{"id":"a","name":"Pixel","mayAnswer":true,"mayRead":true}]"#).unwrap();
+        assert!(!may_act(&old, "a"));
+        let mut phones = old;
+        assert!(set_may_act(&mut phones, "a", true));
+        assert!(may_act(&phones, "a") && !may_act(&phones, "b"));
+        assert!(!set_may_act(&mut phones, "b", true));
+        assert!(serde_json::to_string(&phones).unwrap().contains(r#""mayAct":true"#));
+        // Pairing anew starts with it off.
+        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false, may_act: false });
+        assert!(!may_act(&phones, "a"));
+        let q = may_act_question("Pixel", "abcd");
+        assert!(q.contains("\u{201c}Pixel\u{201d}") && q.contains("asks you every time") && q.ends_with("Device key: abcd"));
+    }
+
+    #[test]
+    fn the_pc_is_told_what_a_device_did_never_the_clipboard() {
+        assert_eq!(act_note("Pixel", &RemoteCall::Open("a.md".into()), 0), "Pixel opened a.md on this PC");
+        assert_eq!(act_note("Pixel", &RemoteCall::Print("a.md".into()), 0), "Pixel printed a.md on this PC");
+        assert_eq!(act_note("Pixel", &RemoteCall::Media("mute".into()), 0), "Pixel pressed Mute on this PC");
+        assert_eq!(
+            act_note("Pixel", &RemoteCall::ClipboardRead, 12),
+            "Pixel got the text on this PC's clipboard (12 characters)"
+        );
     }
 
     #[test]
@@ -2165,7 +2397,7 @@ mod tests {
         assert!(!set_may_read(&mut phones, "b", true));
         assert!(serde_json::to_string(&phones).unwrap().contains(r#""mayRead":true"#));
         // Pairing anew starts with it off.
-        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false });
+        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false, may_act: false });
         assert!(!may_read(&phones, "a"));
     }
 
