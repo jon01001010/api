@@ -51,6 +51,14 @@ export const linkDeviceMayCommand = (
   id: string,
   allowed: boolean,
 ): Promise<void> => invoke('link_device_may_command', {id, allowed});
+/**
+ * Letting a device ask to write text files in this PC's workspace is asked
+ * in a native dialog here; each change is still shown and asked every time.
+ */
+export const linkDeviceMayWrite = (
+  id: string,
+  allowed: boolean,
+): Promise<void> => invoke('link_device_may_write', {id, allowed});
 /** Which keys this PC uses as a home PC and as a device (reads only). */
 export const linkKeyMode = (): Promise<LinkKeyMode> => invoke('link_key_mode');
 /**

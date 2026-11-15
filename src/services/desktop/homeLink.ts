@@ -16,6 +16,8 @@ export interface LinkPhone {
   mayAct?: boolean;
   /** May ask this PC to run commands, each asked there (missing: no). */
   mayCommand?: boolean;
+  /** May ask to write text files in this PC's workspace, each change asked there (missing: no). */
+  mayWrite?: boolean;
   /** When it was paired (seconds since 1970); missing on older records. */
   pairedAt?: number;
 }
@@ -87,6 +89,10 @@ export async function linkDeviceMayAct(
   _allowed: boolean,
 ): Promise<void> {}
 export async function linkDeviceMayCommand(
+  _id: string,
+  _allowed: boolean,
+): Promise<void> {}
+export async function linkDeviceMayWrite(
   _id: string,
   _allowed: boolean,
 ): Promise<void> {}

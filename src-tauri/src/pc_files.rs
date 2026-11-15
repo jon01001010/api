@@ -68,15 +68,20 @@ pub fn check_name(name: &str) -> Result<&str, String> {
     Ok(name)
 }
 
+/// Whether the file is one of the screens' text kinds (TEXT_EXTENSIONS).
+pub fn text_kind(name: &str) -> bool {
+    let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    TEXT_EXTENSIONS.contains(&ext.as_str())
+}
+
 /// Whether the file may be read: text or a document DesktopAgent reads.
 pub fn readable(name: &str) -> bool {
-    let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
-    TEXT_EXTENSIONS.contains(&ext.as_str()) || crate::docs::kind_of(name).is_some()
+    text_kind(name) || crate::docs::kind_of(name).is_some()
 }
 
 /// A plain file of its own: not a folder, not a link to somewhere else,
 /// not hidden or a system file (Windows' attributes).
-fn plain_file(path: &Path) -> bool {
+pub(crate) fn plain_file(path: &Path) -> bool {
     let Ok(meta) = std::fs::symlink_metadata(path) else { return false };
     if !meta.file_type().is_file() {
         return false;

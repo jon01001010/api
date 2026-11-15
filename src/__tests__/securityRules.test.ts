@@ -387,6 +387,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'link_device_may_read',
         'link_device_may_act',
         'link_device_may_command',
+        'link_device_may_write',
         'homelink_pair',
         'homelink_status',
         'homelink_start_model',
@@ -712,7 +713,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'add_phone(&mut phones, Phone::new(remote.clone(), name.clone(), now_secs()));',
     );
     expect(link).toMatch(
-      /pub fn new\(id: String, name: String, paired_at: u64\) -> Self \{\s*Phone \{\s*id,\s*name,\s*may_answer: false,\s*may_picture: false,\s*may_read: false,\s*may_act: false,\s*may_command: false,\s*paired_at: Some\(paired_at\),\s*\}/,
+      /pub fn new\(id: String, name: String, paired_at: u64\) -> Self \{\s*Phone \{\s*id,\s*name,\s*may_answer: false,\s*may_picture: false,\s*may_read: false,\s*may_act: false,\s*may_command: false,\s*may_write: false,\s*paired_at: Some\(paired_at\),\s*\}/,
     );
     expect(link).toMatch(
       /pub async fn link_device_may_answer[\s\S]*?if allowed \{[\s\S]*?if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*return Err[\s\S]*?let mut phones = load_phones\(&app\);[\s\S]*?save_phones/,
@@ -774,12 +775,13 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // already ask; the order of the checks is unchanged: switch → this
     // device's flag for that tool → the fixed list → the arguments.
     expect(link).toMatch(
-      /Some\(Request::Tool \{ name, chat, args \}\) if paired => \{\s*let phones = load_phones\(&app\);\s*let may = DeviceMay \{\s*read: may_read\(&phones, &remote\),\s*act: may_act\(&phones, &remote\),\s*command: may_command\(&phones, &remote\),\s*\};\s*let checked = check_tool\(tools_allowed\(&app\), may, &name, &chat, &args\);/,
+      /Some\(Request::Tool \{ name, chat, args \}\) if paired => \{\s*let phones = load_phones\(&app\);\s*let may = DeviceMay \{\s*read: may_read\(&phones, &remote\),\s*act: may_act\(&phones, &remote\),\s*command: may_command\(&phones, &remote\),\s*write: may_write\(&phones, &remote\),\s*\};\s*let checked = check_tool\(tools_allowed\(&app\), may, &name, &chat, &args\);/,
     );
     expect(link).toMatch(
-      /pub fn check_tool[^{]*\{\s*if !tools_on \{\s*return Err\(OFF_TOOLS\.into\(\)\);\s*\}\s*let commands = COMMAND_TOOLS\.contains\(&name\);\s*let acts = ACT_TOOLS\.contains\(&name\);\s*let device_may = if commands \{\s*may\.command\s*\} else if acts \{\s*may\.act\s*\} else if REMOTE_TOOLS\.contains\(&name\) \{\s*may\.read\s*\} else \{\s*may\.read \|\| may\.act \|\| may\.command\s*\};\s*if !device_may \{\s*return Err[^;]*;\s*\}\s*if !REMOTE_TOOLS\.contains\(&name\) \{\s*return Err\(NOT_A_REMOTE_TOOL\.into\(\)\);\s*\}\s*check_chat\(chat\)\?;[\s\S]*?crate::pc_files::check_name\(file\)\?[\s\S]*?crate::pc_extra::media_vk\(key\)\.is_none\(\)[\s\S]*?"pc_run_command" => \{[\s\S]*?Ok\(RemoteCall::Command\(crate::pc::check_command\(command\)\?\)\)/,
+      /pub fn check_tool[^{]*\{\s*if !tools_on \{\s*return Err\(OFF_TOOLS\.into\(\)\);\s*\}\s*let writes = WRITE_TOOLS\.contains\(&name\);\s*let commands = COMMAND_TOOLS\.contains\(&name\);\s*let acts = ACT_TOOLS\.contains\(&name\);\s*let device_may = if writes \{\s*may\.write\s*\} else if commands \{\s*may\.command\s*\} else if acts \{\s*may\.act\s*\} else if REMOTE_TOOLS\.contains\(&name\) \{\s*may\.read\s*\} else \{\s*may\.read \|\| may\.act \|\| may\.command \|\| may\.write\s*\};\s*if !device_may \{\s*return Err[^;]*;\s*\}\s*if !REMOTE_TOOLS\.contains\(&name\) \{\s*return Err\(NOT_A_REMOTE_TOOL\.into\(\)\);\s*\}\s*check_chat\(chat\)\?;[\s\S]*?crate::pc_files::check_name\(file\)\?[\s\S]*?crate::pc_extra::media_vk\(key\)\.is_none\(\)[\s\S]*?"pc_run_command" => \{[\s\S]*?Ok\(RemoteCall::Command\(crate::pc::check_command\(command\)\?\)\)/,
     );
-    // The fixed list: exactly stage 1's reads and stage 2's actions.
+    // The fixed list: exactly stage 1's reads, stage 2's actions, stage
+    // 3's command and stage 4's writes.
     const remoteTools = link.match(
       /pub const REMOTE_TOOLS: &\[&str\] = &\[([^\]]*)\];/,
     );
@@ -794,9 +796,15 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'pc_media',
       'pc_clipboard_read',
       'pc_run_command',
+      'workspace_write',
+      'workspace_append',
+      'workspace_undo',
     ]);
     expect(link).toContain(
       'pub const COMMAND_TOOLS: &[&str] = &["pc_run_command"];',
+    );
+    expect(link).toContain(
+      'pub const WRITE_TOOLS: &[&str] = &["workspace_write", "workspace_append", "workspace_undo"];',
     );
     expect(link).toContain(
       'pub const ACT_TOOLS: &[&str] = &["pc_open", "pc_print", "pc_media", "pc_clipboard_read"];',
@@ -809,6 +817,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'file',
       'key',
       'command',
+      'bytes',
     ]);
     // "may act": off by default (old records too, and again after pairing
     // anew), turned on only after the PC's own dialog (no device can
@@ -848,6 +857,63 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     );
     expect(link).toMatch(
       /async fn command_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_command\(&load_phones\(app\), remote\);[\s\S]*?let ran = crate::pc::run_checked_command\(app, command, Some\(&by\)\)\.await\?;[\s\S]*?log_use\(app, device, &format!\("ran a command \(\{how\}\): \{command\}"\)\)[\s\S]*?notification\(\)[\s\S]*?command_note\([\s\S]*?"output": output_for_device\(&ran\.output, &local_folders\(app\)\)/,
+    );
+    // Stage 4: "may write", its own flag (separate from the other three),
+    // off by default (old records too, and again after pairing anew),
+    // turned on only after the PC's own dialog, recorded in the pairing
+    // history. The arguments: a workspace name through the same check as
+    // reads, a text kind that opens in a viewer (never a program or a
+    // script), the size announced (at most 256 KB); the text itself is
+    // read only after every check. Each change is worked out first, then
+    // asked natively EVERY time (approval::ask_for, never "always"),
+    // naming the device and showing the change before and after; the
+    // switch and the flag checked again after the answer; the previous
+    // version kept; logged and notified with the file and line counts only.
+    expect(link).toMatch(
+      /#\[serde\(default, rename = "mayWrite"[^\n]*\]\s*pub may_write: bool,/,
+    );
+    expect(link).toMatch(
+      /pub async fn link_device_may_write[\s\S]*?if allowed \{[\s\S]*?let question = may_write_question\(&name, &key\);\s*if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*return Err[\s\S]*?let mut phones = load_phones\(&app\);[\s\S]*?save_phones[\s\S]*?record\(&app, "may-write"/,
+    );
+    expect(link).toMatch(
+      /"workspace_write" \| "workspace_append" \| "workspace_undo" => \{[\s\S]*?let file = file\(\)\?;\s*if !crate::pc_write::writable\(&file\) \{\s*return Err[\s\S]*?if n > crate::pc_write::MAX_WRITE as u64/,
+    );
+    expect(link).toMatch(
+      /let checked = check_tool\([\s\S]*?RemoteCall::Write \{ bytes, \.\. \} => read_text\(&mut recv, \*bytes\)\.await,/,
+    );
+    expect(link).toMatch(
+      /async fn write_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_write\(&load_phones\(app\), remote\);[\s\S]*?crate::pc_write::plan\([\s\S]*?if !crate::approval::ask_for\(app, &crate::pc_write::question\(device, &plan\), Some\(&by\)\)\.await \{\s*return Err[\s\S]*?crate::pc_write::apply\([\s\S]*?log_use\(app, device, &note\)[\s\S]*?notification\(\)/,
+    );
+    const writeFor = link.slice(
+      link.indexOf('async fn write_for'),
+      link.indexOf('async fn read_text'),
+    );
+    expect(writeFor).not.toMatch(/ask_with_always|Always|ask_on_this_pc/);
+    expect(link).toMatch(
+      /if let RemoteCall::Write \{ file, kind, \.\. \} = call \{\s*return write_for\(app, remote, device, file, kind, text\)\.await;/,
+    );
+    const pcWrite = tauri('src/pc_write.rs');
+    expect(pcWrite).toContain(
+      'pub const MAX_WRITE: usize = crate::pc_files::MAX_TEXT;',
+    );
+    expect(pcWrite).toMatch(
+      /pub fn writable\(name: &str\) -> bool \{\s*crate::pc_files::text_kind\(name\) && crate::pc::openable\(name\)\s*\}/,
+    );
+    expect(pcWrite).toMatch(
+      /pub fn plan[\s\S]*?let file = crate::pc_files::check_name\(file\)\?;\s*if !writable\(file\) \{/,
+    );
+    // The previous version is kept before anything is written; a file
+    // that changed meanwhile is never written over.
+    expect(pcWrite).toMatch(
+      /pub fn apply[\s\S]*?if current\(&path, &plan\.file\)\? != plan\.previous \{\s*return Err[\s\S]*?save_snapshot\(history, &plan\.file, previous\)\?;[\s\S]*?create_new\(true\)/,
+    );
+    // Long changes are shown head and tail, saying how much is left out.
+    expect(pcWrite).toContain('more line{} of the change not shown here');
+    expect(pcWrite).toContain('… (+{more} characters)');
+    // The answers log keeps who and what, never the text of a change.
+    const ask = tauri('src/remote_ask.rs');
+    expect(ask).toMatch(
+      /if first\.starts_with\('\\u\{201c\}'\) && first\.ends_with\(WRITE_ASK_DEVICE\) \{[\s\S]*?\(the change itself is not logged\)/,
     );
     const commandFor = link.slice(
       link.indexOf('async fn command_for'),
@@ -1111,7 +1177,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
   it("the phone's PC tools: their own names, off by default, results untrusted, behind the PIN", () => {
     const engine = read('src/services/talents/PcToolsEngine.ts');
     expect(engine).toMatch(
-      /export const PC_TOOL_NAMES = \[\s*'pc_info',\s*'pc_workspace_list',\s*'pc_workspace_read',\s*'pc_open',\s*'pc_print',\s*'pc_media',\s*'pc_clipboard_read',\s*'pc_run_command',\s*\] as const;/,
+      /export const PC_TOOL_NAMES = \[\s*'pc_info',\s*'pc_workspace_list',\s*'pc_workspace_read',\s*'pc_open',\s*'pc_print',\s*'pc_media',\s*'pc_clipboard_read',\s*'pc_run_command',\s*'pc_workspace_write',\s*'pc_workspace_append',\s*'pc_workspace_undo',\s*\] as const;/,
     );
     // What the PC sends back is its data (a file, the clipboard): wrapped
     // as untrusted. Only the actions get a plain "done" built here from
@@ -1139,7 +1205,21 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /if \(method !== 'pair' && method !== 'closeTunnel'\) \{\s*const gate = await homePcGate/,
     );
     expect(link).toMatch(
-      /'tool',\s*pc,\s*name,\s*chat,\s*JSON\.stringify\(\{\s*\.\.\.\(args\.file !== undefined \? \{file: args\.file\} : \{\}\),\s*\.\.\.\(args\.key !== undefined \? \{key: args\.key\} : \{\}\),\s*\.\.\.\(args\.command !== undefined \? \{command: args\.command\} : \{\}\),\s*\}\)/,
+      /'tool',\s*pc,\s*name,\s*chat,\s*JSON\.stringify\(\{\s*\.\.\.\(args\.file !== undefined \? \{file: args\.file\} : \{\}\),\s*\.\.\.\(args\.key !== undefined \? \{key: args\.key\} : \{\}\),\s*\.\.\.\(args\.command !== undefined \? \{command: args\.command\} : \{\}\),\s*\.\.\.\(args\.content !== undefined \? \{content: args\.content\} : \{\}\),\s*\}\)/,
+    );
+    // A change on the PC is told to the model as a plain message built
+    // here from this device's own file name and the PC's line counts
+    // (numbers only), never the PC's text.
+    expect(engine).toMatch(
+      /const n = \(value: unknown\) => Math\.max\(0, Math\.floor\(Number\(value\) \|\| 0\)\);/,
+    );
+    const written = engine.slice(
+      engine.indexOf('export function writtenText'),
+      engine.indexOf('export function doneText'),
+    );
+    expect(written).not.toMatch(/answer\?\.(text|file|output|error)/);
+    expect(engine).toMatch(
+      /if \(PC_WRITE_TOOLS\.includes\(this\.name\)\) \{\s*return \{\s*type: 'text',\s*summary: `\$\{writtenText\(this\.name, toolArgs\.file \?\? '', answer\.result\)\} \$\{STOP\}`,/,
     );
     // Registered on the phone only (the PC has its own pc_info), and no
     // tool is switched on by default.

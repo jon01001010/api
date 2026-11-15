@@ -24,6 +24,7 @@ mod open;
 mod pc;
 mod pc_extra;
 mod pc_files;
+mod pc_write;
 mod preview;
 mod profile;
 mod remembered;
@@ -131,6 +132,7 @@ pub fn run() {
             link::link_device_may_read,
             link::link_device_may_act,
             link::link_device_may_command,
+            link::link_device_may_write,
             link_client::homelink_pair,
             link_client::homelink_status,
             link_client::homelink_start_model,

@@ -1,13 +1,13 @@
 /**
  * "On your PC" (phone only): the paired Home PC's tools, asked over the
  * home link (request "tool", src-tauri/src/link.rs; design:
- * docs/design/phone-uses-pc-tools.md, stages 1 to 3). Each tool is off
+ * docs/design/phone-uses-pc-tools.md, stages 1 to 4). Each tool is off
  * until switched on in Toolbox, like every tool; the PC refuses unless its
  * user allows device tools there and this device "May read" (the reads),
- * "May act" (the actions) or "May run commands" (pc_run_command). The PC
- * checks everything itself (a fixed list, workspace file names only, a
- * fixed list of media keys, its own command check, caps) and runs the same
- * code as its own tools.
+ * "May act" (the actions), "May run commands" (pc_run_command) or "May
+ * write" (the writes). The PC checks everything itself (a fixed list,
+ * workspace file names only, a fixed list of media keys, its own command
+ * check, text kinds and caps) and runs the same code as its own tools.
  *
  * - pc_info: the PC's system, memory, disks and graphics.
  * - pc_workspace_list: the files in the PC's workspace folder.
@@ -24,6 +24,14 @@
  *   its workspace folder, at most 60 s. The PC shows the whole command
  *   and asks every time (never "always"), naming this device; it shows a
  *   notification and logs the whole command.
+ * - pc_workspace_write, pc_workspace_append, pc_workspace_undo: make or
+ *   replace a text file in the PC's workspace, add at its end, or undo the
+ *   last change (.txt, .md, .csv, .json, .xml, .html, .log; at most
+ *   256 KB). The PC shows the change before and after and asks every time
+ *   (never "always"), naming this device; it keeps the previous version
+ *   (undo brings it back), shows a notification and logs the file and the
+ *   line counts (never the text). The answer is a plain message built here
+ *   from this device's own arguments and the PC's line counts.
  *
  * What comes back is the PC's data (a file's or the clipboard's text, a
  * command's output, without the PC's own paths), so it is wrapped as
@@ -36,6 +44,7 @@ import {askPcTool} from '../homeLink/homeLink';
 import {unlockHomePc} from '../homeLink/homePcLock';
 import {describePc, MEDIA_ACTIONS} from './DesktopToolsEngine';
 import {pickHomePc} from './PcPictureEngine';
+import {utf8Bytes} from './fileWorkspace';
 import {wrapUntrusted} from './untrustedContent';
 import {
   TalentEngine,
@@ -53,6 +62,9 @@ export const PC_TOOL_NAMES = [
   'pc_media',
   'pc_clipboard_read',
   'pc_run_command',
+  'pc_workspace_write',
+  'pc_workspace_append',
+  'pc_workspace_undo',
 ] as const;
 export type PcTool = (typeof PC_TOOL_NAMES)[number];
 
@@ -66,6 +78,9 @@ export const REMOTE_NAMES: Record<PcTool, string> = {
   pc_media: 'pc_media',
   pc_clipboard_read: 'pc_clipboard_read',
   pc_run_command: 'pc_run_command',
+  pc_workspace_write: 'workspace_write',
+  pc_workspace_append: 'workspace_append',
+  pc_workspace_undo: 'workspace_undo',
 };
 
 /** The tools that act on the PC (the PC's "May act"; each asks there). */
@@ -79,6 +94,16 @@ export const PC_ACT_TOOLS: readonly PcTool[] = [
 /** The tool that runs a command on the PC (the PC's "May run commands"). */
 export const PC_COMMAND_TOOLS: readonly PcTool[] = ['pc_run_command'];
 
+/** The tools that write in the PC's workspace (the PC's "May write"). */
+export const PC_WRITE_TOOLS: readonly PcTool[] = [
+  'pc_workspace_write',
+  'pc_workspace_append',
+  'pc_workspace_undo',
+];
+
+/** As the PC checks it (pc_write.rs MAX_WRITE): the whole file after it. */
+export const MAX_WRITE_BYTES = 256 * 1024;
+
 /** As the PC checks it (pc.rs check_command): characters and lines. */
 export const MAX_COMMAND = 2000;
 export const MAX_COMMAND_LINES = 20;
@@ -87,7 +112,10 @@ const FILE_TOOLS: readonly PcTool[] = [
   'pc_workspace_read',
   'pc_open',
   'pc_print',
+  ...PC_WRITE_TOOLS,
 ];
+
+const WRITE_KINDS = '.txt, .md, .csv, .json, .xml, .html or .log';
 
 const STOP =
   'Answer the user now; do not call this tool again unless they ask.';
@@ -183,6 +211,57 @@ const DEFINITIONS: Record<PcTool, ToolDefinition['function']> = {
       required: ['command'],
     },
   },
+  pc_workspace_write: {
+    name: 'pc_workspace_write',
+    description: `Make a new text file, or replace ALL the text of one, in the workspace folder on the user's paired Home PC (${WRITE_KINDS}; at most 256 KB; no folders or paths). Only when the user asked to write that file on their PC. To change a file: read it first with pc_workspace_read, then send the complete new text. The PC shows its user the change before and after and asks every time; the earlier version is kept (pc_workspace_undo brings it back).`,
+    parameters: {
+      type: 'object',
+      properties: {
+        filename: {
+          type: 'string',
+          description: 'Workspace file name on the PC, e.g. notes.md.',
+        },
+        content: {
+          type: 'string',
+          description: 'The complete text of the file.',
+        },
+      },
+      required: ['filename', 'content'],
+    },
+  },
+  pc_workspace_append: {
+    name: 'pc_workspace_append',
+    description: `Add text at the END of an existing text file in the workspace folder on the user's paired Home PC, keeping what is there (${WRITE_KINDS}; at most 256 KB in all). Put only the new text in \`content\`; start it with a line break if it should begin on a new line. The PC shows its user the change and asks every time; the earlier version is kept.`,
+    parameters: {
+      type: 'object',
+      properties: {
+        filename: {
+          type: 'string',
+          description: 'Exact workspace file name on the PC, e.g. log.txt.',
+        },
+        content: {
+          type: 'string',
+          description: 'Only the new text to add at the end.',
+        },
+      },
+      required: ['filename', 'content'],
+    },
+  },
+  pc_workspace_undo: {
+    name: 'pc_workspace_undo',
+    description:
+      "Undo the last change to a text file in the workspace folder on the user's paired Home PC: bring back its most recent earlier version. The PC shows its user the change and asks every time.",
+    parameters: {
+      type: 'object',
+      properties: {
+        filename: {
+          type: 'string',
+          description: 'Exact workspace file name on the PC, e.g. notes.md.',
+        },
+      },
+      required: ['filename'],
+    },
+  },
 };
 
 function homePc(): string | undefined {
@@ -263,12 +342,38 @@ export function refusal(tool: PcTool, error: string): string {
   if (/said no/i.test(error)) {
     return `The Home PC's user said no to ${tool} (asked on the PC): ${error} Tell the user; don't ask again unless they want to. ${STOP}`;
   }
-  const needs = PC_COMMAND_TOOLS.includes(tool)
-    ? `"Let paired devices use this PC's tools" and this device's "May run commands" allowed there; each command is asked on the PC`
-    : PC_ACT_TOOLS.includes(tool)
-      ? `"Let paired devices use this PC's tools" and this device's "May act" allowed there; each action is asked on the PC`
-      : `"Let paired devices use this PC's tools" and this device's "May read" allowed there, and reading the workspace allowed for this chat`;
+  const needs = PC_WRITE_TOOLS.includes(tool)
+    ? `"Let paired devices use this PC's tools" and this device's "May write" allowed there; each change is shown and asked on the PC`
+    : PC_COMMAND_TOOLS.includes(tool)
+      ? `"Let paired devices use this PC's tools" and this device's "May run commands" allowed there; each command is asked on the PC`
+      : PC_ACT_TOOLS.includes(tool)
+        ? `"Let paired devices use this PC's tools" and this device's "May act" allowed there; each action is asked on the PC`
+        : `"Let paired devices use this PC's tools" and this device's "May read" allowed there, and reading the workspace allowed for this chat`;
   return `The Home PC did not answer ${tool}: ${error}. Tell the user (the PC must be on with the home link, ${needs}). ${STOP}`;
+}
+
+/**
+ * What the model is told after a change the PC made: built here from this
+ * device's own file name and the PC's line counts (numbers only), so it is
+ * plain text, not the PC's data.
+ */
+export function writtenText(tool: PcTool, file: string, answer: any): string {
+  const n = (value: unknown) => Math.max(0, Math.floor(Number(value) || 0));
+  const added = n(answer?.added);
+  const removed = n(answer?.removed);
+  if (answer?.unchanged) {
+    return `Nothing changed: ${file} on the PC already has that text.`;
+  }
+  if (tool === 'pc_workspace_undo') {
+    return `Undid the last change to ${file} on the PC (+${added} −${removed} lines; the user allowed it there).`;
+  }
+  if (tool === 'pc_workspace_append') {
+    return `Added to the end of ${file} on the PC (+${added} −${removed} lines; the user allowed it there; the earlier version is kept, pc_workspace_undo brings it back).`;
+  }
+  if (answer?.created) {
+    return `Made ${file} on the PC (${added} line${added === 1 ? '' : 's'}; the user allowed it there).`;
+  }
+  return `Replaced the text of ${file} on the PC (+${added} −${removed} lines; the user allowed it there; the earlier version is kept, pc_workspace_undo brings it back).`;
 }
 
 /** What the model is told after an action the PC did (not the PC's data). */
@@ -295,7 +400,12 @@ export class PcToolsEngine implements TalentEngine {
     args: Record<string, any>,
     ctx?: TalentExecuteContext,
   ): Promise<TalentResult> {
-    const toolArgs: {file?: string; key?: string; command?: string} = {};
+    const toolArgs: {
+      file?: string;
+      key?: string;
+      command?: string;
+      content?: string;
+    } = {};
     if (FILE_TOOLS.includes(this.name)) {
       const file =
         typeof args.filename === 'string' ? args.filename.trim() : '';
@@ -340,6 +450,34 @@ export class PcToolsEngine implements TalentEngine {
       }
       toolArgs.command = command;
     }
+    if (
+      this.name === 'pc_workspace_write' ||
+      this.name === 'pc_workspace_append'
+    ) {
+      const content = args.content;
+      let bytes = -1;
+      try {
+        bytes = typeof content === 'string' ? utf8Bytes(content) : -1;
+      } catch {
+        bytes = -1;
+      }
+      const problem =
+        bytes < 0
+          ? 'Give the text in `content`.'
+          : bytes > MAX_WRITE_BYTES
+            ? `The text is too large (at most ${MAX_WRITE_BYTES / 1024} KB).`
+            : this.name === 'pc_workspace_append' && bytes === 0
+              ? 'Give the text to add in `content`.'
+              : undefined;
+      if (problem) {
+        return {
+          type: 'error',
+          summary: `${this.name}: ${problem}`,
+          errorMessage: problem,
+        };
+      }
+      toolArgs.content = content;
+    }
     const pc = homePc();
     if (!pc) {
       return {
@@ -373,6 +511,12 @@ export class PcToolsEngine implements TalentEngine {
     }
     if (!answer.ok) {
       return {type: 'text', summary: refusal(this.name, answer.error)};
+    }
+    if (PC_WRITE_TOOLS.includes(this.name)) {
+      return {
+        type: 'text',
+        summary: `${writtenText(this.name, toolArgs.file ?? '', answer.result)} ${STOP}`,
+      };
     }
     const done = doneText(this.name, toolArgs);
     if (done) {

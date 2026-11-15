@@ -129,6 +129,11 @@ pub const MAX_LOG_BYTES: u64 = 1024 * 1024;
 pub const CLIPBOARD_ASK_DEVICE: &str =
     "\u{201d} asks for the text on your clipboard (it goes to that device's model):";
 
+/// How the first line of a paired device's change to a workspace file ends
+/// (pc_write::question): `“<device>` comes before it. The text of the
+/// change that follows is never written to the log.
+pub const WRITE_ASK_DEVICE: &str = "\u{201d} asks to change a file in your workspace on this PC:";
+
 /// A question as the log keeps it: the clipboard's text (often a password)
 /// replaced by its length, whether this PC's own tool or a paired device
 /// asked (the first line, with the device's name, is kept); any other
@@ -136,6 +141,12 @@ pub const CLIPBOARD_ASK_DEVICE: &str =
 /// ends otherwise, so nothing else can be cut short here.
 pub fn loggable(question: &str) -> String {
     let first = question.split('\n').next().unwrap_or("");
+    // A paired device's change to a workspace file (pc_write::question):
+    // who and what (the file, the line counts), never the text.
+    if first.starts_with('\u{201c}') && first.ends_with(WRITE_ASK_DEVICE) {
+        let what = question[first.len()..].trim_start_matches('\n').split('\n').next().unwrap_or("");
+        return format!("{first}\n{what}\n(the change itself is not logged)");
+    }
     let clipboard = first == CLIPBOARD_ASK || (first.starts_with('\u{201c}') && first.ends_with(CLIPBOARD_ASK_DEVICE));
     if !clipboard {
         return question.to_string();

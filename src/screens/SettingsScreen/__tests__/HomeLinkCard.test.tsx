@@ -8,6 +8,7 @@ import {
   linkDeviceMayAnswer,
   linkDeviceMayCommand,
   linkDeviceMayPicture,
+  linkDeviceMayWrite,
   linkForget,
   linkKeyMode,
   linkPicturesAllow,
@@ -51,6 +52,7 @@ jest.mock('../../../services/desktop/homeLink', () => ({
   linkDeviceMayRead: jest.fn(async () => {}),
   linkDeviceMayAct: jest.fn(async () => {}),
   linkDeviceMayCommand: jest.fn(async () => {}),
+  linkDeviceMayWrite: jest.fn(async () => {}),
   linkToolsAllow: jest.fn(async () => {}),
   linkPicturesAllow: jest.fn(async () => {}),
 }));
@@ -159,6 +161,38 @@ describe('Home link card: commands from paired devices', () => {
     const {findByTestId, queryByTestId} = show();
     await findByTestId('your-devices-remove-aaaa');
     expect(queryByTestId('home-link-may-command-aaaa')).toBeNull();
+    expect(queryByTestId('home-link-may-write-aaaa')).toBeNull();
+  });
+});
+
+describe('Home link card: writing from paired devices', () => {
+  it('"May write" is its own switch, off unless allowed; changes go to the PC', async () => {
+    (linkStatus as jest.Mock).mockResolvedValueOnce({
+      on: true,
+      pcId: 'pc',
+      toolsAllowed: true,
+      phones: [
+        {
+          id: 'aaaa',
+          name: 'Pixel',
+          mayRead: true,
+          mayAct: true,
+          mayCommand: true,
+        },
+        {id: 'bbbb', name: 'Laptop', mayWrite: true},
+      ],
+      events: [],
+    });
+    const {findByTestId, getByTestId} = show();
+    expect((await findByTestId('home-link-may-write-bbbb')).props.value).toBe(
+      true,
+    );
+    // Reading, acting or running commands do not mean writing.
+    expect(getByTestId('home-link-may-write-aaaa').props.value).toBe(false);
+    fireEvent(getByTestId('home-link-may-write-aaaa'), 'valueChange', true);
+    await waitFor(() =>
+      expect(linkDeviceMayWrite).toHaveBeenCalledWith('aaaa', true),
+    );
   });
 });
 
