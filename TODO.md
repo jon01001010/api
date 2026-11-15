@@ -462,18 +462,25 @@ Plan:
 - [x] Done: clearer editor wording ("When should the model use it? e.g. when I say good morning"; "Tools never run on a timer; for an alarm use Shortcut with set_alarm") and a plainer description for the model.
 - [ ] Phone check: make "morning" (alarm with `{{hour}}` + open an app) in Toolbox, turn it on, ask "run morning at 7"; ask a model to save a packing list as instructions, approve, turn it on, ask for it back; delete both.
 
-### Share and scan by QR: tools and device pairing (planned, not started)
+### Share and scan by QR: tools and device pairing (built 2026-11-15, needs phone and PC check)
 
-Toolbox → Custom tools gets **Share as QR** on each tool and a **Scan a tool** button. Uses the scheme from the user's QR2D page (`qr2d-v0_27.html`):
+Toolbox → Custom tools has **Share** on each tool and **Scan QR** / **Paste a code** buttons. Uses the scheme from the user's QR2D page (`qr2d-v0_27.html`). Code: `src/services/talents/toolQr.ts` (pack/unpack), `toolImport.ts` (review and install), `src/screens/ToolCodeDialogs.tsx`, `src/components/QrCodeView`.
 
-- [ ] **One QR scanner for everything** (decided 2026-11-06): a single **Scan QR** screen reads every PocketAgent QR, and the tag in front says what it is: `PA1:T:` a tool, `PA1:P:` a desktop pairing (address, public key, one-time code; see PocketAgent Desktop), later mods. Each kind goes to its own review screen; nothing is installed or paired without the user confirming. Unknown tags are refused.
-- [ ] Scan QR is reached from Toolbox (tools) and from the server / desktop list (pairing); same screen, same camera and "from a picture" options.
-- [ ] Pack: the tool's JSON → deflate (pako) → base64, with a short tag and version in front (e.g. `PA1:`), so the app knows it's a PocketAgent tool and which format it is. Keep plain JSON when it is smaller.
-- [ ] Size check: one standard QR holds about 2,331 characters (version 40, medium error correction); most tools fit. If a tool is too big, offer **Share as file** instead (no multi-QR for now).
-- [ ] Draw the QR with `qrcode-generator` + `react-native-svg` (already in the app). Share the QR as a picture too.
-- [ ] Scan with the camera (the existing vision-camera code scanner) or **from a picture** (jsQR on the image), so a QR in a screenshot or chat works.
-- [ ] After scanning: run the same checks as `tool_save`, show the **full definition** (every step and fill-in), then install **switched off**. Name clash → rename or replace (asks).
-- [ ] Never run anything from a scan; a QR is data only (instructions or a shortcut of built-in tools).
+- [x] **One QR scanner for everything** (decided 2026-11-06): **Scan QR** reads every PocketAgent code, and the tag in front says what it is: `PA1:T:` a tool, `PA1:P:` a desktop pairing (goes to the usual pairing, which asks first), later mods. Nothing is installed or paired without the user confirming. Unknown tags are refused.
+- [x] Scan QR is reached from Toolbox (tools and pairing). The server list keeps its own scanner (pairing and server addresses), unchanged.
+- [ ] Optional: the server / desktop list's scanner could also take a tool code and hand it to the Toolbox review.
+- [x] Pack: the tool's JSON → deflate (pako, raw) → base64, tag and version in front: `PA1:T:1:z:…`; plain JSON (`PA1:T:1:j:…`, ASCII only) when that is shorter. Who made the tool is not sent; it arrives as the user's.
+- [x] Unpack: tag and version checked (a newer version says "update the app"), at most 32 KB of code and 16 KB of tool (inflating stops at the cap, so a zip bomb is refused early), only a tool's fields kept, broken base64 / deflate / UTF-8 / JSON refused.
+- [x] Size check: one standard QR holds about 2,331 characters (version 40, medium error correction); most tools fit. Too big: the dialog says so and offers **Share as file** and **Copy code** (no multi-QR for now).
+- [x] **Copy code** and **Paste a code** (also **Open a file**): the way PC to PC, since a laptop has no camera. On the desktop, Scan QR opens the paste box.
+- [x] Draw the QR with `qrcode-generator` + `react-native-svg`: black on white with a quiet border, also in dark themes.
+- [ ] Share the QR as a picture too (needs a view-to-image library; not added).
+- [x] Scan with the camera (the existing vision-camera code scanner).
+- [ ] Scan **from a picture** (jsQR on the image), so a QR in a screenshot or chat works: not built (jsQR is not in the app, and the phone needs the picture's pixels).
+- [x] After reading: the same checks as `tool_save`, the **full definition** shown (every step and fill-in), then install **switched off**. Name clash → asks for another name; the existing tool is kept (never replaced; delete it first to replace it).
+- [x] Never run anything from a scan; a code is data only (instructions or a shortcut of built-in tools). Guarded in `securityRules.test.ts` (rule 2).
+- [ ] Phone check: share a shortcut as QR, scan it on a second phone: every step shown, installs off, works after switching on. Scan a PC pairing QR from Toolbox: asks, then pairs. Camera permission refused → paste still works.
+- [ ] PC check (DesktopAgent): Share → Copy code, paste on another PC (or the phone) → installs off; Share as file saves a `.pocketagent-tool.txt`; Open a file reads it; Scan QR shows the paste box.
 - [ ] Later, optional: the colour "mcode" from QR2D (8 colours, Reed–Solomon) for denser codes; only if plain QR is too small in practice.
 
 ## HTML preview lock: no WebRTC, frames or pop-ups (built, needs phone check)
