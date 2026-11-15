@@ -220,6 +220,28 @@ describe('Rule 5: the phone side stays small', () => {
     expect(server).toContain('SecureRandom');
     expect(read('src/services/localApi/protocol.ts')).toMatch(/no tools/);
   });
+
+  it('a Home PC PIN guards every link request, and only its hash is kept', () => {
+    const link = read('src/services/homeLink/homeLink.ts');
+    const ask = link.slice(link.indexOf('async function ask'));
+    // The gate comes before the native call; only pairing (the PC asks)
+    // and closing the tunnel pass without it.
+    expect(ask.indexOf('homePcGate(')).toBeGreaterThan(0);
+    expect(ask.indexOf('homePcGate(')).toBeLessThan(
+      ask.indexOf('await mod[method]'),
+    );
+    expect(ask).toMatch(
+      /method !== 'pair' && method !== 'closeTunnel'\) \{\n\s*const gate = await homePcGate/,
+    );
+    const lock = read('src/services/homeLink/homePcLock.ts');
+    expect(lock).toMatch(/TRIES_BEFORE_WAIT = 5\b/);
+    expect(lock).toMatch(/FIRST_WAIT_MS = 5 \* 60 \* 1000/);
+    // What is saved: salt, hash, rounds, settings and the try count.
+    expect(lock).not.toMatch(/JSON\.stringify\(\{[^}]*\bpin\b/);
+    expect(read('src/services/homeLink/pinHash.ts')).toMatch(
+      /PIN_ITERATIONS = \d{2,3}_000/,
+    );
+  });
 });
 
 describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => {

@@ -20,6 +20,7 @@ import {
   answerForPcOn,
   setAnswerForPc,
 } from '../../services/homeLink/pcQuestions';
+import {unlockHomePc} from '../../services/homeLink/homePcLock';
 
 /**
  * A paired home PC: keep the system prompt, memory, assistants, custom tools and loops in step with it
@@ -41,6 +42,11 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
   }, [pc]);
 
   const syncNow = async () => {
+    // The PC's PIN, if set on this device and locked: asked first.
+    if (!(await unlockHomePc(pc))) {
+      setLine('Not in step: the PC is locked (PIN not entered).');
+      return;
+    }
     setBusy(true);
     setLine('Keeping in step…');
     const r = await syncWithPc(pc);
