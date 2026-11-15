@@ -54,10 +54,12 @@ import {
   saveLoops,
   startShared,
   stopLoop,
+  togglePause,
   updateLoop,
   type Loop,
 } from '../../loops/loops';
 import {
+  changedWhileRunning,
   cleanDefinition,
   LOOP_DELETE_CAP,
   mergeLoops,
@@ -252,10 +254,17 @@ it('an edit travels and wins by time; each device keeps its own schedule', async
   expect(here.prompt).toBe('Walk 5 km');
   expect(here.at).toEqual({hour: 8, minute: 0});
   expect(here.maxRuns).toBe(12);
-  // Still running here, with its own runs.
-  expect(here.paused).toBe(false);
+  // Paused here (it was running), with its own runs; resumed by the user.
+  expect(here.paused).toBe(true);
+  expect(here.pausedWhy).toBe('changed on the PC');
   expect(here.runs).toBe(2);
-  expect(here.log[0].what).toBe('Changed on the PC');
+  expect(here.log[0].what).toBe(
+    'Changed on the PC; press Resume to run the new version',
+  );
+  expect(here.log[0].what).toBe(changedWhileRunning('the PC'));
+  const resumed = togglePause(here, mockClock);
+  expect(resumed.paused).toBe(false);
+  expect(resumed.prompt).toBe('Walk 5 km');
   // Then the phone edits it later: the phone wins.
   later(MIN);
   await on('A', () =>
@@ -275,7 +284,9 @@ it('an edit travels and wins by time; each device keeps its own schedule', async
   // The PC's own run state stays its own.
   const [pcNow] = await loopsOf('B');
   expect(pcNow.runs).toBe(0);
-  expect(pcNow.paused).toBe(false);
+  // Changed on the phone while running on the PC: paused there until resumed.
+  expect(pcNow.paused).toBe(true);
+  expect(pcNow.log[0].what).toBe(changedWhileRunning('A'));
   // In step: nothing moves any more.
   for (let i = 0; i < 2; i++) {
     const again = await sync();

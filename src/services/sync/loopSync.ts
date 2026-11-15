@@ -11,8 +11,9 @@
  * A loop that arrives from another device is installed paused and not
  * started (as from a shared code): nothing runs on two devices at once
  * unless the user presses Start on each. A changed definition updates the
- * loop here and keeps its runs, chat and log (a running loop keeps running
- * with the new definition, as after Edit).
+ * loop here and keeps its runs, chat and log; a running loop is paused
+ * ("Changed on <device>; press Resume to run the new version"), so another
+ * device can't quietly change what runs here (security review 2).
  *
  * Loops travel as one item (a JSON list) merged one by one, like assistants
  * (assistantDeletes.ts): each loop carries `editedAt`, when its definition
@@ -48,6 +49,7 @@ import {
 } from '../loops/loopShare';
 import {loopPromptOf, blankDraft} from '../loops/makeLoop';
 
+import {jsonBytes, readStrict} from './keptStore';
 import {clampTime, fingerprint, MAX_CLOCK_SKEW} from './promptSync';
 
 export const LOOP_TOMBSTONES_KEY = '@pocketagent/sync/loop-tombstones/v1';
@@ -60,6 +62,8 @@ export const LOOP_TOMBSTONE_DAYS = 90;
 export const LOOP_RECENT_DAYS = 30;
 /** More deletions than this in one sync: ask first. */
 export const LOOP_DELETE_CAP = 5;
+/** Room for "Loops recently deleted" (UTF-8 bytes, one stored value). */
+export const LOOP_RECENT_ROOM = 500_000;
 /** Most live loops taken from one list (a device keeps at most MAX_LOOPS). */
 const MAX_LIVE = 50;
 /** Loop ids (as made by buildLoop: time and random, base 36). */
@@ -116,7 +120,11 @@ const readJson = async <T>(key: string, fallback: T): Promise<T> => {
 
 export const deviceLoopStore: LoopSyncStore = {
   now: () => Date.now(),
-  load: readJson,
+  // Recently deleted: a failed read throws (never taken as empty).
+  load: (key, fallback) =>
+    key === LOOP_RECENT_KEY
+      ? readStrict(key, fallback)
+      : readJson(key, fallback),
   save: (key, value) => AsyncStorage.setItem(key, JSON.stringify(value)),
   loadLoops,
   saveLoops,
@@ -530,7 +538,14 @@ function installedFrom(
   };
 }
 
-/** A loop here with a changed definition: its runs, chat and log kept. */
+/** The log line when a running loop was changed on another device. */
+export const changedWhileRunning = (from: string) =>
+  `Changed on ${from}; press Resume to run the new version`;
+
+/**
+ * A loop here with a changed definition: its runs, chat and log kept; a
+ * running one paused (the user resumes it after seeing the change).
+ */
 function updatedFrom(
   here: Loop,
   e: LoopEntry,
@@ -557,7 +572,15 @@ function updatedFrom(
       now,
     );
     if (r.ok) {
-      return addLog(r.loop, `Changed on ${from}`, now);
+      if (r.loop.paused) {
+        return addLog(r.loop, `Changed on ${from}`, now);
+      }
+      // Running: paused until the user has seen the new version.
+      return addLog(
+        {...r.loop, paused: true, pausedWhy: `changed on ${from}`},
+        changedWhileRunning(from),
+        now,
+      );
     }
   }
   // Not started here, or the change doesn't fit what ran here (its end
@@ -686,30 +709,48 @@ export function pruneRecentLoops(
     .sort((a, b) => b.removedAt - a.removedAt);
 }
 
-/** Keeps these loops under Recently deleted, then removes them here. */
+/**
+ * Keeps these loops under Recently deleted, then removes them here; one
+ * that doesn't fit in the room left (or when the list can't be read) is
+ * not removed.
+ */
 async function removeKept(
-  list: HeldLoopDelete[],
+  wanted: HeldLoopDelete[],
   from: string,
   store: LoopSyncStore,
 ): Promise<string[]> {
-  if (!list.length) {
+  if (!wanted.length) {
     return [];
   }
   const now = store.now();
+  let kept: RecentlyDeletedLoop[];
+  try {
+    kept = await store.load<RecentlyDeletedLoop[]>(LOOP_RECENT_KEY, []);
+  } catch {
+    // Can't be read: nothing can be kept, so nothing is removed.
+    return [];
+  }
+  const wantedIds = new Set(wanted.map(h => h.loop.id));
+  const recent = pruneRecentLoops(kept, now).filter(
+    r => !wantedIds.has(r.loop.id),
+  );
+  let used = jsonBytes(recent);
+  const added: RecentlyDeletedLoop[] = [];
+  for (const h of wanted) {
+    const entry = {loop: h.loop, deletedAt: h.deletedAt, removedAt: now, from};
+    const n = jsonBytes(entry) + 1;
+    if (used + n > LOOP_RECENT_ROOM) {
+      continue;
+    }
+    added.push(entry);
+    used += n;
+  }
+  if (!added.length) {
+    return [];
+  }
+  const list = added.map(r => ({loop: r.loop, deletedAt: r.deletedAt}));
   const ids = new Set(list.map(h => h.loop.id));
-  const recent = pruneRecentLoops(
-    await store.load<RecentlyDeletedLoop[]>(LOOP_RECENT_KEY, []),
-    now,
-  ).filter(r => !ids.has(r.loop.id));
-  await store.save(LOOP_RECENT_KEY, [
-    ...list.map(h => ({
-      loop: h.loop,
-      deletedAt: h.deletedAt,
-      removedAt: now,
-      from,
-    })),
-    ...recent,
-  ]);
+  await store.save(LOOP_RECENT_KEY, [...added, ...recent]);
   // Saved without going through Stop: not this device's own deletion.
   await store.saveLoops((await store.loadLoops()).filter(l => !ids.has(l.id)));
   await addLoopTombstones(

@@ -4,6 +4,16 @@ Every security fix in PocketAgent (Android) and DesktopAgent (Windows / Linux), 
 
 No release has been made to other people yet: all of these were found in our own reviews, before release. Credit for outside reports will be given here.
 
+## 2026-11-15: second review, app code
+
+- **"Recently deleted" can't be emptied by syncs:** up to 3 versions of a chat are kept (the first one is never dropped for a later one), sizes are counted in UTF-8 bytes and the list is stored in parts well under Android's 2 MB read limit, and a list that can't be read is never saved over (nothing is removed or replaced then). Assistants and loops read their lists the same safe way.
+- **The Home PC PIN's wait can't be skipped by changing the date:** the wait left is kept and counts down only by time the app measured itself (a monotonic clock, never more than the wall clock moved).
+- **Searching earlier chats reads only words typed on this device:** messages that came from another device in a mirrored chat are marked locally and skipped.
+- **A synced change pauses a running loop** ("Changed on <device>; press Resume to run the new version").
+- **Shortcuts check the Toolbox:** a step whose tool is switched off is refused, before the approval and again before each step.
+- **The phone shows the same hidden characters as the PC** in its questions (soft hyphen, tag characters and others), pinned by a test.
+- PC side: a pairing code now survives 3 wrong tries (counted across all device keys) instead of being burned by one; one device can have at most 3 chats allowed to read the workspace (the notification shows the count); errors sent to a device no longer name the PC's folders; devices get no PDFs (a damaged one could stop the app) and other documents are read in their own thread within 30 seconds; the clipboard's text is no longer written to the answers log, which is now kept to about 2 MB.
+
 ## 2026-11-15: security review 2, builds
 
 - **The phone APK is a release build now, not a debug build.** The test APK was debuggable with React Native's dev support on: someone holding the unlocked phone could read the app's private files (its home link key, chats) over USB with `adb run-as`, and another app on the phone could pretend to be a "Metro" server and have its JavaScript run as PocketAgent at the next start. The published APK is now the release variant (not debuggable, no dev support, the JavaScript built in), and the build fails if it is debuggable. It is still signed with the same public debug key until the owner's key is added, so it installs over the current app.

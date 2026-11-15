@@ -3,6 +3,7 @@ import {StyleSheet, View} from 'react-native';
 import {Button, Text} from 'react-native-paper';
 
 import {
+  entryKey,
   recentlyDeleted,
   restoreDeleted,
   RECENT_DAYS,
@@ -35,12 +36,14 @@ export const RecentlyDeletedChats: React.FC<{refresh?: unknown}> = ({
     return null;
   }
 
-  const restore = async (id: string) => {
+  const restore = async (key: string) => {
     setBusy(true);
     try {
-      if (await restoreDeleted(id)) {
+      if (await restoreDeleted(key)) {
         await require('../../store').chatSessionStore.loadSessionList();
       }
+    } catch {
+      // Stays in the list; it can be tried again.
     } finally {
       setBusy(false);
       load();
@@ -62,14 +65,14 @@ export const RecentlyDeletedChats: React.FC<{refresh?: unknown}> = ({
             {`Kept ${RECENT_DAYS} days. Restoring a chat (or an earlier version) brings it back on the other device too.`}
           </Text>
           {list.map(r => (
-            <View key={r.chat.session.id} style={styles.row}>
+            <View key={entryKey(r)} style={styles.row}>
               <Text variant="bodySmall" style={styles.title} numberOfLines={2}>
                 {`${String(r.chat.session.title || 'Chat')} · ${r.replaced ? `earlier version, replaced from ${r.from}` : `deleted on ${r.from}`}, ${new Date(r.removedAt).toLocaleDateString()}`}
               </Text>
               <Button
                 compact
                 disabled={busy}
-                onPress={() => restore(r.chat.session.id)}
+                onPress={() => restore(entryKey(r))}
                 testID={`recently-deleted-restore-${r.chat.session.id}`}>
                 Restore
               </Button>

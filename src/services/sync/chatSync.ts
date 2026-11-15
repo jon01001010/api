@@ -21,6 +21,7 @@ import {Q} from '@nozbe/watermelondb';
 
 import {database} from '../../database';
 import {assistantId, userId} from '../../utils/chat';
+import {isMirrored, withMirrorMark} from './mirrorMark';
 import {clampTime, fingerprint} from './promptSync';
 
 const SESSION_FIELDS = [
@@ -473,9 +474,16 @@ export function cleanChats(raw: unknown, now = Date.now()): ChatRecord[] {
 
 /**
  * Writes chats here, as they are on the other device (same ids): the chat
- * itself, and its messages replaced by the other device's.
+ * itself, and its messages replaced by the other device's. With `from` (a
+ * sync), each message is marked as mirrored (`mirrorMark.ts`), except one
+ * that was already here unmarked with the same author and text (typed
+ * here, back from the other device unchanged). Without it (restoring a
+ * kept version here), messages are written as they are.
  */
-export async function writeChats(chats: ChatRecord[]): Promise<void> {
+export async function writeChats(
+  chats: ChatRecord[],
+  opts: {from?: string} = {},
+): Promise<void> {
   if (!chats.length) {
     return;
   }
@@ -493,12 +501,16 @@ export async function writeChats(chats: ChatRecord[]): Promise<void> {
           }
         }
       };
+      const typedHere = new Map<string, {author: unknown; text: unknown}>();
       if (existing) {
         ops.push(existing.prepareUpdate(setSession));
         const old = await messagesTable
           .query(Q.where('session_id', id))
           .fetch();
         for (const m of old as any[]) {
+          if (!isMirrored(m._raw?.metadata)) {
+            typedHere.set(m.id, {author: m._raw?.author, text: m._raw?.text});
+          }
           ops.push(m.prepareDestroyPermanently());
         }
       } else {
@@ -510,6 +522,10 @@ export async function writeChats(chats: ChatRecord[]): Promise<void> {
         );
       }
       for (const m of chat.messages) {
+        const here = typedHere.get(m.id);
+        const mark =
+          opts.from !== undefined &&
+          !(here && here.author === m.author && here.text === m.text);
         ops.push(
           messagesTable.prepareCreate((r: any) => {
             r._raw.id = m.id;
@@ -517,6 +533,9 @@ export async function writeChats(chats: ChatRecord[]): Promise<void> {
               if (m[f] !== undefined) {
                 r._raw[f] = m[f];
               }
+            }
+            if (mark) {
+              r._raw.metadata = withMirrorMark(m.metadata, opts.from!);
             }
           }),
         );

@@ -76,6 +76,35 @@ export function onToolSwitchesChanged(listener: () => void): () => void {
   };
 }
 export const MAX_STEPS = 8;
+
+/**
+ * The step tools that are not switched on in the Toolbox (security review
+ * 2): a shortcut can't run a tool the user switched off. Tools an assistant
+ * may use without a switch (they only compute or show something) count as
+ * on. Switches that can't be read count as off.
+ */
+async function switchedOffSteps(names: string[]): Promise<string[]> {
+  let on: Set<string>;
+  let free: readonly string[] = [];
+  try {
+    // Late require: globalToolSettings imports this file.
+    const settings = require('../../utils/globalToolSettings');
+    on = new Set<string>(await settings.readGlobalTools());
+    free = settings.ASSISTANT_ONLY_TOOLS ?? [];
+  } catch {
+    on = new Set();
+  }
+  return [...new Set(names)].filter(n => !on.has(n) && !free.includes(n));
+}
+
+function switchedOff(name: string, off: string[]): TalentResult {
+  const list = off.map(n => `\`${n}\``).join(', ');
+  return {
+    type: 'error',
+    summary: `The "${name}" shortcut can't run: ${list} ${off.length === 1 ? 'is' : 'are'} switched off in the Toolbox. Nothing was done. Switch ${off.length === 1 ? 'it' : 'them'} on in Toolbox to use this shortcut.`,
+    errorMessage: `switched off: ${off.join(', ')}`,
+  };
+}
 const MAX_INSTRUCTIONS = 8000;
 
 /** Tools a shortcut may not use: no tool-making, no nesting. */
@@ -265,6 +294,12 @@ export class CustomToolEngine implements TalentEngine {
       tool: s.tool,
       args: fillIn(s.args, values) as Record<string, unknown>,
     }));
+    // Every step's tool must be switched on in the Toolbox (asked before
+    // the approval, and again before each step: it can change meanwhile).
+    const off = await switchedOffSteps(steps.map(s => s.tool));
+    if (off.length) {
+      return switchedOff(tool.name, off);
+    }
     // One approval for the whole run, every step shown exactly.
     const approved = await requestFileApproval(
       {
@@ -287,6 +322,15 @@ export class CustomToolEngine implements TalentEngine {
       const engine = talentRegistry.get(step.tool);
       if (!engine || engine instanceof CustomToolEngine) {
         return stopped(tool.name, i, step.tool, 'is no longer available', done);
+      }
+      if ((await switchedOffSteps([step.tool])).length) {
+        return stopped(
+          tool.name,
+          i,
+          step.tool,
+          'is switched off in the Toolbox',
+          done,
+        );
       }
       const result = await engine.execute(step.args, {
         signal: ctx?.signal ?? new AbortController().signal,

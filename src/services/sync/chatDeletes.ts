@@ -13,6 +13,13 @@
  * chat, its own size room; a chat that doesn't fit is not removed), and can
  * be restored (it then counts as a new edit, so it comes back on the other
  * device too). More than 20 at once are not removed without asking.
+ *
+ * Up to 3 versions of the same chat are kept (the first one kept, the
+ * version from before any sync changed it, is never dropped for a later
+ * one), so two syncs in a row can't push the original out. The list is
+ * stored in parts (keptStore.ts: UTF-8 bytes, each part well under
+ * Android's 2 MB read window), and a list that can't be read is never
+ * saved over: nothing is then removed or replaced here.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Alert} from 'react-native';
@@ -26,10 +33,14 @@ import {
   type ChatRecord,
   type Tombstone,
 } from './chatSync';
+import {CHUNK_BYTES, jsonBytes, loadChunked, saveChunked} from './keptStore';
 import {MAX_CLOCK_SKEW} from './promptSync';
 
 export const TOMBSTONES_KEY = '@pocketagent/sync/chat-tombstones/v1';
+/** Before 2026-11-15: the whole list in one value (read until the next save). */
 export const RECENT_KEY = '@pocketagent/sync/chats-recently-deleted/v1';
+/** The list's index; its parts are under `${RECENT_KEY_V2}/chunk/...`. */
+export const RECENT_KEY_V2 = '@pocketagent/sync/chats-recently-deleted/v2';
 
 const DAY = 86_400_000;
 export const MAX_TOMBSTONES = 500;
@@ -37,8 +48,12 @@ export const TOMBSTONE_DAYS = 90;
 export const RECENT_DAYS = 30;
 /** More deletions than this in one sync: ask first. */
 export const DELETE_CAP = 20;
-/** Room for "Recently deleted" (characters; the PC keeps it in localStorage). */
+/** Room for "Recently deleted" (UTF-8 bytes, all parts together). */
 export const RECENT_ROOM = 1_500_000;
+/** Most versions of one chat kept at once. */
+export const MAX_VERSIONS = 3;
+/** Most one kept chat may take (it must fit in one stored part). */
+export const MAX_ENTRY_BYTES = CHUNK_BYTES - 16;
 
 /** A chat removed here because it was deleted on another device. */
 export interface RecentlyDeleted {
@@ -117,6 +132,67 @@ export function pruneRecent(
     .sort((a, b) => b.removedAt - a.removedAt);
 }
 
+/** Which kept entry (a chat can have up to 3 versions). */
+export const entryKey = (r: RecentlyDeleted) =>
+  `${r.chat.session.id}@${r.removedAt}${r.replaced ? 'r' : 'd'}`;
+
+/**
+ * At most MAX_VERSIONS per chat in a list: the newest ones and always the
+ * oldest (the version from before the syncs changed it). Order kept.
+ */
+export function trimVersions(list: RecentlyDeleted[]): RecentlyDeleted[] {
+  const groups = new Map<string, RecentlyDeleted[]>();
+  for (const r of list) {
+    const id = r.chat.session.id;
+    groups.set(id, [...(groups.get(id) ?? []), r]);
+  }
+  const keep = new Set<RecentlyDeleted>();
+  for (const g of groups.values()) {
+    const byAge = [...g].sort((a, b) => b.removedAt - a.removedAt);
+    if (byAge.length <= MAX_VERSIONS) {
+      byAge.forEach(r => keep.add(r));
+    } else {
+      byAge.slice(0, MAX_VERSIONS - 1).forEach(r => keep.add(r));
+      keep.add(byAge[byAge.length - 1]);
+    }
+  }
+  return list.filter(r => keep.has(r));
+}
+
+/**
+ * Adds entries to the kept list, each only if the list then still fits
+ * (UTF-8 bytes; versions of the same chat beyond 3 make way first).
+ * Returns the new list, the entries added and the chat ids that didn't fit.
+ */
+function addWithinRoom(
+  recent: RecentlyDeleted[],
+  entries: RecentlyDeleted[],
+): {list: RecentlyDeleted[]; added: RecentlyDeleted[]; refused: string[]} {
+  const size = new Map<RecentlyDeleted, number>();
+  const bytes = (r: RecentlyDeleted) => {
+    let n = size.get(r);
+    if (n === undefined) {
+      n = jsonBytes(r) + 1;
+      size.set(r, n);
+    }
+    return n;
+  };
+  let list = trimVersions(recent);
+  const added: RecentlyDeleted[] = [];
+  const refused: string[] = [];
+  for (const entry of entries) {
+    const next = trimVersions([entry, ...list]);
+    const total = next.reduce((sum, r) => sum + bytes(r), 2);
+    if (bytes(entry) > MAX_ENTRY_BYTES || total > RECENT_ROOM) {
+      refused.push(entry.chat.session.id);
+      continue;
+    }
+    list = next;
+    added.push(entry);
+  }
+  return {list, added, refused};
+}
+
 const readJson = async <T>(key: string, fallback: T): Promise<T> => {
   try {
     const v = JSON.parse((await AsyncStorage.getItem(key)) || 'null');
@@ -132,8 +208,9 @@ export const deviceStore: DeleteStore = {
   loadTombstones: () => readJson<Tombstone[]>(TOMBSTONES_KEY, []),
   saveTombstones: list =>
     AsyncStorage.setItem(TOMBSTONES_KEY, JSON.stringify(list)),
-  loadRecent: () => readJson<RecentlyDeleted[]>(RECENT_KEY, []),
-  saveRecent: list => AsyncStorage.setItem(RECENT_KEY, JSON.stringify(list)),
+  // Throws when it can't be read (never taken as empty: keptStore.ts).
+  loadRecent: () => loadChunked<RecentlyDeleted>(RECENT_KEY_V2, RECENT_KEY),
+  saveRecent: list => saveChunked(RECENT_KEY_V2, list, RECENT_KEY),
   removeChats: async ids => {
     // Late requires: the stores import this module.
     const {
@@ -207,25 +284,27 @@ async function removeKept(
     return [];
   }
   const now = store.now();
-  const ids = new Set(list.map(h => h.chat.session.id));
-  const recent = pruneRecent(await store.loadRecent(), now).filter(
-    r => !ids.has(r.chat.session.id),
-  );
-  let used = JSON.stringify(recent).length;
-  const added: RecentlyDeleted[] = [];
-  for (const h of list) {
-    const entry = {chat: h.chat, deletedAt: h.deletedAt, removedAt: now, from};
-    const n = JSON.stringify(entry).length + 1;
-    if (used + n > RECENT_ROOM) {
-      continue;
-    }
-    added.push(entry);
-    used += n;
+  let recent: RecentlyDeleted[];
+  try {
+    recent = pruneRecent(await store.loadRecent(), now);
+  } catch {
+    // Can't be read: nothing can be kept, so nothing is removed.
+    return [];
   }
+  const fit = addWithinRoom(
+    recent,
+    list.map(h => ({
+      chat: h.chat,
+      deletedAt: h.deletedAt,
+      removedAt: now,
+      from,
+    })),
+  );
+  const added = fit.added;
   if (!added.length) {
     return [];
   }
-  await store.saveRecent([...added, ...recent]);
+  await store.saveRecent(fit.list);
   const removed = added.map(r => r.chat.session.id);
   await store.removeChats(removed);
   await addTombstones(
@@ -251,9 +330,10 @@ export function messagesLost(here: ChatRecord, next: ChatRecord): number {
 /**
  * Mirrored copies about to replace chats here: a copy that drops or changes
  * messages this device has keeps the chat as it is here under "Recently
- * deleted" (as an earlier version, 30 days, restorable; one per chat). A
- * copy whose earlier version can't be kept (no room left) and that drops
- * messages is not taken. Returns the copies that may be written.
+ * deleted" (as an earlier version, 30 days, restorable; up to 3 per chat,
+ * the first one always kept). A copy whose earlier version can't be kept
+ * (no room left, or the list can't be read) is not taken. Returns the
+ * copies that may be written.
  */
 export async function keepEarlierVersions(
   local: Map<string, ChatRecord>,
@@ -269,34 +349,29 @@ export async function keepEarlierVersions(
     return incoming;
   }
   const now = store.now();
-  const ids = new Set(replacing.map(c => c.session.id));
-  const recent = pruneRecent(await store.loadRecent(), now).filter(
-    r => !ids.has(r.chat.session.id),
-  );
-  let used = JSON.stringify(recent).length;
-  const added: RecentlyDeleted[] = [];
-  const refused = new Set<string>();
-  for (const c of replacing) {
-    const here = local.get(c.session.id)!;
-    const entry: RecentlyDeleted = {
-      chat: here,
+  let recent: RecentlyDeleted[];
+  try {
+    recent = pruneRecent(await store.loadRecent(), now);
+  } catch {
+    // Can't be read: the earlier versions can't be kept, so not replaced.
+    const ids = new Set(replacing.map(c => c.session.id));
+    return incoming.filter(c => !ids.has(c.session.id));
+  }
+  const fit = addWithinRoom(
+    recent,
+    replacing.map(c => ({
+      chat: local.get(c.session.id)!,
       // When the copy that replaced it changed: a restore must be newer.
       deletedAt: Math.max(now, versionOf(c).at),
       removedAt: now,
       from,
       replaced: true,
-    };
-    const n = JSON.stringify(entry).length + 1;
-    if (used + n > RECENT_ROOM) {
-      refused.add(c.session.id);
-      continue;
-    }
-    added.push(entry);
-    used += n;
+    })),
+  );
+  if (fit.added.length) {
+    await store.saveRecent(fit.list);
   }
-  if (added.length) {
-    await store.saveRecent([...added, ...recent]);
-  }
+  const refused = new Set(fit.refused);
   return incoming.filter(c => !refused.has(c.session.id));
 }
 
@@ -377,15 +452,18 @@ export async function recentlyDeleted(
 }
 
 /**
- * Puts a recently deleted chat back. It counts as edited now, so the next
- * sync brings it back on the other device too.
+ * Puts a recently deleted chat back (`key`: an entry's `entryKey`, or a
+ * chat id for its newest kept version). It counts as edited now, so the
+ * next sync brings it back on the other device too.
  */
 export async function restoreDeleted(
-  id: string,
+  key: string,
   store: DeleteStore = deviceStore,
 ): Promise<boolean> {
   const list = await recentlyDeleted(store);
-  const entry = list.find(r => r.chat.session.id === id);
+  const entry =
+    list.find(r => entryKey(r) === key) ??
+    list.find(r => r.chat.session.id === key);
   if (!entry) {
     return false;
   }
@@ -399,7 +477,7 @@ export async function restoreDeleted(
       },
     },
   ]);
-  await forgetTombstones([id], store);
+  await forgetTombstones([entry.chat.session.id], store);
   await store.saveRecent(list.filter(r => r !== entry));
   return true;
 }

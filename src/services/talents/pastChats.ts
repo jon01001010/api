@@ -3,10 +3,15 @@
  * "Also search earlier chats"; off by default).
  *
  * Only the user's own typed messages are searched (not replies, tool output
- * or pages), only in chats still on this device: a deleted chat is gone from
+ * or pages), and only those typed on this device: a message that came from
+ * another device in a mirrored chat carries a local mark (mirrorMark.ts)
+ * and is skipped, so a paired device can't plant "your own words" here
+ * (security review 2, finding 5). Only in chats still on this device: a deleted chat is gone from
  * the database, and a chat with a deletion tombstone is skipped as well.
  * The chat being written in is left out (the model already has it).
  */
+import {isMirrored} from '../sync/mirrorMark';
+
 import {bm25Rank, tokenize, type QueryPart} from './memorySearch';
 
 export interface PastChatMessage {
@@ -167,6 +172,10 @@ export async function loadPastChatMessages(
   for (const row of rows as any[]) {
     // Checked here too, not only in the query: the user's own typed text only.
     if (row.author !== userId || row.type !== 'text') {
+      continue;
+    }
+    // Typed on this device only: not a message from a mirrored chat.
+    if (isMirrored(row._raw?.metadata ?? row.metadata)) {
       continue;
     }
     const chat = byId.get(row.sessionId);

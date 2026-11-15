@@ -183,7 +183,8 @@ export async function answerSync(
       chats.sessions,
       chats.versions,
       Math.max(room, 0),
-      {read: readAllChats, write: writeChats},
+      // Marked as mirrored (not searched as typed here: pastChats.ts).
+      {read: readAllChats, write: list => writeChats(list, {from})},
       {
         tombstones: known,
         hold: new Set(del.held.map(h => h.chat.session.id)),
