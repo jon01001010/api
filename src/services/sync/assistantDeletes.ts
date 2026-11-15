@@ -24,6 +24,7 @@ import {Alert} from 'react-native';
 
 import type {Pal} from '../../types/pal';
 
+import {jsonBytes, readStrict} from './keptStore';
 import {clampTime, fingerprint, MAX_CLOCK_SKEW} from './promptSync';
 
 export const TOMBSTONES_KEY = '@pocketagent/sync/assistant-tombstones/v1';
@@ -36,7 +37,7 @@ export const TOMBSTONE_DAYS = 90;
 export const RECENT_DAYS = 30;
 /** More deletions than this in one sync: ask first. */
 export const DELETE_CAP = 5;
-/** Room for "Recently deleted" assistants (characters). */
+/** Room for "Recently deleted" assistants (UTF-8 bytes, one stored value). */
 export const RECENT_ROOM = 500_000;
 /** Assistant ids (the database's own, or a synced one kept as is). */
 export const ASSISTANT_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -140,7 +141,9 @@ const palStore = () => require('../../store').palStore;
 
 export const deviceAssistantStore: AssistantDeleteStore = {
   now: () => Date.now(),
-  load: readJson,
+  // Recently deleted: a failed read throws (never taken as empty).
+  load: (key, fallback) =>
+    key === RECENT_KEY ? readStrict(key, fallback) : readJson(key, fallback),
   save: (key, value) => AsyncStorage.setItem(key, JSON.stringify(value)),
   ownPals: () => (palStore().pals as Pal[]).filter(isOwn),
   remove: id => palStore().deletePal(id, {bySync: true}),
@@ -523,15 +526,21 @@ async function removeKept(
   }
   const now = store.now();
   const ids = new Set(list.map(h => h.pal.id));
-  const recent = pruneRecentAssistants(
-    await store.load<RecentlyDeletedAssistant[]>(RECENT_KEY, []),
-    now,
-  ).filter(r => !ids.has(r.pal.id));
-  let used = JSON.stringify(recent).length;
+  let kept: RecentlyDeletedAssistant[];
+  try {
+    kept = await store.load<RecentlyDeletedAssistant[]>(RECENT_KEY, []);
+  } catch {
+    // Can't be read: nothing can be kept, so nothing is removed.
+    return [];
+  }
+  const recent = pruneRecentAssistants(kept, now).filter(
+    r => !ids.has(r.pal.id),
+  );
+  let used = jsonBytes(recent);
   const added: RecentlyDeletedAssistant[] = [];
   for (const h of list) {
     const entry = {pal: h.pal, deletedAt: h.deletedAt, removedAt: now, from};
-    const n = JSON.stringify(entry).length + 1;
+    const n = jsonBytes(entry) + 1;
     if (used + n > RECENT_ROOM) {
       continue;
     }
