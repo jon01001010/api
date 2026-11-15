@@ -65,6 +65,18 @@ describe('Rule 1: tools run in two places only', () => {
 });
 
 describe('Rule 2: switches are off unless the user turns them on', () => {
+  it('memory search: all notes by default, earlier chats off, snippets wrapped', () => {
+    const {DEFAULT_PROMPT_PARTS} = require('../utils/promptParts');
+    expect(DEFAULT_PROMPT_PARTS.memoryMode).toBe('all');
+    expect(DEFAULT_PROMPT_PARTS.pastChats).toBe(false);
+    expect(read('src/services/talents/memoryForMessage.ts')).toMatch(
+      /wrapPastChats\(formatPastSnippets\(snippets\)\)/,
+    );
+    expect(read('src/services/talents/pastChats.ts')).toMatch(
+      /row\.author !== userId \|\| row\.type !== 'text'/,
+    );
+  });
+
   it('an assistant may add only these harmless tools by itself', () => {
     const {ASSISTANT_ONLY_TOOLS} = require('../utils/globalToolSettings');
     expect([...ASSISTANT_ONLY_TOOLS].sort()).toEqual([

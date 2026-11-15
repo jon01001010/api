@@ -10,6 +10,7 @@ import {
   PromptPart,
   PromptPartSettings,
   readPromptPartSettings,
+  MemoryMode,
   TimeMode,
   writePromptPartSettings,
 } from '../../utils/promptParts';
@@ -20,6 +21,10 @@ import {
 } from '../../utils/globalToolSettings';
 import {deriveToolSchemas} from '../../services/talents';
 import {buildMemoryContext} from '../../services/talents/agentMemory';
+import {
+  lastMemoryPick,
+  type MemoryPick,
+} from '../../services/talents/memoryForMessage';
 import {
   DEFAULT_THINKING_LENGTH,
   readThinkingLength,
@@ -38,6 +43,8 @@ export const PromptPartsSection: React.FC = () => {
   const [preview, setPreview] = useState<{
     parts: PromptPart[];
     tools: {name: string; description: string}[];
+    /** Memory search: what was picked for the last message (null: none yet). */
+    pick?: MemoryPick | null;
   } | null>(null);
 
   const [thinking, setThinking] = useState<ThinkingLength>(
@@ -64,8 +71,13 @@ export const PromptPartsSection: React.FC = () => {
       readGlobalPrompt().catch(() => ''),
     ]);
     let memoryContext = '';
+    // Memory search: the notes picked for the last message sent.
+    const pick = settings.memoryMode === 'match' ? lastMemoryPick() : null;
     try {
-      memoryContext = await buildMemoryContext();
+      memoryContext =
+        settings.memoryMode === 'match'
+          ? (pick?.text ?? '')
+          : await buildMemoryContext();
     } catch {}
     // Same pieces as sending: nothing about tools when none are on.
     const toolPieces = toolPromptPieces(names, settings, 5);
@@ -83,13 +95,17 @@ export const PromptPartsSection: React.FC = () => {
       name: t.function.name,
       description: t.function.description ?? '',
     }));
-    setPreview({parts, tools});
+    setPreview({
+      parts,
+      tools,
+      pick: settings.memoryMode === 'match' ? pick : undefined,
+    });
   };
 
   const row = (
     label: string,
     note: string,
-    key: Exclude<keyof PromptPartSettings, 'time'>,
+    key: Exclude<keyof PromptPartSettings, 'time' | 'memoryMode'>,
   ) => (
     <View style={styles.row} key={key}>
       <View style={styles.rowText}>
@@ -154,6 +170,38 @@ export const PromptPartsSection: React.FC = () => {
         this device and on llama.cpp servers (This PC, Home PC).
       </Text>
       {row('Memory', 'Your memory notes (Memory above).', 'memory')}
+      {settings.memory ? (
+        <View style={styles.indent} testID="prompt-memory-mode">
+          <SegmentedButtons
+            value={settings.memoryMode}
+            onValueChange={v => change({memoryMode: v as MemoryMode})}
+            buttons={[
+              {
+                value: 'all',
+                label: 'Send all notes',
+                testID: 'memory-mode-all',
+              },
+              {
+                value: 'match',
+                label: 'Only notes that match',
+                testID: 'memory-mode-match',
+              },
+            ]}
+          />
+          <Text variant="bodySmall" style={styles.note}>
+            {settings.memoryMode === 'match'
+              ? 'For each message the app looks for notes with the same words and sends only those (up to 8, about 2,000 characters). Notes that match no word are not sent. Works in any language; it matches words, not meaning.'
+              : 'Every note goes with every message (fine while memory is short).'}
+          </Text>
+          {settings.memoryMode === 'match'
+            ? row(
+                'Also search earlier chats',
+                'Up to 3 short pieces of your own earlier messages that match, with the chat name and date. Never from deleted chats.',
+                'pastChats',
+              )
+            : null}
+        </View>
+      ) : null}
       {row(
         'Tool list',
         'One line naming the tools that are switched on.',
@@ -193,6 +241,16 @@ export const PromptPartsSection: React.FC = () => {
               model's built-in one). Long chats may also get a short summary of
               the earlier part.
             </Text>
+            {preview?.pick !== undefined ? (
+              <View style={styles.part} testID="prompt-memory-pick">
+                <Text variant="labelLarge">
+                  Memory picked for your last message
+                </Text>
+                <Text variant="bodySmall" selectable>
+                  {memoryPickSummary(preview.pick)}
+                </Text>
+              </View>
+            ) : null}
             {preview?.parts.length ? null : (
               <Text variant="bodyMedium" style={styles.label}>
                 Nothing: the model gets only your messages.
@@ -244,7 +302,34 @@ export const PromptPartsSection: React.FC = () => {
   );
 };
 
+/** Plain words for what memory search picked (shown in the preview). */
+export function memoryPickSummary(pick: MemoryPick | null | undefined): string {
+  if (!pick) {
+    return 'Notes are picked when you send a message. Send one, then open this again to see which notes went with it.';
+  }
+  const quoted =
+    pick.message.length > 80 ? pick.message.slice(0, 80) + '…' : pick.message;
+  const lines = [`Your message: "${quoted}"`];
+  lines.push(
+    pick.notes.length
+      ? `${pick.notes.length} of ${pick.totalNotes} notes matched:`
+      : `No note matched (of ${pick.totalNotes}), so no notes were sent.`,
+  );
+  for (const note of pick.notes) {
+    lines.push(
+      `• ${note.text.trim()} (${
+        note.source === 'user' ? 'your notes' : "the model's notes"
+      })`,
+    );
+  }
+  for (const s of pick.snippets) {
+    lines.push(`• From the chat "${s.title}"${s.day ? ` (${s.day})` : ''}`);
+  }
+  return lines.join('\n');
+}
+
 const styles = StyleSheet.create({
+  indent: {marginLeft: 12, marginBottom: 6},
   row: {flexDirection: 'row', alignItems: 'center', marginVertical: 6},
   rowText: {flex: 1, paddingRight: 12},
   label: {marginTop: 12, marginBottom: 6},
