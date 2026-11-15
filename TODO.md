@@ -12,6 +12,16 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
 - [ ] Full security audit of both apps and the link: every door, approval, stored secret and way in (see "Before releasing to people").
 - [x] Model server password off the command line (2026-11-12: by environment, `LLAMA_API_KEY`; tested).
 - [x] Phone tunnel: only model requests, password required for everything (2026-11-12: the PC checks the first request on each connection; 403 otherwise; tested).
+- [x] Security review 2026-11-15, PC side (Rust), all tested:
+  - [x] Tunnel: every request checked, not just the first: one request per stream (plain Content-Length body ≤ 16 MB, no Transfer-Encoding, nothing pipelined), sent on with `Connection: close`; the phone closes its local connection after each answer. llama-server runs with `--no-slots` (its `/slots` handed out the PC's last conversation). **Check on real devices:** chats (streamed and not) through the tunnel from the phone and from a second PC; the app's clients reconnect after each answer.
+  - [x] Tunnel: pictures, sound and video in chat / completion requests must be `data:`; an address the PC would fetch from its home network is refused (403).
+  - [x] `run_command`: no carriage returns, controls or invisible / bidi characters, at most 20 lines; the dialog says how many lines and characters.
+  - [x] Answers given on devices: the whole question logged (one line, escaped), out of the screens' file space (settings folder on Linux, local AppData on Windows); a notification on the PC when a device answers; the PC's still-open dialog then says it was already answered. **Check on Windows:** the notification and the follow-up note.
+  - [x] Second PC's link key in Credential Manager (Linux: owner-only file in the settings folder); the old `client.key` is moved there. The phone's key file is owner-only (0600).
+  - [x] Removing a device closes its open connections at once and keeps it from pairing again for an hour; a paired or lately removed device can't use up a pairing code; request line within 10 s; one sync at a time per device.
+  - [x] Media keys ask natively too.
+  - [ ] Per-device "may answer this PC's questions" choice (now: every paired device can answer while the PC's switch is on). Needs a switch per device in the PC's list.
+  - [ ] Decide: rotate the model password (restart the model) when a device is removed. Low value now: the server listens on the PC only, and a removed device is cut off and can't reach it any more.
 - [ ] Optional PIN / fingerprint before the Home PC is used, or a decision not to.
 - [ ] Keys at rest and metadata written down plainly for users; PC link key sealed to the PC considered.
 - [ ] Old / reused pairing codes refused (test).

@@ -463,6 +463,65 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(link).toContain(
       'const PHONES_ENTRY: &str = "DesktopAgent-link:phones";',
     );
+    // One request per stream: the whole request is read and checked before
+    // a byte reaches the model server (password, path, a plain
+    // Content-Length body, no Transfer-Encoding, nothing pipelined after
+    // it), the server is told to close after answering, and pictures,
+    // sound and video must be inline (data:), never an address the PC
+    // would fetch from inside the home network.
+    expect(link).toMatch(
+      /Some\(Request::Http\) if paired =>[\s\S]*?read_request\(&mut recv, &mut send, &key\)[\s\S]*?TcpStream::connect[\s\S]*?write_all\(&mut to_model, &request\.head\)/,
+    );
+    expect(link).not.toMatch(/tokio::io::copy\(&mut recv/);
+    expect(link).toMatch(
+      /pub fn prepare_head[\s\S]*?check_head\(head, key\)\?;[\s\S]*?"transfer-encoding" => return Err[\s\S]*?Connection: close/,
+    );
+    expect(link).toMatch(
+      /async fn read_request[\s\S]*?prepare_head\([\s\S]*?if body\.len\(\) > request\.body_len \{\s*return Err[\s\S]*?check_body\(&request\.path, &body\)\?/,
+    );
+    expect(link).toMatch(
+      /const MEDIA_KEYS[\s\S]*?"url",[\s\S]*?"image_url",[\s\S]*?"video_url",[\s\S]*?"input_audio",/,
+    );
+    expect(link).toMatch(/!text\.starts_with\("data:"\)/);
+    // The model server never hands out other conversations (/slots).
+    expect(server).toContain('"--no-slots".into(),');
+    for (const on of ['--slots', '--metrics', '--props', '--slot-save-path']) {
+      expect(server).not.toContain(`"${on}".into()`);
+    }
+    // Removing a device cuts its open connections at once, and keeps it
+    // from asking to pair again for a while; a paired or removed device
+    // can't use up a pairing code; one sync at a time per device; the
+    // request line must come quickly.
+    expect(link).toMatch(
+      /pub async fn link_forget[\s\S]*?save_phones[\s\S]*?link\.removed[\s\S]*?link\.cut_off\(&id\)/,
+    );
+    expect(link).toMatch(
+      /Some\(Request::Pair \{ \.\. \}\) if paired \|\| app\.state::<Link>\(\)\.recently_removed\(&remote\) =>[\s\S]*?Some\(Request::Pair \{ code, name \}\) =>\s*\{\s*let link = app\.state::<Link>\(\);\s*let code_ok = try_code/,
+    );
+    expect(link).toMatch(
+      /Some\(Request::Sync\) if paired =>[\s\S]*?SyncTurn::take\(&link\.syncing, &remote\)/,
+    );
+    expect(link).toMatch(
+      /tokio::time::timeout\(FIRST_LINE_TIME, read_line\(&mut recv\)\)/,
+    );
+    // Answers given on devices: the whole question logged (one line), out
+    // of the screens' file space; the PC user is told at once, and the
+    // PC's still-open dialog then says it was already answered.
+    expect(remote).toMatch(
+      /pub fn log_answer[\s\S]*?log_line\(when, device, yes, question\)/,
+    );
+    expect(remote).toMatch(
+      /fn log_file[\s\S]*?crate::files::private_dir\(app\)/,
+    );
+    expect(tauri('src/files.rs')).toMatch(
+      /pub fn pick_private[\s\S]*?!c\.starts_with\(screens\) && !screens\.starts_with\(c\)/,
+    );
+    expect(approval).toMatch(
+      /Ok\(\(yes, name\)\) = device => \{\s*crate::remote_ask::log_answer\(app, &name, yes, question\);\s*answered_on_device\(/,
+    );
+    expect(approval).toMatch(
+      /fn answered_on_device[\s\S]*?notification\(\)[\s\S]*?already answered on/,
+    );
     // Off until switched on: nothing starts the link at app start.
     expect(tauri('src/lib.rs')).not.toMatch(/link::start|link_on\(/);
   });
@@ -558,8 +617,10 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(x).toMatch(
       /pub async fn print_file[\s\S]*?approval::ask\(&app, &question\)\.await/,
     );
-    // Media keys: a fixed list, never any other key.
-    expect(x).toMatch(/let vk = media_vk\(&key\)\.ok_or/);
+    // Media keys: a fixed list, never any other key, and it asks natively.
+    expect(x).toMatch(
+      /let vk = media_vk\(&key\)\.ok_or[^;]*;\s*\/\/[^\n]*\n\s*if !crate::approval::ask\(&app, &media_question\(&key\)\)\.await \{\s*return Err/,
+    );
     // The quick key is registered only when the user switches it on.
     const lib = tauri('src/lib.rs');
     expect(lib).toContain(
@@ -571,9 +632,22 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
   it("PC to PC: this PC as the other end uses the phone's own link library, unchanged", () => {
     const client = tauri('src/link_client.rs');
     expect(client).toContain('use homelink::Phone;');
-    // Its own key (not the PC's link key), no address hint (dials by key).
-    expect(client).toMatch(/join\("client\.key"\)/);
-    expect(client).toContain('Phone::new(&key, None)');
+    // Its own key (not the PC's link key), no address hint (dials by key),
+    // kept where the screens can't read or write it, like the link key
+    // (Credential Manager on Windows, a private file on Linux); an older
+    // key file in the screens' folder is moved there (pairing is kept).
+    expect(client).toContain(
+      'const CLIENT_KEY_ENTRY: &str = "DesktopAgent-link:client-key";',
+    );
+    expect(client).toMatch(
+      /crate::link::read_entry\(app, CLIENT_KEY_ENTRY\)[\s\S]*?crate::link::write_entry\(app, CLIENT_KEY_ENTRY/,
+    );
+    expect(client).toContain('Phone::with_key(key, None)');
+    expect(client).not.toContain('Phone::new(');
+    // The phone's own key file: owner only (0600).
+    expect(read('native/homelink/src/lib.rs')).toMatch(
+      /fn write_private[\s\S]*?\.mode\(0o600\)/,
+    );
     // Failures come back as errors, never close the app.
     expect(client).toContain('catch_unwind');
     // The phone library's rules apply as they are (127.0.0.1 only, the PC's
@@ -592,6 +666,14 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /let command = check_command\(&command\)\?;[\s\S]*?if !crate::approval::ask\(&app, &command_question\(&command\)\)\.await \{\s*return Err/,
     );
     expect(pc).not.toContain('ask_with_always');
+    // The dialog shows exactly what runs: no carriage returns, controls or
+    // invisible (bidi, zero-width) characters, a few lines at most, and it
+    // says how many lines and characters there are.
+    expect(pc).toMatch(
+      /pub fn check_command[\s\S]*?c != '\\n' && c != '\\t' && crate::remote_ask::hidden_char\(c\)[\s\S]*?command\.lines\(\)\.count\(\) > MAX_LINES/,
+    );
+    expect(pc).toContain('pub const MAX_LINES: usize = 20;');
+    expect(pc).toMatch(/fn command_question[\s\S]*?\{chars\} characters/);
     expect(pc).not.toContain('remember');
     // Runs in the workspace folder, with a time limit.
     expect(pc).toMatch(/run\(&command, &dir, COMMAND_TIME_LIMIT\)/);

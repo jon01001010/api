@@ -40,6 +40,11 @@ const PAIR_CODE_LIFETIME: Duration = Duration::from_secs(10 * 60);
 /// The credential store holds about 2.5 KB per entry: a few phones.
 const MAX_PHONES: usize = 8;
 const MAX_REQUEST_LINE: usize = 4096;
+/// A device must send its request line this quickly (no slow-loris).
+const FIRST_LINE_TIME: Duration = Duration::from_secs(10);
+/// A device removed this recently can't ask to pair again (so it can't
+/// burn every new pairing code).
+const REMOVED_LOCKOUT: Duration = Duration::from_secs(60 * 60);
 
 // ---------------------------------------------------------------- pure parts
 
@@ -144,12 +149,12 @@ fn random_hex(bytes: usize) -> Result<String, String> {
 /// screens' file commands reach (the kernel keyring proved unreliable: an
 /// entry could get stuck so it could be neither read nor written).
 #[cfg(windows)]
-fn read_entry(_app: &AppHandle, name: &str) -> Option<String> {
+pub(crate) fn read_entry(_app: &AppHandle, name: &str) -> Option<String> {
     keyring::Entry::new(name, "link").ok()?.get_password().ok()
 }
 
 #[cfg(windows)]
-fn write_entry(_app: &AppHandle, name: &str, value: &str) -> Result<(), String> {
+pub(crate) fn write_entry(_app: &AppHandle, name: &str, value: &str) -> Result<(), String> {
     keyring::Entry::new(name, "link")
         .map_err(|e| e.to_string())?
         .set_password(value)
@@ -169,12 +174,12 @@ fn entry_file(app: &AppHandle, name: &str) -> Result<std::path::PathBuf, String>
 }
 
 #[cfg(not(windows))]
-fn read_entry(app: &AppHandle, name: &str) -> Option<String> {
+pub(crate) fn read_entry(app: &AppHandle, name: &str) -> Option<String> {
     std::fs::read_to_string(entry_file(app, name).ok()?).ok()
 }
 
 #[cfg(not(windows))]
-fn write_entry(app: &AppHandle, name: &str, value: &str) -> Result<(), String> {
+pub(crate) fn write_entry(app: &AppHandle, name: &str, value: &str) -> Result<(), String> {
     use std::io::Write;
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let file = entry_file(app, name)?;
@@ -272,6 +277,51 @@ pub struct Link {
     /// Syncs waiting for the screens' answer, by id.
     sync_waiting: Mutex<std::collections::HashMap<u64, tokio::sync::oneshot::Sender<String>>>,
     sync_next: std::sync::atomic::AtomicU64,
+    /// Devices with a sync under way (one at a time per device).
+    syncing: Mutex<std::collections::HashSet<String>>,
+    /// Open connections by device id, so removing a device cuts it off.
+    connections: Mutex<std::collections::HashMap<String, Vec<iroh::endpoint::Connection>>>,
+    /// Devices removed lately, and when.
+    removed: Mutex<std::collections::HashMap<String, Instant>>,
+}
+
+impl Link {
+    fn recently_removed(&self, id: &str) -> bool {
+        let mut removed = self.removed.lock().unwrap();
+        removed.retain(|_, at| at.elapsed() < REMOVED_LOCKOUT);
+        removed.contains_key(id)
+    }
+
+    /// Closes every open connection from this device (its tunnels and
+    /// syncs end at once).
+    fn cut_off(&self, id: &str) {
+        let open = self.connections.lock().unwrap().remove(id);
+        for connection in open.unwrap_or_default() {
+            connection.close(0u32.into(), b"removed");
+        }
+    }
+}
+
+/// A device's one sync at a time: held while it runs, freed when dropped.
+struct SyncTurn<'a> {
+    set: &'a Mutex<std::collections::HashSet<String>>,
+    id: String,
+}
+
+impl<'a> SyncTurn<'a> {
+    fn take(set: &'a Mutex<std::collections::HashSet<String>>, id: &str) -> Option<Self> {
+        if set.lock().unwrap().insert(id.to_string()) {
+            Some(SyncTurn { set, id: id.to_string() })
+        } else {
+            None
+        }
+    }
+}
+
+impl Drop for SyncTurn<'_> {
+    fn drop(&mut self) {
+        self.set.lock().unwrap().remove(&self.id);
+    }
 }
 
 const OFF_ANSWERS: &str = "Answering this PC's questions is off on the PC (Settings → Use this PC's model from your phone)";
@@ -335,8 +385,24 @@ impl iroh::protocol::ProtocolHandler for Handler {
         connection: iroh::endpoint::Connection,
     ) -> Result<(), iroh::protocol::AcceptError> {
         let remote = connection.remote_id().to_string();
+        // Kept so that removing this device closes it at once (link_forget).
+        let link = self.app.state::<Link>();
+        link.connections
+            .lock()
+            .unwrap()
+            .entry(remote.clone())
+            .or_default()
+            .push(connection.clone());
+        let this = connection.stable_id();
         loop {
             let Ok((send, recv)) = connection.accept_bi().await else {
+                let mut open = link.connections.lock().unwrap();
+                if let Some(list) = open.get_mut(&remote) {
+                    list.retain(|c| c.stable_id() != this);
+                    if list.is_empty() {
+                        open.remove(&remote);
+                    }
+                }
                 return Ok(());
             };
             let app = self.app.clone();
@@ -373,8 +439,13 @@ const MODEL_REQUESTS: &[(&str, &str)] = &[
     ("POST", "/v1/completions"),
 ];
 const MAX_HEAD: usize = 16 * 1024;
+/// Largest request body passed on (pictures in a chat are sent inline).
+pub const MAX_BODY: usize = 16 * 1024 * 1024;
+/// How long a device has to send its whole request.
+const REQUEST_TIME: Duration = Duration::from_secs(120);
 
-/// The first request's head (up to the blank line), as sent.
+/// The request's head (up to and including the blank line), and whatever
+/// came after it in the same reads (the start of the body).
 async fn read_head(recv: &mut iroh::endpoint::RecvStream) -> Option<Vec<u8>> {
     let mut head = Vec::new();
     let mut chunk = [0u8; 1024];
@@ -414,6 +485,189 @@ pub fn check_head(head: &[u8], key: &str) -> Result<(), &'static str> {
     }
 }
 
+/// One checked model request, ready for the model server.
+#[derive(Debug, PartialEq)]
+pub struct ModelRequest {
+    /// The head as passed on: the device's headers minus the ones that
+    /// would keep the connection open or change how the body is read, plus
+    /// `Connection: close` and the exact `Content-Length`.
+    pub head: Vec<u8>,
+    pub body_len: usize,
+    pub path: String,
+    /// The device waits for "100 Continue" before it sends the body.
+    pub expect_continue: bool,
+}
+
+/// Headers never passed on: each would keep the connection open for a
+/// second request (which would then skip these checks) or change how the
+/// body is read.
+const DROPPED_HEADERS: &[&str] = &[
+    "connection",
+    "keep-alive",
+    "proxy-connection",
+    "upgrade",
+    "http2-settings",
+    "te",
+    "trailer",
+    "expect",
+    "content-length",
+];
+
+/// Exactly one request per stream (SECURITY.md rule 6): the head must be a
+/// model request with the password (check_head), its body must have a
+/// plain length (no chunks), and the model server is told to close after
+/// answering, so nothing after this request ever reaches it unchecked.
+pub fn prepare_head(head: &[u8], key: &str) -> Result<ModelRequest, &'static str> {
+    check_head(head, key)?;
+    let text = std::str::from_utf8(head).map_err(|_| "not text")?;
+    let text = text.strip_suffix("\r\n\r\n").ok_or("unfinished head")?;
+    let mut lines = text.split("\r\n");
+    let first = lines.next().unwrap_or("");
+    let parts: Vec<&str> = first.split(' ').collect();
+    if parts.len() != 3 || !matches!(parts[2], "HTTP/1.1" | "HTTP/1.0") {
+        return Err("not a plain HTTP/1.1 request");
+    }
+    let path = parts[1].split('?').next().unwrap_or("").to_string();
+    let mut out = format!("{first}\r\n");
+    let mut length: Option<usize> = None;
+    let mut expect_continue = false;
+    for line in lines {
+        // No folded lines, lone line breaks or other control characters:
+        // the model server must see exactly the headers checked here.
+        if line.starts_with([' ', '\t']) || line.chars().any(|c| c.is_control() && c != '\t') {
+            return Err("bad header");
+        }
+        let (name, value) = line.split_once(':').ok_or("bad header")?;
+        if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b)) {
+            return Err("bad header");
+        }
+        let lower = name.to_ascii_lowercase();
+        let value = value.trim();
+        match lower.as_str() {
+            "transfer-encoding" => return Err("send the body with a Content-Length"),
+            "content-length" => {
+                if length.is_some() || value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+                    return Err("bad Content-Length");
+                }
+                let n: usize = value.parse().map_err(|_| "bad Content-Length")?;
+                if n > MAX_BODY {
+                    return Err("request too large");
+                }
+                length = Some(n);
+            }
+            "expect" => expect_continue = value.eq_ignore_ascii_case("100-continue"),
+            _ => {}
+        }
+        if !DROPPED_HEADERS.contains(&lower.as_str()) {
+            out.push_str(line);
+            out.push_str("\r\n");
+        }
+    }
+    let body_len = length.unwrap_or(0);
+    if length.is_some() || parts[0] == "POST" {
+        out.push_str(&format!("Content-Length: {body_len}\r\n"));
+    }
+    out.push_str("Connection: close\r\n\r\n");
+    Ok(ModelRequest {
+        head: out.into_bytes(),
+        body_len,
+        path,
+        expect_continue,
+    })
+}
+
+/// Keys whose text value is a picture, sound or video for the model.
+const MEDIA_KEYS: &[&str] = &[
+    "url",
+    "image_url",
+    "input_image",
+    "video_url",
+    "input_video",
+    "audio_url",
+    "input_audio",
+    "file_url",
+    "uri",
+];
+
+/// Pictures, sound and video in a device's request must be inline
+/// (`data:`): the model server would fetch any other address itself, from
+/// inside the PC's home network (routers, cameras, other PCs).
+fn inline_media_only(value: &serde_json::Value) -> Result<(), &'static str> {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, inner) in map {
+                let media = MEDIA_KEYS.contains(&key.to_ascii_lowercase().as_str());
+                match inner {
+                    serde_json::Value::String(text) if media && !text.starts_with("data:") => {
+                        return Err("Pictures, sound and video must be sent inline (data:), never as an address the PC would fetch");
+                    }
+                    _ => inline_media_only(inner)?,
+                }
+            }
+            Ok(())
+        }
+        serde_json::Value::Array(items) => items.iter().try_for_each(inline_media_only),
+        _ => Ok(()),
+    }
+}
+
+/// The body of a chat or completion request: JSON, and every picture,
+/// sound or video in a message (or a completion prompt) inline.
+pub fn check_body(path: &str, body: &[u8]) -> Result<(), &'static str> {
+    if !path.ends_with("completions") {
+        return Ok(());
+    }
+    let json: serde_json::Value = serde_json::from_slice(body).map_err(|_| "The request is not JSON")?;
+    if let Some(messages) = json.get("messages").and_then(|m| m.as_array()) {
+        for message in messages {
+            if let Some(content) = message.get("content") {
+                if !content.is_string() {
+                    inline_media_only(content)?;
+                }
+            }
+        }
+    }
+    if let Some(prompt) = json.get("prompt") {
+        inline_media_only(prompt)?;
+    }
+    Ok(())
+}
+
+/// A refusal the device's app shows as the error (OpenAI style).
+fn forbidden(message: &str) -> Vec<u8> {
+    let body = serde_json::json!({"error": {"message": message, "type": "forbidden"}}).to_string();
+    format!(
+        "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+    .into_bytes()
+}
+
+/// Reads one whole request from the device and checks it: the head, then
+/// exactly Content-Length body bytes. Anything sent after it (a second,
+/// pipelined request) is refused.
+async fn read_request(
+    recv: &mut iroh::endpoint::RecvStream,
+    send: &mut iroh::endpoint::SendStream,
+    key: &str,
+) -> Result<(ModelRequest, Vec<u8>), &'static str> {
+    let read = read_head(recv).await.ok_or("no request")?;
+    let end = read.windows(4).position(|w| w == b"\r\n\r\n").ok_or("no request")? + 4;
+    let request = prepare_head(&read[..end], key)?;
+    let mut body = read[end..].to_vec();
+    if body.len() > request.body_len {
+        return Err("one request at a time");
+    }
+    if request.expect_continue && body.len() < request.body_len {
+        send.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").await.map_err(|_| "closed")?;
+    }
+    let have = body.len();
+    body.resize(request.body_len, 0);
+    recv.read_exact(&mut body[have..]).await.map_err(|_| "the request ended early")?;
+    check_body(&request.path, &body)?;
+    Ok((request, body))
+}
+
 async fn reply(send: &mut iroh::endpoint::SendStream, value: serde_json::Value) {
     let mut text = value.to_string();
     text.push('\n');
@@ -426,11 +680,23 @@ async fn serve_stream(
     mut send: iroh::endpoint::SendStream,
     mut recv: iroh::endpoint::RecvStream,
 ) -> Result<(), String> {
-    let request = read_line(&mut recv)
+    let request = tokio::time::timeout(FIRST_LINE_TIME, read_line(&mut recv))
         .await
+        .ok()
+        .flatten()
         .and_then(|line| parse_request(&line));
     let paired = load_phones(&app).iter().any(|p| p.id == remote);
     match request {
+        // A device already paired, or removed lately, can't use up the
+        // one-time code (only a wrong code from a new device does).
+        Some(Request::Pair { .. }) if paired || app.state::<Link>().recently_removed(&remote) => {
+            let error = if paired {
+                "This device is already paired with this PC"
+            } else {
+                "This device was removed on the PC lately; try again later"
+            };
+            reply(&mut send, serde_json::json!({"ok": false, "error": error})).await;
+        }
         Some(Request::Pair { code, name }) => {
             let link = app.state::<Link>();
             let code_ok = try_code(&link.pair_code, &code);
@@ -498,8 +764,11 @@ async fn serve_stream(
         Some(Request::Sync) if paired => {
             use std::sync::atomic::Ordering;
             let link = app.state::<Link>();
+            let turn = SyncTurn::take(&link.syncing, &remote);
             let answer = if !link.sync_allowed.load(Ordering::SeqCst) {
                 serde_json::json!({"ok": false, "error": "Keeping in step is off on the PC (Settings → Use this PC's model from your phone)"}).to_string()
+            } else if turn.is_none() {
+                serde_json::json!({"ok": false, "error": "This device is already keeping in step; try again in a moment"}).to_string()
             } else {
                 match recv.read_to_end(MAX_SYNC).await {
                     Err(_) => serde_json::json!({"ok": false, "error": "Too much to keep in step"}).to_string(),
@@ -562,39 +831,45 @@ async fn serve_stream(
                 reply(&mut send, serde_json::json!({"ok": false, "error": "no model running"})).await;
                 return Ok(());
             };
-            // Only ever this PC's own model server.
-            let tcp = tokio::net::TcpStream::connect(("127.0.0.1", port))
-                .await
-                .map_err(|e| e.to_string())?;
             reply(&mut send, serde_json::json!({"ok": true})).await;
-            // The first request on this connection must be a model request
-            // with the model's current password; anything else (e.g. another
-            // app on the phone that found the phone's local port) is refused
-            // before a byte reaches the model server.
+            // One request per stream, read whole and checked before a byte
+            // reaches the model server: a model request with the model's
+            // current password (anything else, e.g. another app on the
+            // phone that found the phone's local port, is refused), a plain
+            // Content-Length body, pictures inline only, nothing after it.
+            // The model server closes after answering, and so does the
+            // phone's local port, so the next request comes on a new stream
+            // and is checked the same way.
             let (_, key) = app.state::<crate::model_server::ModelServer>().address().unwrap_or_default();
-            let head = match read_head(&mut recv).await {
-                Some(head) if check_head(&head, &key).is_ok() => head,
-                _ => {
-                    let _ = send
-                        .write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
-                        .await;
+            let (request, body) = match tokio::time::timeout(REQUEST_TIME, read_request(&mut recv, &mut send, &key)).await {
+                Ok(Ok(checked)) => checked,
+                Ok(Err(why)) => {
+                    let _ = send.write_all(&forbidden(why)).await;
+                    let _ = send.finish();
+                    return Ok(());
+                }
+                Err(_) => {
+                    let _ = send.write_all(&forbidden("The request took too long")).await;
                     let _ = send.finish();
                     return Ok(());
                 }
             };
-            let (mut from_model, mut to_model) = tcp.into_split();
-            tokio::io::AsyncWriteExt::write_all(&mut to_model, &head)
+            // Nothing more is read from the device on this stream.
+            let _ = recv.stop(0u32.into());
+            // Only ever this PC's own model server.
+            let tcp = tokio::net::TcpStream::connect(("127.0.0.1", port))
                 .await
                 .map_err(|e| e.to_string())?;
-            let up = async {
-                let _ = tokio::io::copy(&mut recv, &mut to_model).await;
-                let _ = tokio::io::AsyncWriteExt::shutdown(&mut to_model).await;
-            };
-            let down = async {
-                let _ = tokio::io::copy(&mut from_model, &mut send).await;
-                let _ = send.finish();
-            };
-            tokio::join!(up, down);
+            let (mut from_model, mut to_model) = tcp.into_split();
+            tokio::io::AsyncWriteExt::write_all(&mut to_model, &request.head)
+                .await
+                .map_err(|e| e.to_string())?;
+            tokio::io::AsyncWriteExt::write_all(&mut to_model, &body)
+                .await
+                .map_err(|e| e.to_string())?;
+            // The answer (streamed as it comes, for chats that stream).
+            let _ = tokio::io::copy(&mut from_model, &mut send).await;
+            let _ = send.finish();
         }
         _ if paired => {
             reply(&mut send, serde_json::json!({"ok": false, "error": "not allowed"})).await;
@@ -692,13 +967,17 @@ pub async fn link_status(app: AppHandle, link: State<'_, Link>) -> Result<LinkSt
     })
 }
 
-/// Removes a paired phone: it can't connect any more.
+/// Removes a paired phone: it can't connect any more, and what it has open
+/// (a model request, a sync) is cut off at once.
 #[tauri::command]
 pub async fn link_forget(app: AppHandle, id: String) -> Result<(), String> {
     let mut phones = load_phones(&app);
     let name = phones.iter().find(|p| p.id == id).map(|p| p.name.clone());
     phones.retain(|p| p.id != id);
     save_phones(&app, &phones)?;
+    let link = app.state::<Link>();
+    link.removed.lock().unwrap().insert(id.clone(), Instant::now());
+    link.cut_off(&id);
     record(&app, "removed", name);
     Ok(())
 }
@@ -722,6 +1001,143 @@ mod tests {
             let head = format!("{bad} HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n");
             assert!(check_head(head.as_bytes(), "k1").is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn one_request_per_stream_and_the_server_closes_after_it() {
+        let head = b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer k1\r\nConnection: keep-alive\r\nKeep-Alive: timeout=5\r\nContent-Length: 12\r\n\r\n";
+        let r = prepare_head(head, "k1").unwrap();
+        let text = String::from_utf8(r.head.clone()).unwrap();
+        assert_eq!(r.body_len, 12);
+        assert_eq!(r.path, "/v1/chat/completions");
+        assert!(!r.expect_continue);
+        assert!(text.starts_with("POST /v1/chat/completions HTTP/1.1\r\n"));
+        assert!(text.ends_with("Content-Length: 12\r\nConnection: close\r\n\r\n"));
+        assert!(text.contains("Authorization: Bearer k1\r\n"));
+        assert!(!text.to_ascii_lowercase().contains("keep-alive"));
+        assert_eq!(text.matches("Connection:").count(), 1);
+        // A GET with no body stays without one.
+        let get = prepare_head(b"GET /health HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n", "k1").unwrap();
+        assert_eq!(get.body_len, 0);
+        assert!(!String::from_utf8(get.head).unwrap().contains("Content-Length"));
+        // A POST with no length gets an empty body, said out loud.
+        let post = prepare_head(b"POST /v1/completions HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n", "k1").unwrap();
+        assert!(String::from_utf8(post.head).unwrap().contains("Content-Length: 0\r\n"));
+        // "100 Continue" is answered here, not by the server.
+        let expect = prepare_head(
+            b"POST /v1/completions HTTP/1.1\r\nAuthorization: Bearer k1\r\nExpect: 100-continue\r\nContent-Length: 2\r\n\r\n",
+            "k1",
+        )
+        .unwrap();
+        assert!(expect.expect_continue);
+        assert!(!String::from_utf8(expect.head).unwrap().contains("Expect"));
+    }
+
+    #[test]
+    fn bodies_that_could_hide_a_second_request_are_refused() {
+        let with = |extra: &str| {
+            format!("POST /v1/chat/completions HTTP/1.1\r\nAuthorization: Bearer k1\r\n{extra}\r\n")
+        };
+        for bad in [
+            "Transfer-Encoding: chunked\r\n",
+            "transfer-encoding: identity\r\n",
+            "Content-Length: 5\r\nContent-Length: 6\r\n",
+            "Content-Length: -1\r\n",
+            "Content-Length: 0x10\r\n",
+            "Content-Length: \r\n",
+            "X: a\nTransfer-Encoding: chunked\r\n",
+            "X: a\rb\r\n",
+            " folded: line\r\n",
+            "Bad Name: x\r\n",
+            "no colon\r\n",
+        ] {
+            assert!(prepare_head(with(bad).as_bytes(), "k1").is_err(), "{bad:?}");
+        }
+        let too_big = format!("Content-Length: {}\r\n", MAX_BODY + 1);
+        assert!(prepare_head(with(&too_big).as_bytes(), "k1").is_err());
+        let biggest = format!("Content-Length: {MAX_BODY}\r\n");
+        assert!(prepare_head(with(&biggest).as_bytes(), "k1").is_ok());
+        // Only HTTP/1.x, and the checks of check_head still apply.
+        assert!(prepare_head(b"GET /health HTTP/2\r\nAuthorization: Bearer k1\r\n\r\n", "k1").is_err());
+        assert!(prepare_head(b"GET /health  HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n", "k1").is_err());
+        assert!(prepare_head(b"GET /slots HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n", "k1").is_err());
+        assert!(prepare_head(b"GET /health HTTP/1.1\r\n\r\n", "k1").is_err());
+    }
+
+    #[test]
+    fn pictures_sound_and_video_must_be_inline() {
+        let chat = |part: serde_json::Value| {
+            serde_json::json!({"model": "m", "messages": [
+                {"role": "system", "content": "Fetch http://example.com if asked"},
+                {"role": "user", "content": [{"type": "text", "text": "see https://x.y"}, part]},
+            ]})
+            .to_string()
+        };
+        let ok = [
+            serde_json::json!({"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}}),
+            serde_json::json!({"type": "image_url", "image_url": "data:image/jpeg;base64,AAAA"}),
+            serde_json::json!({"type": "input_audio", "input_audio": {"data": "AAAA", "format": "wav"}}),
+            serde_json::json!({"type": "text", "text": "url: http://192.168.1.1"}),
+        ];
+        for part in ok {
+            assert!(check_body("/v1/chat/completions", chat(part.clone()).as_bytes()).is_ok(), "{part}");
+        }
+        let bad = [
+            serde_json::json!({"type": "image_url", "image_url": {"url": "http://192.168.1.50/snapshot.jpg"}}),
+            serde_json::json!({"type": "image_url", "image_url": {"url": "HTTPS://169.254.169.254/"}}),
+            serde_json::json!({"type": "image_url", "image_url": {"url": " data:x"}}),
+            serde_json::json!({"type": "image_url", "image_url": "file:///etc/passwd"}),
+            serde_json::json!({"type": "video_url", "video_url": {"url": "http://x/v.mp4"}}),
+            serde_json::json!({"type": "input_audio", "input_audio": {"url": "http://x/a.wav"}}),
+            serde_json::json!({"type": "input_audio", "input_audio": "http://x/a.wav"}),
+            serde_json::json!({"type": "x", "deep": [{"URL": "http://x"}]}),
+        ];
+        for part in bad {
+            assert!(check_body("/v1/chat/completions", chat(part.clone()).as_bytes()).is_err(), "{part}");
+            assert!(check_body("/chat/completions", chat(part.clone()).as_bytes()).is_err(), "{part}");
+        }
+        // Completions: a prompt with media follows the same rule.
+        let prompt = serde_json::json!({"prompt": {"prompt_string": "x", "image_url": "http://x"}}).to_string();
+        assert!(check_body("/v1/completions", prompt.as_bytes()).is_err());
+        assert!(check_body("/completions", br#"{"prompt": "plain text http://x"}"#).is_ok());
+        // Tools may describe a "url" parameter (a schema, not a picture).
+        let tools = serde_json::json!({
+            "messages": [{"role": "user", "content": "hi"}],
+            "tools": [{"type": "function", "function": {"name": "open", "parameters": {"type": "object", "properties": {"url": {"type": "string"}}}}}],
+        })
+        .to_string();
+        assert!(check_body("/v1/chat/completions", tools.as_bytes()).is_ok());
+        // Not JSON: refused. Other requests have no body to check.
+        assert!(check_body("/v1/chat/completions", b"{not json").is_err());
+        assert!(check_body("/health", b"").is_ok());
+        let refusal = String::from_utf8(forbidden("no")).unwrap();
+        assert!(refusal.starts_with("HTTP/1.1 403 Forbidden\r\n"));
+        assert!(refusal.contains("Connection: close"));
+    }
+
+    #[test]
+    fn one_sync_at_a_time_per_device() {
+        let set = Mutex::new(std::collections::HashSet::new());
+        let first = SyncTurn::take(&set, "a").unwrap();
+        assert!(SyncTurn::take(&set, "a").is_none());
+        assert!(SyncTurn::take(&set, "b").is_some());
+        drop(first);
+        assert!(SyncTurn::take(&set, "a").is_some());
+    }
+
+    #[test]
+    fn a_removed_device_is_kept_out_of_pairing_for_an_hour() {
+        let link = Link::default();
+        assert!(!link.recently_removed("a"));
+        link.removed.lock().unwrap().insert("a".into(), Instant::now());
+        assert!(link.recently_removed("a"));
+        link.removed
+            .lock()
+            .unwrap()
+            .insert("b".into(), Instant::now() - REMOVED_LOCKOUT - Duration::from_secs(1));
+        assert!(!link.recently_removed("b"));
+        // Cutting off a device with nothing open is harmless.
+        link.cut_off("a");
     }
 
     #[test]

@@ -99,6 +99,11 @@ pub fn server_args(
         // 2026-11-09) turned that off, so a model bigger than the card failed.
         "--fit".into(),
         "on".into(),
+        // No /slots: it would hand out the last prompt and reply (the PC
+        // user's chat, memory, tool output) to anyone who can reach the
+        // server, paired devices included. /metrics, POST /props and
+        // slot saving stay off too (llama.cpp's defaults; never turned on).
+        "--no-slots".into(),
     ];
     // The server answers with this name (commas would split it in two).
     if name != model && !name.contains(',') {
@@ -303,6 +308,15 @@ mod tests {
         assert!(!args.contains("--api-key"));
         assert!(!args.contains("abc"));
         assert!(!args.contains("0.0.0.0"));
+    }
+
+    #[test]
+    fn the_server_never_hands_out_other_conversations() {
+        let args = server_args("m", "m", Some("p"), 1, 4096);
+        assert!(args.iter().any(|a| a == "--no-slots"));
+        for off in ["--slots", "--metrics", "--props", "--slot-save-path", "--api-key"] {
+            assert!(!args.iter().any(|a| a == off), "{off}");
+        }
     }
 
     #[test]
