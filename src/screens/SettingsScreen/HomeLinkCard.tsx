@@ -22,6 +22,7 @@ import {
   linkDeviceMayCommand,
   linkDeviceMayPicture,
   linkDeviceMayRead,
+  linkDeviceMayWrite,
   linkForget,
   linkKeyMode,
   LinkKeyMode,
@@ -329,6 +330,16 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
                     testID={`home-link-may-command-${phone.id}`}
                     onValueChange={v =>
                       run(() => linkDeviceMayCommand(phone.id, v))
+                    }
+                  />
+                  <Text variant="bodySmall">May write</Text>
+                  <Switch
+                    value={!!phone.mayWrite}
+                    disabled={busy}
+                    accessibilityLabel={`${phone.name} may ask to write text files in this PC's workspace (each change shown and asked here)`}
+                    testID={`home-link-may-write-${phone.id}`}
+                    onValueChange={v =>
+                      run(() => linkDeviceMayWrite(phone.id, v))
                     }
                   />
                 </>

@@ -117,6 +117,21 @@ describe('home link (phone side)', () => {
       'c',
       '{"command":"Get-Date"}',
     );
+    // The text to write goes as its own field (the native side sends it
+    // after the request line, with its size).
+    await askPcTool(PC, 'workspace_write', 'c', {
+      file: 'notes.md',
+      content: 'hello\n',
+    });
+    expect(tool).toHaveBeenLastCalledWith(
+      PC,
+      'workspace_write',
+      'c',
+      '{"file":"notes.md","content":"hello\\n"}',
+    );
+    expect(
+      describeEvent({n: 6, at: 0, kind: 'may-write', name: 'Pixel'}),
+    ).toContain('“Pixel” may now ask to write text files in the PC');
   });
 
   it('names a device allowed to make pictures in the pairing history', () => {

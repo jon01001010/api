@@ -54,6 +54,7 @@ const COMMANDS: &[&str] = &[
     "link_device_may_read",
     "link_device_may_act",
     "link_device_may_command",
+    "link_device_may_write",
     "homelink_pair",
     "homelink_status",
     "homelink_start_model",

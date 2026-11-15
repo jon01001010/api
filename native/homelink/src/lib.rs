@@ -80,6 +80,9 @@ async fn read_picture(recv: &mut iroh::endpoint::RecvStream) -> Result<Picture, 
 pub const MAX_TOOL_ANSWER: usize = 2 * 1024 * 1024;
 /// How long a tool may take (the PC may ask its user first).
 const TOOL_TIME: Duration = Duration::from_secs(5 * 60);
+/// Most text sent for the PC to write into one file (the PC's own limit,
+/// link.rs / pc_write.rs MAX_WRITE).
+pub const MAX_TOOL_TEXT: usize = 256 * 1024;
 
 /// Reads the PC's answer to "tool": a JSON line, then exactly the
 /// announced bytes (at most MAX_TOOL_ANSWER), which must be JSON.
@@ -572,9 +575,11 @@ impl Phone {
     /// allows device tools on the PC, for this device; the PC refuses
     /// otherwise and checks everything itself). `chat`: this device's id
     /// for the chat asking (reading the workspace asks on the PC once per
-    /// chat; an action or a command asks there every time). `args_json`:
-    /// only the named fields the PC takes are sent (a file's name, a media
-    /// key, a command). Waits up to 5 minutes (the PC may be asking its user).
+    /// chat; an action, a command or a change asks there every time).
+    /// `args_json`: only the named fields the PC takes are sent (a file's
+    /// name, a media key, a command); the text to write (`content`, at most
+    /// MAX_TOOL_TEXT) goes after the request line, its size in `bytes`.
+    /// Waits up to 5 minutes (the PC may be asking its user).
     /// Answers {"ok": true, "result": …}.
     pub fn tool(&self, pc: &str, name: &str, chat: &str, args_json: &str) -> Result<serde_json::Value, String> {
         let pc: EndpointId = pc.parse().map_err(|_| "Bad PC key".to_string())?;
@@ -585,6 +590,13 @@ impl Phone {
                 args.insert(field.into(), value.into());
             }
         }
+        let text = given.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        if given.get("content").is_some_and(|v| v.is_string()) {
+            if text.len() > MAX_TOOL_TEXT {
+                return Err(format!("The text is too large (at most {} KB)", MAX_TOOL_TEXT / 1024));
+            }
+            args.insert("bytes".into(), text.len().into());
+        }
         let request = serde_json::json!({"op": "tool", "name": name, "chat": chat, "args": args});
         let line = format!("{request}\n");
         if line.len() > MAX_LINE {
@@ -594,6 +606,9 @@ impl Phone {
             let conn = self.connection(pc).await?;
             let (mut send, mut recv) = conn.open_bi().await.map_err(|e| e.to_string())?;
             send.write_all(line.as_bytes()).await.map_err(|e| e.to_string())?;
+            // The PC reads the text only if it accepts the request; if it
+            // refused, its answer says why (read below).
+            let _ = send.write_all(text.as_bytes()).await;
             let _ = send.finish();
             tokio::time::timeout(TOOL_TIME, read_tool_answer(&mut recv))
                 .await
@@ -991,6 +1006,71 @@ mod tests {
             serde_json::json!({"op": "tool", "name": "pc_run_command", "chat": "chat-0123456789abcdef", "args": {"command": "Get-Date"}})
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_text_to_write_follows_the_request_line() {
+        let (pc, addr, seen) = fake_tool_pc([b"{\"ok\":true,\"bytes\":13}\n".as_slice(), b"{\"done\":true}"].concat());
+        let dir = std::env::temp_dir().join(format!("homelink-tool-write-{}", std::process::id()));
+        let phone = Phone::new(&dir.join("key"), Some(addr)).unwrap();
+        let text = "line one\nlíne two\n";
+        let args = serde_json::json!({"file": "notes.md", "content": text, "path": "C:/x"}).to_string();
+        let got = phone.tool(&pc.to_string(), "workspace_write", "chat-0123456789abcdef", &args);
+        assert_eq!(got.unwrap(), serde_json::json!({"ok": true, "result": {"done": true}}));
+        let (line, rest) = seen.recv().unwrap();
+        let line: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(
+            line,
+            serde_json::json!({"op": "tool", "name": "workspace_write", "chat": "chat-0123456789abcdef", "args": {"file": "notes.md", "bytes": text.len()}})
+        );
+        assert_eq!(rest, text.as_bytes());
+        // Too much text is refused before anything is sent.
+        let big = serde_json::json!({"file": "notes.md", "content": "x".repeat(MAX_TOOL_TEXT + 1)}).to_string();
+        assert!(phone.tool(&pc.to_string(), "workspace_write", "chat-0123456789abcdef", &big).is_err());
+        // No content: nothing follows the line (undo, reads).
+        let got = phone.tool(&pc.to_string(), "workspace_undo", "chat-0123456789abcdef", r#"{"file":"notes.md"}"#);
+        assert!(got.is_ok());
+        let (line, rest) = seen.recv().unwrap();
+        assert!(!line.contains("bytes"));
+        assert!(rest.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A PC that answers `answer` to each request and reports the request
+    /// line and everything sent after it.
+    fn fake_tool_pc(answer: Vec<u8>) -> (EndpointId, SocketAddr, std::sync::mpsc::Receiver<(String, Vec<u8>)>) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async move {
+                let pc = Endpoint::builder(presets::Minimal)
+                    .alpns(vec![ALPN.to_vec()])
+                    .bind_addr("127.0.0.1:0")
+                    .unwrap()
+                    .bind()
+                    .await
+                    .unwrap();
+                tx.send((pc.id(), pc.bound_sockets()[0])).unwrap();
+                while let Some(incoming) = pc.accept().await {
+                    let Ok(conn) = incoming.await else { continue };
+                    let answer = answer.clone();
+                    let seen_tx = seen_tx.clone();
+                    tokio::spawn(async move {
+                        while let Ok((mut send, mut recv)) = conn.accept_bi().await {
+                            let line = read_line(&mut recv).await.unwrap();
+                            let rest = recv.read_to_end(MAX_TOOL_TEXT + 1).await.unwrap();
+                            seen_tx.send((line, rest)).unwrap();
+                            send.write_all(&answer).await.unwrap();
+                            let _ = send.finish();
+                            let _ = send.stopped().await;
+                        }
+                    });
+                }
+            });
+        });
+        let (id, addr) = rx.recv().unwrap();
+        (id, addr, seen_rx)
     }
 
     /// Device circle stage 2: the phone takes good notices from the PC's

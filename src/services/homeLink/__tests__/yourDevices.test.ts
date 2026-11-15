@@ -60,6 +60,7 @@ describe('Your devices: one list, either way', () => {
         mayRead: true,
         mayAct: true,
         mayCommand: true,
+        mayWrite: true,
       }),
     ).toEqual([
       'Model',
@@ -68,6 +69,7 @@ describe('Your devices: one list, either way', () => {
       'Read (tools)',
       'Act (tools)',
       'Run commands',
+      'Write files',
     ]);
     const [pixel, desktop] = listYourDevices(
       [{id: A, name: 'Pixel', mayRead: true}],

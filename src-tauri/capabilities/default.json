@@ -60,6 +60,7 @@
     "allow-link-device-may-read",
     "allow-link-device-may-act",
     "allow-link-device-may-command",
+    "allow-link-device-may-write",
     "allow-homelink-pair",
     "allow-homelink-status",
     "allow-homelink-start-model",

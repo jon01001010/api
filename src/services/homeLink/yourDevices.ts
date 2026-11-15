@@ -46,6 +46,7 @@ export function rightsGiven(phone: LinkPhone): string[] {
     phone.mayRead ? 'Read (tools)' : '',
     phone.mayAct ? 'Act (tools)' : '',
     phone.mayCommand ? 'Run commands' : '',
+    phone.mayWrite ? 'Write files' : '',
   ].filter(Boolean);
 }
 
