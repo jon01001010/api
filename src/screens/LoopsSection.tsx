@@ -5,7 +5,7 @@
  */
 import React, {useCallback, useEffect, useState} from 'react';
 import {Alert, View} from 'react-native';
-import {Button, Card, Chip, Text, TextInput} from 'react-native-paper';
+import {Button, Card, Chip, Switch, Text, TextInput} from 'react-native-paper';
 
 import {
   LOOP_TEMPLATES,
@@ -27,6 +27,8 @@ import {
 } from '../services/loops/loops';
 import {runLoopNow} from '../services/loops/loopRunner';
 import {MakeLoopSheet} from './MakeLoopSheet';
+import {isLoopNotifyOn, setLoopNotifyOn} from '../services/loops/loopNotify';
+import {ensureNotificationPermission} from '../utils/androidPermission';
 
 const EVERY: Every[] = ['hour', '3hours', 'day', 'week'];
 
@@ -74,6 +76,9 @@ const Setup: React.FC<{
     if (!r.ok) {
       setError(r.error);
       return;
+    }
+    if (await isLoopNotifyOn()) {
+      await ensureNotificationPermission();
     }
     Alert.alert(`Started: ${template.title}`, summary(r.loop));
     onDone();
@@ -154,8 +159,10 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
   const [loops, setLoops] = useState<Loop[]>([]);
   const [setup, setSetup] = useState<LoopTemplate | null>(null);
   const [making, setMaking] = useState(false);
+  const [notify, setNotify] = useState(true);
   const reload = useCallback(() => {
     loadLoops().then(setLoops);
+    isLoopNotifyOn().then(setNotify);
   }, []);
   useEffect(reload, [reload]);
 
@@ -175,6 +182,31 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
         subtitle="Ready-made jobs that come back on a timer, with next steps"
       />
       <Card.Content style={{gap: 8}}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}>
+          <View style={{flex: 1}}>
+            <Text variant="bodyMedium">Notify when a loop is due</Text>
+            <Text variant="bodySmall">
+              Also with the app closed (may be a few minutes late). Tap it to
+              choose Run now, Later or Skip; it never runs by itself.
+            </Text>
+          </View>
+          <Switch
+            value={notify}
+            onValueChange={async on => {
+              setNotify(on);
+              if (on) {
+                await ensureNotificationPermission();
+              }
+              await setLoopNotifyOn(on);
+            }}
+            testID="loops-notify-switch"
+          />
+        </View>
         {loops.map(l => (
           <View key={l.id} testID={`loop-${l.id}`} style={{gap: 4}}>
             <Text variant="titleSmall">

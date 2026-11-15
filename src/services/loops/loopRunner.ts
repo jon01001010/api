@@ -3,9 +3,19 @@
  * screen registers how to send; a run switches to the loop's own chat and
  * sends its message there, like the user typing it. When a loop is due the
  * user is asked first: Run now, Later (1 hour) or Skip this one.
+ *
+ * With the app closed, a notification says a loop is due (loopNotify.ts);
+ * tapping it opens the app, which asks the same question. It never runs a
+ * loop by itself.
  */
 import {Alert, AppState} from 'react-native';
 
+import {
+  isDesktopApp,
+  notifyDesktop,
+  syncLoopAlarms,
+  takeOpenedLoop,
+} from './loopNotify';
 import {
   addLog,
   dueLoops,
@@ -88,10 +98,15 @@ export async function runLoopNow(
 }
 
 const asked = new Set<string>();
+/** Loops whose question is on screen now (never asked twice at once). */
+const showing = new Set<string>();
 
 /** Asks about one due loop. */
 function askAbout(loop: Loop) {
   asked.add(`${loop.id}:${loop.nextAt}`);
+  showing.add(loop.id);
+  const answered = () => showing.delete(loop.id);
+  notifyDesktop(loop).catch(() => {});
   Alert.alert(
     `Loop due: ${loop.title}`,
     `Run ${loop.runs + 1} of at most ${loop.maxRuns}.\n\n${loop.prompt}`,
@@ -99,21 +114,26 @@ function askAbout(loop: Loop) {
       {
         text: 'Skip',
         style: 'cancel',
-        onPress: () =>
-          updateLoop(loop.id, l =>
+        onPress: () => {
+          answered();
+          return updateLoop(loop.id, l =>
             addLog({...l, nextAt: nextRun(l, Date.now())}, 'Skipped'),
-          ),
+          );
+        },
       },
       {
         text: 'Later',
-        onPress: () =>
-          updateLoop(loop.id, l =>
+        onPress: () => {
+          answered();
+          return updateLoop(loop.id, l =>
             addLog({...l, nextAt: Date.now() + LATER_MS}, 'Put off 1 hour'),
-          ),
+          );
+        },
       },
       {
         text: 'Run now',
         onPress: async () => {
+          answered();
           const error = await runLoopNow(loop.id);
           if (error) {
             Alert.alert('Not run', error);
@@ -121,34 +141,67 @@ function askAbout(loop: Loop) {
         },
       },
     ],
+    {onDismiss: answered},
   );
 }
 
-/** One look: asks about the first due loop not asked about yet. */
-export async function lookForDue(now = Date.now()): Promise<Loop | undefined> {
-  const due = dueLoops(await loadLoops(), now).find(
-    l => !asked.has(`${l.id}:${l.nextAt}`),
-  );
-  if (due) {
-    askAbout(due);
+/**
+ * One look: asks about the first due loop not asked about yet. `opened` is
+ * the loop whose notification was tapped: asked about again (if it is still
+ * due), even if it was asked before. A loop that isn't due is never asked.
+ */
+export async function lookForDue(
+  now = Date.now(),
+  opened?: string,
+): Promise<Loop | undefined> {
+  const due = dueLoops(await loadLoops(), now).filter(l => !showing.has(l.id));
+  const pick =
+    due.find(l => l.id === opened) ??
+    due.find(l => !asked.has(`${l.id}:${l.nextAt}`));
+  if (pick) {
+    askAbout(pick);
   }
-  return due;
+  return pick;
 }
 
 let timer: ReturnType<typeof setInterval> | undefined;
+let appStateSub: {remove: () => void} | undefined;
 
-/** While the app is open: look for due loops every minute. */
+/** One look now: on screen (phone), or any time on the desktop. */
+async function look(): Promise<void> {
+  // Desktop: also while behind other windows, with a system notification.
+  if (AppState.currentState !== 'active' && !isDesktopApp()) {
+    return;
+  }
+  await lookForDue(Date.now(), await takeOpenedLoop());
+}
+
+/**
+ * While the app is open: look for due loops every minute, and at once when
+ * the app comes to the front (e.g. a loop's notification was tapped). Sets
+ * the phone's loop notifications again (they don't survive a restart).
+ */
 export function startLoopWatch(): void {
   if (timer) {
     return;
   }
-  const look = () => {
-    if (AppState.currentState === 'active') {
-      lookForDue().catch(() => {});
-    }
+  const lookSoon = () => {
+    look().catch(() => {});
   };
-  timer = setInterval(look, LOOK_EVERY_MS);
-  setTimeout(look, 3000);
+  timer = setInterval(lookSoon, LOOK_EVERY_MS);
+  setTimeout(lookSoon, 3000);
+  try {
+    appStateSub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        setTimeout(lookSoon, 500);
+      }
+    });
+  } catch {
+    appStateSub = undefined;
+  }
+  loadLoops()
+    .then(loops => syncLoopAlarms(loops))
+    .catch(() => {});
 }
 
 /** For tests. */
@@ -157,7 +210,10 @@ export function stopLoopWatch(): void {
     clearInterval(timer);
   }
   timer = undefined;
+  appStateSub?.remove();
+  appStateSub = undefined;
   asked.clear();
+  showing.clear();
   send = null;
   openChat = null;
 }

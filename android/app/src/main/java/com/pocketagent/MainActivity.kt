@@ -36,6 +36,7 @@ class MainActivity : ReactActivity() {
 
       WindowCompat.enableEdgeToEdge(window)  // enable E2E pre-Android 15
       noteAssist(intent)
+      LoopAlarmsModule.noteOpened(intent)
     // Optional: fully transparent nav bar (can reduce contrast on 3-button nav)
     // window.isNavigationBarContrastEnforced = false
   }
@@ -55,6 +56,18 @@ class MainActivity : ReactActivity() {
       super.onNewIntent(intent)
       setIntent(intent)
       noteAssist(intent)
+      LoopAlarmsModule.noteOpened(intent)
+  }
+
+  /** A due loop's notification shows only while the app is off screen. */
+  override fun onResume() {
+      super.onResume()
+      LoopAlarmsModule.appVisible = true
+  }
+
+  override fun onPause() {
+      LoopAlarmsModule.appVisible = false
+      super.onPause()
   }
 
   /** Opened as the phone's assistant: JS starts listening (PhoneActionsModule). */

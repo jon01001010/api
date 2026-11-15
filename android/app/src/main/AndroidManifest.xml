@@ -135,6 +135,10 @@
              with a visible notification and a Stop action. -->
         <service android:name="com.pocketagent.WakeListenService"
             android:exported="false" android:foregroundServiceType="microphone" />
+        <!-- Ready-made loops: an inexact alarm when a loop is due shows a
+             notification that only opens the app (LoopAlarmsModule.kt). -->
+        <receiver android:name="com.pocketagent.LoopAlarmReceiver"
+            android:exported="false" />
         <!-- Optional native library for OpenCL (GPU acceleration) -->
         <uses-native-library
             android:name="libOpenCL.so"
