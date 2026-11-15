@@ -22,6 +22,7 @@ import {
   LOCKED,
   noteAppState,
   resetHomePcLockForTests,
+  setMonotonicClockForTests,
   subscribePinRequests,
   tryPin,
   turnOnPin,
@@ -64,6 +65,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (NativeModules as any).HomeLink;
+  setMonotonicClockForTests();
 });
 
 /** As after a restart of the app: memory gone, the key store kept. */
@@ -144,6 +146,8 @@ describe('wrong PINs: 5 tries, then a wait that doubles', () => {
     restart();
     let t = 1_000_000;
     const now = () => t;
+    // Real time passing: both clocks move.
+    setMonotonicClockForTests(() => t);
     for (let i = 4; i >= 1; i--) {
       expect(await tryPin(PC, '1111', now)).toMatchObject({
         ok: false,
@@ -171,6 +175,7 @@ describe('wrong PINs: 5 tries, then a wait that doubles', () => {
     await turnOnPin(PC, '2468');
     let t = 5_000_000;
     const now = () => t;
+    setMonotonicClockForTests(() => t);
     for (let i = 0; i < 3; i++) {
       await tryPin(PC, '0000', now);
     }
@@ -212,6 +217,98 @@ describe('wrong PINs: 5 tries, then a wait that doubles', () => {
     expect(await tryPin(PC, '2468', now)).toMatchObject({
       reason: 'wait',
       waitUntil: t + FIRST_WAIT_MS,
+    });
+  });
+});
+
+describe('the wait counts only time the app measured (review 2, finding 4)', () => {
+  const fiveWrong = async (now: () => number) => {
+    for (let i = 0; i < 5; i++) {
+      await tryPin(PC, '0000', now);
+    }
+  };
+
+  it('setting the clock forward does not shorten the wait', async () => {
+    await turnOnPin(PC, '2468');
+    let t = 20_000_000;
+    let mono = 0;
+    setMonotonicClockForTests(() => mono);
+    const now = () => t;
+    await fiveWrong(now);
+    // A day ahead, a second later: still the whole wait.
+    t += 24 * 60 * 60 * 1000;
+    mono += 1000;
+    expect(await tryPin(PC, '2468', now)).toMatchObject({
+      reason: 'wait',
+      waitUntil: t + FIRST_WAIT_MS - 1000,
+    });
+    expect(record().waitLeft).toBe(FIRST_WAIT_MS - 1000);
+    // And again (each try saves what is left, never less than measured).
+    t += 365 * 24 * 60 * 60 * 1000;
+    mono += 1000;
+    expect(await tryPin(PC, '2468', now)).toMatchObject({reason: 'wait'});
+    expect(record().waitLeft).toBe(FIRST_WAIT_MS - 2000);
+    // Real time passing ends it.
+    t += FIRST_WAIT_MS;
+    mono += FIRST_WAIT_MS;
+    expect(await tryPin(PC, '2468', now)).toEqual({ok: true});
+  });
+
+  it('a restart after moving the clock does not end it either', async () => {
+    await turnOnPin(PC, '2468');
+    let t = 30_000_000;
+    let mono = 5_000;
+    setMonotonicClockForTests(() => mono);
+    const now = () => t;
+    await fiveWrong(now);
+    restart();
+    t += 7 * 24 * 60 * 60 * 1000;
+    mono = 10; // A new run of the app: its clock starts again.
+    expect(await tryPin(PC, '2468', now)).toMatchObject({reason: 'wait'});
+    expect(record().waitLeft).toBe(FIRST_WAIT_MS);
+    // Counted from this run on.
+    t += FIRST_WAIT_MS;
+    mono += FIRST_WAIT_MS;
+    expect(await tryPin(PC, '2468', now)).toEqual({ok: true});
+  });
+
+  it('the monotonic clock running faster than the wall clock does not count', async () => {
+    await turnOnPin(PC, '2468');
+    let t = 40_000_000;
+    let mono = 0;
+    setMonotonicClockForTests(() => mono);
+    const now = () => t;
+    await fiveWrong(now);
+    mono += FIRST_WAIT_MS;
+    t += 1000;
+    expect(await tryPin(PC, '2468', now)).toMatchObject({reason: 'wait'});
+  });
+
+  it('a record from before (end time only) keeps at most its own length', async () => {
+    await turnOnPin(PC, '2468');
+    const t = 50_000_000;
+    let mono = 0;
+    setMonotonicClockForTests(() => mono);
+    const old = record();
+    delete old.waitLeft;
+    store.set(`pocketagent-homepc-lock-${PC}`, {
+      username: 'homepc-lock-v1',
+      password: JSON.stringify({
+        ...old,
+        fails: 5,
+        waitMs: FIRST_WAIT_MS,
+        waitFrom: t,
+        waitUntil: t + 10 * FIRST_WAIT_MS,
+      }),
+    });
+    restart();
+    expect(await tryPin(PC, '2468', () => t)).toMatchObject({
+      reason: 'wait',
+      waitUntil: t + FIRST_WAIT_MS,
+    });
+    mono += FIRST_WAIT_MS;
+    expect(await tryPin(PC, '2468', () => t + FIRST_WAIT_MS)).toEqual({
+      ok: true,
     });
   });
 });

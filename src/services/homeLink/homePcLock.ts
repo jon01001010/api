@@ -19,7 +19,11 @@
  *   chosen minutes (default 5), and never past a restart of the app.
  * - Wrong PIN: 5 tries, then a 5-minute wait, doubling with each further 5
  *   wrong tries (at most a day). The count and the wait are kept in the key
- *   store too, so a restart doesn't reset them.
+ *   store too, so a restart doesn't reset them. The wait left is kept (not
+ *   only its end time), and it counts down only by time the app measured
+ *   itself with a clock that can't be set (performance.now, while the app
+ *   runs), never more than the wall clock moved: setting the date forward
+ *   (or back) doesn't shorten it, and a restart doesn't count as waiting.
  * - Forgot the PIN: the only way back is to pair again, which the PC must
  *   approve (FORGOT_PIN). Pairing again clears the old lock.
  */
@@ -68,6 +72,12 @@ export interface LockRecord {
   /** How long the current wait is, and when it started (clock checks). */
   waitMs: number;
   waitFrom: number;
+  /**
+   * The wait still left (ms) when it was last measured; it goes down only
+   * by time the app measured itself (see `waitLeftNow`). Missing in records
+   * from before: worked out from `waitUntil` once.
+   */
+  waitLeft?: number;
   /** SHA-256 (hex) of the fingerprint-guarded secret, when switched on. */
   finger?: string;
 }
@@ -92,6 +102,7 @@ function parseRecord(text: string): LockRecord {
     !num(r.waitUntil) ||
     !num(r.waitMs) ||
     !num(r.waitFrom) ||
+    (r.waitLeft !== undefined && !num(r.waitLeft)) ||
     (r.finger !== undefined && !/^[0-9a-f]{64}$/.test(r.finger))
   ) {
     throw new Error('broken lock record');
@@ -359,14 +370,53 @@ async function hashPin(
   return pbkdf2Sha256Async(utf8(pin), salt, rounds);
 }
 
-/** A wait that started "in the future" (clock set back): restart it now. */
-function fixClock(record: LockRecord, now: number): boolean {
-  if (record.waitUntil > now && now < record.waitFrom) {
-    record.waitFrom = now;
-    record.waitUntil = now + record.waitMs;
-    return true;
+// ---- Waiting: time the app measured itself --------------------------------
+
+/** Said with every wait: only time with the app open counts. */
+export const WAIT_NOTE = '(the wait counts down while PocketAgent is open)';
+
+/** A clock that can't be set (ms; NaN when there is none). */
+type Mono = () => number;
+const defaultMono: Mono = () =>
+  typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : NaN;
+let monoClock: Mono = defaultMono;
+
+/** When each PC's wait was last measured, in this run of the app. */
+const measured = new Map<string, {wall: number; mono: number}>();
+
+/**
+ * The wait left now. It goes down by the time since it was last measured
+ * in this run of the app: the smaller of the wall clock's and the
+ * monotonic clock's, so moving the date (either way) doesn't count. After
+ * a restart nothing has been measured yet: the wait left stays as saved,
+ * and counts down from now. Without a monotonic clock: the wall clock,
+ * never backwards.
+ */
+function waitLeftNow(pc: string, r: LockRecord, now: number): number {
+  let left =
+    r.waitLeft ??
+    (r.waitUntil > 0
+      ? // A record from before: what its end time says, at most its length.
+        Math.min(r.waitMs || LONGEST_WAIT_MS, Math.max(0, r.waitUntil - now))
+      : 0);
+  const mono = monoClock();
+  const last = measured.get(pc);
+  if (left > 0 && last) {
+    const wall = Math.max(0, now - last.wall);
+    const ran = Number.isFinite(mono - last.mono)
+      ? Math.max(0, Math.min(wall, mono - last.mono))
+      : wall;
+    left = Math.max(0, left - ran);
   }
-  return false;
+  measured.set(pc, {wall: now, mono});
+  return left;
+}
+
+/** Tests only: the clock that can't be set. */
+export function setMonotonicClockForTests(clock?: Mono): void {
+  monoClock = clock ?? defaultMono;
 }
 
 async function checkPin(
@@ -388,15 +438,20 @@ async function checkPin(
     return {ok: true};
   }
   const r = {...record};
-  if (fixClock(r, now())) {
+  const waitLeft = waitLeftNow(pc, r, now());
+  if (waitLeft !== (r.waitLeft ?? 0) || (!waitLeft && r.waitUntil > 0)) {
+    r.waitLeft = waitLeft;
+    r.waitUntil = waitLeft ? now() + waitLeft : 0;
     await save(pc, r);
+  } else if (waitLeft) {
+    r.waitUntil = now() + waitLeft;
   }
-  if (now() < r.waitUntil) {
+  if (waitLeft > 0) {
     return {
       ok: false,
       reason: 'wait',
       waitUntil: r.waitUntil,
-      message: `Too many wrong PINs. Try again in ${describeWait(r.waitUntil, now())}.`,
+      message: `Too many wrong PINs. Try again in ${describeWait(r.waitUntil, now())} ${WAIT_NOTE}.`,
     };
   }
   // Counted as wrong before the check, so stopping the app mid-check
@@ -409,6 +464,7 @@ async function checkPin(
     r.waitUntil = 0;
     r.waitMs = 0;
     r.waitFrom = 0;
+    r.waitLeft = 0;
     await save(pc, r);
     return {ok: true, record: r};
   }
@@ -417,12 +473,14 @@ async function checkPin(
     r.waitMs = wait;
     r.waitFrom = now();
     r.waitUntil = r.waitFrom + wait;
+    r.waitLeft = wait;
+    measured.set(pc, {wall: now(), mono: monoClock()});
     await save(pc, r);
     return {
       ok: false,
       reason: 'wait',
       waitUntil: r.waitUntil,
-      message: `Wrong PIN. Too many wrong PINs: try again in ${describeWait(r.waitUntil, now())}.`,
+      message: `Wrong PIN. Too many wrong PINs: try again in ${describeWait(r.waitUntil, now())} ${WAIT_NOTE}.`,
     };
   }
   const left = TRIES_BEFORE_WAIT - (r.fails % TRIES_BEFORE_WAIT);
@@ -698,4 +756,5 @@ export function resetHomePcLockForTests(): void {
   listeners.clear();
   waiting.splice(0);
   pending.clear();
+  measured.clear();
 }
