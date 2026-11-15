@@ -28,6 +28,7 @@ class MainApplication : Application(), ReactApplication {
               add(BackgroundInferencePackage())
               add(WakeListenPackage())
               add(PhoneActionsPackage())
+              add(LoopAlarmsPackage())
               add(AppDiagnosticsPackage())
               add(HardwareInfoPackage())
               add(DownloadPackage())

@@ -185,6 +185,9 @@ function isLoop(l: any): l is Loop {
 
 export async function saveLoops(loops: Loop[]): Promise<void> {
   await AsyncStorage.setItem(KEY, JSON.stringify(loops));
+  // Every change (start, run, skip, later, pause, stop) moves the phone's
+  // "loop due" notifications to match (loopNotify.ts).
+  await require('./loopNotify').syncLoopAlarms(loops);
 }
 
 export async function updateLoop(
