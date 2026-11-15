@@ -45,6 +45,7 @@ import {
   loadLoops,
   MAX_LOOPS,
   MAX_RUNS,
+  MAX_STEP_CHARS,
   nextStepsOf,
   runMessage,
   startLoop,
@@ -144,6 +145,12 @@ describe('ready-made loops', () => {
       ),
     ).toEqual(['Sort the shelf', 'Bag old paint', 'Call the dump']);
     expect(nextStepsOf('No steps here')).toEqual([]);
+    // A step too long to show whole on its button is not offered.
+    const fits = 'x'.repeat(MAX_STEP_CHARS);
+    expect(nextStepsOf(`Next steps:\n- ${fits}\n- ${fits}y\n- short`)).toEqual([
+      fits,
+      'short',
+    ]);
   });
 
   it('asks when due, and a run is a message in its own chat, counted first', async () => {
