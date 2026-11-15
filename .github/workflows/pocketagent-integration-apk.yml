@@ -229,6 +229,44 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/build-api-helper-npu.sh 2>&1 | tee diagnostic-build.log
+      # Our own release key, once the owner has added it (TODO.md, Pre-release:
+      # "Signed builds"). Without these secrets nothing changes: the APK keeps
+      # React Native's public debug signature, as before. The key is written
+      # to the runner's temporary folder only for apksigner and removed after.
+      # Forks never receive these secrets.
+      - name: Sign the APK with our release key (when its secrets are set)
+        if: success() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          apk=android/app/build/outputs/apk/prod/debug/app-prod-debug.apk
+          test -s "$apk"
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "No release key set: the APK keeps the debug signature."
+            exit 0
+          fi
+          if [ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ] || [ -z "${ANDROID_KEY_ALIAS:-}" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is set but ANDROID_KEYSTORE_PASSWORD or ANDROID_KEY_ALIAS is missing."
+            exit 1
+          fi
+          # A key made with keytool's defaults (PKCS12) has one password.
+          export ANDROID_KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
+          keystore="$RUNNER_TEMP/release.keystore"
+          trap 'rm -f "$keystore"' EXIT
+          (umask 077 && printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$keystore")
+          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          # Signs in place, replacing the debug signature.
+          "$apksigner" sign --ks "$keystore" --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD "$apk"
+          "$apksigner" verify --verbose --print-certs "$apk" | grep -E '^(Verified|Signer #1 certificate (DN|SHA-256))'
+          if "$apksigner" verify --print-certs "$apk" | grep -q 'CN=Android Debug'; then
+            echo "::error::The APK is still signed with the debug key."
+            exit 1
+          fi
       - name: Record native build disk usage
         if: always() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
         run: |
@@ -296,6 +334,18 @@ jobs:
         with:
           name: pocketagent-integration-apk-${{ github.run_id }}-${{ github.run_attempt }}
           path: apk
+      - name: Name the APK and write its checksum
+        env:
+          BRANCH: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          safe_branch=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')
+          asset="PocketAgent-${safe_branch}-${RUN_ID}.apk"
+          test -s apk/app-prod-debug.apk
+          mv apk/app-prod-debug.apk "apk/${asset}"
+          (cd apk && sha256sum "$asset" > SHA256SUMS)
+          cat apk/SHA256SUMS
       - name: Publish pre-release
         env:
           # Your own token (repo secret, this repo only: Contents + Workflows),
@@ -312,11 +362,11 @@ jobs:
           safe_branch=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')
           tag="apk-${safe_branch}-${RUN_ID}-${RUN_ATTEMPT}"
           asset="PocketAgent-${safe_branch}-${RUN_ID}.apk"
-          test -s apk/app-prod-debug.apk
-          mv apk/app-prod-debug.apk "apk/${asset}"
-          gh release create "$tag" "apk/${asset}" \
+          test -s "apk/${asset}"
+          test -s apk/SHA256SUMS
+          gh release create "$tag" "apk/${asset}" apk/SHA256SUMS \
             --target "$SHA" \
             --prerelease \
             --title "PocketAgent test APK: ${BRANCH} (${SHA:0:7})" \
-            --notes "Debug test build from branch \`${BRANCH}\`, commit ${SHA}, workflow run ${RUN_ID}. Not a release. Tap the .apk below on the phone to download and install."
+            --notes "Debug test build from branch \`${BRANCH}\`, commit ${SHA}, workflow run ${RUN_ID}. Not a release. Tap the .apk below on the phone to download and install. SHA256SUMS holds its SHA-256 checksum."
           echo "Release: https://github.com/${GH_REPO}/releases/tag/${tag}" >> "$GITHUB_STEP_SUMMARY"

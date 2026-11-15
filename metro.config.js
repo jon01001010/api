@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const {windowsStubFor} = require('./stubs/windows/stubbedModules');
 const {webStubFor} = require('./stubs/web/stubbedModules');
+const {androidStubFor} = require('./stubs/android/stubbedModules');
 
 const rnwPath = fs.realpathSync(
   path.resolve(require.resolve('react-native-windows/package.json'), '..'),
@@ -44,12 +45,16 @@ const config = {
     // (stubs/web/stubbedModules.js).
     platforms: [...(defaultConfig.resolver.platforms || []), 'windows', 'web'],
     resolveRequest: (context, moduleName, platform) => {
+      // Android: Google Sign-In and Play billing are unlinked
+      // (react-native.config.js) and stubbed (stubs/android/stubbedModules.js).
       const stub =
         platform === 'windows'
           ? windowsStubFor(moduleName)
           : platform === 'web'
             ? webStubFor(moduleName)
-            : null;
+            : platform === 'android'
+              ? androidStubFor(moduleName)
+              : null;
       if (stub) {
         return {type: 'sourceFile', filePath: stub};
       }

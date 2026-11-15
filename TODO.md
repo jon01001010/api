@@ -24,17 +24,32 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
   - [ ] Decide: rotate the model password (restart the model) when a device is removed. Low value now: the server listens on the PC only, and a removed device is cut off and can't reach it any more.
 - [ ] Optional PIN / fingerprint before the Home PC is used, or a decision not to.
 - [ ] Keys at rest and metadata written down plainly for users; PC link key sealed to the PC considered.
-- [ ] Old / reused pairing codes refused (test).
+  - [x] Written down (2026-11-15): `docs/privacy.md`, what is kept where on each device, what the link sends, what the ISP and number0's relays can see (metadata), what never leaves the device.
+  - [ ] **Owner decision:** seal the PC's link key to the PC (DPAPI / TPM) or not.
+- [x] Old / reused pairing codes refused (test) (2026-11-15: `src-tauri/src/link.rs` tests: a used code is gone and replays fail, an expired code is refused and used up, a new code replaces the old one, codes compared whole in constant time).
 - [ ] Every outside connection checked on the phone too (its real traffic at start-up; SECURITY.md rule 7); Google Sign-In and Play billing unlinked on Android.
+  - [x] Code audit (2026-11-15): every outside address the phone app can contact, when, and its switch, listed in SECURITY.md rule 7. Nothing at start-up with nothing set up; servers you added (cloud ones too) have their model list read at start-up and when the app comes back (at most once a minute), and a paired Home PC opens the link then.
+  - [x] Google Sign-In and Play billing unlinked on Android (2026-11-15): `react-native.config.js` (android: null), JS stand-ins in `stubs/android` ("not available"), test `stubs/android/__tests__/androidStubs.test.js`. **Check:** the next APK builds and starts, and Settings / Pals open as before.
+  - [ ] **On the phone:** watch the real traffic for the first minute after a fresh install and after a normal start (e.g. PCAPdroid, no root): expect none with nothing set up.
+  - [ ] **Owner decision:** cloud servers' model lists are read at every start / return to the app. Keep, or read them only when their model is used or the list is opened (needs a check that cloud models' abilities still show right).
 - [x] Report / feedback / share-benchmark buttons copy the text instead of sending (2026-11-12).
-- [ ] Public security policy (how to report a problem privately, scope, response times) and a changelog of security fixes.
+- [x] Public security policy (how to report a problem privately, scope, response times) and a changelog of security fixes (2026-11-15: `.github/SECURITY.md`, which GitHub shows as the policy; `docs/security-changelog.md`). **Owner:** switch on Settings → Code security → Private vulnerability reporting on GitHub, so the "Report a vulnerability" button exists.
 
 **Builds and installs**
 - [ ] Signed builds: Windows installer and APK signed with our own keys; checksums published for every download. Today the APK is signed with React Native's public debug key (committed), so updates install in place but anyone could sign a look-alike update: a private release key (kept as a GitHub secret) before release; that one change means one reinstall.
+  - [x] Checksums (2026-11-15): every release (APK, Windows setup.exe, Linux AppImage / deb) publishes a `SHA256SUMS` file; a test checks each publish step. **Check** on the next build that the file is there and matches.
+  - [x] APK signing prepared (2026-11-15): the APK workflow's "Sign the APK with our release key" step signs with `apksigner` when the secrets below are set, and changes nothing without them. A test keeps the secrets in that step only.
+  - [ ] **Owner: make the APK key and add the secrets** (never commit the key or paste it anywhere else):
+    1. On your own computer (Java's `keytool`): `keytool -genkeypair -v -keystore pocketagent-release.p12 -storetype PKCS12 -alias pocketagent -keyalg RSA -keysize 4096 -validity 10000` (choose a long password; use the same one when it asks for the key password).
+    2. Keep `pocketagent-release.p12` and its password safe, offline, in two places: losing it means no more updates over the installed app; anyone who has it can sign updates as us.
+    3. `base64 -w0 pocketagent-release.p12 > keystore.b64` (Windows PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("pocketagent-release.p12")) > keystore.b64`).
+    4. GitHub → the repository → Settings → Secrets and variables → Actions → New repository secret: `ANDROID_KEYSTORE_BASE64` (the contents of keystore.b64), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (`pocketagent`), `ANDROID_KEY_PASSWORD` (same as the store password for a PKCS12 key; may be left out). Then delete keystore.b64.
+    5. The next APK is signed with it: uninstall the old (debug-signed) app once, install the new one (export chats first if needed). Updates after that install in place. Check: the workflow log shows "Signer #1 certificate DN" with your name, not "Android Debug".
+  - [ ] **Owner decision: Windows code signing** (not built in; today SmartScreen says "unknown publisher"). Needs a code-signing certificate in the owner's (or a company's) name: (a) Azure Trusted Signing (about $10 a month, identity checked, signs in CI with no key file; only some countries / organisations so far), (b) an OV or EV certificate from a certificate authority (about $200–600 a year; since 2023 the key must live on a hardware token or a cloud HSM, so CI signing needs the CA's cloud signing service), or (c) SignPath.io's free signing for open-source projects (they hold the key, signing on their side after review). Tauri signs the installer and the .exe through `bundle.windows.signCommand` once one is chosen. Linux packages: checksums only for now (a GPG-signed SHA256SUMS could come later).
 - [x] A version per build (2026-11-12): 1.21.<commit count>, the same on the phone and the PC from one commit, higher for every later commit; Android version code 1000 + count (above PocketPal's 151); shown in App Info.
 - [ ] Clean installs and updates checked on devices: the Windows installer upgrades in place with chats and models kept; the APK updates over the last one.
 - [ ] Phone and PC builds always match (done: one build request starts all three) and the app says when they differ (done).
-- [ ] Licences screen up to date (a test enforces it) and llama.cpp's licence updated with each llama.cpp update.
+- [x] Licences screen up to date (a test enforces it) and llama.cpp's licence updated with each llama.cpp update (2026-11-15: checked up to date, iroh and the desktop / home link crates credited; a new test fails when the llama.cpp the desktop builds download (`LLAMA_TAG`) differs from the credited one). Image generation (stable-diffusion.cpp) must be credited when it ships.
 
 **Checked on real devices** (not just tests here)
 - [ ] Windows: every desktop tool once (the "Check on Windows" items in "DesktopAgent tools"), downloaded models, the start-up time, the preview game.
@@ -125,18 +140,18 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
 
 **Before releasing to people: a full security audit**
 - [ ] Our own full audit of both apps and the link (like the 2026-11-06 one, plus the desktop and the link): every door, every approval, every stored secret, every way in from outside (QR codes, links, model output, pages, paired devices).
-- [ ] A public security policy (SECURITY.md: how to report a problem privately, what's in scope, response times) and a changelog of security fixes.
+- [x] A public security policy (SECURITY.md: how to report a problem privately, what's in scope, response times) and a changelog of security fixes (2026-11-15: `.github/SECURITY.md`, `docs/security-changelog.md`).
 - [ ] Invite testers: early users run the test builds and try to break it; credit them. Fix before widening the release.
-- [ ] Builds anyone can check: published checksums for every download (signing optional, our own key).
+- [x] Builds anyone can check: published checksums for every download (signing optional, our own key) (2026-11-15: `SHA256SUMS` with every release; APK signing ready for the owner's key, see Pre-release).
 
 **Home link: ways in (review 2026-11-12)**. The link itself is encrypted end to end (QUIC + TLS 1.3, each device pinned by its key; relays see only encrypted bytes). The weak points are the two ends and the metadata:
 - [x] **Model server password in the process list** (fixed 2026-11-12): llama-server gets its random password as a command-line argument, which any program on the PC can read. Pass it by environment variable or a file only the app can read instead.
 - [x] **Phone tunnel reachable by other apps on the phone** (fixed 2026-11-12): it listens on 127.0.0.1, so any app on the phone can connect; llama-server's `/health` answers without the password (tells whether a model runs). Pass only model requests through the tunnel and require the password on everything (or a per-start token on the local port).
 - [ ] **Stolen, unlocked phone:** it can use the PC's model (nothing else). Optional PIN / fingerprint before the Home PC is used; "remove this phone" stays the fix on the PC.
-- [ ] **Keys at rest:** the PC's link key is in Windows Credential Manager (readable by any program running as the same user); the phone's key is in the app's no-backup folder (readable on a rooted phone). Malware on either end sees everything; document it plainly, and consider sealing the PC key to this PC (DPAPI / TPM) so a copied key is useless elsewhere.
-- [ ] **Metadata:** ISP, Wi-Fi / hotspot and number0's relay and discovery servers see that the two devices talk, their IP addresses, when, and how much (not the content). Document it; consider padding / an own relay later.
-- [ ] **Pairing:** the QR code is one-time, 10 minutes, and the PC asks; the phone is told about every new code. Keep; test that an old or reused code is refused.
-- [ ] **Signed builds:** sign the Windows installer and the APK with our own keys and publish checksums, so a swapped download is caught.
+- [ ] **Keys at rest:** the PC's link key is in Windows Credential Manager (readable by any program running as the same user); the phone's key is in the app's no-backup folder (readable on a rooted phone). Malware on either end sees everything; document it plainly, and consider sealing the PC key to this PC (DPAPI / TPM) so a copied key is useless elsewhere. (Documented 2026-11-15 in `docs/privacy.md`; sealing still to decide.)
+- [ ] **Metadata:** ISP, Wi-Fi / hotspot and number0's relay and discovery servers see that the two devices talk, their IP addresses, when, and how much (not the content). Document it; consider padding / an own relay later. (Documented 2026-11-15 in `docs/privacy.md`.)
+- [x] **Pairing:** the QR code is one-time, 10 minutes, and the PC asks; the phone is told about every new code. Keep; test that an old or reused code is refused (tests added 2026-11-15, `link.rs`).
+- [ ] **Signed builds:** sign the Windows installer and the APK with our own keys and publish checksums, so a swapped download is caught. (Checksums published and APK signing ready 2026-11-15; the owner's key and a Windows certificate remain, see Pre-release.)
 - [x] iPhone / web version: not made (decided 2026-11-12: no Apple, no iPhone).
 
 **Paired devices: sync, mirrored chats, answers (review 2026-11-15, app side; the native side is its own list)**

@@ -246,6 +246,9 @@ dependencies {
 }
 
 // openiap-google's Compose helper (IapContext) is unreferenced; Gson is used by OpenIapModule.
+// react-native-iap (and with it openiap-google and Google's billing library) is
+// no longer linked on Android (react-native.config.js); this exclusion is kept
+// for builds that link it again.
 configurations.matching {
     it.name.endsWith('CompileClasspath') || it.name.endsWith('RuntimeClasspath')
 }.configureEach {

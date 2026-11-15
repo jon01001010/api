@@ -1254,6 +1254,57 @@ mod tests {
     }
 
     #[test]
+    fn a_used_code_is_gone_for_good() {
+        let slot = Mutex::new(Some(PairCode::new("c0ffee".into())));
+        assert!(try_code(&slot, "c0ffee"));
+        // Nothing is left to try against: a replay of the same code fails.
+        assert!(slot.lock().unwrap().is_none());
+        for _ in 0..3 {
+            assert!(!try_code(&slot, "c0ffee"));
+        }
+    }
+
+    #[test]
+    fn an_expired_code_is_refused_and_used_up() {
+        let expired = PairCode {
+            code: "c0ffee".into(),
+            made: Instant::now() - PAIR_CODE_LIFETIME,
+        };
+        let slot = Mutex::new(Some(expired));
+        assert!(!try_code(&slot, "c0ffee"));
+        assert!(slot.lock().unwrap().is_none());
+        // Still inside its 10 minutes: accepted.
+        let fresh = PairCode {
+            code: "c0ffee".into(),
+            made: Instant::now() - PAIR_CODE_LIFETIME + Duration::from_secs(30),
+        };
+        assert!(try_code(&Mutex::new(Some(fresh)), "c0ffee"));
+    }
+
+    #[test]
+    fn a_new_code_replaces_the_old_one() {
+        let slot = Mutex::new(Some(PairCode::new("old111".into())));
+        *slot.lock().unwrap() = Some(PairCode::new("new222".into()));
+        assert!(!try_code(&slot, "old111"));
+        // The wrong try used the new code up too.
+        assert!(!try_code(&slot, "new222"));
+    }
+
+    #[test]
+    fn codes_are_compared_whole() {
+        assert!(same("abc123", "abc123"));
+        assert!(!same("abc123", "abc12"));
+        assert!(!same("abc12", "abc123"));
+        assert!(!same("abc123", "abc124"));
+        assert!(!same("abc123", "ABC123"));
+        assert!(!same("", "abc123"));
+        let slot = Mutex::new(Some(PairCode::new("abc123".into())));
+        assert!(!try_code(&slot, "abc"));
+        let slot = Mutex::new(Some(PairCode::new("abc123".into())));
+        assert!(!try_code(&slot, ""));
+    }
+
+    #[test]
     fn names_are_cleaned_and_phones_capped() {
         assert_eq!(clean_name("Jo's Pixel 9"), "Jo's Pixel 9");
         assert_eq!(clean_name("<script>\n\u{202e}"), "script");

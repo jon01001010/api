@@ -189,6 +189,18 @@ jobs:
         with:
           name: pocketagent-windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: exe
+      - name: Name the installer and write its checksum
+        env:
+          BRANCH: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          safe_branch=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')
+          src=$(ls exe/*.exe | head -1)
+          asset="DesktopAgent-Windows-${safe_branch}-${RUN_ID}-setup.exe"
+          mv "$src" "exe/${asset}"
+          (cd exe && sha256sum "$asset" > SHA256SUMS)
+          cat exe/SHA256SUMS
       - name: Publish pre-release
         env:
           # Your own token (repo secret, this repo only: Contents + Workflows),
@@ -204,12 +216,12 @@ jobs:
           set -euo pipefail
           safe_branch=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')
           tag="exe-${safe_branch}-${RUN_ID}-${RUN_ATTEMPT}"
-          src=$(ls exe/*.exe | head -1)
           asset="DesktopAgent-Windows-${safe_branch}-${RUN_ID}-setup.exe"
-          mv "$src" "exe/${asset}"
-          gh release create "$tag" "exe/${asset}" \
+          test -s "exe/${asset}"
+          test -s exe/SHA256SUMS
+          gh release create "$tag" "exe/${asset}" exe/SHA256SUMS \
             --target "$SHA" \
             --prerelease \
             --title "DesktopAgent for Windows test build: ${BRANCH} (${SHA:0:7})" \
-            --notes "Test build from branch \`${BRANCH}\`, commit ${SHA}, workflow run ${RUN_ID}. Not a release, not code-signed: Windows SmartScreen will warn 'unknown publisher' (More info, Run anyway). Installs for your user only."
+            --notes "Test build from branch \`${BRANCH}\`, commit ${SHA}, workflow run ${RUN_ID}. Not a release, not code-signed: Windows SmartScreen will warn 'unknown publisher' (More info, Run anyway). Installs for your user only. SHA256SUMS holds its SHA-256 checksum."
           echo "Release: https://github.com/${GH_REPO}/releases/tag/${tag}" >> "$GITHUB_STEP_SUMMARY"
