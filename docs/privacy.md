@@ -28,7 +28,7 @@ All of it is in the app's private storage, which other apps can't read (unless t
 | API keys | Windows Credential Manager; on Linux the system key store. |
 | The PC's home link key and the list of paired devices | Windows Credential Manager; on Linux an owner-only file in the settings folder (`~/.config/…/link`). Not in the data folder the app's screens can reach. |
 | Pairing history (codes made, devices paired or removed) | Same place as the link key. Paired devices are shown it. |
-| A second PC's link key (when it is paired to a main PC) | Same as above. |
+| A second PC's link key (when it is paired to a main PC) | Same as above. Since 2026-11-15 a PC uses one key in both roles (new installs, or after "Use one key for this PC"); an older separate key is kept there, unused. |
 | The log of questions answered on a paired device (`answers.log`) | Linux: the settings folder; Windows: `AppData\Local`. Not reachable by the screens without asking. |
 | The model server's password | Made new at every model start, kept in memory only, passed to the model server privately (not on its command line). |
 
@@ -43,7 +43,7 @@ The link between your phone and PC (or two PCs) is encrypted end to end (QUIC wi
 **What others can see (metadata, never the content):**
 
 - Your internet provider, the Wi-Fi or hotspot you are on: that the two devices talk, their IP addresses, when, and roughly how much.
-- number0's public relay and discovery servers (the iroh project's own; used to find the other device, and to pass the encrypted data on when no direct path works): which device keys connect, their IP addresses, when and how much. They can't read or change what is sent.
+- number0's public relay and discovery servers (the iroh project's own; used to find the other device, and to pass the encrypted data on when no direct path works): which device keys connect, their IP addresses, when and how much. They can't read or change what is sent. With one key per PC they also see that a PC used as a device and that PC's home link are the same key.
 
 **Never sent by the link:** your files, models, API keys, the link keys themselves, anything you didn't switch on.
 

@@ -1,6 +1,6 @@
 # Design: all devices in one circle
 
-Status: **to decide** (written 2026-11-15). Nothing here is built. TODO.md item: "All devices in one circle".
+Status: **decided** (Option A, owner, 2026-11-15; see "Decided" at the end). **Stage 1 built 2026-11-15** (one key per PC, moved by pairing again by hand; "Your devices" on each device); stages 2-4 not yet. TODO.md item: "All devices in one circle".
 
 ## 1. The goal
 
