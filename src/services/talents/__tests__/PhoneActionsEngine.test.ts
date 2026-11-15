@@ -81,6 +81,18 @@ describe('phone action tools', () => {
     expect(result.summary).not.toMatch(/Clock app/);
   });
 
+  it("passes the model's thinking on (the PC's own question shows it)", async () => {
+    await new PhoneActionsEngine('set_timer').execute(
+      {minutes: 5},
+      {signal: new AbortController().signal, thinking: 'a timer for tea'},
+    );
+    expect(perform).toHaveBeenCalledWith(
+      'set_timer',
+      expect.objectContaining({seconds: 300}),
+      'a timer for tea',
+    );
+  });
+
   describe('set_timer', () => {
     it('asks first, then sets it with whole seconds', async () => {
       const result = await run('set_timer', {minutes: 15, label: 'Tea'});

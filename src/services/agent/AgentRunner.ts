@@ -14,7 +14,7 @@ import type {
   TokenDelta,
 } from './AgentRunner.types';
 import type {TalentResult} from '../talents/types';
-import {STOPPED_ASKING, type ToolGuard} from './chatGuard';
+import {STOPPED_ASKING, thinkTagContent, type ToolGuard} from './chatGuard';
 
 export const DEFAULT_MAX_TURNS = 5;
 
@@ -379,6 +379,8 @@ export async function* runAgent(
       // The model's thinking this step, shown with the questions its tool
       // calls bring up (chatGuard.thinkingShown).
       let thinkingThisStep = '';
+      // The reply text this step (for <think> tags when no reasoning_content).
+      let contentThisStep = '';
 
       // Bridge engine streaming callback into the iterator.
       const queue = new EventQueue<AgentEvent>();
@@ -416,6 +418,9 @@ export async function* runAgent(
             queue.push({type: 'token', delta});
             if (delta.reasoningContent) {
               thinkingThisStep += delta.reasoningContent;
+            }
+            if (delta.content) {
+              contentThisStep += delta.content;
             }
             if (delta.toolCalls && delta.toolCalls.length > 0) {
               if (toolCallStartedAt === null) {
@@ -519,8 +524,12 @@ export async function* runAgent(
         break;
       }
 
+      // Thinking from reasoning_content, else <think> tags in the reply.
       const thinking =
-        finishedResult.reasoning_content || thinkingThisStep || undefined;
+        finishedResult.reasoning_content ||
+        thinkingThisStep ||
+        thinkTagContent(finishedResult.content || contentThisStep) ||
+        undefined;
       let stopRun = false;
       const outcomes: AgentToolOutcome[] = [];
       for (const call of calls) {

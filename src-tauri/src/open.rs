@@ -97,10 +97,13 @@ pub fn launch(target: &str) -> Result<(), String> {
         .map_err(|e| format!("Could not open it: {e}"))
 }
 
+/// `thinking`: the model's thinking from just before the request, shown
+/// under the label after the facts (escaped, capped) and logged with the
+/// answer, like the other questions (approval::ask_for); never parsed.
 #[tauri::command]
-pub async fn open_external(app: AppHandle, target: String) -> Result<(), String> {
+pub async fn open_external(app: AppHandle, target: String, thinking: Option<String>) -> Result<(), String> {
     let target = check_target(&target)?;
-    if !crate::approval::ask(&app, &question(&target)).await {
+    if !crate::approval::ask_for(&app, &question(&target), None, thinking.as_deref()).await {
         return Err("The user said no. Nothing was opened.".into());
     }
     launch(&target)
@@ -135,5 +138,9 @@ mod tests {
     fn the_dialog_says_what_opens() {
         assert!(question("mailto:a@b.com").contains("you press send"));
         assert!(question("https://x.org/").contains("in your browser"));
+        // The thinking comes after the facts, under the label, escaped.
+        let q = crate::approval::with_thinking(&question("https://x.org/"), Some("open it\nnow"));
+        assert!(q.starts_with(&question("https://x.org/")));
+        assert!(q.ends_with("\n\nThe model was thinking:\nopen it\\nnow"));
     }
 }

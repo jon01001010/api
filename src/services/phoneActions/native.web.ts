@@ -112,13 +112,17 @@ export function targetFor(
   }
 }
 
-async function open(target: string): Promise<PhoneActionResult> {
+async function open(
+  target: string,
+  thinking?: string,
+): Promise<PhoneActionResult> {
   const t = tauri();
   if (!t) {
     return {ok: false, reason: 'unsupported'};
   }
   try {
-    await t.invoke('open_external', {target});
+    // The thinking is shown in the native question only (never parsed).
+    await t.invoke('open_external', {target, thinking: thinking ?? null});
     return {ok: true};
   } catch {
     // Refused in the native dialog, or the PC couldn't open it.
@@ -132,6 +136,7 @@ const WHILE_OPEN =
 export async function performPhoneAction(
   action: PhoneAction,
   args: Record<string, any> = {},
+  thinking?: string,
 ): Promise<PhoneActionResult> {
   switch (action) {
     case 'set_timer': {
@@ -193,7 +198,9 @@ export async function performPhoneAction(
     case 'email':
     case 'open_settings': {
       const target = targetFor(action, args);
-      return target ? open(target) : {ok: false, reason: 'unsupported'};
+      return target
+        ? open(target, thinking)
+        : {ok: false, reason: 'unsupported'};
     }
     default:
       // dial, sms, open_camera, play_music, open_app: they need the phone.

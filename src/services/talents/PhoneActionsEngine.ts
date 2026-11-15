@@ -852,10 +852,16 @@ export class PhoneActionsEngine implements TalentEngine {
       quiet && (plan.action === 'set_timer' || plan.action === 'set_alarm')
         ? {...plan.args, skipUi: true}
         : plan.args;
-    let result = await performPhoneAction(plan.action, sendArgs);
+    // The model's thinking, for the PC's own "open" question (shown only).
+    const thinking = ctx?.thinking;
+    const perform = (action: PhoneAction, a: object) =>
+      thinking
+        ? performPhoneAction(action, a, thinking)
+        : performPhoneAction(action, a);
+    let result = await perform(plan.action, sendArgs);
     if (!result.ok && result.reason === 'no_app' && plan.fallback) {
       const fb = plan.fallback;
-      result = await performPhoneAction(fb.action, fb.args);
+      result = await perform(fb.action, fb.args);
       if (result.ok) {
         if (fb.clipboard) {
           Clipboard.setString(fb.clipboard);
