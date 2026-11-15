@@ -784,7 +784,8 @@ mod tests {
         let req = check_request("a cat", 1024, 768, 4).unwrap();
         let dir = Path::new("/app/Documents/image-models/flux2-klein-4b");
         let args = sd_args(&sets[0], dir, &req, 42, Path::new("/w/images/p.png"));
-        let line = args.join(" ");
+        // Windows joins paths with "\\"; compare with "/" everywhere.
+        let line = args.join(" ").replace('\\', "/");
         assert!(line.contains("--diffusion-model /app/Documents/image-models/flux2-klein-4b/"));
         assert!(line.contains("--llm "));
         assert!(line.contains("--vae "));
