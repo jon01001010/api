@@ -34,10 +34,7 @@ fn preview(text: &str, max: usize) -> String {
 
 /// What the clipboard dialog says (the text itself, so the user sees it).
 pub fn clipboard_question(text: &str) -> String {
-    format!(
-        "DesktopAgent wants to give the model the text on your clipboard:\n\n{}",
-        preview(text, 600)
-    )
+    format!("{}\n\n{}", crate::remote_ask::CLIPBOARD_ASK, preview(text, 600))
 }
 
 #[tauri::command]

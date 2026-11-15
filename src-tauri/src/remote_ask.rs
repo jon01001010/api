@@ -11,6 +11,10 @@
 //!   and the whole question (one line, escaped), where the screens can't
 //!   edit it; and the PC user is told at once (a notification). The PC's
 //!   dialog, which can't be closed from here, then says it was answered.
+//!   A question that shows something private (the clipboard's text) is
+//!   logged without it ("clipboard (N characters)"). The log is kept to
+//!   about 2 MB: past 1 MB it moves to answers.log.1 (replacing the older
+//!   one) and a new one starts.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -112,6 +116,25 @@ impl RemoteQuestions {
 /// practice: a command is at most 2000).
 pub const MAX_LOGGED: usize = 4000;
 
+/// The first line of the clipboard question (pc_extra.rs); what follows it
+/// is the clipboard's text, never written to the log.
+pub const CLIPBOARD_ASK: &str = "DesktopAgent wants to give the model the text on your clipboard:";
+
+/// Past this size the log moves to answers.log.1 and a new one starts.
+pub const MAX_LOG_BYTES: u64 = 1024 * 1024;
+
+/// A question as the log keeps it: the clipboard's text (often a password)
+/// replaced by its length; any other question as it is.
+pub fn loggable(question: &str) -> String {
+    match question.strip_prefix(CLIPBOARD_ASK) {
+        Some(rest) => {
+            let shown = rest.trim_start_matches('\n');
+            format!("{CLIPBOARD_ASK} clipboard ({} characters, not logged)", shown.chars().count())
+        }
+        None => question.to_string(),
+    }
+}
+
 /// Characters that would let a question pretend to be more than one line,
 /// or hide or reorder what it says (line breaks, controls, bidi and other
 /// invisible format characters): written as escapes.
@@ -158,7 +181,7 @@ pub fn log_line(when: u64, device: &str, yes: bool, question: &str) -> String {
         "{when}\t{}\t{}\t{}",
         one_line(device),
         if yes { "allowed" } else { "not allowed" },
-        one_line(question)
+        one_line(&loggable(question))
     )
 }
 
@@ -203,12 +226,25 @@ fn append(app: &AppHandle, line: impl FnOnce(u64) -> String) {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    rotate(&file, MAX_LOG_BYTES);
     let mut options = std::fs::OpenOptions::new();
     options.create(true).append(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     if let Ok(mut f) = options.open(file) {
         let _ = writeln!(f, "{}", line(when));
+    }
+}
+
+/// Past `max` bytes the log moves to `<name>.1` (replacing the older one),
+/// so it stays at about twice `max` in all.
+pub fn rotate(file: &std::path::Path, max: u64) {
+    if std::fs::metadata(file).map(|m| m.len() > max).unwrap_or(false) {
+        let mut old = file.as_os_str().to_owned();
+        old.push(".1");
+        let old = std::path::PathBuf::from(old);
+        let _ = std::fs::remove_file(&old);
+        let _ = std::fs::rename(file, &old);
     }
 }
 
@@ -285,6 +321,33 @@ mod tests {
             assert!(hidden_char(c), "{c:?}");
         }
         assert!(!hidden_char('é') && !hidden_char(' '));
+    }
+
+    #[test]
+    fn the_clipboard_text_is_never_logged() {
+        let question = crate::pc_extra::clipboard_question("hunter2 my password\nline 2");
+        assert!(question.contains("hunter2"));
+        let line = log_line(9, "Pixel", true, &question);
+        assert!(!line.contains("hunter2") && !line.contains("line 2"), "{line}");
+        assert_eq!(line, format!("9\tPixel\tallowed\t{CLIPBOARD_ASK} clipboard (26 characters, not logged)"));
+        // Other questions are kept whole.
+        assert_eq!(loggable("Open notes.md?"), "Open notes.md?");
+    }
+
+    #[test]
+    fn the_log_is_rotated_past_its_size() {
+        let dir = std::env::temp_dir().join(format!("pa-log-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("answers.log");
+        std::fs::write(&file, "a".repeat(100)).unwrap();
+        rotate(&file, 200);
+        assert!(file.exists());
+        std::fs::write(&file, "b".repeat(300)).unwrap();
+        std::fs::write(dir.join("answers.log.1"), "old").unwrap();
+        rotate(&file, 200);
+        assert!(!file.exists());
+        assert_eq!(std::fs::read_to_string(dir.join("answers.log.1")).unwrap(), "b".repeat(300));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
