@@ -35,8 +35,14 @@ module.exports = {
     '/extras/',
     '/src-tauri/',
     '/web/dist/',
+    // Temporary copies of the repo (helper worktrees), never tests of their own.
+    '/.claude/',
   ],
-  modulePathIgnorePatterns: ['<rootDir>/src-tauri/', '<rootDir>/web/dist/'],
+  modulePathIgnorePatterns: [
+    '<rootDir>/src-tauri/',
+    '<rootDir>/web/dist/',
+    '<rootDir>/.claude/',
+  ],
   moduleNameMapper: {
     '@react-native-async-storage/async-storage':
       '<rootDir>/__mocks__/external/@react-native-async-storage/async-storage.js',
