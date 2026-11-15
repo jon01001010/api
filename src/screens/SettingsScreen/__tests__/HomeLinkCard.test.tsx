@@ -5,6 +5,7 @@ import {Provider as PaperProvider} from 'react-native-paper';
 import {HomeLinkCard} from '../HomeLinkCard';
 import {
   linkDeviceMayAnswer,
+  linkDeviceMayCommand,
   linkDeviceMayPicture,
   linkPicturesAllow,
   linkStatus,
@@ -36,6 +37,10 @@ jest.mock('../../../services/desktop/homeLink', () => ({
   linkForget: jest.fn(),
   linkDeviceMayAnswer: jest.fn(async () => {}),
   linkDeviceMayPicture: jest.fn(async () => {}),
+  linkDeviceMayRead: jest.fn(async () => {}),
+  linkDeviceMayAct: jest.fn(async () => {}),
+  linkDeviceMayCommand: jest.fn(async () => {}),
+  linkToolsAllow: jest.fn(async () => {}),
   linkPicturesAllow: jest.fn(async () => {}),
 }));
 jest.mock('../../../components/HomeLinkSync/RecentlyDeletedChats', () => ({
@@ -112,5 +117,36 @@ describe('Home link card: pictures for paired devices', () => {
     await waitFor(() =>
       expect(linkDeviceMayPicture).toHaveBeenCalledWith('aaaa', true),
     );
+  });
+});
+
+describe('Home link card: commands from paired devices', () => {
+  it('"May run commands" is its own switch, off unless allowed; changes go to the PC', async () => {
+    (linkStatus as jest.Mock).mockResolvedValueOnce({
+      on: true,
+      pcId: 'pc',
+      toolsAllowed: true,
+      phones: [
+        {id: 'aaaa', name: 'Pixel', mayRead: true, mayAct: true},
+        {id: 'bbbb', name: 'Laptop', mayCommand: true},
+      ],
+      events: [],
+    });
+    const {findByTestId, getByTestId} = show();
+    expect((await findByTestId('home-link-may-command-bbbb')).props.value).toBe(
+      true,
+    );
+    // May read and may act do not mean may run commands.
+    expect(getByTestId('home-link-may-command-aaaa').props.value).toBe(false);
+    fireEvent(getByTestId('home-link-may-command-aaaa'), 'valueChange', true);
+    await waitFor(() =>
+      expect(linkDeviceMayCommand).toHaveBeenCalledWith('aaaa', true),
+    );
+  });
+
+  it('shows no per-device switch while device tools are off on this PC', async () => {
+    const {findByTestId, queryByTestId} = show();
+    await findByTestId('home-link-forget-aaaa');
+    expect(queryByTestId('home-link-may-command-aaaa')).toBeNull();
   });
 });

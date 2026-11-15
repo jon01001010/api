@@ -14,6 +14,8 @@ export interface LinkPhone {
   mayRead?: boolean;
   /** May ask this PC to open, print, press media keys, read the clipboard (missing: no). */
   mayAct?: boolean;
+  /** May ask this PC to run commands, each asked there (missing: no). */
+  mayCommand?: boolean;
 }
 
 export interface LinkEvent {
@@ -69,6 +71,10 @@ export async function linkDeviceMayRead(
   _allowed: boolean,
 ): Promise<void> {}
 export async function linkDeviceMayAct(
+  _id: string,
+  _allowed: boolean,
+): Promise<void> {}
+export async function linkDeviceMayCommand(
   _id: string,
   _allowed: boolean,
 ): Promise<void> {}

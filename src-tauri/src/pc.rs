@@ -6,6 +6,8 @@
 //! - `run_command`: one PowerShell (Windows) or shell (Linux) command, shown
 //!   in full in a native dialog every time (never "always allow"), run in the
 //!   workspace folder, stopped after 60 s; its output comes back (capped).
+//!   A paired device's `pc_run_command` (link.rs, stage 3) goes through the
+//!   very same function (`run_checked_command`), its question naming it.
 //! - `open_workspace_file`: a workspace file opened in its app (asks).
 //!   Documents, pictures, text and media only: never programs or scripts,
 //!   which opening would run. A paired device's `pc_open` (link.rs) goes
@@ -82,18 +84,26 @@ pub fn pc_info(app: AppHandle) -> PcInfo {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Ran {
-    exit_code: Option<i32>,
-    output: String,
-    timed_out: bool,
+    pub(crate) exit_code: Option<i32>,
+    pub(crate) output: String,
+    pub(crate) timed_out: bool,
 }
 
 /// What the dialog shows: the whole command, how long it is (so a tail
-/// pushed off the screen can't go unnoticed) and where it runs.
-pub fn command_question(command: &str) -> String {
+/// pushed off the screen can't go unnoticed) and where it runs, naming who
+/// asks: this app (`by`: None) or a paired device. Never cut: a device that may answer sees it whole too (a phone refuses
+/// "Allow once" for a question too long to show whole).
+pub fn command_question_for(command: &str, by: Option<&str>) -> String {
     let lines = command.lines().count();
     let chars = command.chars().count();
+    let who = match by {
+        None => "DesktopAgent wants to run this command on your PC (in its workspace folder):".to_string(),
+        Some(device) => {
+            format!("\u{201c}{device}\u{201d} asks to run this command on your PC (in DesktopAgent's workspace folder):")
+        }
+    };
     format!(
-        "DesktopAgent wants to run this command on your PC (in its workspace folder):\n\n{command}\n\n({lines} {}, {chars} characters)\n\nA command can do anything you can do on this PC. Only allow it if you understand it.",
+        "{who}\n\n{command}\n\n({lines} {}, {chars} characters)\n\nA command can do anything you can do on this PC. Only allow it if you understand it.",
         if lines == 1 { "line" } else { "lines" }
     )
 }
@@ -207,12 +217,20 @@ pub fn run(command: &str, dir: &Path, limit: Duration) -> Result<Ran, String> {
 
 #[tauri::command]
 pub async fn run_command(app: AppHandle, command: String) -> Result<Ran, String> {
-    let command = check_command(&command)?;
+    run_checked_command(&app, &command, None).await
+}
+
+/// Runs one command after the native "Allow?" that shows it whole (every
+/// time; never "always"), in the workspace folder, stopped after 60 s,
+/// its output capped. The one door for this PC's own tool and a paired
+/// device's `pc_run_command` (link.rs; `by` names the device).
+pub async fn run_checked_command(app: &AppHandle, command: &str, by: Option<&crate::approval::Device<'_>>) -> Result<Ran, String> {
+    let command = check_command(command)?;
     // Every time, natively, with the whole command; no "always allow".
-    if !crate::approval::ask(&app, &command_question(&command)).await {
+    if !crate::approval::ask_for(app, &command_question_for(&command, by.map(|d| d.name)), by).await {
         return Err("The user said no. Nothing was run.".into());
     }
-    let dir = workspace(&app)?;
+    let dir = workspace(app)?;
     tauri::async_runtime::spawn_blocking(move || run(&command, &dir, COMMAND_TIME_LIMIT))
         .await
         .map_err(|e| e.to_string())?
@@ -311,14 +329,29 @@ mod tests {
 
     #[test]
     fn the_dialog_shows_the_whole_command() {
-        let q = command_question("Get-ChildItem C:\\");
+        let q = command_question_for("Get-ChildItem C:\\", None);
         assert!(q.contains("Get-ChildItem C:\\"));
         assert!(q.contains("Only allow it if you understand it"));
         assert!(check_command("   ").is_err());
         assert!(check_command(&"x".repeat(MAX_COMMAND + 1)).is_err());
-        let q = command_question("a\nb");
+        let q = command_question_for("a\nb", None);
         assert!(q.contains("(2 lines, 3 characters)"));
-        assert!(command_question("Get-Date").contains("(1 line, 8 characters)"));
+        assert!(command_question_for("Get-Date", None).contains("(1 line, 8 characters)"));
+    }
+
+    #[test]
+    fn a_device_is_named_in_the_command_question_which_is_never_cut() {
+        assert!(command_question_for("Get-Date", None).starts_with("DesktopAgent wants to run this command on your PC"));
+        let long = vec!["echo 0123456789012345678901234567890123456789"; MAX_LINES].join("\n");
+        let q = command_question_for(&long, Some("Pixel 8"));
+        assert!(q.starts_with("\u{201c}Pixel 8\u{201d} asks to run this command on your PC"), "{q}");
+        assert!(q.contains(&format!("\n\n{long}\n\n")), "{q}");
+        assert!(q.contains(&format!("({MAX_LINES} lines, {} characters)", long.chars().count())), "{q}");
+        assert!(q.ends_with("Only allow it if you understand it."));
+        // The answers log keeps it whole (one line, escaped).
+        let line = crate::remote_ask::log_line(1, "Pixel 8", true, &q);
+        assert_eq!(line.lines().count(), 1);
+        assert!(line.contains(&long.replace('\n', "\\n")), "{line}");
     }
 
     #[test]

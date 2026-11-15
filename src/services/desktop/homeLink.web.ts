@@ -43,3 +43,11 @@ export const linkDeviceMayRead = (
 /** Letting a device ask this PC to act is asked in a native dialog here. */
 export const linkDeviceMayAct = (id: string, allowed: boolean): Promise<void> =>
   invoke('link_device_may_act', {id, allowed});
+/**
+ * Letting a device ask this PC to run commands is asked in a native dialog
+ * here, with a strong warning; each command still asks every time.
+ */
+export const linkDeviceMayCommand = (
+  id: string,
+  allowed: boolean,
+): Promise<void> => invoke('link_device_may_command', {id, allowed});

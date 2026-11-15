@@ -1,12 +1,13 @@
 /**
  * "On your PC" (phone only): the paired Home PC's tools, asked over the
  * home link (request "tool", src-tauri/src/link.rs; design:
- * docs/design/phone-uses-pc-tools.md, stages 1 and 2). Each tool is off
+ * docs/design/phone-uses-pc-tools.md, stages 1 to 3). Each tool is off
  * until switched on in Toolbox, like every tool; the PC refuses unless its
- * user allows device tools there and this device "May read" (the reads) or
- * "May act" (the actions). The PC checks everything itself (a fixed list,
- * workspace file names only, a fixed list of media keys, caps) and runs
- * the same code as its own tools.
+ * user allows device tools there and this device "May read" (the reads),
+ * "May act" (the actions) or "May run commands" (pc_run_command). The PC
+ * checks everything itself (a fixed list, workspace file names only, a
+ * fixed list of media keys, its own command check, caps) and runs the same
+ * code as its own tools.
  *
  * - pc_info: the PC's system, memory, disks and graphics.
  * - pc_workspace_list: the files in the PC's workspace folder.
@@ -19,9 +20,14 @@
  *   PC's clipboard text. Each asks on the PC every time ("“<this device>”
  *   asks to …"; a device that may answer the PC's questions, this one
  *   too, can answer it) and the PC shows a notification for each.
+ * - pc_run_command: one command run on the PC (PowerShell on Windows) in
+ *   its workspace folder, at most 60 s. The PC shows the whole command
+ *   and asks every time (never "always"), naming this device; it shows a
+ *   notification and logs the whole command.
  *
- * What comes back is the PC's data (a file's or the clipboard's text), so
- * it is wrapped as untrusted (it can hold instructions). The Home PC PIN,
+ * What comes back is the PC's data (a file's or the clipboard's text, a
+ * command's output, without the PC's own paths), so it is wrapped as
+ * untrusted (it can hold instructions). The Home PC PIN,
  * when set, is asked first.
  */
 import {v4 as uuidv4} from 'uuid';
@@ -46,6 +52,7 @@ export const PC_TOOL_NAMES = [
   'pc_print',
   'pc_media',
   'pc_clipboard_read',
+  'pc_run_command',
 ] as const;
 export type PcTool = (typeof PC_TOOL_NAMES)[number];
 
@@ -58,6 +65,7 @@ export const REMOTE_NAMES: Record<PcTool, string> = {
   pc_print: 'pc_print',
   pc_media: 'pc_media',
   pc_clipboard_read: 'pc_clipboard_read',
+  pc_run_command: 'pc_run_command',
 };
 
 /** The tools that act on the PC (the PC's "May act"; each asks there). */
@@ -67,6 +75,13 @@ export const PC_ACT_TOOLS: readonly PcTool[] = [
   'pc_media',
   'pc_clipboard_read',
 ];
+
+/** The tool that runs a command on the PC (the PC's "May run commands"). */
+export const PC_COMMAND_TOOLS: readonly PcTool[] = ['pc_run_command'];
+
+/** As the PC checks it (pc.rs check_command): characters and lines. */
+export const MAX_COMMAND = 2000;
+export const MAX_COMMAND_LINES = 20;
 
 const FILE_TOOLS: readonly PcTool[] = [
   'pc_workspace_read',
@@ -153,6 +168,21 @@ const DEFINITIONS: Record<PcTool, ToolDefinition['function']> = {
       "Read the text on the clipboard of the user's paired Home PC (what they copied there). The PC shows the text and asks its user every time.",
     parameters: {type: 'object', properties: {}, required: []},
   },
+  pc_run_command: {
+    name: 'pc_run_command',
+    description:
+      "Run one command on the user's paired Home PC (PowerShell on Windows, a shell on Linux) in its workspace folder; stopped after 60 s; returns the exit code and output (at most 32 KB). At most 20 lines and 2000 characters; no hidden or control characters. The PC shows the whole command and asks its user every time. Only when the user asked for something on their PC that needs a command.",
+    parameters: {
+      type: 'object',
+      properties: {
+        command: {
+          type: 'string',
+          description: 'The exact command to run on the PC, e.g. Get-Date.',
+        },
+      },
+      required: ['command'],
+    },
+  },
 };
 
 function homePc(): string | undefined {
@@ -212,6 +242,13 @@ export function describeResult(tool: PcTool, result: any): string {
       ...(more ? [`… and ${more} more`] : []),
     ].join('\n');
   }
+  if (tool === 'pc_run_command') {
+    const output = typeof result?.output === 'string' ? result.output : '';
+    const ended = result?.timedOut
+      ? 'Stopped after 60 s.'
+      : `Exit code: ${result?.exitCode ?? 'none'}.`;
+    return `Ran on the PC (its user allowed it there). ${ended}\nOutput:\n${output.trim() ? output : '(no output)'}`;
+  }
   const text = typeof result?.text === 'string' ? result.text : '';
   if (tool === 'pc_clipboard_read') {
     return text;
@@ -226,9 +263,11 @@ export function refusal(tool: PcTool, error: string): string {
   if (/said no/i.test(error)) {
     return `The Home PC's user said no to ${tool} (asked on the PC): ${error} Tell the user; don't ask again unless they want to. ${STOP}`;
   }
-  const needs = PC_ACT_TOOLS.includes(tool)
-    ? `"Let paired devices use this PC's tools" and this device's "May act" allowed there; each action is asked on the PC`
-    : `"Let paired devices use this PC's tools" and this device's "May read" allowed there, and reading the workspace allowed for this chat`;
+  const needs = PC_COMMAND_TOOLS.includes(tool)
+    ? `"Let paired devices use this PC's tools" and this device's "May run commands" allowed there; each command is asked on the PC`
+    : PC_ACT_TOOLS.includes(tool)
+      ? `"Let paired devices use this PC's tools" and this device's "May act" allowed there; each action is asked on the PC`
+      : `"Let paired devices use this PC's tools" and this device's "May read" allowed there, and reading the workspace allowed for this chat`;
   return `The Home PC did not answer ${tool}: ${error}. Tell the user (the PC must be on with the home link, ${needs}). ${STOP}`;
 }
 
@@ -256,7 +295,7 @@ export class PcToolsEngine implements TalentEngine {
     args: Record<string, any>,
     ctx?: TalentExecuteContext,
   ): Promise<TalentResult> {
-    const toolArgs: {file?: string; key?: string} = {};
+    const toolArgs: {file?: string; key?: string; command?: string} = {};
     if (FILE_TOOLS.includes(this.name)) {
       const file =
         typeof args.filename === 'string' ? args.filename.trim() : '';
@@ -281,6 +320,25 @@ export class PcToolsEngine implements TalentEngine {
         };
       }
       toolArgs.key = key;
+    }
+    if (this.name === 'pc_run_command') {
+      const command =
+        typeof args.command === 'string' ? args.command.trim() : '';
+      const problem = !command
+        ? 'Give the `command` to run on the PC.'
+        : command.length > MAX_COMMAND
+          ? `The command is too long (at most ${MAX_COMMAND} characters).`
+          : command.split('\n').length > MAX_COMMAND_LINES
+            ? `The command has too many lines (at most ${MAX_COMMAND_LINES}).`
+            : undefined;
+      if (problem) {
+        return {
+          type: 'error',
+          summary: `pc_run_command: ${problem}`,
+          errorMessage: problem,
+        };
+      }
+      toolArgs.command = command;
     }
     const pc = homePc();
     if (!pc) {
