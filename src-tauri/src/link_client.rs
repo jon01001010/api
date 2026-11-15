@@ -16,18 +16,56 @@ use tauri::{AppHandle, Manager};
 
 static CLIENT: OnceLock<Arc<Phone>> = OnceLock::new();
 
-fn client(app: &AppHandle) -> Result<Arc<Phone>, String> {
-    if let Some(c) = CLIENT.get() {
-        return Ok(c.clone());
+/// This PC's own key as the other end (not the PC's link key), kept where
+/// the screens can't read or write it, like the link key (link.rs
+/// read_entry: Credential Manager on Windows, a private file on Linux).
+const CLIENT_KEY_ENTRY: &str = "DesktopAgent-link:client-key";
+
+fn to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+pub fn from_hex(text: &str) -> Option<[u8; 32]> {
+    let text = text.trim();
+    if text.len() != 64 || !text.is_ascii() {
+        return None;
     }
-    // Its own key, kept in the app's settings folder (not the PC's link key).
-    let key = app
+    let mut key = [0u8; 32];
+    for (i, byte) in key.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&text[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(key)
+}
+
+fn client_key(app: &AppHandle) -> Result<[u8; 32], String> {
+    if let Some(key) = crate::link::read_entry(app, CLIENT_KEY_ENTRY).and_then(|t| from_hex(&t)) {
+        return Ok(key);
+    }
+    // Before 2026-11-15 the key was a file in the settings folder, which on
+    // Windows is the screens' own folder: moved (pairing is kept).
+    let old = app
         .path()
         .app_config_dir()
         .map_err(|e| e.to_string())?
         .join("link")
         .join("client.key");
-    let made = Arc::new(Phone::new(&key, None)?);
+    let key = std::fs::read(&old)
+        .ok()
+        .and_then(|bytes| <[u8; 32]>::try_from(bytes.as_slice()).ok())
+        .unwrap_or_else(|| iroh::SecretKey::generate().to_bytes());
+    crate::link::write_entry(app, CLIENT_KEY_ENTRY, &to_hex(&key))?;
+    if crate::link::read_entry(app, CLIENT_KEY_ENTRY).and_then(|t| from_hex(&t)) == Some(key) {
+        let _ = std::fs::remove_file(&old);
+    }
+    Ok(key)
+}
+
+fn client(app: &AppHandle) -> Result<Arc<Phone>, String> {
+    if let Some(c) = CLIENT.get() {
+        return Ok(c.clone());
+    }
+    let key = client_key(app)?;
+    let made = Arc::new(Phone::with_key(key, None)?);
     Ok(CLIENT.get_or_init(|| made).clone())
 }
 
@@ -147,5 +185,15 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(v["ok"], false);
         assert_eq!(v["error"], "Could not reach the PC");
+    }
+
+    #[test]
+    fn the_key_is_kept_as_hex_and_read_back_exactly() {
+        let key: [u8; 32] = std::array::from_fn(|i| (i * 7) as u8);
+        assert_eq!(super::from_hex(&super::to_hex(&key)), Some(key));
+        assert_eq!(super::from_hex(&format!(" {}\n", super::to_hex(&key))), Some(key));
+        assert_eq!(super::from_hex("abc"), None);
+        assert_eq!(super::from_hex(&"zz".repeat(32)), None);
+        assert_eq!(super::from_hex(&"é".repeat(32)), None);
     }
 }

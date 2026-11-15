@@ -90,8 +90,29 @@ fn load_or_make_key(key_file: &Path) -> Result<SecretKey, String> {
     if let Some(dir) = key_file.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    std::fs::write(key_file, key.to_bytes()).map_err(|e| e.to_string())?;
+    write_private(key_file, &key.to_bytes()).map_err(|e| e.to_string())?;
     Ok(key)
+}
+
+/// The key file is readable by its owner only (0600 on Linux and Android).
+#[cfg(unix)]
+fn write_private(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let mut out = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(file)?;
+    // An older file keeps its old mode on open: set it again.
+    out.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    out.write_all(bytes)
+}
+
+#[cfg(not(unix))]
+fn write_private(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    std::fs::write(file, bytes)
 }
 
 async fn read_line(recv: &mut iroh::endpoint::RecvStream) -> Option<String> {
@@ -122,12 +143,19 @@ fn error_of(answer: &serde_json::Value, otherwise: &str) -> String {
 impl Phone {
     /// `key_file`: where the phone's own key lives (the app's private folder).
     pub fn new(key_file: &Path, pc_addr_hint: Option<SocketAddr>) -> Result<Phone, String> {
+        let key = load_or_make_key(key_file)?;
+        Self::with_key(key.to_bytes(), pc_addr_hint)
+    }
+
+    /// With a key the caller keeps itself (the second PC keeps it in
+    /// Windows' Credential Manager, out of the screens' reach).
+    pub fn with_key(key: [u8; 32], pc_addr_hint: Option<SocketAddr>) -> Result<Phone, String> {
+        let key = SecretKey::from_bytes(&key);
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
             .build()
             .map_err(|e| e.to_string())?;
-        let key = load_or_make_key(key_file)?;
         let endpoint = runtime
             .block_on(Endpoint::builder(presets::N0).secret_key(key).bind())
             .map_err(|e| e.to_string())?;
@@ -193,7 +221,10 @@ impl Phone {
         if answer_ok(&answer) {
             Ok(code.pc.to_string())
         } else {
-            Err("The PC did not pair (the code was used or expired, or pairing was refused)".into())
+            Err(error_of(
+                &answer,
+                "The PC did not pair (the code was used or expired, or pairing was refused)",
+            ))
         }
     }
 
@@ -367,7 +398,16 @@ impl Phone {
             let _ = tokio::io::copy(&mut recv, &mut to_app).await;
             let _ = tokio::io::AsyncWriteExt::shutdown(&mut to_app).await;
         };
-        tokio::join!(up, down);
+        // The PC takes one request per stream and closes after answering
+        // (its answer says "Connection: close"). Once the answer is in, the
+        // local connection is closed too, so the app's next request comes
+        // on a new connection, and so a new stream the PC checks again.
+        tokio::pin!(up);
+        tokio::pin!(down);
+        tokio::select! {
+            _ = &mut up => (&mut down).await,
+            _ = &mut down => {}
+        }
         Ok(())
     }
 }
@@ -395,6 +435,81 @@ mod tests {
         assert!(parse_qr(&format!("PA1:P:{PC}")).is_err());
     }
 
+    /// A stand-in for the PC (src-tauri/src/link.rs): one request per
+    /// stream, an answer streamed in parts, then the stream ends.
+    fn fake_pc() -> (EndpointId, SocketAddr, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let streams = std::sync::Arc::new(AtomicUsize::new(0));
+        let counted = streams.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async move {
+                let pc = Endpoint::builder(presets::Minimal)
+                    .alpns(vec![ALPN.to_vec()])
+                    .bind_addr("127.0.0.1:0")
+                    .unwrap()
+                    .bind()
+                    .await
+                    .unwrap();
+                tx.send((pc.id(), pc.bound_sockets()[0])).unwrap();
+                while let Some(incoming) = pc.accept().await {
+                    let Ok(conn) = incoming.await else { continue };
+                    let counted = counted.clone();
+                    tokio::spawn(async move {
+                        while let Ok((mut send, mut recv)) = conn.accept_bi().await {
+                            counted.fetch_add(1, Ordering::SeqCst);
+                            tokio::spawn(async move {
+                                assert_eq!(read_line(&mut recv).await.unwrap(), r#"{"op":"http"}"#);
+                                send.write_all(b"{\"ok\":true}\n").await.unwrap();
+                                let mut head = Vec::new();
+                                let mut byte = [0u8; 1];
+                                while !head.ends_with(b"\r\n\r\n") {
+                                    recv.read_exact(&mut byte).await.unwrap();
+                                    head.push(byte[0]);
+                                }
+                                send.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: 1\n\n")
+                                    .await
+                                    .unwrap();
+                                tokio::time::sleep(Duration::from_millis(100)).await;
+                                send.write_all(b"data: 2\n\n").await.unwrap();
+                                let _ = send.finish();
+                                let _ = send.stopped().await;
+                            });
+                        }
+                    });
+                }
+            });
+        });
+        let (id, addr) = rx.recv().unwrap();
+        (id, addr, streams)
+    }
+
+    #[test]
+    fn each_answer_closes_the_local_connection_so_the_next_request_is_a_new_stream() {
+        use std::io::{Read, Write};
+        let (pc, addr, streams) = fake_pc();
+        let dir = std::env::temp_dir().join(format!("homelink-tunnel-{}", std::process::id()));
+        let phone = std::sync::Arc::new(Phone::new(&dir.join("key"), Some(addr)).unwrap());
+        let port = phone.open_tunnel(&pc.to_string()).unwrap();
+        for round in 1..=2 {
+            let mut local = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+            local.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
+            // The app's client would keep this connection for more requests.
+            local
+                .write_all(b"POST /v1/chat/completions HTTP/1.1\r\nConnection: keep-alive\r\nContent-Length: 0\r\n\r\n")
+                .unwrap();
+            let mut answer = String::new();
+            // Ends (rather than timing out) because the phone closes it.
+            local.read_to_string(&mut answer).unwrap();
+            assert!(answer.contains("Connection: close"), "{answer}");
+            assert!(answer.ends_with("data: 1\n\ndata: 2\n\n"), "{answer}");
+            assert_eq!(streams.load(std::sync::atomic::Ordering::SeqCst), round);
+        }
+        phone.close_tunnel();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_phone_keeps_its_key() {
         let dir = std::env::temp_dir().join(format!("homelink-key-{}", std::process::id()));
@@ -402,6 +517,13 @@ mod tests {
         let first = load_or_make_key(&file).unwrap();
         let again = load_or_make_key(&file).unwrap();
         assert_eq!(first.public(), again.public());
+        // Readable by its owner only.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&file).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
