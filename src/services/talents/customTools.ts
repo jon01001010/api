@@ -79,7 +79,11 @@ export const MAX_STEPS = 8;
 const MAX_INSTRUCTIONS = 8000;
 
 /** Tools a shortcut may not use: no tool-making, no nesting. */
-const NOT_IN_SHORTCUTS = new Set(['tool_save', 'tool_delete']);
+const NOT_IN_SHORTCUTS = new Set([
+  'tool_save',
+  'tool_delete',
+  'phone_actions_chain',
+]);
 
 /**
  * Phone steps that leave PocketAgent's screen. Android stops a background app

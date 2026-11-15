@@ -62,6 +62,7 @@ import {
 } from '../services/talents';
 import type {ToolDefinition} from '../services/talents/types';
 import {deriveToolSchemas} from '../services/talents';
+import {withChainOnlyIfUsable} from '../services/talents/PhoneActionChain';
 import {
   buildBackgroundParts,
   joinParts,
@@ -842,7 +843,8 @@ export const useChatSession = (
       // Only tools the user switched on (or the assistant declares). Memory
       // tools too: the memory itself is always in the prompt below, but the
       // tools that read and change it are sent only when turned on.
-      ...globalNames,
+      // A chain of phone actions only next to a phone action that is on.
+      ...withChainOnlyIfUsable(globalNames),
     ])];
     cleanCompletionParams.tools = deriveToolSchemas(palTalents);
     let memoryContext = '';

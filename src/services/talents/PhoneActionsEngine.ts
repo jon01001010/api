@@ -761,6 +761,17 @@ export function resetRecentPhoneActions(): void {
   recentlyDone.clear();
 }
 
+/** Where a step sits in a chain of phone actions (phone_actions_chain). */
+export interface ChainStep {
+  /** 1-based. */
+  number: number;
+  total: number;
+}
+
+/** A plan's question as a step of a chain: "Step 2 of 3: Play …?". */
+export const chainAsk = (ask: string, step: ChainStep): string =>
+  `Step ${step.number} of ${step.total}: ${ask}`;
+
 export class PhoneActionsEngine implements TalentEngine {
   constructor(readonly name: string) {
     if (!PHONE_TOOLS[name]) {
@@ -768,11 +779,26 @@ export class PhoneActionsEngine implements TalentEngine {
     }
   }
 
-  async execute(
+  execute(
     args: Record<string, any>,
     ctx?: TalentExecuteContext,
   ): Promise<TalentResult> {
+    return this.run(args, ctx);
+  }
+
+  /**
+   * One phone action: check it, ask the user (unless inside a shortcut the
+   * user approved as a whole), then send it. As a step of a chain
+   * (phone_actions_chain) it always asks, "Step n of m: …".
+   */
+  async run(
+    args: Record<string, any>,
+    ctx?: TalentExecuteContext,
+    step?: ChainStep,
+  ): Promise<TalentResult> {
     const plan = await PHONE_TOOLS[this.name].plan(args ?? {});
+    // A chain puts its steps' results together and says when to stop.
+    const stop = step ? '' : ` ${STOP}`;
     if (typeof plan === 'string') {
       return {
         type: 'error',
@@ -787,10 +813,11 @@ export class PhoneActionsEngine implements TalentEngine {
     if (last !== undefined && Date.now() - last < REPEAT_WINDOW_MS) {
       return {
         type: 'text',
-        summary: `Already done a moment ago (${plan.what}); not repeated. ${STOP}`,
+        summary: `Already done a moment ago (${plan.what}); not repeated.${stop}`,
       };
     }
-    const quiet = ctx?.inApprovedShortcut === true;
+    // A chain step never skips its question.
+    const quiet = !step && ctx?.inApprovedShortcut === true;
     // Desktop: opening a page, draft or settings page asks in a native
     // dialog with the exact address (src-tauri/src/open.rs); not twice.
     if (!quiet && !actionAsksItself(plan.action)) {
@@ -805,7 +832,7 @@ export class PhoneActionsEngine implements TalentEngine {
       const approved = await requestFileApproval(
         {
           action: 'phone_action',
-          filename: plan.ask,
+          filename: step ? chainAsk(plan.ask, step) : plan.ask,
           content: plan.details ?? '',
         },
         ctx?.signal,
@@ -832,7 +859,7 @@ export class PhoneActionsEngine implements TalentEngine {
           Clipboard.setString(fb.clipboard);
         }
         recentlyDone.set(key, Date.now());
-        return {type: 'text', summary: `Done: ${fb.done} ${STOP}`};
+        return {type: 'text', summary: `Done: ${fb.done}${stop}`};
       }
     }
     if (!result.ok) {
@@ -849,8 +876,8 @@ export class PhoneActionsEngine implements TalentEngine {
     return {
       type: 'text',
       summary: note
-        ? `Done (${plan.what}): ${note} ${STOP}`
-        : `Done: ${plan.done} ${STOP}`,
+        ? `Done (${plan.what}): ${note}${stop}`
+        : `Done: ${plan.done}${stop}`,
     };
   }
 
