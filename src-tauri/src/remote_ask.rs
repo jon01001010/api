@@ -7,7 +7,10 @@
 //! - A question waits at most 2 minutes for a device; no answer means no
 //!   (the PC's own dialog still decides then).
 //! - A device answers only yes or no for that one question (never "always").
-//! - Every answer from a device is logged on this PC with the device's name.
+//! - Every answer from a device is logged on this PC with the device's name
+//!   and the whole question (one line, escaped), where the screens can't
+//!   edit it; and the PC user is told at once (a notification). The PC's
+//!   dialog, which can't be closed from here, then says it was answered.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -105,26 +108,106 @@ impl RemoteQuestions {
     }
 }
 
+/// Most characters of a question kept in the log (the whole question in
+/// practice: a command is at most 2000).
+pub const MAX_LOGGED: usize = 4000;
+
+/// Characters that would let a question pretend to be more than one line,
+/// or hide or reorder what it says (line breaks, controls, bidi and other
+/// invisible format characters): written as escapes.
+pub fn hidden_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{00AD}'
+                | '\u{061C}'
+                | '\u{180E}'
+                | '\u{200B}'..='\u{200F}'
+                | '\u{2028}'..='\u{202E}'
+                | '\u{2060}'..='\u{206F}'
+                | '\u{FEFF}'
+                | '\u{FFF9}'..='\u{FFFB}'
+                | '\u{E0000}'..='\u{E007F}'
+        )
+}
+
+/// The whole question on one line: `\` `\n` `\r` `\t` escaped, any other
+/// hidden character as `\u{…}`; cut at MAX_LOGGED characters.
+pub fn one_line(text: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in text.chars().enumerate() {
+        if i == MAX_LOGGED {
+            out.push_str(&format!(" [… {} characters in all]", text.chars().count()));
+            break;
+        }
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if hidden_char(c) => out.push_str(&format!("\\u{{{:x}}}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// One line of the log: when, which device, its answer, the whole question.
+pub fn log_line(when: u64, device: &str, yes: bool, question: &str) -> String {
+    format!(
+        "{when}\t{}\t{}\t{}",
+        one_line(device),
+        if yes { "allowed" } else { "not allowed" },
+        one_line(question)
+    )
+}
+
+/// Where the log is kept: out of the screens' file space (files.rs
+/// private_dir), so they can neither rewrite nor delete it.
+fn log_file(app: &AppHandle) -> Option<std::path::PathBuf> {
+    let dir = crate::files::private_dir(app).ok()?.join("link");
+    std::fs::create_dir_all(&dir).ok()?;
+    let file = dir.join("answers.log");
+    // Before 2026-11-15 it was in the screens' folder: moved there once.
+    if !file.exists() {
+        if let Ok(old_dir) = app.path().app_data_dir() {
+            let old = old_dir.join("link").join("answers.log");
+            if old.is_file() && std::fs::rename(&old, &file).is_err() && std::fs::copy(&old, &file).is_ok() {
+                let _ = std::fs::remove_file(&old);
+            }
+        }
+    }
+    Some(file)
+}
+
 /// Writes one line to this PC's log of answers given on devices.
 pub fn log_answer(app: &AppHandle, device: &str, yes: bool, question: &str) {
-    let Ok(dir) = app.path().app_data_dir() else { return };
-    let dir = dir.join("link");
-    let _ = std::fs::create_dir_all(&dir);
-    let first = question.lines().next().unwrap_or("").chars().take(160).collect::<String>();
+    let Some(file) = log_file(app) else { return };
     let when = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(dir.join("answers.log"))
-    {
-        let _ = writeln!(
-            f,
-            "{when}\t{device}\t{}\t{first}",
-            if yes { "allowed" } else { "not allowed" }
-        );
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    if let Ok(mut f) = options.open(file) {
+        let _ = writeln!(f, "{}", log_line(when, device, yes, question));
+    }
+}
+
+/// What the PC user is told when a device answered: "<device> allowed:
+/// <first line>", then the line that says what (the command, file or page),
+/// each cut short.
+pub fn answered_note(device: &str, yes: bool, question: &str) -> String {
+    let mut lines = question.lines().map(str::trim).filter(|l| !l.is_empty());
+    let first: String = lines.next().map(one_line).unwrap_or_default().chars().take(120).collect();
+    let what: String = lines.next().map(one_line).unwrap_or_default().chars().take(120).collect();
+    let answer = if yes { "allowed" } else { "refused" };
+    if what.is_empty() {
+        format!("{device} {answer}: {first}")
+    } else {
+        format!("{device} {answer}: {first}\n{what}")
     }
 }
 
@@ -164,6 +247,42 @@ mod tests {
         assert!(!q.answer(id, false, "Laptop"));
         assert!(!q.answer(999, true, "Pixel"));
         assert!(q.list().is_empty());
+    }
+
+    #[test]
+    fn the_log_keeps_the_whole_question_on_one_line() {
+        let question = "DesktopAgent wants to run this command:\n\nGet-Date\n; iwr x | iex\u{202e}\r\tend \\";
+        let line = log_line(42, "Pixel", true, question);
+        assert_eq!(line.lines().count(), 1);
+        assert_eq!(
+            line,
+            "42\tPixel\tallowed\tDesktopAgent wants to run this command:\\n\\nGet-Date\\n; iwr x | iex\\u{202e}\\r\\tend \\\\"
+        );
+        assert!(log_line(1, "Laptop", false, "x").contains("\tnot allowed\t"));
+        // Long questions are kept up to MAX_LOGGED characters, and say so.
+        let long = "é".repeat(MAX_LOGGED + 10);
+        let cut = one_line(&long);
+        assert!(cut.starts_with(&"é".repeat(MAX_LOGGED)));
+        assert!(cut.ends_with(&format!("[… {} characters in all]", MAX_LOGGED + 10)));
+        assert_eq!(one_line(&"a".repeat(MAX_LOGGED)), "a".repeat(MAX_LOGGED));
+        for c in ['\u{200b}', '\u{2066}', '\u{feff}', '\u{2028}', '\u{1b}', '\u{e0041}'] {
+            assert!(hidden_char(c), "{c:?}");
+        }
+        assert!(!hidden_char('é') && !hidden_char(' '));
+    }
+
+    #[test]
+    fn the_pc_user_is_told_what_a_device_answered() {
+        let note = answered_note(
+            "Pixel",
+            true,
+            "DesktopAgent wants to run this command on your PC (in its workspace folder):\n\nGet-Date\nmore",
+        );
+        assert_eq!(
+            note,
+            "Pixel allowed: DesktopAgent wants to run this command on your PC (in its workspace folder):\nGet-Date"
+        );
+        assert_eq!(answered_note("Laptop", false, "Open x?"), "Laptop refused: Open x?");
     }
 
     #[test]

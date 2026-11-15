@@ -59,6 +59,25 @@ fn app_root(app: &AppHandle) -> Result<PathBuf, String> {
     app.path().app_data_dir().map_err(|e| e.to_string())
 }
 
+/// The first of the candidates that is neither inside the screens' own
+/// folder nor holds it. Pure, so it can be tested.
+pub fn pick_private(screens: &Path, candidates: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
+    candidates
+        .into_iter()
+        .find(|c| !c.starts_with(screens) && !screens.starts_with(c))
+}
+
+/// A folder for the native side's own records (e.g. the log of answers
+/// given on devices) that the screens' file commands can't reach without
+/// asking: the settings folder on Linux (~/.config/…), the local AppData
+/// folder on Windows (where the settings folder is the screens' own).
+pub fn private_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let screens = app_root(app)?;
+    let candidates = [app.path().app_config_dir().ok(), app.path().app_local_data_dir().ok()];
+    pick_private(&screens, candidates.into_iter().flatten())
+        .ok_or_else(|| "No private folder on this system".to_string())
+}
+
 /// Finds a path and, outside the app's folder, asks the user first.
 pub async fn allowed_path(app: &AppHandle, input: &str, what: &str) -> Result<PathBuf, String> {
     allowed(app, input, what).await
@@ -213,6 +232,20 @@ pub async fn fs_move(app: AppHandle, from: String, to: String) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn private_records_stay_out_of_the_screens_folder() {
+        // Windows: the settings folder is the screens' own; local AppData is not.
+        let roaming = PathBuf::from("/u/AppData/Roaming/app.pocketagent.desktop");
+        let local = PathBuf::from("/u/AppData/Local/app.pocketagent.desktop");
+        assert_eq!(pick_private(&roaming, [roaming.clone(), local.clone()]), Some(local));
+        // Linux: the settings folder.
+        let data = PathBuf::from("/home/u/.local/share/app");
+        let config = PathBuf::from("/home/u/.config/app");
+        assert_eq!(pick_private(&data, [config.clone(), data.clone()]), Some(config));
+        // Inside it, or holding it: never.
+        assert_eq!(pick_private(&data, [data.join("x"), PathBuf::from("/home/u/.local")]), None);
+    }
 
     fn root() -> PathBuf {
         PathBuf::from("/data/PocketAgent")

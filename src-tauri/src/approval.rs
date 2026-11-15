@@ -21,17 +21,54 @@ async fn first_answer<T: Send + 'static>(
     let Some((id, device)) = questions.open(question) else {
         return dialog.await.unwrap_or_else(|_| refused());
     };
-    tokio::pin!(dialog);
+    let mut dialog = dialog;
     let answer = tokio::select! {
         here = &mut dialog => here.unwrap_or_else(|_| refused()),
         // Expired or closed on the device side: wait for this PC's dialog.
         Ok((yes, name)) = device => {
             crate::remote_ask::log_answer(app, &name, yes, question);
+            answered_on_device(app, &name, yes, question, dialog);
             from_device(yes)
         }
     };
     questions.close(id);
     answer
+}
+
+/// A device answered first. The PC user is told at once (a notification),
+/// and the PC's own dialog, which can't be closed from here, stays harmless:
+/// whatever is pressed there now changes nothing, and a note says so.
+fn answered_on_device<T: Send + 'static>(
+    app: &AppHandle,
+    device: &str,
+    yes: bool,
+    question: &str,
+    dialog: tauri::async_runtime::JoinHandle<T>,
+) {
+    use tauri_plugin_notification::NotificationExt;
+    let note = crate::remote_ask::answered_note(device, yes, question);
+    let _ = app
+        .notification()
+        .builder()
+        .title(format!("Answered on {device}"))
+        .body(note.clone())
+        .show();
+    let app = app.clone();
+    let device = device.to_string();
+    tauri::async_runtime::spawn(async move {
+        // The PC user pressed a button (or closed it): nothing more is done.
+        let _ = dialog.await;
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            app.dialog()
+                .message(format!(
+                    "This was already answered on {device}, so your answer here changed nothing.\n\n{note}"
+                ))
+                .title("DesktopAgent: already answered")
+                .kind(MessageDialogKind::Info)
+                .blocking_show()
+        })
+        .await;
+    });
 }
 
 /// Asks the user; true only if they press Allow (here, or on a paired
