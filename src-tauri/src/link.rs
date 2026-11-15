@@ -17,6 +17,10 @@
 //!   never one that would need an "Allow?" on the PC), and pass HTTP
 //!   requests to this PC's own model server on 127.0.0.1 ("http"). Nothing
 //!   else on the PC is reachable: no files, no tools, no other ports.
+//!   Two more, each only while allowed on this PC for that device: answer
+//!   this PC's questions ("questions" / "answer", remote_ask.rs) and ask
+//!   for a picture ("picture": made here by image_gen.rs with this PC's own
+//!   picture model, the same caps and word check; the PNG comes back).
 //! - The PC's link key and the paired phones are kept where the screens
 //!   can't write: Windows Credential Manager, or on Linux a private file in
 //!   the app's settings folder (see read_entry).
@@ -34,6 +38,10 @@ pub const QR_PREFIX: &str = "PA1:P:";
 const KEY_ENTRY: &str = "DesktopAgent-link:key";
 const PHONES_ENTRY: &str = "DesktopAgent-link:phones";
 const EVENTS_ENTRY: &str = "DesktopAgent-link:events";
+/// The PC's switch "Let paired devices make pictures on this PC" ("on").
+const PICTURES_ENTRY: &str = "DesktopAgent-link:pictures";
+/// Largest picture sent back to a device (a 1024 x 1024 PNG is 1-3 MB).
+pub const MAX_PICTURE: usize = 8 * 1024 * 1024;
 /// Pairing history kept (paired phones see it, so they notice new codes).
 const MAX_EVENTS: usize = 30;
 const PAIR_CODE_LIFETIME: Duration = Duration::from_secs(10 * 60);
@@ -57,6 +65,26 @@ pub struct Phone {
     /// this PC; records saved before this existed have none: off.
     #[serde(default, rename = "mayAnswer", skip_serializing_if = "std::ops::Not::not")]
     pub may_answer: bool,
+    /// May ask this PC for pictures (while the PC's switch is on too). Off
+    /// for each device until switched on here, which asks on this PC.
+    #[serde(default, rename = "mayPicture", skip_serializing_if = "std::ops::Not::not")]
+    pub may_picture: bool,
+}
+
+/// Whether this paired device may ask this PC for pictures.
+pub fn may_picture(phones: &[Phone], id: &str) -> bool {
+    phones.iter().any(|p| p.id == id && p.may_picture)
+}
+
+/// Sets one device's "may make pictures"; false if it isn't paired.
+pub fn set_may_picture(phones: &mut [Phone], id: &str, allowed: bool) -> bool {
+    match phones.iter_mut().find(|p| p.id == id) {
+        Some(p) => {
+            p.may_picture = allowed;
+            true
+        }
+        None => false,
+    }
 }
 
 /// Whether this paired device may answer this PC's questions.
@@ -91,6 +119,19 @@ pub enum Request {
     Questions,
     /// A device's yes or no to one of them.
     Answer { id: u64, yes: bool },
+    /// A picture made on this PC (only while the user allows it here, for
+    /// this device). Never a model or a path: the PC uses its own first
+    /// downloaded picture model; sizes and steps are capped as for its own
+    /// tool (image_gen::check_request).
+    Picture {
+        prompt: String,
+        #[serde(default)]
+        width: Option<u32>,
+        #[serde(default)]
+        height: Option<u32>,
+        #[serde(default)]
+        steps: Option<u32>,
+    },
     Http,
 }
 
@@ -347,6 +388,80 @@ impl Drop for SyncTurn<'_> {
 
 const OFF_ANSWERS: &str = "Answering this PC's questions is off on the PC (Settings → Use this PC's model from your phone)";
 const NOT_THIS_DEVICE: &str = "This device may not answer this PC's questions; allow it on the PC (Settings → Use this PC's model from your phone → Paired phones → May answer)";
+const OFF_PICTURES: &str = "Making pictures for paired devices is off on the PC (Settings → Use this PC's model from your phone → Let paired devices make pictures)";
+const NOT_THIS_DEVICE_PICTURES: &str = "This device may not make pictures on this PC; allow it on the PC (Settings → Use this PC's model from your phone → Paired phones → Pictures)";
+
+/// The PC's switch for pictures (kept where the screens can't write).
+fn pictures_allowed(app: &AppHandle) -> bool {
+    read_entry(app, PICTURES_ENTRY).as_deref() == Some("on")
+}
+
+/// What the PC user is told when a device starts a picture.
+pub fn picture_note(device: &str, prompt: &str) -> String {
+    let mut cut: String = prompt.chars().take(100).collect();
+    if prompt.chars().count() > 100 {
+        cut.push('…');
+    }
+    format!("{device} is making a picture: {cut}")
+}
+
+/// A picture for a paired device: the same maker, checks, caps, word check
+/// and one-at-a-time slot as the PC's own tool. Stops the maker if the
+/// device goes away (or is removed) meanwhile. The JSON header line, then
+/// the PNG.
+async fn picture_for(
+    app: &AppHandle,
+    device: &str,
+    request: (String, Option<u32>, Option<u32>, Option<u32>),
+    send: &mut iroh::endpoint::SendStream,
+) -> Result<(serde_json::Value, Vec<u8>), String> {
+    let (prompt, width, height, steps) = request;
+    let set = crate::image_gen::first_downloaded_set(app)?;
+    let size = crate::image_gen::default_size(&set);
+    let note_app = app.clone();
+    let device = device.to_string();
+    let making = crate::image_gen::make(
+        app.clone(),
+        set,
+        &prompt,
+        width.unwrap_or(size),
+        height.unwrap_or(size),
+        steps,
+        None,
+        move |req| {
+            use tauri_plugin_notification::NotificationExt;
+            let _ = note_app
+                .notification()
+                .builder()
+                .title(format!("Picture for {device}"))
+                .body(picture_note(&device, &req.prompt))
+                .show();
+        },
+    );
+    // Dropping the maker's future frees its slot and ends sd-cli (Slot).
+    let made = tokio::select! {
+        made = making => made?,
+        _ = send.stopped() => return Err("The device went away".into()),
+    };
+    let size = std::fs::metadata(&made.file).map_err(|e| e.to_string())?.len();
+    if size > MAX_PICTURE as u64 {
+        return Err("The picture is too large to send".into());
+    }
+    let bytes = tokio::fs::read(&made.file).await.map_err(|e| e.to_string())?;
+    if bytes.len() > MAX_PICTURE || !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err("The picture could not be sent".into());
+    }
+    Ok((
+        serde_json::json!({
+            "ok": true,
+            "bytes": bytes.len(),
+            "name": made.name,
+            "seed": made.seed,
+            "seconds": made.seconds,
+        }),
+        bytes,
+    ))
+}
 
 /// Most bytes one sync may carry (the device library's own limit too).
 pub const MAX_SYNC: usize = 4 * 1024 * 1024;
@@ -355,6 +470,8 @@ pub const MAX_SYNC: usize = 4 * 1024 * 1024;
 #[serde(rename_all = "camelCase")]
 pub struct LinkStatus {
     on: bool,
+    /// "Let paired devices make pictures on this PC".
+    pictures_allowed: bool,
     pc_id: Option<String>,
     phones: Vec<Phone>,
     events: Vec<LinkEvent>,
@@ -732,7 +849,7 @@ async fn serve_stream(
                     let mut phones = load_phones(&app);
                     add_phone(
                         &mut phones,
-                        Phone { id: remote.clone(), name: name.clone(), may_answer: false },
+                        Phone { id: remote.clone(), name: name.clone(), may_answer: false, may_picture: false },
                     );
                     let saved = save_phones(&app, &phones).is_ok();
                     if saved {
@@ -855,6 +972,31 @@ async fn serve_stream(
                 }
             };
             reply(&mut send, answer).await;
+        }
+        Some(Request::Picture { prompt, width, height, steps }) if paired => {
+            let phones = load_phones(&app);
+            if !pictures_allowed(&app) {
+                reply(&mut send, serde_json::json!({"ok": false, "error": OFF_PICTURES})).await;
+            } else if !may_picture(&phones, &remote) {
+                reply(&mut send, serde_json::json!({"ok": false, "error": NOT_THIS_DEVICE_PICTURES})).await;
+            } else {
+                let name = phones
+                    .into_iter()
+                    .find(|p| p.id == remote)
+                    .map(|p| p.name)
+                    .unwrap_or_else(|| "a device".into());
+                // Nothing more is read from the device on this stream.
+                let _ = recv.stop(0u32.into());
+                match picture_for(&app, &name, (prompt, width, height, steps), &mut send).await {
+                    Ok((header, png)) => {
+                        reply(&mut send, header).await;
+                        let _ = send.write_all(&png).await;
+                    }
+                    Err(error) => {
+                        reply(&mut send, serde_json::json!({"ok": false, "error": error})).await;
+                    }
+                }
+            }
         }
         Some(Request::Http) if paired => {
             let Some((port, _)) = app.state::<crate::model_server::ModelServer>().address() else {
@@ -991,6 +1133,7 @@ pub async fn link_status(app: AppHandle, link: State<'_, Link>) -> Result<LinkSt
     let running = link.running.lock().await;
     Ok(LinkStatus {
         on: running.is_some(),
+        pictures_allowed: pictures_allowed(&app),
         pc_id: running.as_ref().map(|r| r.endpoint().id().to_string()),
         phones: load_phones(&app),
         events: load_events(&app),
@@ -1041,6 +1184,45 @@ pub async fn link_device_may_answer(app: AppHandle, id: String, allowed: bool) -
     save_phones(&app, &phones)?;
     if allowed {
         record(&app, "may-answer", Some(name));
+    }
+    Ok(())
+}
+
+/// The PC's switch: may paired devices ask for pictures at all? (Each
+/// device must be allowed too: link_device_may_picture, asked here.)
+#[tauri::command]
+pub async fn link_pictures_allow(app: AppHandle, allowed: bool) -> Result<(), String> {
+    write_entry(&app, PICTURES_ENTRY, if allowed { "on" } else { "off" })
+}
+
+/// Lets one paired device ask this PC for pictures, or stops it. Letting
+/// it is asked on this PC (a native dialog no device can answer); paired
+/// devices see it in the pairing history. Stopping it asks nothing.
+#[tauri::command]
+pub async fn link_device_may_picture(app: AppHandle, id: String, allowed: bool) -> Result<(), String> {
+    const NOT_PAIRED: &str = "That device is not paired with this PC";
+    let name = load_phones(&app)
+        .into_iter()
+        .find(|p| p.id == id)
+        .map(|p| p.name)
+        .ok_or(NOT_PAIRED)?;
+    if allowed {
+        let key: String = id.chars().take(16).collect();
+        let question = format!(
+            "Let \u{201c}{name}\u{201d} make pictures on this PC?\n\nWhile pictures are on, it can ask this PC to make a picture from a text description, with the picture model downloaded here (the same limits and word check as here, one picture at a time; a copy stays in the workspace's images folder). This PC shows a notification each time.\n\nDevice key: {key}"
+        );
+        if !crate::approval::ask_on_this_pc(&app, &question).await {
+            return Err("Not allowed on this PC".into());
+        }
+    }
+    // Read again after the dialog (the list may have changed meanwhile).
+    let mut phones = load_phones(&app);
+    if !set_may_picture(&mut phones, &id, allowed) {
+        return Err(NOT_PAIRED.into());
+    }
+    save_phones(&app, &phones)?;
+    if allowed {
+        record(&app, "may-picture", Some(name));
     }
     Ok(())
 }
@@ -1226,6 +1408,18 @@ mod tests {
             parse_request(br#"{"op":"pair","code":"ab","name":"Pixel"}"#),
             Some(Request::Pair { code: "ab".into(), name: "Pixel".into() })
         );
+        // "picture": a prompt, and at most sizes and steps; a model or a
+        // path the device names is ignored (the PC uses its own).
+        assert_eq!(
+            parse_request(br#"{"op":"picture","prompt":"a cat","width":512,"height":768,"steps":4}"#),
+            Some(Request::Picture { prompt: "a cat".into(), width: Some(512), height: Some(768), steps: Some(4) })
+        );
+        assert_eq!(
+            parse_request(br#"{"op":"picture","prompt":"a cat","model":"C:/x.gguf","out":"C:/y.png"}"#),
+            Some(Request::Picture { prompt: "a cat".into(), width: None, height: None, steps: None })
+        );
+        assert_eq!(parse_request(br#"{"op":"picture"}"#), None);
+        assert_eq!(parse_request(br#"{"op":"picture","prompt":"a","width":-1}"#), None);
         assert_eq!(parse_request(br#"{"op":"files"}"#), None);
         assert_eq!(parse_request(b"GET / HTTP/1.1"), None);
         assert_eq!(parse_request(&vec![b' '; MAX_REQUEST_LINE + 1]), None);
@@ -1312,10 +1506,10 @@ mod tests {
         assert_eq!(clean_name(&"x".repeat(100)).len(), 40);
         let mut phones = Vec::new();
         for i in 0..(MAX_PHONES + 3) {
-            add_phone(&mut phones, Phone { id: format!("{i}"), name: "p".into(), may_answer: false });
+            add_phone(&mut phones, Phone { id: format!("{i}"), name: "p".into(), may_answer: false, may_picture: false });
         }
         assert_eq!(phones.len(), MAX_PHONES);
-        add_phone(&mut phones, Phone { id: "5".into(), name: "again".into(), may_answer: false });
+        add_phone(&mut phones, Phone { id: "5".into(), name: "again".into(), may_answer: false, may_picture: false });
         assert_eq!(phones.iter().filter(|p| p.id == "5").count(), 1);
     }
 
@@ -1340,8 +1534,41 @@ mod tests {
         assert!(set_may_answer(&mut phones, "a", false));
         assert!(!may_answer(&phones, "a"));
         // Pairing again starts over (not allowed).
-        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false });
+        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false });
         assert!(!may_answer(&phones, "a"));
+    }
+
+    #[test]
+    fn each_device_may_make_pictures_only_once_allowed() {
+        let old: Vec<Phone> = serde_json::from_str(r#"[{"id":"a","name":"Pixel","mayAnswer":true},{"id":"b","name":"Laptop"}]"#).unwrap();
+        // Saved before the field existed (even a device that may answer): not allowed.
+        assert!(!may_picture(&old, "a") && !may_picture(&old, "b"));
+        let mut phones = old;
+        assert!(set_may_picture(&mut phones, "b", true));
+        assert!(may_picture(&phones, "b") && !may_picture(&phones, "a"));
+        assert!(!may_picture(&phones, "unknown"));
+        assert!(!set_may_picture(&mut phones, "unknown", true));
+        // Each flag on its own.
+        assert!(may_answer(&phones, "a") && !may_answer(&phones, "b"));
+        let json = serde_json::to_string(&phones).unwrap();
+        assert_eq!(
+            json,
+            r#"[{"id":"a","name":"Pixel","mayAnswer":true},{"id":"b","name":"Laptop","mayPicture":true}]"#
+        );
+        let back: Vec<Phone> = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, phones);
+        // Pairing again starts over (not allowed).
+        add_phone(&mut phones, Phone { id: "b".into(), name: "Laptop".into(), may_answer: false, may_picture: false });
+        assert!(!may_picture(&phones, "b"));
+    }
+
+    #[test]
+    fn the_pc_is_told_who_makes_which_picture() {
+        assert_eq!(picture_note("Pixel", "a cat"), "Pixel is making a picture: a cat");
+        let long = "x".repeat(300);
+        let note = picture_note("Pixel", &long);
+        assert!(note.ends_with('…'));
+        assert_eq!(note.chars().count(), "Pixel is making a picture: ".len() + 101);
     }
 
     #[test]

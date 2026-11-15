@@ -371,7 +371,7 @@ fn sd_exe(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 /// A new picture's name: picture-YYYYMMDD-HHMMSS-xxxx.png (UTC).
-fn new_name() -> Result<String, String> {
+pub fn new_name() -> Result<String, String> {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -477,11 +477,39 @@ fn drain(pipe: Option<impl Read + Send + 'static>) -> Arc<Mutex<Vec<u8>>> {
 #[serde(rename_all = "camelCase")]
 pub struct Generated {
     /// The picture's file name in the workspace's `images` folder.
-    name: String,
+    pub name: String,
     /// The app's own path for it (/pocketagent/…).
-    path: String,
-    seed: u64,
-    seconds: u64,
+    pub path: String,
+    pub seed: u64,
+    pub seconds: u64,
+    /// Where it is on this PC (not sent to the screens).
+    #[serde(skip)]
+    #[cfg_attr(not(feature = "link"), allow(dead_code))]
+    pub file: PathBuf,
+}
+
+/// The first downloaded set, in the list's order (as the screens'
+/// installedSet): what a paired device's picture uses (it names none).
+#[cfg_attr(not(feature = "link"), allow(dead_code))]
+pub fn first_downloaded_set(app: &AppHandle) -> Result<ModelSet, String> {
+    let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    catalog()?
+        .into_iter()
+        .find(|set| {
+            let dir = root.join(MODELS_DIR).join(&set.id);
+            set.files.iter().all(|f| dir.join(&f.name).is_file())
+        })
+        .ok_or_else(|| "No picture model is downloaded on the PC yet (Toolbox, Image models).".into())
+}
+
+/// The size used when none is given: SD 1.5 is made for 512, the others 1024.
+#[cfg_attr(not(feature = "link"), allow(dead_code))]
+pub fn default_size(set: &ModelSet) -> u32 {
+    if set.kind == "sd" {
+        512
+    } else {
+        1024
+    }
 }
 
 #[tauri::command]
@@ -502,7 +530,27 @@ pub async fn image_generate(
         .into_iter()
         .find(|s| s.id == model)
         .ok_or_else(|| format!("Unknown picture model: {model}"))?;
-    let req = check_request(&prompt, width, height, steps.unwrap_or(set.default_steps))?;
+    make(app, set, &prompt, width, height, steps, seed, |_| {}).await
+}
+
+/// Makes one picture: the same checks, caps, word filter and one-at-a-time
+/// slot for the PC's own tool and for a paired device (link.rs "picture").
+/// `started` runs once everything is checked, just before the maker starts.
+#[allow(clippy::too_many_arguments)]
+pub async fn make(
+    app: AppHandle,
+    set: ModelSet,
+    prompt: &str,
+    width: u32,
+    height: u32,
+    steps: Option<u32>,
+    seed: Option<i64>,
+    started: impl FnOnce(&Request),
+) -> Result<Generated, String> {
+    if let Some(why) = not_on_this_pc() {
+        return Err(why.into());
+    }
+    let req = check_request(prompt, width, height, steps.unwrap_or(set.default_steps))?;
     if let Some(why) = refused(&req.prompt) {
         return Err(format!("Refused: {why}. Nothing was made."));
     }
@@ -536,6 +584,7 @@ pub async fn image_generate(
         job.cancelled = false;
     }
     let _slot = Slot(&state);
+    started(&req);
 
     let mut command = Command::new(&exe);
     // Its libraries sit next to it.
@@ -560,7 +609,7 @@ pub async fn image_generate(
     let err_log = drain(child.stderr.take());
     state.0.lock().unwrap().child = Some(child);
 
-    let started = Instant::now();
+    let begun = Instant::now();
     let waiter = app.clone();
     let (status, timed_out) = tauri::async_runtime::spawn_blocking(move || {
         let state = waiter.state::<ImageGen>();
@@ -573,7 +622,7 @@ pub async fn image_generate(
                 if let Ok(Some(status)) = child.try_wait() {
                     return (Some(status), false);
                 }
-                if started.elapsed() > TIME_LIMIT {
+                if begun.elapsed() > TIME_LIMIT {
                     let _ = child.kill();
                     let _ = child.wait();
                     return (None, true);
@@ -628,7 +677,8 @@ pub async fn image_generate(
         ),
         name,
         seed,
-        seconds: started.elapsed().as_secs(),
+        seconds: begun.elapsed().as_secs(),
+        file: out,
     })
 }
 
@@ -647,6 +697,9 @@ mod tests {
         let sets = catalog().unwrap();
         assert_eq!(sets[0].id, "flux2-klein-4b");
         assert!(sets.iter().any(|s| s.id == "sd15"));
+        // A device names no size: SD 1.5 gets 512, the others 1024.
+        assert_eq!(default_size(&sets[0]), 1024);
+        assert_eq!(default_size(sets.iter().find(|s| s.id == "sd15").unwrap()), 512);
         let text = CATALOG.to_lowercase();
         for banned in [
             "flux.1-dev",

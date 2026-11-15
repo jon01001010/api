@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-link-pictures-allow"
+description = "Enables the link_pictures_allow command without any pre-configured scope."
+commands.allow = ["link_pictures_allow"]
+
+[[permission]]
+identifier = "deny-link-pictures-allow"
+description = "Denies the link_pictures_allow command without any pre-configured scope."
+commands.deny = ["link_pictures_allow"]

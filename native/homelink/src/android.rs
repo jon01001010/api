@@ -193,6 +193,43 @@ pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_answerQuesti
     answer(&mut env, value)
 }
 
+/// Asks the PC for a picture and writes it to `out_file` (a file in the
+/// app's own picture folder, chosen by HomeLinkModule.kt). Sizes and steps
+/// of 0 mean "the PC's default".
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_picture(
+    mut env: JNIEnv,
+    _class: JClass,
+    key_file: JString,
+    pc: JString,
+    prompt: JString,
+    width: jni::sys::jint,
+    height: jni::sys::jint,
+    steps: jni::sys::jint,
+    out_file: JString,
+) -> jstring {
+    let (key_file, pc) = (text(&mut env, &key_file), text(&mut env, &pc));
+    let (prompt, out_file) = (text(&mut env, &prompt), text(&mut env, &out_file));
+    let given = |n: jni::sys::jint| u32::try_from(n).ok().filter(|n| *n > 0);
+    let (width, height, steps) = (given(width), given(height), given(steps));
+    let value = guarded(|| {
+        match phone(&key_file).and_then(|p| p.picture(&pc, &prompt, width, height, steps)) {
+            Ok(picture) => match std::fs::write(&out_file, &picture.png) {
+                Ok(()) => serde_json::json!({
+                    "ok": true,
+                    "file": out_file,
+                    "seed": picture.seed,
+                    "seconds": picture.seconds,
+                }),
+                Err(e) => fail(e),
+            },
+            Err(e) => fail(e),
+        }
+    });
+    answer(&mut env, value)
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_openTunnel(
     mut env: JNIEnv,

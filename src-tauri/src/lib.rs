@@ -122,6 +122,8 @@ pub fn run() {
             link::link_sync_reply,
             remote_ask::link_answers_allow,
             link::link_device_may_answer,
+            link::link_pictures_allow,
+            link::link_device_may_picture,
             link_client::homelink_pair,
             link_client::homelink_status,
             link_client::homelink_start_model,
@@ -129,6 +131,7 @@ pub fn run() {
             link_client::homelink_sync,
             link_client::homelink_questions,
             link_client::homelink_answer_question,
+            link_client::homelink_picture,
             link_client::homelink_close_tunnel,
         ])
         .build(tauri::generate_context!())

@@ -3,7 +3,12 @@ import {fireEvent, render, waitFor} from '@testing-library/react-native';
 import {Provider as PaperProvider} from 'react-native-paper';
 
 import {HomeLinkCard} from '../HomeLinkCard';
-import {linkDeviceMayAnswer} from '../../../services/desktop/homeLink';
+import {
+  linkDeviceMayAnswer,
+  linkDeviceMayPicture,
+  linkPicturesAllow,
+  linkStatus,
+} from '../../../services/desktop/homeLink';
 
 let mockAnswers = false;
 jest.mock('../../../services/sync/hostSync', () => ({
@@ -30,6 +35,8 @@ jest.mock('../../../services/desktop/homeLink', () => ({
   linkOff: jest.fn(),
   linkForget: jest.fn(),
   linkDeviceMayAnswer: jest.fn(async () => {}),
+  linkDeviceMayPicture: jest.fn(async () => {}),
+  linkPicturesAllow: jest.fn(async () => {}),
 }));
 jest.mock('../../../components/HomeLinkSync/RecentlyDeletedChats', () => ({
   RecentlyDeletedChats: () => null,
@@ -65,6 +72,45 @@ describe('Home link card: which devices may answer', () => {
     fireEvent(getByTestId('home-link-may-answer-aaaa'), 'valueChange', false);
     await waitFor(() =>
       expect(linkDeviceMayAnswer).toHaveBeenCalledWith('aaaa', false),
+    );
+  });
+});
+
+describe('Home link card: pictures for paired devices', () => {
+  it('off: the PC switch is off and no per-device switch shows', async () => {
+    const {findByTestId, queryByTestId} = show();
+    expect((await findByTestId('home-link-pictures-allow')).props.value).toBe(
+      false,
+    );
+    expect(queryByTestId('home-link-may-picture-aaaa')).toBeNull();
+    fireEvent(
+      await findByTestId('home-link-pictures-allow'),
+      'valueChange',
+      true,
+    );
+    await waitFor(() => expect(linkPicturesAllow).toHaveBeenCalledWith(true));
+  });
+
+  it('on: one switch per device, off unless allowed; changes go to the PC', async () => {
+    (linkStatus as jest.Mock).mockResolvedValueOnce({
+      on: true,
+      pcId: 'pc',
+      picturesAllowed: true,
+      phones: [
+        {id: 'aaaa', name: 'Pixel', mayAnswer: true},
+        {id: 'bbbb', name: 'Laptop', mayPicture: true},
+      ],
+      events: [],
+    });
+    const {findByTestId, getByTestId} = show();
+    expect((await findByTestId('home-link-may-picture-bbbb')).props.value).toBe(
+      true,
+    );
+    // May answer does not mean may make pictures.
+    expect(getByTestId('home-link-may-picture-aaaa').props.value).toBe(false);
+    fireEvent(getByTestId('home-link-may-picture-aaaa'), 'valueChange', true);
+    await waitFor(() =>
+      expect(linkDeviceMayPicture).toHaveBeenCalledWith('aaaa', true),
     );
   });
 });

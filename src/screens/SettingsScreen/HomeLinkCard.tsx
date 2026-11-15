@@ -17,10 +17,12 @@ import {
 import {
   homeLinkAvailable,
   linkDeviceMayAnswer,
+  linkDeviceMayPicture,
   linkForget,
   linkOff,
   linkOn,
   linkPair,
+  linkPicturesAllow,
   linkStatus,
   LinkPairing,
   LinkStatus,
@@ -216,6 +218,20 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
             }
           />
         </View>
+        <View style={styles.syncRow}>
+          <Text variant="bodySmall" style={styles.syncText}>
+            Let paired devices make pictures on this PC: they send a
+            description, this PC makes the picture with its own picture model
+            (same limits and word check as here, one at a time; a copy stays in
+            the workspace's images folder) and shows a notification. Only
+            devices you allow below (each asked here).
+          </Text>
+          <Switch
+            value={!!status.picturesAllowed}
+            testID="home-link-pictures-allow"
+            onValueChange={v => run(() => linkPicturesAllow(v))}
+          />
+        </View>
         {status.phones.length > 0 ? (
           <Text variant="labelMedium" style={styles.state}>
             Paired phones
@@ -236,6 +252,20 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
                   testID={`home-link-may-answer-${phone.id}`}
                   onValueChange={v =>
                     run(() => linkDeviceMayAnswer(phone.id, v))
+                  }
+                />
+              </>
+            ) : null}
+            {status.picturesAllowed ? (
+              <>
+                <Text variant="bodySmall">Pictures</Text>
+                <Switch
+                  value={!!phone.mayPicture}
+                  disabled={busy}
+                  accessibilityLabel={`${phone.name} may make pictures on this PC`}
+                  testID={`home-link-may-picture-${phone.id}`}
+                  onValueChange={v =>
+                    run(() => linkDeviceMayPicture(phone.id, v))
                   }
                 />
               </>

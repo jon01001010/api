@@ -39,6 +39,15 @@ const QUIET = {
     questions: pc => require('./tauri').invoke('homelink_questions', {pc}),
     answerQuestion: (pc, id, yes) =>
       require('./tauri').invoke('homelink_answer_question', {pc, id, yes}),
+    // 0 = the PC's default (as the phone's module takes it).
+    picture: (pc, prompt, width, height, steps) =>
+      require('./tauri').invoke('homelink_picture', {
+        pc,
+        prompt,
+        width: width || null,
+        height: height || null,
+        steps: steps || null,
+      }),
     openTunnel: pc => require('./tauri').invoke('homelink_open_tunnel', {pc}),
     closeTunnel: () => require('./tauri').invoke('homelink_close_tunnel'),
   },

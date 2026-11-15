@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-homelink-picture"
+description = "Enables the homelink_picture command without any pre-configured scope."
+commands.allow = ["homelink_picture"]
+
+[[permission]]
+identifier = "deny-homelink-picture"
+description = "Denies the homelink_picture command without any pre-configured scope."
+commands.deny = ["homelink_picture"]

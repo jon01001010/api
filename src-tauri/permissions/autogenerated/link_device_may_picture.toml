@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-link-device-may-picture"
+description = "Enables the link_device_may_picture command without any pre-configured scope."
+commands.allow = ["link_device_may_picture"]
+
+[[permission]]
+identifier = "deny-link-device-may-picture"
+description = "Denies the link_device_may_picture command without any pre-configured scope."
+commands.deny = ["link_device_may_picture"]
