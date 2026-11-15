@@ -31,6 +31,13 @@ import {ModelOrigin} from '../../utils/types';
 // These tests check the exact prompt text, so the date and time lines are
 // left out here; utils/__tests__/currentTime.test.ts and the assistant-turn
 // test cover them.
+// The tools switched on in Toolbox (none unless a test switches some on).
+let mockGlobalTools: string[] = [];
+jest.mock('../../utils/globalToolSettings', () => ({
+  ...jest.requireActual('../../utils/globalToolSettings'),
+  readGlobalTools: () => Promise.resolve(mockGlobalTools),
+  readGlobalPrompt: () => Promise.resolve(''),
+}));
 jest.mock('../../utils/currentTime', () => ({
   todayLine: () => '',
   timeNote: () => '',
@@ -856,13 +863,14 @@ describe('useChatSession', () => {
       function: {name: 'web_search', description: '', parameters: {}},
     };
 
+    // Tools reach the model only when switched on in Toolbox; the guidance
+    // follows the tools actually sent.
     const activateSearchTools = async () => {
-      const baseSettings =
-        await chatSessionStore.getCurrentCompletionSettings();
-      (
-        chatSessionStore.getCurrentCompletionSettings as jest.Mock
-      ).mockResolvedValueOnce({...baseSettings, tools: [webSearchTool]});
+      mockGlobalTools = ['web_search'];
     };
+    afterEach(() => {
+      mockGlobalTools = [];
+    });
 
     const useSessionWithPal = (systemPrompt: string) => {
       const pal = {
@@ -955,6 +963,34 @@ describe('useChatSession', () => {
       expect(systemMessages[0].content).toMatch(/Background: today is \w+day/);
       expect(systemMessages[0].content).not.toContain("Today's date is");
       expect(systemMessages[0].content).toContain('web_search');
+    });
+
+    it('sends no tool guidance when the tool is only in old session settings, not switched on', async () => {
+      useSessionWithPal('You are a research assistant.');
+      const baseSettings =
+        await chatSessionStore.getCurrentCompletionSettings();
+      (
+        chatSessionStore.getCurrentCompletionSettings as jest.Mock
+      ).mockResolvedValueOnce({...baseSettings, tools: [webSearchTool]});
+      let sentTools: unknown = 'unset';
+      let systemText = '';
+      if (modelStore.context) {
+        modelStore.context.completion = jest.fn().mockImplementation(params => {
+          sentTools = params.tools;
+          const system = (params.messages || []).find(
+            (m: any) => m.role === 'system',
+          );
+          systemText = system?.content ?? '';
+          return Promise.resolve({timings: {total: 100}, usage: {}});
+        });
+      }
+
+      await send();
+
+      // No tools on: none sent, not even an empty list, and no tool text.
+      expect(sentTools).toBeUndefined();
+      expect(systemText).toContain('You are a research assistant.');
+      expect(systemText).not.toMatch(/web_search|tool/i);
     });
 
     it('leaves the pal system message alone when no search tools are active', async () => {
