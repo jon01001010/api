@@ -1,8 +1,16 @@
 /**
  * Assistants and custom tools kept in step: assistants matched by id, then
- * by name (each device makes its own starter ones), added or updated, never
- * deleted; device-only parts never travel; tools go through the usual checks.
+ * by name (each device makes its own starter ones), added or updated (and
+ * deleted only by a deletion in the list: see assistantSync.test.ts);
+ * device-only parts never travel; tools go through the usual checks.
  */
+const mockStorage: Record<string, string> = {};
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  getItem: jest.fn(async (k: string) => mockStorage[k] ?? null),
+  setItem: jest.fn(async (k: string, v: string) => {
+    mockStorage[k] = v;
+  }),
+}));
 const mockPals: any[] = [];
 const mockUpdate = jest.fn(async (id: string, fields: any) => {
   Object.assign(
@@ -39,6 +47,9 @@ import {
 } from '../syncSources';
 
 beforeEach(() => {
+  for (const k of Object.keys(mockStorage)) {
+    delete mockStorage[k];
+  }
   mockPals.length = 0;
   mockUpdate.mockClear();
   mockCreate.mockClear();
@@ -57,10 +68,17 @@ it("sends only one's own assistants, without device-only parts", async () => {
     {id: 'a', name: 'Bought', systemPrompt: 'Hi.', source: 'palshub'},
   );
   const list = JSON.parse(await readAssistants());
-  expect(list).toEqual([{id: 'b', name: 'Coder', systemPrompt: 'Code.'}]);
+  expect(list).toEqual([
+    {
+      id: 'b',
+      name: 'Coder',
+      systemPrompt: 'Code.',
+      editedAt: expect.any(Number),
+    },
+  ]);
 });
 
-it('matches by id, then by name; adds new ones with the same id; deletes nothing', async () => {
+it('matches by id, then by name; adds new ones with the same id; deletes nothing unasked', async () => {
   mockPals.push(
     {id: 'p1', name: 'Coder', systemPrompt: 'old', source: 'local'},
     {id: 'local-lookie', name: 'Lookie', systemPrompt: 'look', source: 'local'},
