@@ -47,3 +47,46 @@ it('ignores other results and never reads other paths', () => {
   render(<>{node}</>);
   expect(RNFS.readFile).not.toHaveBeenCalled();
 });
+
+it("shows a picture the Home PC made for this phone, from the app's cache folder only", async () => {
+  const fs = require('@dr.pogodin/react-native-fs');
+  const before = fs.CachesDirectoryPath;
+  fs.CachesDirectoryPath = '/data/app/cache';
+  try {
+    const path = '/data/app/cache/pc-pictures/picture-20261115-101530-ab12.png';
+    (RNFS.readFile as jest.Mock).mockClear();
+    (RNFS.readFile as jest.Mock).mockResolvedValueOnce('iVBORw0KGgo=');
+    const ui = new ImageTalentUI();
+    const {getByTestId, getByText} = render(
+      <>
+        {ui.renderResult({
+          type: 'image',
+          path,
+          name: 'picture-20261115-101530-ab12.png',
+          summary: 'made',
+        })}
+      </>,
+    );
+    await waitFor(() => getByTestId('generated-picture-image'));
+    expect(RNFS.readFile).toHaveBeenCalledWith(path, 'base64');
+    getByText('picture-20261115-101530-ab12.png');
+    // Anything else in the cache folder, or a way out of it: never read.
+    (RNFS.readFile as jest.Mock).mockClear();
+    for (const bad of [
+      '/data/app/cache/attach-x.png',
+      '/data/app/cache/pc-pictures/../secret.png',
+      '/data/app/cache/pc-pictures/sub/picture-1.png',
+      '/data/app/cache/pc-pictures/picture-1.jpg',
+      '/data/app/cachex/pc-pictures/picture-1.png',
+    ]) {
+      render(
+        <>
+          {ui.renderResult({type: 'image', path: bad, name: 'x', summary: ''})}
+        </>,
+      );
+    }
+    expect(RNFS.readFile).not.toHaveBeenCalled();
+  } finally {
+    fs.CachesDirectoryPath = before;
+  }
+});

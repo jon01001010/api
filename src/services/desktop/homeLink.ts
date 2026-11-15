@@ -8,6 +8,8 @@ export interface LinkPhone {
   name: string;
   /** May answer this PC's "Allow?" questions (missing: no). */
   mayAnswer?: boolean;
+  /** May ask this PC for pictures (missing: no). */
+  mayPicture?: boolean;
 }
 
 export interface LinkEvent {
@@ -19,6 +21,8 @@ export interface LinkEvent {
 
 export interface LinkStatus {
   on: boolean;
+  /** "Let paired devices make pictures on this PC" (missing: off). */
+  picturesAllowed?: boolean;
   pcId: string | null;
   phones: LinkPhone[];
   /** Pairing history: codes made, phones paired / removed. */
@@ -45,6 +49,11 @@ export async function linkOn(): Promise<void> {}
 export async function linkOff(): Promise<void> {}
 export async function linkForget(_id: string): Promise<void> {}
 export async function linkDeviceMayAnswer(
+  _id: string,
+  _allowed: boolean,
+): Promise<void> {}
+export async function linkPicturesAllow(_allowed: boolean): Promise<void> {}
+export async function linkDeviceMayPicture(
   _id: string,
   _allowed: boolean,
 ): Promise<void> {}

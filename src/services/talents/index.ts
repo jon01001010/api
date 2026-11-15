@@ -8,6 +8,7 @@ import {MemoryToolsEngine} from './MemoryToolsEngine';
 import {PhoneActionsEngine, PHONE_TOOL_NAMES} from './PhoneActionsEngine';
 import {PhoneActionChainEngine} from './PhoneActionChain';
 import {DesktopToolsEngine, DESKTOP_TOOL_NAMES} from './DesktopToolsEngine';
+import {PcPictureEngine} from './PcPictureEngine';
 import {ToolMakerEngine, TOOL_MAKER_NAMES} from './ToolMakerEngine';
 import {talentRegistry} from './TalentRegistry';
 import type {SearchAccess} from './searchAccess';
@@ -88,6 +89,10 @@ export function registerDefaultTalents(): void {
     for (const name of DESKTOP_TOOL_NAMES) {
       talentRegistry.register(new DesktopToolsEngine(name));
     }
+  } else {
+    // The phone: pictures are asked of the paired Home PC (off until
+    // switched on here, and allowed on the PC for this device).
+    talentRegistry.register(new PcPictureEngine());
   }
   // Custom tools: the model may propose one; the user approves; it starts off.
   for (const name of TOOL_MAKER_NAMES) {

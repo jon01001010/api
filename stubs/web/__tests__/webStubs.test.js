@@ -184,6 +184,7 @@ describe("PC to PC: the phone's HomeLink module on the desktop", () => {
     await link.sync('pc', '{}');
     await link.questions('pc');
     await link.answerQuestion('pc', 3, false);
+    await link.picture('pc', 'a cat', 512, 0, 0);
     expect(JSON.parse(await link.openTunnel('pc'))).toEqual({
       ok: true,
       port: 5000,
@@ -196,10 +197,19 @@ describe("PC to PC: the phone's HomeLink module on the desktop", () => {
       'homelink_sync',
       'homelink_questions',
       'homelink_answer_question',
+      'homelink_picture',
       'homelink_open_tunnel',
       'homelink_close_tunnel',
     ]);
     expect(calls[0][1]).toEqual({qr: 'PA1:P:x:y'});
     expect(calls[5][1]).toEqual({pc: 'pc', id: 3, yes: false});
+    // 0 = the PC's default: sent as nothing.
+    expect(calls[6][1]).toEqual({
+      pc: 'pc',
+      prompt: 'a cat',
+      width: 512,
+      height: null,
+      steps: null,
+    });
   });
 });

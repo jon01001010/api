@@ -53,6 +53,8 @@
     "allow-link-sync-reply",
     "allow-link-answers-allow",
     "allow-link-device-may-answer",
+    "allow-link-pictures-allow",
+    "allow-link-device-may-picture",
     "allow-homelink-pair",
     "allow-homelink-status",
     "allow-homelink-start-model",
@@ -60,6 +62,7 @@
     "allow-homelink-sync",
     "allow-homelink-questions",
     "allow-homelink-answer-question",
+    "allow-homelink-picture",
     "allow-homelink-close-tunnel"
   ]
 }

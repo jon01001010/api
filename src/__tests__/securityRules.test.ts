@@ -280,6 +280,8 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'link_sync_reply',
         'link_answers_allow',
         'link_device_may_answer',
+        'link_pictures_allow',
+        'link_device_may_picture',
         'homelink_pair',
         'homelink_status',
         'homelink_start_model',
@@ -287,6 +289,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'homelink_sync',
         'homelink_questions',
         'homelink_answer_question',
+        'homelink_picture',
         'homelink_close_tunnel',
       ].sort(),
     );
@@ -443,6 +446,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'Answer',
       'Http',
       'Pair',
+      'Picture',
       'Questions',
       'Start',
       'Status',
@@ -465,7 +469,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /#\[serde\(default, rename = "mayAnswer"[^\n]*\]\s*pub may_answer: bool,/,
     );
     expect(link).toMatch(
-      /Phone \{ id: remote\.clone\(\), name: name\.clone\(\), may_answer: false \}/,
+      /Phone \{ id: remote\.clone\(\), name: name\.clone\(\), may_answer: false, may_picture: false \}/,
     );
     expect(link).toMatch(
       /pub async fn link_device_may_answer[\s\S]*?if allowed \{[\s\S]*?if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*return Err[\s\S]*?let mut phones = load_phones\(&app\);[\s\S]*?save_phones/,
@@ -474,6 +478,40 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       "This device may not answer this PC's questions; allow it on the PC",
     );
     expect(ops).toMatch(/^\s{4}Answer \{ id: u64, yes: bool \},$/m);
+    // "picture": paired devices only, only while the user allows pictures
+    // here and for that device (each allowed in the PC's own dialog, off by
+    // default, again after pairing anew); the device sends a prompt, sizes
+    // and steps only (never a model or a path: the PC uses its own first
+    // downloaded set); the same maker, caps, word check and one-at-a-time
+    // slot as the PC's own tool; the PC is told; at most 8 MB, a PNG.
+    expect(link).toMatch(
+      /Some\(Request::Picture \{ prompt, width, height, steps \}\) if paired => \{\s*let phones = load_phones\(&app\);\s*if !pictures_allowed\(&app\) \{\s*reply\(&mut send, serde_json::json!\(\{"ok": false, "error": OFF_PICTURES\}\)\)\.await;\s*\} else if !may_picture\(&phones, &remote\) \{\s*reply\(&mut send, serde_json::json!\(\{"ok": false, "error": NOT_THIS_DEVICE_PICTURES\}\)\)\.await;\s*\} else \{[\s\S]*?picture_for\(/,
+    );
+    const picture = ops.slice(ops.indexOf('Picture {'), ops.indexOf('Http,'));
+    expect(
+      [...picture.matchAll(/^\s+(\w+): /gm)].map(m => m[1]).sort(),
+    ).toEqual(['height', 'prompt', 'steps', 'width']);
+    expect(link).toMatch(
+      /async fn picture_for[\s\S]*?crate::image_gen::first_downloaded_set\(app\)\?[\s\S]*?crate::image_gen::make\([\s\S]*?notification\(\)[\s\S]*?picture_note\([\s\S]*?if size > MAX_PICTURE as u64 \{\s*return Err/,
+    );
+    expect(link).toContain('pub const MAX_PICTURE: usize = 8 * 1024 * 1024;');
+    expect(link).toMatch(
+      /#\[serde\(default, rename = "mayPicture"[^\n]*\]\s*pub may_picture: bool,/,
+    );
+    expect(link).toMatch(
+      /pub async fn link_device_may_picture[\s\S]*?if allowed \{[\s\S]*?if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*return Err[\s\S]*?let mut phones = load_phones\(&app\);[\s\S]*?save_phones/,
+    );
+    expect(link).toContain(
+      'const PICTURES_ENTRY: &str = "DesktopAgent-link:pictures";',
+    );
+    expect(link).toMatch(
+      /fn pictures_allowed\(app: &AppHandle\) -> bool \{\s*read_entry\(app, PICTURES_ENTRY\)\.as_deref\(\) == Some\("on"\)/,
+    );
+    // The PC's own tool and a device's picture share one checked maker.
+    const imageGen = tauri('src/image_gen.rs');
+    expect(imageGen).toMatch(
+      /pub async fn image_generate[\s\S]*?make\(app, set, &prompt, width, height, steps, seed, \|_\| \{\}\)\.await/,
+    );
     const approval = tauri('src/approval.rs');
     expect(approval).toMatch(
       /pub fn device_answer\(yes: bool\) -> Answer \{\s*if yes \{\s*Answer::Once\s*\} else \{\s*Answer::No/,
@@ -597,12 +635,13 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(phone).toContain('if !from.ip().is_loopback() {');
     // The phone only ever asks for status, pairing, the PC's questions
     // and its answer to one, starting the PC's own
-    // last model, or the model server.
+    // last model, a picture, or the model server.
     const ops = [...phone.matchAll(/"op\\?":\s*\\?"(\w+)/g)].map(m => m[1]);
     expect([...new Set(ops)].sort()).toEqual([
       'answer',
       'http',
       'pair',
+      'picture',
       'questions',
       'start',
       'status',
@@ -623,7 +662,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // Every door from Android goes through guarded(), and iroh gets the
     // app context first (it needs it to read the network settings).
     const doors = android.match(/pub extern "system" fn Java_\w+/g) || [];
-    expect(doors.length).toBe(9);
+    expect(doors.length).toBe(10);
     for (const door of doors) {
       const body = android.slice(android.indexOf(door));
       const next = body.indexOf('pub extern "system"', 10);

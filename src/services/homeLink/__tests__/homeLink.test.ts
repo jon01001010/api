@@ -1,6 +1,8 @@
 import {NativeModules} from 'react-native';
 
 import {
+  askPcForPicture,
+  describeEvent,
   isPairingCode,
   openTunnel,
   pairWithPc,
@@ -53,6 +55,24 @@ describe('home link (phone side)', () => {
     });
     const broken = await openTunnel(PC);
     expect(broken.ok).toBe(false);
+  });
+
+  it('asks the PC for a picture: prompt, sizes and steps only (0 = its default)', async () => {
+    const picture = jest.fn(async (..._args: unknown[]) =>
+      JSON.stringify({ok: true, file: '/cache/pc-pictures/picture-1.png'}),
+    );
+    (NativeModules as any).HomeLink = {picture};
+    await expect(askPcForPicture(PC, 'a cat', 512)).resolves.toEqual({
+      ok: true,
+      file: '/cache/pc-pictures/picture-1.png',
+    });
+    expect(picture).toHaveBeenCalledWith(PC, 'a cat', 512, 0, 0);
+  });
+
+  it('names a device allowed to make pictures in the pairing history', () => {
+    expect(
+      describeEvent({n: 1, at: 0, kind: 'may-picture', name: 'Pixel'}),
+    ).toContain('“Pixel” may now make pictures on the PC');
   });
 
   it('the tunnel is this phone only', () => {

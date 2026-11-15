@@ -9,18 +9,37 @@ import {Text} from '../../components/ThemedText';
 import {TalentUI} from './TalentUIRegistry';
 import {TalentResult} from './types';
 
-/** Only the app's own pictures folder: never any other path. */
+/** A picture in the workspace's `images` folder (made on the PC). */
+const isWorkspacePicture = (path: string) =>
+  /^\/pocketagent\/Documents\/PocketAgentFiles\/images\/picture-[A-Za-z0-9-]+\.png$/.test(
+    path,
+  );
+
+/**
+ * A picture the Home PC made for this phone: in the app's own cache folder
+ * (`pc-pictures`, named by HomeLinkModule.kt).
+ */
+function isPcPicture(path: string): boolean {
+  const dir = (RNFS as {CachesDirectoryPath?: unknown}).CachesDirectoryPath;
+  if (typeof dir !== 'string' || dir.length < 2) {
+    return false;
+  }
+  const rest = path.startsWith(dir.replace(/\/+$/, '') + '/pc-pictures/')
+    ? path.slice(dir.replace(/\/+$/, '').length + '/pc-pictures/'.length)
+    : '';
+  return /^picture-[A-Za-z0-9-]+\.png$/.test(rest);
+}
+
+/** Only the app's own pictures folders: never any other path. */
 export function isOwnPicture(path: string): boolean {
   return (
-    /^\/pocketagent\/Documents\/PocketAgentFiles\/images\/picture-[A-Za-z0-9-]+\.png$/.test(
-      path,
-    ) && !path.includes('..')
+    (isWorkspacePicture(path) || isPcPicture(path)) && !path.includes('..')
   );
 }
 
 /**
- * A picture made on the PC (image_generate): read from the app's own folder
- * (no question) and shown inline; "Save a copy" opens the native Save
+ * A picture made on the PC (image_generate; on the phone, by the paired Home
+ * PC): read from the app's own folder (no question) and shown inline; "Save a copy" opens the native Save
  * dialog (src-tauri/src/transfer.rs save_copy).
  */
 export const GeneratedPicture: React.FC<{path: string; name: string}> = ({
@@ -56,7 +75,9 @@ export const GeneratedPicture: React.FC<{path: string; name: string}> = ({
         <Text>{error || 'Loading the picture…'}</Text>
       )}
       <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-        <Text style={{flex: 1}}>images/{name}</Text>
+        <Text style={{flex: 1}}>
+          {isWorkspacePicture(path) ? `images/${name}` : name}
+        </Text>
         <Button
           testID="generated-picture-save"
           disabled={!uri}

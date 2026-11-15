@@ -160,6 +160,43 @@ pub async fn homelink_answer_question(app: AppHandle, pc: String, id: u64, yes: 
     .await
 }
 
+/// Asks the other PC for a picture (only while allowed there for this
+/// PC). Saved in this PC's workspace `images` folder, under a name made
+/// here, so the chat shows it like one made on this PC.
+#[tauri::command]
+pub async fn homelink_picture(
+    app: AppHandle,
+    pc: String,
+    prompt: String,
+    width: Option<u32>,
+    height: Option<u32>,
+    steps: Option<u32>,
+) -> String {
+    let dir = match crate::pc::workspace(&app) {
+        Ok(dir) => dir.join(crate::image_gen::IMAGES_DIR),
+        Err(e) => return fail(e),
+    };
+    answer(app, move |p| {
+        let picture = p.picture(&pc, &prompt, width, height, steps)?;
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let name = crate::image_gen::new_name()?;
+        std::fs::write(dir.join(&name), &picture.png).map_err(|e| e.to_string())?;
+        Ok(serde_json::json!({
+            "ok": true,
+            "path": format!(
+                "{}/{}/{}/{name}",
+                crate::files::APP_PREFIX,
+                crate::pc::WORKSPACE,
+                crate::image_gen::IMAGES_DIR
+            ),
+            "name": name,
+            "seed": picture.seed,
+            "seconds": picture.seconds,
+        }))
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn homelink_open_tunnel(app: AppHandle, pc: String) -> String {
     answer(app, move |p| {

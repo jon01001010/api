@@ -47,6 +47,8 @@ const COMMANDS: &[&str] = &[
     "link_sync_reply",
     "link_answers_allow",
     "link_device_may_answer",
+    "link_pictures_allow",
+    "link_device_may_picture",
     "homelink_pair",
     "homelink_status",
     "homelink_start_model",
@@ -54,6 +56,7 @@ const COMMANDS: &[&str] = &[
     "homelink_sync",
     "homelink_questions",
     "homelink_answer_question",
+    "homelink_picture",
     "homelink_close_tunnel",
 ];
 

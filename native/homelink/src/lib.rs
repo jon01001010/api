@@ -27,6 +27,48 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(45);
 const MAX_LINE: usize = 4096;
 /// Most bytes sent or received by one sync (prompt + memories, 256 KiB each).
 pub const MAX_SYNC: usize = 4 * 1024 * 1024;
+/// Largest picture taken from the PC (the PC's own limit too).
+pub const MAX_PICTURE: usize = 8 * 1024 * 1024;
+/// How long a picture may take (the PC stops its maker after 10 minutes).
+const PICTURE_TIME: Duration = Duration::from_secs(11 * 60);
+const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";
+
+/// A picture made on the PC for this device.
+#[derive(Debug, PartialEq)]
+pub struct Picture {
+    pub png: Vec<u8>,
+    pub seed: u64,
+    pub seconds: u64,
+}
+
+/// Reads the PC's answer to "picture": a JSON line, then exactly the
+/// announced bytes (at most MAX_PICTURE), which must be a PNG.
+async fn read_picture(recv: &mut iroh::endpoint::RecvStream) -> Result<Picture, String> {
+    let line = read_line(recv).await.ok_or("The PC did not answer")?;
+    let answer: serde_json::Value = serde_json::from_str(&line).map_err(|e| e.to_string())?;
+    if !answer_ok(&answer) {
+        return Err(error_of(&answer, "The PC did not make the picture"));
+    }
+    let size = answer
+        .get("bytes")
+        .and_then(|b| b.as_u64())
+        .ok_or("The PC's answer was not readable")?;
+    if size == 0 || size > MAX_PICTURE as u64 {
+        return Err("The picture is too large".into());
+    }
+    let mut png = vec![0u8; size as usize];
+    recv.read_exact(&mut png)
+        .await
+        .map_err(|_| "The picture ended early".to_string())?;
+    if !png.starts_with(PNG_MAGIC) {
+        return Err("The PC did not send a picture".into());
+    }
+    Ok(Picture {
+        png,
+        seed: answer.get("seed").and_then(|v| v.as_u64()).unwrap_or(0),
+        seconds: answer.get("seconds").and_then(|v| v.as_u64()).unwrap_or(0),
+    })
+}
 
 /// What a pairing QR code holds.
 #[derive(Debug, PartialEq)]
@@ -342,6 +384,41 @@ impl Phone {
         }
     }
 
+    /// Asks the PC to make a picture (only while the user allows it on the
+    /// PC, for this device; the PC refuses otherwise). The PC picks its own
+    /// picture model and checks the prompt, sizes and steps itself; this
+    /// sends nothing else. Waits until it is made (up to 11 minutes).
+    pub fn picture(
+        &self,
+        pc: &str,
+        prompt: &str,
+        width: Option<u32>,
+        height: Option<u32>,
+        steps: Option<u32>,
+    ) -> Result<Picture, String> {
+        let pc: EndpointId = pc.parse().map_err(|_| "Bad PC key".to_string())?;
+        let request = serde_json::json!({
+            "op": "picture",
+            "prompt": prompt,
+            "width": width,
+            "height": height,
+            "steps": steps,
+        });
+        let line = format!("{request}\n");
+        if line.len() > MAX_LINE {
+            return Err("The prompt is too long".into());
+        }
+        self.runtime.block_on(async {
+            let conn = self.connection(pc).await?;
+            let (mut send, mut recv) = conn.open_bi().await.map_err(|e| e.to_string())?;
+            send.write_all(line.as_bytes()).await.map_err(|e| e.to_string())?;
+            let _ = send.finish();
+            tokio::time::timeout(PICTURE_TIME, read_picture(&mut recv))
+                .await
+                .map_err(|_| "The PC did not finish the picture in time".to_string())?
+        })
+    }
+
     /// Opens (or returns) the local port on 127.0.0.1 that leads to the
     /// PC's model server.
     pub fn open_tunnel(self: &std::sync::Arc<Self>, pc: &str) -> Result<u16, String> {
@@ -508,6 +585,76 @@ mod tests {
         }
         phone.close_tunnel();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A stand-in PC that answers one "picture" request with `answer`.
+    fn fake_picture_pc(answer: Vec<u8>) -> (EndpointId, SocketAddr, std::sync::mpsc::Receiver<String>) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async move {
+                let pc = Endpoint::builder(presets::Minimal)
+                    .alpns(vec![ALPN.to_vec()])
+                    .bind_addr("127.0.0.1:0")
+                    .unwrap()
+                    .bind()
+                    .await
+                    .unwrap();
+                tx.send((pc.id(), pc.bound_sockets()[0])).unwrap();
+                while let Some(incoming) = pc.accept().await {
+                    let Ok(conn) = incoming.await else { continue };
+                    let answer = answer.clone();
+                    let seen_tx = seen_tx.clone();
+                    tokio::spawn(async move {
+                        while let Ok((mut send, mut recv)) = conn.accept_bi().await {
+                            let line = read_line(&mut recv).await.unwrap();
+                            seen_tx.send(line).unwrap();
+                            send.write_all(&answer).await.unwrap();
+                            let _ = send.finish();
+                            let _ = send.stopped().await;
+                        }
+                    });
+                }
+            });
+        });
+        let (id, addr) = rx.recv().unwrap();
+        (id, addr, seen_rx)
+    }
+
+    #[test]
+    fn a_picture_comes_back_whole_and_only_as_a_png() {
+        let png = [PNG_MAGIC, b"rest of the picture"].concat();
+        let mut ok = format!("{{\"ok\":true,\"bytes\":{},\"seed\":7,\"seconds\":3}}\n", png.len()).into_bytes();
+        ok.extend_from_slice(&png);
+        let cases: Vec<(Vec<u8>, Result<Vec<u8>, &str>)> = vec![
+            (ok, Ok(png.clone())),
+            (b"{\"ok\":false,\"error\":\"Making pictures for paired devices is off on the PC\"}\n".to_vec(), Err("Making pictures for paired devices is off on the PC")),
+            (format!("{{\"ok\":true,\"bytes\":{}}}\n", MAX_PICTURE + 1).into_bytes(), Err("The picture is too large")),
+            ([b"{\"ok\":true,\"bytes\":5}\n".as_slice(), b"GIF89"].concat(), Err("The PC did not send a picture")),
+            ([b"{\"ok\":true,\"bytes\":50}\n".as_slice(), PNG_MAGIC].concat(), Err("The picture ended early")),
+        ];
+        for (i, (answer, expected)) in cases.into_iter().enumerate() {
+            let (pc, addr, seen) = fake_picture_pc(answer);
+            let dir = std::env::temp_dir().join(format!("homelink-picture-{}-{i}", std::process::id()));
+            let phone = Phone::new(&dir.join("key"), Some(addr)).unwrap();
+            let got = phone.picture(&pc.to_string(), "a cat", Some(512), None, Some(4));
+            match expected {
+                Ok(bytes) => {
+                    let got = got.unwrap();
+                    assert_eq!(got.png, bytes);
+                    assert_eq!((got.seed, got.seconds), (7, 3));
+                }
+                Err(message) => assert_eq!(got.unwrap_err(), message),
+            }
+            // Only the prompt, sizes and steps are sent: never a model or a path.
+            let line: serde_json::Value = serde_json::from_str(&seen.recv().unwrap()).unwrap();
+            assert_eq!(
+                line,
+                serde_json::json!({"op": "picture", "prompt": "a cat", "width": 512, "height": null, "steps": 4})
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 
     #[test]

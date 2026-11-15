@@ -19,6 +19,8 @@ import java.util.concurrent.Executors
 class HomeLinkModule(private val context: ReactApplicationContext) :
     ReactContextBaseJavaModule(context) {
     private val worker = Executors.newSingleThreadExecutor()
+    /** Pictures take minutes: their own thread, so chats and status go on meanwhile. */
+    private val pictureWorker = Executors.newSingleThreadExecutor()
     @Volatile private var ready = false
 
     override fun getName() = "HomeLink"
@@ -27,17 +29,23 @@ class HomeLinkModule(private val context: ReactApplicationContext) :
         File(File(context.noBackupFilesDir, "homelink"), "phone.key").absolutePath
 
     /** Runs a library call off the main thread; resolves with its JSON. */
-    private fun call(promise: Promise, block: () -> String) {
+    private fun call(
+        promise: Promise,
+        executor: java.util.concurrent.Executor = worker,
+        block: () -> String
+    ) {
         if (!HomeLinkNative.loaded) {
             promise.resolve("{\"ok\":false,\"error\":\"The home link is not in this build\"}")
             return
         }
-        worker.execute {
+        executor.execute {
             try {
-                if (!ready) {
-                    // The app's context (not an activity), kept for the app's life.
-                    HomeLinkNative.init(context.applicationContext)
-                    ready = true
+                synchronized(this) {
+                    if (!ready) {
+                        // The app's context (not an activity), kept for the app's life.
+                        HomeLinkNative.init(context.applicationContext)
+                        ready = true
+                    }
                 }
                 promise.resolve(block())
             } catch (e: Throwable) {
@@ -72,6 +80,26 @@ class HomeLinkModule(private val context: ReactApplicationContext) :
     @ReactMethod
     fun answerQuestion(pc: String, id: Double, yes: Boolean, promise: Promise) =
         call(promise) { HomeLinkNative.answerQuestion(keyFile(), pc, id.toLong(), yes) }
+
+    /**
+     * Asks the PC for a picture (only while allowed on the PC for this
+     * phone). Saved in the app's own picture folder (its cache folder, the
+     * one the chat reads pictures from), under a name made here.
+     */
+    @ReactMethod
+    fun picture(pc: String, prompt: String, width: Double, height: Double, steps: Double, promise: Promise) =
+        call(promise, pictureWorker) {
+            val dir = File(context.cacheDir, "pc-pictures")
+            dir.mkdirs()
+            val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+                .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                .format(java.util.Date())
+            val tag = String.format("%04x", java.security.SecureRandom().nextInt(0x10000))
+            val out = File(dir, "picture-$stamp-$tag.png").absolutePath
+            HomeLinkNative.picture(
+                keyFile(), pc, prompt, width.toInt(), height.toInt(), steps.toInt(), out
+            )
+        }
 
     @ReactMethod
     fun openTunnel(pc: String, promise: Promise) =

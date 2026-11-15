@@ -24,3 +24,11 @@ export const linkDeviceMayAnswer = (
   id: string,
   allowed: boolean,
 ): Promise<void> => invoke('link_device_may_answer', {id, allowed});
+/** The PC's switch for pictures (kept natively; each device asked too). */
+export const linkPicturesAllow = (allowed: boolean): Promise<void> =>
+  invoke('link_pictures_allow', {allowed});
+/** Letting a device make pictures is asked in a native dialog on this PC. */
+export const linkDeviceMayPicture = (
+  id: string,
+  allowed: boolean,
+): Promise<void> => invoke('link_device_may_picture', {id, allowed});

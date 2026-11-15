@@ -33,6 +33,7 @@ async function ask<T>(
     | 'sync'
     | 'questions'
     | 'answerQuestion'
+    | 'picture'
     | 'openTunnel'
     | 'closeTunnel',
   ...args: (string | number | boolean)[]
@@ -67,6 +68,31 @@ export const pcQuestions = (pc: string) =>
 /** Yes or no to one question, that one only (never "always"). */
 export const answerPcQuestion = (pc: string, id: number, yes: boolean) =>
   ask<{}>('answerQuestion', pc, id, yes);
+
+/**
+ * Asks the PC to make a picture (only while the PC allows it, for this
+ * device; it refuses otherwise with a clear message). The PC uses its own
+ * picture model and checks the prompt, sizes (512 / 768 / 1024) and steps
+ * (1-30) itself; leave sizes or steps out for its default. The picture is
+ * saved in this app's own picture folder: on the phone the cache folder
+ * (`file`), on a second PC its workspace `images` folder (`path`).
+ */
+export const askPcForPicture = (
+  pc: string,
+  prompt: string,
+  width?: number,
+  height?: number,
+  steps?: number,
+) =>
+  ask<{
+    /** Phone: where the picture was saved. */
+    file?: string;
+    /** Second PC: the app's own path (/pocketagent/…) and file name. */
+    path?: string;
+    name?: string;
+    seed?: number;
+    seconds?: number;
+  }>('picture', pc, prompt, width ?? 0, height ?? 0, steps ?? 0);
 
 /** Pairs from the PC's QR code; the PC asks its user first. */
 export const pairWithPc = (qr: string) => ask<{pc: string}>('pair', qr.trim());
@@ -143,6 +169,9 @@ export function describeEvent(e: PairingEvent): string {
   }
   if (e.kind === 'removed') {
     return `${when}: phone \u201c${e.name || 'a phone'}\u201d was removed`;
+  }
+  if (e.kind === 'may-picture') {
+    return `${when}: \u201c${e.name || 'a device'}\u201d may now make pictures on the PC`;
   }
   if (e.kind === 'may-answer') {
     return `${when}: \u201c${e.name || 'a device'}\u201d may now answer the PC's \u201cAllow?\u201d questions`;
