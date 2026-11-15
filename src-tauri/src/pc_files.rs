@@ -193,9 +193,71 @@ pub fn read(path: &Path, name: &str) -> Result<ReadFile, String> {
     Ok(ReadFile { name: name.to_string(), text, cut })
 }
 
+/// Said to a device that asks for a PDF (security review 2): the PDF
+/// reader can crash on a damaged file, and a crash would stop the app.
+pub const NO_PDF_FOR_DEVICES: &str = "PDFs in the PC's workspace aren't read for paired devices yet (a damaged PDF could stop DesktopAgent). Open it on the PC, or save it as text or a Word document there.";
+
+/// Most time one device read may take (a slow document is then refused).
+pub const DEVICE_READ_TIME: std::time::Duration = std::time::Duration::from_secs(30);
+/// Stack for a device's document read (deeply nested documents).
+const DEVICE_READ_STACK: usize = 64 * 1024 * 1024;
+
+static DEVICE_READING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// `read`, for a paired device: no PDFs (NO_PDF_FOR_DEVICES), one read at
+/// a time, in its own thread with a large stack, and at most `limit`: a
+/// read still going then is left to finish on its own (it holds the one
+/// slot until it does) and the device is told.
+pub fn read_for_device(path: &Path, name: &str, limit: std::time::Duration) -> Result<ReadFile, String> {
+    use std::sync::atomic::Ordering;
+    if crate::docs::kind_of(name) == Some("pdf") {
+        return Err(NO_PDF_FOR_DEVICES.into());
+    }
+    if DEVICE_READING.swap(true, Ordering::SeqCst) {
+        return Err("The PC is still reading another file for a device; try again in a moment".into());
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let (path, owned) = (path.to_path_buf(), name.to_string());
+    let started = std::thread::Builder::new()
+        .name("device-read".into())
+        .stack_size(DEVICE_READ_STACK)
+        .spawn(move || {
+            let read = std::panic::catch_unwind(|| read(&path, &owned))
+                .unwrap_or_else(|_| Err("The file could not be read".into()));
+            DEVICE_READING.store(false, Ordering::SeqCst);
+            let _ = tx.send(read);
+        });
+    if started.is_err() {
+        DEVICE_READING.store(false, Ordering::SeqCst);
+        return Err("The file could not be read".into());
+    }
+    rx.recv_timeout(limit)
+        .unwrap_or_else(|_| Err(format!("Reading {name} took too long; it was not sent")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn devices_get_no_pdf_and_a_time_limit() {
+        let dir = std::env::temp_dir().join(format!("pa-devread-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pdf = dir.join("report.pdf");
+        std::fs::write(&pdf, b"%PDF-1.4 hostile").unwrap();
+        assert_eq!(read_for_device(&pdf, "report.pdf", DEVICE_READ_TIME).unwrap_err(), NO_PDF_FOR_DEVICES);
+        assert_eq!(read_for_device(&pdf, "REPORT.PDF", DEVICE_READ_TIME).unwrap_err(), NO_PDF_FOR_DEVICES);
+        let notes = dir.join("notes.md");
+        std::fs::write(&notes, "hello").unwrap();
+        assert_eq!(read_for_device(&notes, "notes.md", DEVICE_READ_TIME).unwrap().text, "hello");
+        // A damaged document is an error, not a crash.
+        let doc = dir.join("bad.docx");
+        std::fs::write(&doc, b"not a zip").unwrap();
+        assert!(read_for_device(&doc, "bad.docx", DEVICE_READ_TIME).is_err());
+        // The slot is free again after each read.
+        assert_eq!(read_for_device(&notes, "notes.md", DEVICE_READ_TIME).unwrap().text, "hello");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn only_plain_workspace_names_pass() {

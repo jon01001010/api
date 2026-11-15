@@ -57,9 +57,17 @@ pub const MAX_TOOL_ANSWER: usize = 2 * 1024 * 1024;
 const READ_GRANT_TIME: Duration = Duration::from_secs(12 * 60 * 60);
 /// Most chats remembered as allowed at once (the oldest go first).
 const MAX_READ_GRANTS: usize = 200;
+/// Most chats of one device allowed to read at once: the chat id is the
+/// device's own choice, so a new one replaces that device's oldest
+/// (security review 2, finding 6; the PC's notification shows the count).
+pub const MAX_CHAT_GRANTS_PER_DEVICE: usize = 3;
 /// Pairing history kept (paired phones see it, so they notice new codes).
 const MAX_EVENTS: usize = 30;
 const PAIR_CODE_LIFETIME: Duration = Duration::from_secs(10 * 60);
+/// Wrong tries a pairing code survives (from any devices, all together);
+/// the next wrong one uses it up. A device id is a fresh key anyone can
+/// make, so one wrong try must not burn the code (security review 2).
+const PAIR_CODE_WRONG_TRIES: u32 = 3;
 /// The credential store holds about 2.5 KB per entry: a few phones.
 const MAX_PHONES: usize = 8;
 const MAX_REQUEST_LINE: usize = 4096;
@@ -258,6 +266,16 @@ impl ReadGrants {
 
     pub fn add(&mut self, device: &str, chat: &str, now: Instant) {
         self.map.insert((device.to_string(), chat.to_string()), now);
+        // At most MAX_CHAT_GRANTS_PER_DEVICE per device: its oldest goes.
+        loop {
+            let mine: Vec<_> = self.map.iter().filter(|((d, _), _)| d == device).map(|(k, at)| (k.clone(), *at)).collect();
+            if mine.len() <= MAX_CHAT_GRANTS_PER_DEVICE {
+                break;
+            }
+            if let Some((k, _)) = mine.into_iter().min_by_key(|(_, at)| *at) {
+                self.map.remove(&k);
+            }
+        }
         while self.map.len() > MAX_READ_GRANTS {
             let oldest = self.map.iter().min_by_key(|(_, at)| **at).map(|(k, _)| k.clone());
             match oldest {
@@ -265,6 +283,12 @@ impl ReadGrants {
                 None => break,
             };
         }
+    }
+
+    /// How many of this device's chats may read now.
+    pub fn count(&mut self, device: &str, now: Instant) -> usize {
+        self.map.retain(|_, at| now.saturating_duration_since(*at) < READ_GRANT_TIME);
+        self.map.keys().filter(|(d, _)| d == device).count()
     }
 
     /// Forgets one device's chats (removed, or may no longer read).
@@ -275,6 +299,70 @@ impl ReadGrants {
     pub fn clear(&mut self) {
         self.map.clear();
     }
+}
+
+/// An error as a device may see it: this PC's own folders (`known`: a
+/// folder and the placeholder said instead) replaced, longest first, and
+/// any other absolute path left (a drive path, a UNC path, a home folder)
+/// shown as `<path>`. sd-cli's last lines and file errors name the user's
+/// home and model folders (security review 2).
+pub fn without_paths(text: &str, known: &[(String, &str)]) -> String {
+    let mut out = text.to_string();
+    let mut known: Vec<&(String, &str)> = known.iter().filter(|(dir, _)| dir.len() >= 3).collect();
+    known.sort_by_key(|(dir, _)| std::cmp::Reverse(dir.len()));
+    for (dir, placeholder) in known {
+        let trimmed = dir.trim_end_matches(['/', '\\']);
+        for form in [trimmed.to_string(), trimmed.replace('\\', "/"), trimmed.replace('/', "\\")] {
+            if form.len() >= 3 {
+                out = replace_ignoring_case(&out, &form, placeholder);
+            }
+        }
+    }
+    // Anything still looking like an absolute path, up to the next space
+    // or quote: `C:\...`, `\\server\...`, `/home/...`, `/Users/...`.
+    let mut cleaned = String::new();
+    for (i, word) in out.split(' ').enumerate() {
+        if i > 0 {
+            cleaned.push(' ');
+        }
+        let start = word.find(|c: char| !matches!(c, '"' | '\'' | '(' | '[' | '`' | '\n')).unwrap_or(word.len());
+        let (lead, rest) = word.split_at(start);
+        let b = rest.as_bytes();
+        let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
+        let unc = rest.starts_with("\\\\");
+        let home = ["/home/", "/Users/", "/root/", "/var/", "/tmp/", "/opt/", "/mnt/", "/media/", "/usr/"]
+            .iter()
+            .any(|p| rest.starts_with(p));
+        if drive || unc || home {
+            cleaned.push_str(lead);
+            let end = rest.find(['"', '\'', ')', ']', '`', ',', ';', '\n']).unwrap_or(rest.len());
+            cleaned.push_str("<path>");
+            cleaned.push_str(&rest[end..]);
+        } else {
+            cleaned.push_str(word);
+        }
+    }
+    cleaned
+}
+
+/// `text` with every `what` (in any letter case, as Windows paths are) as `with`.
+fn replace_ignoring_case(text: &str, what: &str, with: &str) -> String {
+    let lower_text = text.to_lowercase();
+    let lower_what = what.to_lowercase();
+    // Lowercasing can change byte lengths outside ASCII: then exact only.
+    if lower_text.len() != text.len() || lower_what.len() != what.len() {
+        return text.replace(what, with);
+    }
+    let mut out = String::new();
+    let mut at = 0;
+    while let Some(found) = lower_text[at..].find(&lower_what) {
+        let start = at + found;
+        out.push_str(&text[at..start]);
+        out.push_str(with);
+        at = start + what.len();
+    }
+    out.push_str(&text[at..]);
+    out
 }
 
 /// A phone's name as shown in the dialog: short, plain characters only.
@@ -297,10 +385,12 @@ fn same(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-/// The one-time pairing code: one try only, then it is gone.
+/// The one-time pairing code: used up by the right code, by more than
+/// PAIR_CODE_WRONG_TRIES wrong ones, or after 10 minutes.
 pub struct PairCode {
     code: String,
     made: Instant,
+    wrong: u32,
 }
 
 impl PairCode {
@@ -308,16 +398,32 @@ impl PairCode {
         Self {
             code,
             made: Instant::now(),
+            wrong: 0,
         }
     }
 }
 
-/// Takes the code out (whatever the answer), true if it matched in time.
+/// True if the code matched in time (it is then used up). A wrong code is
+/// counted; the code is used up at the (PAIR_CODE_WRONG_TRIES + 1)th wrong
+/// try, or when it has expired. Compared in constant time.
 pub fn try_code(slot: &Mutex<Option<PairCode>>, offered: &str) -> bool {
-    match slot.lock().unwrap().take() {
-        Some(pc) => pc.made.elapsed() < PAIR_CODE_LIFETIME && same(&pc.code, offered),
-        None => false,
+    let mut slot = slot.lock().unwrap();
+    let Some(pc) = slot.as_mut() else {
+        return false;
+    };
+    if pc.made.elapsed() >= PAIR_CODE_LIFETIME {
+        *slot = None;
+        return false;
     }
+    if same(&pc.code, offered) {
+        *slot = None;
+        return true;
+    }
+    pc.wrong += 1;
+    if pc.wrong > PAIR_CODE_WRONG_TRIES {
+        *slot = None;
+    }
+    false
 }
 
 pub fn add_phone(phones: &mut Vec<Phone>, phone: Phone) {
@@ -603,6 +709,31 @@ async fn picture_for(
     ))
 }
 
+/// This PC's folders that errors may name, and what a device sees instead.
+fn local_folders(app: &AppHandle) -> Vec<(String, &'static str)> {
+    let p = app.path();
+    let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf()));
+    [
+        (crate::pc::workspace(app).ok(), "<workspace>"),
+        (p.app_data_dir().ok(), "<app folder>"),
+        (p.app_local_data_dir().ok(), "<app folder>"),
+        (p.app_config_dir().ok(), "<app folder>"),
+        (p.app_cache_dir().ok(), "<app folder>"),
+        (p.resource_dir().ok(), "<app folder>"),
+        (exe_dir, "<app folder>"),
+        (p.temp_dir().ok(), "<temp>"),
+        (p.home_dir().ok(), "<home>"),
+    ]
+    .into_iter()
+    .filter_map(|(dir, name)| dir.map(|d| (d.to_string_lossy().into_owned(), name)))
+    .collect()
+}
+
+/// An error for a device: without this PC's paths (`without_paths`).
+fn error_for_device(app: &AppHandle, error: &str) -> String {
+    without_paths(error, &local_folders(app))
+}
+
 /// The PC's switch for device tools (kept where the screens can't write).
 fn tools_allowed(app: &AppHandle) -> bool {
     read_entry(app, TOOLS_ENTRY).as_deref() == Some("on")
@@ -610,16 +741,24 @@ fn tools_allowed(app: &AppHandle) -> bool {
 
 /// The question asked on this PC (and, while allowed, on devices that may
 /// answer) before a device's chat reads the workspace.
-pub fn read_question(device: &str, chat: &str) -> String {
+pub fn read_question(device: &str, chat: &str, allowed_now: usize) -> String {
     let short: String = chat.chars().take(8).collect();
+    let others = if allowed_now >= MAX_CHAT_GRANTS_PER_DEVICE {
+        format!("\n\nThis device already has {allowed_now} chats allowed (at most {MAX_CHAT_GRANTS_PER_DEVICE}); allowing this one ends the oldest.")
+    } else if allowed_now > 0 {
+        format!("\n\nThis device already has {allowed_now} other chat{} allowed (at most {MAX_CHAT_GRANTS_PER_DEVICE}).", if allowed_now == 1 { "" } else { "s" })
+    } else {
+        String::new()
+    };
     format!(
-        "\u{201c}{device}\u{201d} asks to read files in your workspace for this chat.\n\nDuring this one chat on that device (12 hours at most) it may list the files in DesktopAgent's workspace folder and read text files and documents there. Nothing outside the workspace, and nothing is changed. This PC shows a notification for each file read.\n\nChat: {short}…"
+        "\u{201c}{device}\u{201d} asks to read files in your workspace for this chat.\n\nDuring this one chat on that device (12 hours at most) it may list the files in DesktopAgent's workspace folder and read text files and documents there. Nothing outside the workspace, and nothing is changed. This PC shows a notification for each file read.{others}\n\nChat: {short}…"
     )
 }
 
-/// What the PC user is told when a device read a workspace file.
-pub fn read_note(device: &str, file: &str) -> String {
-    format!("{device} read {file} from the workspace")
+/// What the PC user is told when a device read a workspace file, with how
+/// many of that device's chats may read now.
+pub fn read_note(device: &str, file: &str, chats: usize) -> String {
+    format!("{device} read {file} from the workspace ({chats} of at most {MAX_CHAT_GRANTS_PER_DEVICE} chats allowed to read)")
 }
 
 /// Whether this chat of this device may read the workspace: allowed
@@ -634,7 +773,8 @@ async fn may_read_now(app: &AppHandle, remote: &str, device: &str, chat: &str) -
     if link.read_grants.lock().unwrap().has(remote, chat, Instant::now()) {
         return true;
     }
-    if !crate::approval::ask(app, &read_question(device, chat)).await {
+    let allowed_now = link.read_grants.lock().unwrap().count(remote, Instant::now());
+    if !crate::approval::ask(app, &read_question(device, chat, allowed_now)).await {
         return false;
     }
     if !tools_allowed(app) || !may_read(&load_phones(app), remote) {
@@ -677,17 +817,21 @@ async fn tool_for(app: &AppHandle, remote: &str, device: &str, chat: &str, call:
         RemoteCall::WorkspaceRead(file) => {
             let path = crate::pc::workspace_file(app, &file)?;
             let name = file.clone();
+            // No PDFs, its own thread with a large stack, at most 30 s
+            // (pc_files::read_for_device): a hostile file can't stop the app.
             let read = blocking(move || {
-                serde_json::to_value(crate::pc_files::read(&path, &name)?).map_err(|e| e.to_string())
+                let file = crate::pc_files::read_for_device(&path, &name, crate::pc_files::DEVICE_READ_TIME)?;
+                serde_json::to_value(file).map_err(|e| e.to_string())
             })
             .await?;
             crate::remote_ask::log_use(app, device, &format!("read workspace file {file}"));
             use tauri_plugin_notification::NotificationExt;
+            let chats = app.state::<Link>().read_grants.lock().unwrap().count(remote, Instant::now());
             let _ = app
                 .notification()
                 .builder()
                 .title(format!("{device} read a file on this PC"))
-                .body(read_note(device, &file))
+                .body(read_note(device, &file, chats))
                 .show();
             Ok(read)
         }
@@ -1060,7 +1204,8 @@ async fn serve_stream(
     let paired = load_phones(&app).iter().any(|p| p.id == remote);
     match request {
         // A device already paired, or removed lately, can't use up the
-        // one-time code (only a wrong code from a new device does).
+        // one-time code (a wrong code from a new device counts as one of
+        // its PAIR_CODE_WRONG_TRIES).
         Some(Request::Pair { .. }) if paired || app.state::<Link>().recently_removed(&remote) => {
             let error = if paired {
                 "This device is already paired with this PC"
@@ -1228,6 +1373,8 @@ async fn serve_stream(
                         let _ = send.write_all(&png).await;
                     }
                     Err(error) => {
+                        // Never this PC's paths (sd-cli's last lines name them).
+                        let error = error_for_device(&app, &error);
                         reply(&mut send, serde_json::json!({"ok": false, "error": error})).await;
                     }
                 }
@@ -1262,7 +1409,11 @@ async fn serve_stream(
                     reply(&mut send, serde_json::json!({"ok": true, "bytes": body.len()})).await;
                     let _ = send.write_all(body.as_bytes()).await;
                 }
-                Err(error) => reply(&mut send, serde_json::json!({"ok": false, "error": error})).await,
+                Err(error) => {
+                    // Never this PC's paths (a file error may name them).
+                    let error = error_for_device(&app, &error);
+                    reply(&mut send, serde_json::json!({"ok": false, "error": error})).await
+                }
             }
         }
         Some(Request::Http) if paired => {
@@ -1744,8 +1895,11 @@ mod tests {
     #[test]
     fn a_pairing_code_works_once_and_only_when_right() {
         let slot = Mutex::new(Some(PairCode::new("abc123".into())));
-        assert!(!try_code(&slot, "wrong!"));
-        // One try only: even the right code fails now.
+        for _ in 0..=PAIR_CODE_WRONG_TRIES {
+            assert!(!try_code(&slot, "wrong!"));
+        }
+        // Too many wrong tries: even the right code fails now.
+        assert!(slot.lock().unwrap().is_none());
         assert!(!try_code(&slot, "abc123"));
         let slot = Mutex::new(Some(PairCode::new("abc123".into())));
         assert!(try_code(&slot, "abc123"));
@@ -1759,6 +1913,7 @@ mod tests {
         let old = PairCode {
             code: "abc".into(),
             made: Instant::now() - PAIR_CODE_LIFETIME - Duration::from_secs(1),
+            wrong: 0,
         };
         assert!(!try_code(&Mutex::new(Some(old)), "abc"));
     }
@@ -1779,6 +1934,7 @@ mod tests {
         let expired = PairCode {
             code: "c0ffee".into(),
             made: Instant::now() - PAIR_CODE_LIFETIME,
+            wrong: 0,
         };
         let slot = Mutex::new(Some(expired));
         assert!(!try_code(&slot, "c0ffee"));
@@ -1787,6 +1943,7 @@ mod tests {
         let fresh = PairCode {
             code: "c0ffee".into(),
             made: Instant::now() - PAIR_CODE_LIFETIME + Duration::from_secs(30),
+            wrong: 0,
         };
         assert!(try_code(&Mutex::new(Some(fresh)), "c0ffee"));
     }
@@ -1796,8 +1953,35 @@ mod tests {
         let slot = Mutex::new(Some(PairCode::new("old111".into())));
         *slot.lock().unwrap() = Some(PairCode::new("new222".into()));
         assert!(!try_code(&slot, "old111"));
-        // The wrong try used the new code up too.
-        assert!(!try_code(&slot, "new222"));
+        // The new code survives that wrong try.
+        assert!(try_code(&slot, "new222"));
+    }
+
+    #[test]
+    fn a_few_wrong_tries_from_new_keys_dont_burn_the_code() {
+        // Each try could come from a fresh device key: counted all together.
+        let slot = Mutex::new(Some(PairCode::new("c0ffee".into())));
+        for _ in 0..PAIR_CODE_WRONG_TRIES {
+            assert!(!try_code(&slot, "bad"));
+            assert!(!try_code(&Mutex::new(None), "c0ffee"));
+        }
+        assert!(slot.lock().unwrap().is_some());
+        assert!(try_code(&slot, "c0ffee"));
+        assert!(slot.lock().unwrap().is_none());
+        // The 4th wrong try uses it up.
+        let slot = Mutex::new(Some(PairCode::new("c0ffee".into())));
+        for _ in 0..=PAIR_CODE_WRONG_TRIES {
+            assert!(!try_code(&slot, "bad"));
+        }
+        assert!(!try_code(&slot, "c0ffee"));
+        // Wrong tries don't stretch its 10 minutes.
+        let slot = Mutex::new(Some(PairCode {
+            code: "c0ffee".into(),
+            made: Instant::now() - PAIR_CODE_LIFETIME,
+            wrong: 0,
+        }));
+        assert!(!try_code(&slot, "c0ffee"));
+        assert!(slot.lock().unwrap().is_none());
     }
 
     #[test]
@@ -2003,17 +2187,73 @@ mod tests {
         grants.clear();
         assert!(!grants.has("b", CHAT, start));
         for i in 0..(MAX_READ_GRANTS + 10) {
-            grants.add("a", &format!("chat-{i:020}"), start + Duration::from_millis(i as u64));
+            grants.add(&format!("d{i}"), CHAT, start + Duration::from_millis(i as u64));
         }
         assert_eq!(grants.map.len(), MAX_READ_GRANTS);
-        assert!(!grants.has("a", &format!("chat-{:020}", 0), start + Duration::from_secs(1)));
+        assert!(!grants.has("d0", CHAT, start + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn errors_for_devices_name_no_local_paths() {
+        let known = vec![
+            (r"C:\Users\Jo\AppData\Roaming\com.pocketagent.desktop".to_string(), "<app folder>"),
+            (r"C:\Users\Jo".to_string(), "<home>"),
+            ("/home/jo/.local/share/pocketagent".to_string(), "<app folder>"),
+            ("/home/jo".to_string(), "<home>"),
+        ];
+        let tail = "The picture maker failed.\n\
+            [ERROR] load model from 'C:\\Users\\Jo\\AppData\\Roaming\\com.pocketagent.desktop\\models\\sd.gguf' failed\n\
+            open c:/users/jo/Downloads/x.safetensors: not found\n\
+            /home/jo/.local/share/pocketagent/models/flux.gguf: bad magic\n\
+            see /home/jo/notes.txt and D:\\models\\other.gguf, \\\\server\\share\\m.gguf (and /usr/lib/x.so)";
+        let clean = without_paths(tail, &known);
+        assert!(!clean.contains("Jo") && !clean.contains("jo"), "{clean}");
+        assert!(!clean.contains("D:\\") && !clean.contains("server") && !clean.contains("/usr/"), "{clean}");
+        assert!(clean.contains("'<app folder>\\models\\sd.gguf'"), "{clean}");
+        assert!(clean.contains("<home>/Downloads/x.safetensors"), "{clean}");
+        assert!(clean.contains("<app folder>/models/flux.gguf: bad magic"), "{clean}");
+        assert!(clean.contains("<path>, <path> (and <path>)"), "{clean}");
+        assert!(clean.starts_with("The picture maker failed.\n[ERROR] load model from"));
+        // Plain messages stay as they are.
+        assert_eq!(without_paths("Stopped after 10 minutes.", &known), "Stopped after 10 minutes.");
+    }
+
+    #[test]
+    fn one_device_has_at_most_three_chats_allowed() {
+        let mut grants = ReadGrants::default();
+        let start = Instant::now();
+        let chat = |i: usize| format!("chat-{i:020}");
+        for i in 0..MAX_CHAT_GRANTS_PER_DEVICE {
+            grants.add("a", &chat(i), start + Duration::from_millis(i as u64));
+        }
+        grants.add("b", &chat(0), start);
+        assert_eq!(grants.count("a", start), MAX_CHAT_GRANTS_PER_DEVICE);
+        // A new chat id replaces that device's oldest, not another device's.
+        grants.add("a", &chat(99), start + Duration::from_secs(1));
+        assert_eq!(grants.count("a", start + Duration::from_secs(1)), MAX_CHAT_GRANTS_PER_DEVICE);
+        assert!(!grants.has("a", &chat(0), start + Duration::from_secs(1)));
+        assert!(grants.has("a", &chat(1), start + Duration::from_secs(1)));
+        assert!(grants.has("a", &chat(99), start + Duration::from_secs(1)));
+        assert!(grants.has("b", &chat(0), start + Duration::from_secs(1)));
+        // Many made-up ids: still three.
+        for i in 100..200 {
+            grants.add("a", &chat(i), start + Duration::from_secs(i as u64));
+        }
+        assert_eq!(grants.count("a", start + Duration::from_secs(200)), MAX_CHAT_GRANTS_PER_DEVICE);
+        assert_eq!(grants.count("b", start + Duration::from_secs(200)), 1);
     }
 
     #[test]
     fn the_pc_says_who_reads_what() {
-        let q = read_question("Pixel 8", CHAT);
+        let q = read_question("Pixel 8", CHAT, 0);
         assert!(q.starts_with("\u{201c}Pixel 8\u{201d} asks to read files in your workspace for this chat."));
         assert!(q.contains("Chat: c0ffee-c…"));
-        assert_eq!(read_note("Pixel 8", "budget.xlsx"), "Pixel 8 read budget.xlsx from the workspace");
+        assert!(!q.contains("already has"));
+        assert!(read_question("Pixel 8", CHAT, 1).contains("already has 1 other chat allowed (at most 3)"));
+        assert!(read_question("Pixel 8", CHAT, 3).contains("allowing this one ends the oldest"));
+        assert_eq!(
+            read_note("Pixel 8", "budget.xlsx", 2),
+            "Pixel 8 read budget.xlsx from the workspace (2 of at most 3 chats allowed to read)"
+        );
     }
 }
