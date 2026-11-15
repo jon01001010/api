@@ -1,6 +1,6 @@
 # Design: all devices in one circle
 
-Status: **decided** (Option A, owner, 2026-11-15; see "Decided" at the end). **Stage 1 built 2026-11-15** (one key per PC, moved by pairing again by hand; "Your devices" on each device); stages 2-4 not yet. TODO.md item: "All devices in one circle".
+Status: **decided** (Option A, owner, 2026-11-15; see "Decided" at the end). **Stage 1 built 2026-11-15** (one key per PC, moved by pairing again by hand; "Your devices" on each device). **Stage 2 built 2026-11-15** (signed removal notices: label `PA circle remove v1`, a number per signer, time at most 5 minutes ahead and 30 days old, a notice about the receiving device ignored, passed on once; `native/homelink/src/circle.rs`, link request `removal`, `removals` in the status answer); stages 3-4 not yet. TODO.md item: "All devices in one circle".
 
 ## 1. The goal
 

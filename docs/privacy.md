@@ -28,6 +28,7 @@ All of it is in the app's private storage, which other apps can't read (unless t
 | API keys | Windows Credential Manager; on Linux the system key store. |
 | The PC's home link key and the list of paired devices | Windows Credential Manager; on Linux an owner-only file in the settings folder (`~/.config/…/link`). Not in the data folder the app's screens can reach. |
 | Pairing history (codes made, devices paired or removed) | Same place as the link key. Paired devices are shown it. |
+| Removal notices (device circle: which device keys were removed, by which key, when; the last numbers seen; at most 8 waiting to be passed on) and the keys of the Home PCs this PC uses | Same place as the link key. On the phone: an owner-only file next to its link key, in the no-backup folder. |
 | A second PC's link key (when it is paired to a main PC) | Same as above. Since 2026-11-15 a PC uses one key in both roles (new installs, or after "Use one key for this PC"); an older separate key is kept there, unused. |
 | The log of questions answered on a paired device (`answers.log`) | Linux: the settings folder; Windows: `AppData\Local`. Not reachable by the screens without asking. |
 | The model server's password | Made new at every model start, kept in memory only, passed to the model server privately (not on its command line). |
@@ -38,7 +39,7 @@ All of it is in the app's private storage, which other apps can't read (unless t
 
 The link between your phone and PC (or two PCs) is encrypted end to end (QUIC with TLS 1.3). Each device is pinned by its key, chosen when you paired them.
 
-**What travels over it:** model requests and answers (when you use the PC's model from the phone), the status of the PC's model, and, only if you switched them on on both sides, kept-in-step settings, mirrored chats and the PC's "Allow?" questions and your answers.
+**What travels over it:** model requests and answers (when you use the PC's model from the phone), the status of the PC's model, removal notices (when you remove a device in "Your devices": the removed device's key, the key of the device that removed it, a number and a time, signed; passed on to your other paired devices), and, only if you switched them on on both sides, kept-in-step settings, mirrored chats and the PC's "Allow?" questions and your answers.
 
 **What others can see (metadata, never the content):**
 
