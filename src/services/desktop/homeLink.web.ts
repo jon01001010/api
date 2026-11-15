@@ -6,9 +6,9 @@
  */
 import {invoke} from '@tauri-apps/api/core';
 
-import type {LinkPairing, LinkStatus} from './homeLink';
+import type {LinkKeyMode, LinkPairing, LinkStatus} from './homeLink';
 
-export type {LinkPairing, LinkPhone, LinkStatus} from './homeLink';
+export type {LinkKeyMode, LinkPairing, LinkPhone, LinkStatus} from './homeLink';
 
 export const homeLinkAvailable = (): boolean =>
   !!(globalThis as any).__TAURI_INTERNALS__;
@@ -51,3 +51,10 @@ export const linkDeviceMayCommand = (
   id: string,
   allowed: boolean,
 ): Promise<void> => invoke('link_device_may_command', {id, allowed});
+/** Which keys this PC uses as a home PC and as a device (reads only). */
+export const linkKeyMode = (): Promise<LinkKeyMode> => invoke('link_key_mode');
+/**
+ * "Use one key for this PC": its pairings as a device must then be made
+ * again by hand (no automatic move); the old key is kept, unused.
+ */
+export const linkUseOneKey = (): Promise<void> => invoke('link_use_one_key');

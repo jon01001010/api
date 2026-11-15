@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-link-use-one-key"
+description = "Enables the link_use_one_key command without any pre-configured scope."
+commands.allow = ["link_use_one_key"]
+
+[[permission]]
+identifier = "deny-link-use-one-key"
+description = "Denies the link_use_one_key command without any pre-configured scope."
+commands.deny = ["link_use_one_key"]

@@ -397,6 +397,8 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'homelink_picture',
         'homelink_tool',
         'homelink_close_tunnel',
+        'link_key_mode',
+        'link_use_one_key',
       ].sort(),
     );
     // The window is allowed exactly those, plus Tauri's core basics.
@@ -546,6 +548,39 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     }
   });
 
+  it('device circle stage 1: one key only by the user\'s choice, and "Your devices" gives no rights', () => {
+    // Moving a PC to one key is only the user's button, after a question
+    // that says its pairings as a device must be made again by hand.
+    const users = sourceFiles(SRC)
+      .filter(f => /linkUseOneKey\(/.test(fs.readFileSync(f, 'utf8')))
+      .map(rel);
+    expect(users.sort()).toEqual(
+      [
+        'src/screens/SettingsScreen/HomeLinkCard.tsx',
+        'src/services/desktop/homeLink.ts',
+      ].sort(),
+    );
+    const list = read('src/components/YourDevices/YourDevices.tsx');
+    expect(list).toMatch(
+      /text: 'Use one key',\s*onPress: async \(\) => \{\s*try \{\s*await onUseOneKey\?\.\(\);/,
+    );
+    expect(list).toContain('pair with each one again by hand');
+    // The list only reads; rights are switched (and asked) on the PC that
+    // gives them, never from here.
+    for (const file of [
+      'src/components/YourDevices/YourDevices.tsx',
+      'src/services/homeLink/yourDevices.ts',
+    ]) {
+      expect(read(file)).not.toMatch(/linkDeviceMay|link_device_may|invoke\(/);
+    }
+    // Natively: no automatic move, no new device keys, one endpoint.
+    const client = read('src-tauri/src/link_client.rs');
+    expect(client).toContain(
+      'one_key.map(str::trim) == Some("on") || !has_own_key',
+    );
+    expect(client).not.toMatch(/SecretKey::generate\(\)/);
+  });
+
   it('home link: paired phones reach only the model server, pairing asks', () => {
     const link = tauri('src/link.rs');
     // Exactly these requests exist, and only "pair" works before pairing.
@@ -585,8 +620,11 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(link).toMatch(
       /#\[serde\(default, rename = "mayAnswer"[^\n]*\]\s*pub may_answer: bool,/,
     );
+    expect(link).toContain(
+      'add_phone(&mut phones, Phone::new(remote.clone(), name.clone(), now_secs()));',
+    );
     expect(link).toMatch(
-      /Phone \{ id: remote\.clone\(\), name: name\.clone\(\), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false \}/,
+      /pub fn new\(id: String, name: String, paired_at: u64\) -> Self \{\s*Phone \{\s*id,\s*name,\s*may_answer: false,\s*may_picture: false,\s*may_read: false,\s*may_act: false,\s*may_command: false,\s*paired_at: Some\(paired_at\),\s*\}/,
     );
     expect(link).toMatch(
       /pub async fn link_device_may_answer[\s\S]*?if allowed \{[\s\S]*?if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*return Err[\s\S]*?let mut phones = load_phones\(&app\);[\s\S]*?save_phones/,

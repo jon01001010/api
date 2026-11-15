@@ -139,9 +139,14 @@ it('removing the PC from this device clears its PIN', async () => {
 it('pairing again (the PC approved) clears a forgotten PIN', async () => {
   await locked();
   jest.spyOn(serverStore, 'fetchModelsForServer').mockResolvedValue({ok: true});
+  const before = Date.now();
   const r = await pairHomePc(`PA1:P:${PC}:${'0'.repeat(32)}`);
   expect(r.ok).toBe(true);
   expect(await homePcGate(PC)).toEqual({ok: true});
+  // "Your devices" shows when it was paired (pairing again: the new date).
+  expect(
+    serverStore.servers.find(s => s.homeLinkPc === PC)?.homeLinkPairedAt,
+  ).toBeGreaterThanOrEqual(before);
   // A refused pairing clears nothing.
   await turnOnPin(PC, '1357');
   resetHomePcLockForTests();

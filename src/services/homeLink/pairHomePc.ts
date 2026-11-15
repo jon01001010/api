@@ -31,12 +31,16 @@ export async function pairHomePc(
   }
   const url = tunnelUrl(tunnel.port);
   const existing = serverStore.servers.find(s => s.homeLinkPc === paired.pc);
+  // When paired, for "Your devices" (pairing again: the new date).
+  const homeLinkPairedAt = Date.now();
   const serverId = existing
-    ? (serverStore.updateServer(existing.id, {url}), existing.id)
+    ? (serverStore.updateServer(existing.id, {url, homeLinkPairedAt}),
+      existing.id)
     : serverStore.addServer({
         name: 'Home PC',
         url,
         homeLinkPc: paired.pc,
+        homeLinkPairedAt,
         requestTimeoutMs: HOME_PC_TIMEOUT_MS,
       });
   const status = await pcStatus(paired.pc);

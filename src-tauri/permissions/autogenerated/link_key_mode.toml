@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-link-key-mode"
+description = "Enables the link_key_mode command without any pre-configured scope."
+commands.allow = ["link_key_mode"]
+
+[[permission]]
+identifier = "deny-link-key-mode"
+description = "Denies the link_key_mode command without any pre-configured scope."
+commands.deny = ["link_key_mode"]

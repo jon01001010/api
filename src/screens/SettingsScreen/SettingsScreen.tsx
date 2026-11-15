@@ -56,6 +56,9 @@ import {SettingsLinks} from './SettingsLinks';
 import {ThisPcModelCard} from './ThisPcModelCard';
 import {StartupTimingCard} from './StartupTimingCard';
 import {HomeLinkCard} from './HomeLinkCard';
+import {YourDevicesCard} from '../../components/YourDevices/YourDevices';
+import {homeLinkInBuild} from '../../services/homeLink/homeLink';
+import {homeLinkAvailable} from '../../services/desktop/homeLink';
 import {QuickKeyCard} from './QuickKeyCard';
 
 import {useTheme} from '../../hooks';
@@ -386,6 +389,11 @@ export const SettingsScreen: React.FC = observer(() => {
           {/* Windows app only: run a model with the bundled llama.cpp server. */}
           <ThisPcModelCard cardStyle={styles.card} />
           <HomeLinkCard cardStyle={styles.card} />
+          {/* Phone: "Your devices", the PCs it uses (on the PC this list
+              is part of the card above). */}
+          {homeLinkInBuild() && !homeLinkAvailable() ? (
+            <YourDevicesCard cardStyle={styles.card} />
+          ) : null}
           <QuickKeyCard cardStyle={styles.card} />
           <StartupTimingCard cardStyle={styles.card} />
 

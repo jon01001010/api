@@ -8,18 +8,36 @@
 //! PC's one-time code (pasted here, as a laptop has no camera to scan the QR);
 //! the main PC asks its user; afterwards only the main PC's model server is
 //! reached, through a local port on 127.0.0.1.
+//!
+//! One key per PC (device-circle stage 1, docs/design/device-circle.md): a
+//! PC is the same key as a device as it is as a home PC, on the very same
+//! endpoint (link.rs device_endpoint). A PC that already had its own
+//! device key ("client key") keeps using it until the user chooses "Use one
+//! key for this PC" (link_use_one_key); its pairings as a device are then
+//! made again by hand (owner's decision 8b: no automatic move). The old key
+//! stays in the store, unused.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use homelink::Phone;
+use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
-static CLIENT: OnceLock<Arc<Phone>> = OnceLock::new();
+static CLIENT: Mutex<Option<Arc<Phone>>> = Mutex::new(None);
 
-/// This PC's own key as the other end (not the PC's link key), kept where
+/// This PC's own key as the other end (before one key per PC), kept where
 /// the screens can't read or write it, like the link key (link.rs
 /// read_entry: Credential Manager on Windows, a private file on Linux).
 const CLIENT_KEY_ENTRY: &str = "DesktopAgent-link:client-key";
+/// "on" once the user chose "Use one key for this PC" (kept like the keys).
+const ONE_KEY_ENTRY: &str = "DesktopAgent-link:one-key";
+
+/// Which key this PC uses as a device: its link key when the user chose one
+/// key, or when it never had a device key of its own (new installs). A PC
+/// with its own device key keeps it: nothing moves by itself.
+pub fn uses_link_key(one_key: Option<&str>, has_own_key: bool) -> bool {
+    one_key.map(str::trim) == Some("on") || !has_own_key
+}
 
 fn to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
@@ -37,9 +55,11 @@ pub fn from_hex(text: &str) -> Option<[u8; 32]> {
     Some(key)
 }
 
-fn client_key(app: &AppHandle) -> Result<[u8; 32], String> {
+/// The device key this PC had before one key per PC, if any. New ones are
+/// no longer made.
+fn own_key(app: &AppHandle) -> Result<Option<[u8; 32]>, String> {
     if let Some(key) = crate::link::read_entry(app, CLIENT_KEY_ENTRY).and_then(|t| from_hex(&t)) {
-        return Ok(key);
+        return Ok(Some(key));
     }
     // Before 2026-11-15 the key was a file in the settings folder, which on
     // Windows is the screens' own folder: moved (pairing is kept).
@@ -49,24 +69,90 @@ fn client_key(app: &AppHandle) -> Result<[u8; 32], String> {
         .map_err(|e| e.to_string())?
         .join("link")
         .join("client.key");
-    let key = std::fs::read(&old)
+    let Some(key) = std::fs::read(&old)
         .ok()
         .and_then(|bytes| <[u8; 32]>::try_from(bytes.as_slice()).ok())
-        .unwrap_or_else(|| iroh::SecretKey::generate().to_bytes());
+    else {
+        return Ok(None);
+    };
     crate::link::write_entry(app, CLIENT_KEY_ENTRY, &to_hex(&key))?;
     if crate::link::read_entry(app, CLIENT_KEY_ENTRY).and_then(|t| from_hex(&t)) == Some(key) {
         let _ = std::fs::remove_file(&old);
     }
-    Ok(key)
+    Ok(Some(key))
+}
+
+/// The own device key while this PC still uses it; None: the link key.
+fn own_key_in_use(app: &AppHandle) -> Result<Option<[u8; 32]>, String> {
+    let one_key = crate::link::read_entry(app, ONE_KEY_ENTRY);
+    if uses_link_key(one_key.as_deref(), true) {
+        // Chosen: the old key is not even read.
+        return Ok(None);
+    }
+    let own = own_key(app)?;
+    Ok(if uses_link_key(one_key.as_deref(), own.is_some()) { None } else { own })
+}
+
+fn client_slot() -> std::sync::MutexGuard<'static, Option<Arc<Phone>>> {
+    CLIENT.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 fn client(app: &AppHandle) -> Result<Arc<Phone>, String> {
-    if let Some(c) = CLIENT.get() {
+    let mut slot = client_slot();
+    if let Some(c) = slot.as_ref() {
         return Ok(c.clone());
     }
-    let key = client_key(app)?;
-    let made = Arc::new(Phone::with_key(key, None)?);
-    Ok(CLIENT.get_or_init(|| made).clone())
+    let made = Arc::new(match own_key_in_use(app)? {
+        Some(key) => Phone::with_key(key, None)?,
+        // One key: this PC's own link endpoint, so the relay and the other
+        // PCs see one key, never two endpoints fighting over it.
+        None => Phone::with_endpoint(tauri::async_runtime::block_on(crate::link::device_endpoint(app))?, None)?,
+    });
+    *slot = Some(made.clone());
+    Ok(made)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyMode {
+    /// This PC is one key in both roles.
+    one_key: bool,
+    /// This PC's key as a home PC (what its devices paired with).
+    link_key: String,
+    /// This PC's key as a device of another PC.
+    device_key: String,
+}
+
+/// Which keys this PC uses (for "Your devices"). Reads only; no network.
+#[tauri::command]
+pub async fn link_key_mode(app: AppHandle) -> Result<KeyMode, String> {
+    let link_key = crate::link::link_key_id(&app)?;
+    let own = own_key_in_use(&app)?;
+    Ok(KeyMode {
+        one_key: own.is_none(),
+        device_key: match own {
+            Some(key) => iroh::SecretKey::from_bytes(&key).public().to_string(),
+            None => link_key.clone(),
+        },
+        link_key,
+    })
+}
+
+/// "Use one key for this PC": from now on this PC uses its link key as a
+/// device too. Its pairings as a device (the PCs it uses) stop working and
+/// are made again by hand, each asked on that PC as always; nothing moves
+/// by itself (decision 8b). The old device key is kept, unused. No network.
+#[tauri::command]
+pub async fn link_use_one_key(app: AppHandle) -> Result<(), String> {
+    crate::link::write_entry(&app, ONE_KEY_ENTRY, "on")?;
+    if crate::link::read_entry(&app, ONE_KEY_ENTRY).as_deref().map(str::trim) != Some("on") {
+        return Err("Could not keep the choice; nothing changed".into());
+    }
+    // The next link call makes the device end anew, on the link key.
+    if let Some(old) = client_slot().take() {
+        old.close_tunnel();
+    }
+    Ok(())
 }
 
 fn fail(e: impl std::fmt::Display) -> String {
@@ -216,7 +302,7 @@ pub async fn homelink_open_tunnel(app: AppHandle, pc: String) -> String {
 
 #[tauri::command]
 pub async fn homelink_close_tunnel() -> String {
-    if let Some(c) = CLIENT.get() {
+    if let Some(c) = client_slot().as_ref() {
         c.close_tunnel();
     }
     serde_json::json!({"ok": true}).to_string()
@@ -230,6 +316,48 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(v["ok"], false);
         assert_eq!(v["error"], "Could not reach the PC");
+    }
+
+    /// Device-circle stage 1 (decision 8b): one key for new PCs; a PC that
+    /// has its own device key keeps it until the user chooses one key.
+    #[test]
+    fn a_pc_uses_its_link_key_as_a_device_unless_it_already_had_its_own() {
+        use super::uses_link_key;
+        // New install: no device key of its own, so the link key.
+        assert!(uses_link_key(None, false));
+        // Already paired as a device with its own key: kept, nothing moves.
+        assert!(!uses_link_key(None, true));
+        assert!(!uses_link_key(Some("off"), true));
+        assert!(!uses_link_key(Some(""), true));
+        assert!(!uses_link_key(Some("yes"), true));
+        // Only after "Use one key for this PC".
+        assert!(uses_link_key(Some("on"), true));
+        assert!(uses_link_key(Some("on\r\n"), true));
+        assert!(uses_link_key(Some("on"), false));
+    }
+
+    /// The one-key device end is the link endpoint itself, never a second
+    /// endpoint made from the link key (two endpoints with one key push
+    /// each other off the relay); and no new device keys are made.
+    #[test]
+    fn one_key_means_the_link_endpoint_itself() {
+        let source = include_str!("link_client.rs");
+        let client = &source[source.find("fn client(app").unwrap()..];
+        let client = &client[..client.find("#[derive(Serialize)]").unwrap()];
+        assert!(client.contains("Phone::with_endpoint(tauri::async_runtime::block_on(crate::link::device_endpoint(app))?"));
+        assert_eq!(client.matches("Phone::with_key(").count(), 1);
+        assert!(client.contains("Some(key) => Phone::with_key(key, None)?"));
+        let own = &source[source.find("fn own_key(app").unwrap()..source.find("fn own_key_in_use").unwrap()];
+        assert!(!own.contains("generate()"));
+        let link = include_str!("link.rs");
+        let device = &link[link.find("pub async fn device_endpoint").unwrap()..];
+        let device = &device[..device.find("\n}").unwrap()];
+        assert!(device.contains("bind(app, &mut running)"));
+        assert!(!device.contains("Endpoint::builder"));
+        // Switched off, the shared endpoint lets no device in.
+        let bind = &link[link.find("async fn bind(").unwrap()..link.find("async fn start(").unwrap()];
+        assert!(bind.contains("IncomingFilterOutcome::Reject"));
+        assert!(bind.contains("endpoint.set_alpns(Vec::new())"));
     }
 
     #[test]

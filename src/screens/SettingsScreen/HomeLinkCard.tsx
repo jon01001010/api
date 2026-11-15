@@ -23,15 +23,19 @@ import {
   linkDeviceMayPicture,
   linkDeviceMayRead,
   linkForget,
+  linkKeyMode,
+  LinkKeyMode,
   linkOff,
   linkOn,
   linkPair,
   linkPicturesAllow,
   linkToolsAllow,
   linkStatus,
+  linkUseOneKey,
   LinkPairing,
   LinkStatus,
 } from '../../services/desktop/homeLink';
+import {YourDevices} from '../../components/YourDevices/YourDevices';
 
 /**
  * Desktop app only: "Use this PC's model from your phone". Pair a phone with
@@ -46,6 +50,7 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
   const [syncAllowed, setSyncAllowed] = useState(false);
   const [mirrorAllowed, setMirrorAllowed] = useState(false);
   const [answersAllowed, setAnswersAllowed] = useState(false);
+  const [keyMode, setKeyMode] = useState<LinkKeyMode | null>(null);
   useEffect(() => {
     hostSyncAllowed().then(setSyncAllowed);
     hostMirrorAllowed().then(setMirrorAllowed);
@@ -64,6 +69,9 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
         });
       })
       .catch(() => setStatus(null));
+    linkKeyMode()
+      .then(setKeyMode)
+      .catch(() => setKeyMode(null));
   }, []);
   useEffect(() => {
     if (homeLinkAvailable()) {
@@ -255,83 +263,79 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
             onValueChange={v => run(() => linkToolsAllow(v))}
           />
         </View>
-        {status.phones.length > 0 ? (
-          <Text variant="labelMedium" style={styles.state}>
-            Paired phones
-          </Text>
-        ) : null}
-        {status.phones.map(phone => (
-          <View key={phone.id} style={styles.phone}>
-            <Text variant="bodySmall" style={styles.phoneName}>
-              {phone.name} · {phone.id.slice(0, 10)}…
-            </Text>
-            {answersAllowed ? (
-              <>
-                <Text variant="bodySmall">May answer</Text>
-                <Switch
-                  value={!!phone.mayAnswer}
-                  disabled={busy}
-                  accessibilityLabel={`${phone.name} may answer this PC's questions`}
-                  testID={`home-link-may-answer-${phone.id}`}
-                  onValueChange={v =>
-                    run(() => linkDeviceMayAnswer(phone.id, v))
-                  }
-                />
-              </>
-            ) : null}
-            {status.picturesAllowed ? (
-              <>
-                <Text variant="bodySmall">Pictures</Text>
-                <Switch
-                  value={!!phone.mayPicture}
-                  disabled={busy}
-                  accessibilityLabel={`${phone.name} may make pictures on this PC`}
-                  testID={`home-link-may-picture-${phone.id}`}
-                  onValueChange={v =>
-                    run(() => linkDeviceMayPicture(phone.id, v))
-                  }
-                />
-              </>
-            ) : null}
-            {status.toolsAllowed ? (
-              <>
-                <Text variant="bodySmall">May read</Text>
-                <Switch
-                  value={!!phone.mayRead}
-                  disabled={busy}
-                  accessibilityLabel={`${phone.name} may use this PC's tools`}
-                  testID={`home-link-may-read-${phone.id}`}
-                  onValueChange={v => run(() => linkDeviceMayRead(phone.id, v))}
-                />
-                <Text variant="bodySmall">May act</Text>
-                <Switch
-                  value={!!phone.mayAct}
-                  disabled={busy}
-                  accessibilityLabel={`${phone.name} may ask this PC to open, print, press media keys or read the clipboard`}
-                  testID={`home-link-may-act-${phone.id}`}
-                  onValueChange={v => run(() => linkDeviceMayAct(phone.id, v))}
-                />
-                <Text variant="bodySmall">May run commands</Text>
-                <Switch
-                  value={!!phone.mayCommand}
-                  disabled={busy}
-                  accessibilityLabel={`${phone.name} may ask this PC to run commands (each one asked here)`}
-                  testID={`home-link-may-command-${phone.id}`}
-                  onValueChange={v =>
-                    run(() => linkDeviceMayCommand(phone.id, v))
-                  }
-                />
-              </>
-            ) : null}
-            <Button
-              compact
-              disabled={busy}
-              testID={`home-link-forget-${phone.id}`}
-              onPress={() => run(() => linkForget(phone.id))}>
-              Remove
-            </Button>
-          </View>
-        ))}
+        <YourDevices
+          phones={status.phones}
+          busy={busy}
+          keyMode={keyMode}
+          onForget={id => linkForget(id).finally(refresh)}
+          onUseOneKey={() => linkUseOneKey().finally(refresh)}
+          renderRights={phone => (
+            <View style={styles.phone}>
+              {answersAllowed ? (
+                <>
+                  <Text variant="bodySmall">May answer</Text>
+                  <Switch
+                    value={!!phone.mayAnswer}
+                    disabled={busy}
+                    accessibilityLabel={`${phone.name} may answer this PC's questions`}
+                    testID={`home-link-may-answer-${phone.id}`}
+                    onValueChange={v =>
+                      run(() => linkDeviceMayAnswer(phone.id, v))
+                    }
+                  />
+                </>
+              ) : null}
+              {status.picturesAllowed ? (
+                <>
+                  <Text variant="bodySmall">Pictures</Text>
+                  <Switch
+                    value={!!phone.mayPicture}
+                    disabled={busy}
+                    accessibilityLabel={`${phone.name} may make pictures on this PC`}
+                    testID={`home-link-may-picture-${phone.id}`}
+                    onValueChange={v =>
+                      run(() => linkDeviceMayPicture(phone.id, v))
+                    }
+                  />
+                </>
+              ) : null}
+              {status.toolsAllowed ? (
+                <>
+                  <Text variant="bodySmall">May read</Text>
+                  <Switch
+                    value={!!phone.mayRead}
+                    disabled={busy}
+                    accessibilityLabel={`${phone.name} may use this PC's tools`}
+                    testID={`home-link-may-read-${phone.id}`}
+                    onValueChange={v =>
+                      run(() => linkDeviceMayRead(phone.id, v))
+                    }
+                  />
+                  <Text variant="bodySmall">May act</Text>
+                  <Switch
+                    value={!!phone.mayAct}
+                    disabled={busy}
+                    accessibilityLabel={`${phone.name} may ask this PC to open, print, press media keys or read the clipboard`}
+                    testID={`home-link-may-act-${phone.id}`}
+                    onValueChange={v =>
+                      run(() => linkDeviceMayAct(phone.id, v))
+                    }
+                  />
+                  <Text variant="bodySmall">May run commands</Text>
+                  <Switch
+                    value={!!phone.mayCommand}
+                    disabled={busy}
+                    accessibilityLabel={`${phone.name} may ask this PC to run commands (each one asked here)`}
+                    testID={`home-link-may-command-${phone.id}`}
+                    onValueChange={v =>
+                      run(() => linkDeviceMayCommand(phone.id, v))
+                    }
+                  />
+                </>
+              ) : null}
+            </View>
+          )}
+        />
         {status.events && status.events.length > 0 ? (
           <>
             <Text variant="labelMedium" style={styles.state}>
@@ -360,6 +364,5 @@ const styles = StyleSheet.create({
   code: {marginTop: 6, fontFamily: 'monospace', fontSize: 10},
   syncRow: {flexDirection: 'row', alignItems: 'center', marginVertical: 6},
   syncText: {flex: 1, paddingRight: 12},
-  phone: {flexDirection: 'row', alignItems: 'center'},
-  phoneName: {flex: 1},
+  phone: {flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap'},
 });
