@@ -926,6 +926,14 @@ A desktop app that pairs with the phone: trains the personal LoRA, runs bigger m
 The phone agent and the desktop agent talk to each other over the paired link and share work, each doing what it is best at: the phone does phone things (alarms, texts, contacts, camera, being with you), the PC does heavy things (big models, training, long documents, files on the PC).
 
 - [ ] **Shared task list:** a task started on one device shows on both (title, steps, status, who is doing which step); either device can pick up a step; progress and results flow back. Works offline per device and syncs when they are both on the link.
+- [ ] **Sub-agents (owner, 2026-11-15):** the main model can hand a piece of a task to another model: a smaller local one, the PC's model over the home link, or a cloud model the user added with their own key (e.g. Claude, Gemini). Rules:
+  - **Asks first, every time:** which model, the exact text that will be sent, and whether it leaves this device (cloud: "this goes to <provider> with your key"). Never automatic; "don't allow more in this chat" stops further hand-offs.
+  - **Tools:** a sub-agent gets no tools by default; at most the tools switched on in the Toolbox, never more than the main model has, and every tool still asks as usual. Cloud sub-agents: no tools in the first version.
+  - **No private data out by surprise:** the read-then-leak guard applies (after a chat read private files or the clipboard, sending anything to a cloud model asks and shows it).
+  - **Limits:** one level only (a sub-agent can't start its own), a cap per chat on hand-offs, tokens and cost (shown before sending when the provider gives prices), a time limit.
+  - **Results are untrusted text:** shown to the user labelled with the model's name, wrapped like web pages before the main model reads them.
+  - **Logged:** each hand-off (model, what was sent, size, result size) in the audit log.
+  - Note: Gemini is a Google service; it is only an option the user adds with their own key (the app itself still uses no Google services).
 - [ ] **Agent-to-agent messages:** one agent can ask the other to do a step ("desktop: summarise this 200-page PDF"; "phone: set a reminder for the result"), with the request and the answer shown in the chat on both sides.
 - [x] **Hand-off:** start a chat on the phone, continue it on the PC (and back) with the same context; the chat moves only when you ask. (done 2026-11-13: mirrored chats, either device continues)
 - [ ] **Shared memory (opt-in):** memory notes can sync between the two; off by default; you pick which notes. (built 2026-11-12: memory notes kept in step, off by default; not yet: picking which notes)
