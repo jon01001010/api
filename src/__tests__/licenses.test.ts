@@ -49,6 +49,24 @@ describe('open-source licences', () => {
     }
   });
 
+  it('credits the llama.cpp the desktop builds download (its licence moves with each update)', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const llama = data.packages.find(
+      (p: any) => p.n === 'llama.cpp (model runner)',
+    );
+    const dir = path.join(__dirname, '..', '..', '.github', 'workflows');
+    const pins = fs
+      .readdirSync(dir)
+      .map((f: string) => fs.readFileSync(path.join(dir, f), 'utf8'))
+      .map((text: string) => /^\s*LLAMA_TAG:\s*(\S+)/m.exec(text)?.[1])
+      .filter(Boolean);
+    expect(pins.length).toBeGreaterThan(0);
+    // Update scripts/licenses/generate.js (and the licence text in
+    // src/assets/licenses/native/) when the pinned llama.cpp changes.
+    expect([...new Set(pins)]).toEqual([llama.v]);
+  });
+
   it('shows the phone what the phone ships, the desktop what the desktop ships', () => {
     const phone = shippedHere(data.packages, 'android');
     const desktop = shippedHere(data.packages, 'web');
