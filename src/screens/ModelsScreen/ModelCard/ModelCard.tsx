@@ -34,6 +34,7 @@ import {useTheme, useMemoryCheck, useStorageCheck} from '../../../hooks';
 import {createStyles} from './styles';
 
 import {uiStore, modelStore, serverStore} from '../../../store';
+import {loraLabelFor} from '../../../services/lora';
 import {t} from '../../../locales';
 
 import {
@@ -712,6 +713,7 @@ export const ModelCard: React.FC<ModelCardProps> = observer(
                   numberOfLines={1}
                   ellipsizeMode="middle">
                   {model.name}
+                  {loraLabelFor(model) ? ` ${loraLabelFor(model)}` : ''}
                 </Text>
               </View>
               <View style={styles.headerRight}>

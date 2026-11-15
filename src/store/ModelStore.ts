@@ -43,6 +43,8 @@ import {
   THIS_PC,
 } from '../services/desktop/thisPc';
 import {routerStore} from './RouterStore';
+import {loraStore} from './LoraStore';
+import {syncLoraOnContext} from '../services/lora/syncLora';
 import {homeLinkReady} from '../services/homeLink/keepLink';
 import {chatSessionStore, setThinkingDefault} from './ChatSessionStore';
 import {isSmallModel} from '../utils/modelFit';
@@ -2370,7 +2372,26 @@ class ModelStore {
         mmProjPath,
       );
       const path = await this.getModelFullPath(model);
-      const serverId = await startOnThisPc(path, resolvedMmProjPath);
+      // Its chosen LoRA adapter goes to the model server as well.
+      const lora = loraStore.activeFor(model.id);
+      loraStore.rememberPcModel(path, model.id);
+      let serverId: string;
+      try {
+        serverId = await startOnThisPc(
+          path,
+          resolvedMmProjPath,
+          lora && {path: lora.path, scale: lora.scale},
+        );
+        loraStore.setProblem(model.id);
+      } catch (error) {
+        if (!lora) {
+          throw error;
+        }
+        const said = error instanceof Error ? error.message : String(error);
+        const problem = `With the adapter ${lora.adapter.name}: ${said} Choose Off in the model's settings to run the plain model.`;
+        loraStore.setProblem(model.id, problem);
+        throw new Error(problem);
+      }
       const remote = this.remoteModels.find(
         m => m.serverId === serverId && m.remoteModelId === path,
       );
@@ -2384,6 +2405,57 @@ class ModelStore {
         this.loadingModel = undefined;
       });
     }
+  };
+
+  /**
+   * Puts a loaded phone model in step with its chosen LoRA adapter, in place
+   * (no reload). If it fails, the plain model keeps running and the problem
+   * is shown with the adapters.
+   */
+  private syncLora = async (ctx: LlamaContext, modelId: string) => {
+    const active = loraStore.activeFor(modelId);
+    try {
+      await syncLoraOnContext(
+        ctx,
+        active && {path: active.path, scale: active.scale},
+      );
+      loraStore.setProblem(modelId);
+    } catch (error) {
+      const said = error instanceof Error ? error.message : String(error);
+      console.warn('[ModelStore] LoRA adapter not applied:', said);
+      loraStore.setProblem(
+        modelId,
+        `The adapter ${active?.adapter.name ?? ''} did not load, so the plain model runs. Is it made for this model?`,
+      );
+    }
+  };
+
+  /**
+   * After the user changes a model's adapter (src/services/lora): a loaded
+   * phone model switches at once, without reloading (an answer being written
+   * is stopped first); a kept model switches when it is picked again. On the
+   * desktop, a "This PC" model running this model restarts with it.
+   */
+  applyLoraChoice = async (modelId: string): Promise<void> => {
+    if (isDesktopApp()) {
+      const active = this.activeModel;
+      const runsThis =
+        active?.origin === ModelOrigin.REMOTE &&
+        active.author === THIS_PC &&
+        !!active.remoteModelId &&
+        loraStore.pcModels[active.remoteModelId] === modelId;
+      const model = this.models.find(m => m.id === modelId);
+      if (runsThis && model) {
+        await this.loadOnThisPc(model);
+      }
+      return;
+    }
+    await this.withContextMutex(async () => {
+      if (this.activeModelId === modelId && this.context) {
+        await this.generationSlot.abortActive();
+        await this.syncLora(this.context, modelId);
+      }
+    });
   };
 
   initContext = async (model: Model, mmProjPath?: string) => {
@@ -2498,6 +2570,10 @@ class ModelStore {
             await this._releaseContextInternal();
           }
           this.unparkInternal(model.id);
+          // Its adapter may have changed while it was kept.
+          if (this.context) {
+            await this.syncLora(this.context, model.id);
+          }
           await this.trimParkedInternal();
           return this.context;
         }
@@ -2588,6 +2664,9 @@ class ModelStore {
 
       // Check and update thinking capabilities
       await this.updateModelThinkingCapabilities(ctx, model);
+
+      // The model's chosen LoRA adapter, if any (the plain model if it fails).
+      await this.syncLora(ctx, model.id);
 
       // Initialize multimodal support if mmproj path was provided
       if (isMultimodalInit && mmProjPath) {
@@ -3255,7 +3334,11 @@ class ModelStore {
 
       // Desktop app: a "This PC" model starts its local server on Load
       // (src/services/desktop/thisPc.web.ts). Nothing on the phone.
-      await prepareThisPcModel(model.serverId!, model.remoteModelId!);
+      await prepareThisPcModel(
+        model.serverId!,
+        model.remoteModelId!,
+        loraStore.activeForPcModel(model.remoteModelId!),
+      );
       // Phone: a "Home PC" model reopens its tunnel to the PC first.
       // Load: if no model runs on the PC, it starts the one it last ran.
       const link = await serverStore.prepareHomeLink(model.serverId!, {

@@ -444,6 +444,16 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(server).toContain('pub const PASSWORD_ENV: &str = "LLAMA_API_KEY";');
     expect(server).toContain('command.env(PASSWORD_ENV, &key);');
     expect(server).not.toContain('"--api-key".into()');
+    // A LoRA adapter: only a .gguf in the app's own folder (no link), and
+    // the server never runs in the app's folder (llama.cpp loads backend
+    // DLLs from the folder it runs in).
+    expect(server).toMatch(
+      /let found = crate::files::locate\(&root, p\)\?;[\s\S]*?if !found\.own \|\| link \|\| !is_gguf\(&found\.real\)/,
+    );
+    expect(server).toContain('command.current_dir(dir);');
+    expect(tauri('src/link.rs')).toContain(
+      'last.lora_path.map(|p| (p, last.lora_scale.unwrap_or(1.0)))',
+    );
   });
 
   it('the window itself has no internet access; its only frames are HTML previews', () => {

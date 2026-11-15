@@ -30,7 +30,12 @@ jest.mock('../../../store/ServerStore', () => ({
   },
 }));
 
-import {prepareThisPcModel, startOnThisPc, waitUntilReady} from '../thisPc.web';
+import {
+  prepareThisPcModel,
+  startArgs,
+  startOnThisPc,
+  waitUntilReady,
+} from '../thisPc.web';
 
 const MODEL = 'C:\\Users\\me\\Downloads\\qwen-1b.gguf';
 
@@ -78,6 +83,8 @@ it('restarts the server for the model when the old one is gone', async () => {
     modelPath: MODEL,
     context: 8192,
     projectionPath: null,
+    loraPath: null,
+    loraScale: null,
   });
   expect(mockServers[0].url).toBe('http://127.0.0.1:2222');
   expect(mockKeys.pc).toBe('new-key');
@@ -115,6 +122,8 @@ it('a downloaded model starts with its vision part, also after a restart', async
     modelPath: OWN,
     context: 8192,
     projectionPath: VISION,
+    loraPath: null,
+    loraScale: null,
   });
   // Listed under "This PC" by its own path, so Load can switch to it.
   expect(mockSelected).toEqual([{serverId: 'pc', remoteModelId: OWN}]);
@@ -126,6 +135,36 @@ it('a downloaded model starts with its vision part, also after a restart', async
     'model_server_start',
     expect.objectContaining({modelPath: OWN, projectionPath: VISION}),
   );
+});
+
+it('a LoRA adapter goes to the model server with its strength, on start and on Load', async () => {
+  const OWN = '/pocketagent/Documents/models/qwen.gguf';
+  const LORA = {
+    path: '/pocketagent/Documents/models/lora/my-style.gguf',
+    scale: 0.8,
+  };
+  (globalThis as any).fetch = jest.fn(async () => ({ok: true}));
+  mockInvoke.mockResolvedValue({url: 'http://127.0.0.1:3333', apiKey: 'k'});
+  await startOnThisPc(OWN, undefined, LORA);
+  expect(mockInvoke).toHaveBeenCalledWith('model_server_start', {
+    modelPath: OWN,
+    context: 8192,
+    projectionPath: null,
+    loraPath: LORA.path,
+    loraScale: 0.8,
+  });
+  mockInvoke.mockClear();
+  mockServers[0].url = 'http://127.0.0.1:1111';
+  (globalThis as any).fetch = jest.fn(async (url: string) =>
+    url.endsWith('/v1/models') ? {ok: false} : {ok: true},
+  );
+  await prepareThisPcModel('pc', OWN, LORA);
+  expect(mockInvoke).toHaveBeenCalledWith(
+    'model_server_start',
+    expect.objectContaining({loraPath: LORA.path, loraScale: 0.8}),
+  );
+  // Off: no adapter at all.
+  expect(startArgs(OWN)).toMatchObject({loraPath: null, loraScale: null});
 });
 
 it('a model type the bundled llama.cpp does not know: says so at once, stops the server', async () => {

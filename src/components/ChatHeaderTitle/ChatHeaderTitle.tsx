@@ -6,6 +6,7 @@ import {Text} from 'react-native-paper';
 import {styles} from './styles';
 import {chatSessionStore, modelStore} from '../../store';
 import {L10nContext} from '../../utils';
+import {loraLabelFor} from '../../services/lora';
 
 export const ChatHeaderTitle: React.FC = observer(() => {
   const l10n = useContext(L10nContext);
@@ -23,6 +24,7 @@ export const ChatHeaderTitle: React.FC = observer(() => {
       {activeModel?.name && (
         <Text numberOfLines={1} variant="bodySmall">
           {activeModel?.name}
+          {loraLabelFor(activeModel) ? ` ${loraLabelFor(activeModel)}` : ''}
         </Text>
       )}
     </View>
