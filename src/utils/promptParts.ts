@@ -11,11 +11,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 /** How the model is told the date and time. */
 export type TimeMode = 'off' | 'date' | 'datetime';
 
+/** Memory: every note, or only the notes that match the message (memory search). */
+export type MemoryMode = 'all' | 'match';
+
 export interface PromptPartSettings {
   /** Off / date only / date and time. */
   time: TimeMode;
   /** Your memory notes (Toolbox → Memory). */
   memory: boolean;
+  /** Send all notes (default) or only those that match the message. */
+  memoryMode: MemoryMode;
+  /** With "match": also short snippets from earlier chats (off by default). */
+  pastChats: boolean;
   /** The "Available tools: …" line (the tools themselves still go as tools). */
   toolList: boolean;
   /** Guidance a tool adds when it is on (e.g. web search: search first, cite). */
@@ -31,6 +38,8 @@ export interface PromptPartSettings {
 export const DEFAULT_PROMPT_PARTS: PromptPartSettings = {
   time: 'date',
   memory: true,
+  memoryMode: 'all',
+  pastChats: false,
   toolList: true,
   toolGuidance: true,
   modelDefaultPrompt: true,
@@ -51,6 +60,8 @@ export async function readPromptPartSettings(): Promise<PromptPartSettings> {
         ? saved.time
         : DEFAULT_PROMPT_PARTS.time,
       memory: bool(saved?.memory, DEFAULT_PROMPT_PARTS.memory),
+      memoryMode: saved?.memoryMode === 'match' ? 'match' : 'all',
+      pastChats: bool(saved?.pastChats, DEFAULT_PROMPT_PARTS.pastChats),
       toolList: bool(saved?.toolList, DEFAULT_PROMPT_PARTS.toolList),
       toolGuidance: bool(
         saved?.toolGuidance,

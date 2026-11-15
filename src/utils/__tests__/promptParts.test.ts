@@ -113,6 +113,24 @@ describe('what the model sees', () => {
       time: 'date',
       memory: true,
     });
+    // Memory search: off ("Send all notes") unless chosen; earlier chats off.
+    await writePromptPartSettings({
+      ...DEFAULT_PROMPT_PARTS,
+      memoryMode: 'match',
+      pastChats: true,
+    });
+    await expect(readPromptPartSettings()).resolves.toMatchObject({
+      memoryMode: 'match',
+      pastChats: true,
+    });
+    await AsyncStorage.setItem(
+      '@pocketagent/prompt-parts/v1',
+      '{"memoryMode":"semantic","pastChats":"yes"}',
+    );
+    await expect(readPromptPartSettings()).resolves.toMatchObject({
+      memoryMode: 'all',
+      pastChats: false,
+    });
     await AsyncStorage.setItem('@pocketagent/prompt-parts/v1', 'not json');
     await expect(readPromptPartSettings()).resolves.toEqual(
       DEFAULT_PROMPT_PARTS,

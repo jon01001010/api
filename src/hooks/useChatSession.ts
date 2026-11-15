@@ -1,4 +1,4 @@
-import {buildMemoryContext} from '../services/talents/agentMemory';
+import {buildMemoryForMessage} from '../services/talents/memoryForMessage';
 import {applyThinkingBudget, readThinkingLength} from '../utils/thinkingBudget';
 import {guardThinkingLoops} from '../api/loopGuardEngine';
 import {modelSpeedStore} from '../utils/modelSpeed';
@@ -845,7 +845,16 @@ export const useChatSession = (
     cleanCompletionParams.tools = toolSchemas.length ? toolSchemas : undefined;
     let memoryContext = '';
     try {
-      memoryContext = await buildMemoryContext();
+      // All notes, or only those matching this message (Toolbox switch).
+      const earlier = currentMessages.find(
+        m => m.type === 'text' && m.author?.id === user.id,
+      ) as MessageType.Text | undefined;
+      memoryContext = await buildMemoryForMessage({
+        settings: promptParts,
+        message: message.text,
+        earlier: earlier?.text,
+        sessionId: chatSessionStore.activeSessionId,
+      });
     } catch (error) {
       console.warn('[chat] memory unavailable', error);
     }
