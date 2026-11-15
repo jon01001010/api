@@ -8,8 +8,8 @@
  * item the newer one wins and the other is kept in history (memory keeps
  * every earlier version already; the system prompt keeps its last 10). An
  * empty item (or memory's starting template) counts as "nothing yet" and
- * never wins over real text. Assistants are the exception: merged one by
- * one, with deletions (see assistantDeletes.ts).
+ * never wins over real text. Assistants and loops are the exception:
+ * merged one by one, with deletions (see assistantDeletes.ts, loopSync.ts).
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -25,18 +25,22 @@ import {
   userMemoryReplace,
 } from '../talents/agentMemory';
 
+import type {LoopReport} from './loopSync';
+
 export type SyncKey =
   | 'systemPrompt'
   | 'userMemory'
   | 'modelMemory'
   | 'assistants'
-  | 'customTools';
+  | 'customTools'
+  | 'loops';
 export const SYNC_KEYS: SyncKey[] = [
   'systemPrompt',
   'userMemory',
   'modelMemory',
   'assistants',
   'customTools',
+  'loops',
 ];
 
 export const SYNC_LABEL: Record<SyncKey, string> = {
@@ -45,6 +49,7 @@ export const SYNC_LABEL: Record<SyncKey, string> = {
   modelMemory: "The model's memory notes",
   assistants: 'Assistants',
   customTools: 'Custom tools',
+  loops: 'Loops',
 };
 
 export interface SyncItem {
@@ -117,6 +122,8 @@ async function readText(key: SyncKey): Promise<string> {
       return require('./syncSources').readAssistants();
     case 'customTools':
       return require('./syncSources').readCustomTools();
+    case 'loops':
+      return require('./loopSync').readLoopsItem();
   }
 }
 
@@ -196,14 +203,13 @@ export function merge(local: SyncItem[], remote: SyncItem[]): Merged {
       result.items.push({...l, updatedAt: Math.max(l.updatedAt, r.updatedAt)});
       continue;
     }
-    if (key === 'assistants') {
-      // One by one: the newer edit or deletion of each assistant wins.
-      const m = require('./assistantDeletes').mergeAssistants(
-        l.text,
-        r.text,
-        l.updatedAt,
-        r.updatedAt,
-      );
+    if (key === 'assistants' || key === 'loops') {
+      // One by one: the newer edit or deletion of each one wins.
+      const m = (
+        key === 'loops'
+          ? require('./loopSync').mergeLoops
+          : require('./assistantDeletes').mergeAssistants
+      )(l.text, r.text, l.updatedAt, r.updatedAt);
       if (m) {
         result.items.push({
           key,
@@ -282,8 +288,11 @@ export async function applyItems(
   opts: {
     /** Which device they came from ("the PC", or the device's name). */
     from?: string;
-    /** Filled in: assistants deleted here, or waiting for an answer. */
-    report?: {assistantsDeleted: number; assistantsHeld: number};
+    /**
+     * Filled in: assistants deleted here, or waiting for an answer; loops
+     * added (paused), deleted or waiting.
+     */
+    report?: {assistantsDeleted: number; assistantsHeld: number} & LoopReport;
   } = {},
 ): Promise<SyncKey[]> {
   const state = await loadState();
@@ -303,6 +312,18 @@ export async function applyItems(
         // Only when something here changed (the same assistants under
         // another id, or held deletions, are no change).
         const did = await require('./syncSources').writeAssistants(item.text, {
+          from: opts.from,
+          at: Math.min(item.updatedAt, now),
+          report: opts.report,
+        });
+        if (did === false) {
+          wrote = false;
+        } else {
+          await keepHistory(item.key, current);
+        }
+      } else if (item.key === 'loops') {
+        // Definitions only; new ones arrive paused and not started.
+        const did = await require('./loopSync').writeLoopsItem(item.text, {
           from: opts.from,
           at: Math.min(item.updatedAt, now),
           report: opts.report,

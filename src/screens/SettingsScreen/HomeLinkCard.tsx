@@ -4,6 +4,7 @@ import {Image, StyleSheet, View} from 'react-native';
 import {Button, Card, Switch, Text} from 'react-native-paper';
 
 import {RecentlyDeletedAssistants} from '../../components/HomeLinkSync/RecentlyDeletedAssistants';
+import {RecentlyDeletedLoops} from '../../components/HomeLinkSync/RecentlyDeletedLoops';
 import {RecentlyDeletedChats} from '../../components/HomeLinkSync/RecentlyDeletedChats';
 import {describeEvent} from '../../services/homeLink/homeLink';
 import {
@@ -163,9 +164,11 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
         </Button>
         <View style={styles.syncRow}>
           <Text variant="bodySmall" style={styles.syncText}>
-            Let paired devices keep the system prompt, memory, assistants and
-            custom tools in step with this PC (the newer edit wins; the other is
-            kept in history). Each device must switch it on too.
+            Let paired devices keep the system prompt, memory, assistants,
+            custom tools and loops in step with this PC (the newer edit wins;
+            the other is kept in history). A loop from a device arrives paused:
+            start it here under Toolbox → Loops. Toolbox switches stay per
+            device. Each device must switch it on too.
           </Text>
           <Switch
             value={syncAllowed}
@@ -200,6 +203,7 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
         ) : null}
         {syncAllowed && mirrorAllowed ? <RecentlyDeletedChats /> : null}
         {syncAllowed ? <RecentlyDeletedAssistants /> : null}
+        {syncAllowed ? <RecentlyDeletedLoops /> : null}
         <View style={styles.syncRow}>
           <Text variant="bodySmall" style={styles.syncText}>
             Let paired devices answer this PC's "Allow?" questions too: they see

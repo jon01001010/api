@@ -866,7 +866,13 @@ export async function saveLoopEdit(
 }
 
 export async function stopLoop(id: string): Promise<void> {
-  await saveLoops((await loadLoops()).filter(l => l.id !== id));
+  const loops = await loadLoops();
+  await saveLoops(loops.filter(l => l.id !== id));
+  // Kept in step: the stop travels to paired devices (sync/loopSync.ts).
+  const gone = loops.find(l => l.id === id);
+  if (gone) {
+    await require('../sync/loopSync').recordLoopDeleted(gone);
+  }
 }
 
 /** The loop a chat belongs to, if any. */
