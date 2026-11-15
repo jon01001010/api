@@ -130,7 +130,13 @@ export const askPcTool = (
   pc: string,
   name: string,
   chat: string,
-  args: {file?: string; key?: string; command?: string; content?: string} = {},
+  args: {
+    file?: string;
+    key?: string;
+    command?: string;
+    content?: string;
+    thinking?: string;
+  } = {},
 ) =>
   ask<{result: unknown}>(
     'tool',
@@ -142,6 +148,7 @@ export const askPcTool = (
       ...(args.key !== undefined ? {key: args.key} : {}),
       ...(args.command !== undefined ? {command: args.command} : {}),
       ...(args.content !== undefined ? {content: args.content} : {}),
+      ...(args.thinking ? {thinking: args.thinking} : {}),
     }),
   );
 

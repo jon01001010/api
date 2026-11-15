@@ -290,7 +290,10 @@ type Outside = {
 };
 
 /** outside_files: plain checks here; the native side resolves, refuses, asks. */
-async function outsideFiles(args: Record<string, any>): Promise<TalentResult> {
+async function outsideFiles(
+  args: Record<string, any>,
+  thinking: string | null,
+): Promise<TalentResult> {
   const action = String(args.action ?? '');
   if (!OUTSIDE_ACTIONS.includes(action)) {
     throw new Error(
@@ -317,6 +320,7 @@ async function outsideFiles(args: Record<string, any>): Promise<TalentResult> {
     path,
     content: action === 'write' ? content : null,
     reason,
+    thinking,
   });
   if (action === 'list') {
     const entries = done.entries ?? [];
@@ -358,6 +362,9 @@ export class DesktopToolsEngine implements TalentEngine {
     args: Record<string, any>,
     ctx?: TalentExecuteContext,
   ): Promise<TalentResult> {
+    // The model's thinking, shown in the PC's own question under "The
+    // model was thinking:" only (never parsed there).
+    const thinking = ctx?.thinking ?? null;
     try {
       if (this.name === 'image_generate') {
         return await makePicture(args, ctx?.signal);
@@ -374,7 +381,7 @@ export class DesktopToolsEngine implements TalentEngine {
           exitCode: number | null;
           output: string;
           timedOut: boolean;
-        }>('run_command', {command});
+        }>('run_command', {command, thinking});
         const how = ran.timedOut
           ? 'Stopped after 60 s.'
           : `Finished (exit code ${ran.exitCode ?? 'unknown'}).`;
@@ -384,10 +391,10 @@ export class DesktopToolsEngine implements TalentEngine {
         };
       }
       if (this.name === 'outside_files') {
-        return await outsideFiles(args);
+        return await outsideFiles(args, thinking);
       }
       if (this.name === 'clipboard_read') {
-        const text = await invoke<string>('clipboard_read');
+        const text = await invoke<string>('clipboard_read', {thinking});
         return {
           type: 'text',
           summary: `The clipboard (the user allowed it):\n${text}`,
@@ -403,18 +410,18 @@ export class DesktopToolsEngine implements TalentEngine {
         }
         // The PC asks natively (src-tauri/src/pc_extra.rs, like the other
         // desktop tools), so there is one question, not two.
-        await invoke('media_key', {key: action});
+        await invoke('media_key', {key: action, thinking});
         return {type: 'text', summary: `Done: ${what}. ${STOP}`};
       }
       const filename = typeof args.filename === 'string' ? args.filename : '';
       if (this.name === 'print_file') {
-        await invoke('print_file', {name: filename});
+        await invoke('print_file', {name: filename, thinking});
         return {
           type: 'text',
           summary: `Sent ${filename} to the printer (its app may show a print window). ${STOP}`,
         };
       }
-      await invoke('open_workspace_file', {name: filename});
+      await invoke('open_workspace_file', {name: filename, thinking});
       return {type: 'text', summary: `Opened ${filename} on the PC. ${STOP}`};
     } catch (e) {
       const message = String(e instanceof Error ? e.message : e);

@@ -19,6 +19,7 @@ import {
   workspacePath,
 } from './fileWorkspace';
 import {requestFileApproval, type FileProposal} from './fileApprovalGate';
+import {fromContext} from '../agent/chatGuard';
 import {diffLines, splitLines} from './lineDiff';
 import {
   listFileHistory,
@@ -335,6 +336,7 @@ export class FileToolsEngine implements TalentEngine {
         content: next,
         previous,
         ...(exists ? {diff: diffLines(previous, next)} : {}),
+        ...fromContext(ctx),
       },
       ctx?.signal,
     );

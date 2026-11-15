@@ -361,6 +361,11 @@ pub struct ToolArgs {
     /// the request line (at most pc_write::MAX_WRITE).
     #[serde(default)]
     pub bytes: Option<u64>,
+    /// The device's model's thinking from just before the request: shown
+    /// in this PC's question under approval::MODEL_THINKING and kept in
+    /// the answers log (approval::ask_for), never parsed or acted on.
+    #[serde(default)]
+    pub thinking: Option<String>,
 }
 
 /// A device's tool request, checked.
@@ -1288,24 +1293,24 @@ pub fn act_note(device: &str, call: &RemoteCall, clipboard_chars: usize) -> Stri
 /// the device named and checks again after the answer that tools are
 /// still on here and this device may still act. Logged (the clipboard by
 /// its length only) and told in a notification.
-async fn act_for(app: &AppHandle, remote: &str, device: &str, call: RemoteCall) -> Result<serde_json::Value, String> {
+async fn act_for(app: &AppHandle, remote: &str, device: &str, call: RemoteCall, thinking: Option<&str>) -> Result<serde_json::Value, String> {
     let still_allowed = || tools_allowed(app) && may_act(&load_phones(app), remote);
     let by = crate::approval::Device { name: device, still_allowed: &still_allowed };
     let (answer, clipboard_chars) = match &call {
         RemoteCall::Open(file) => {
-            crate::pc::open_file(app, file, Some(&by)).await?;
+            crate::pc::open_file(app, file, Some(&by), thinking).await?;
             (serde_json::json!({"done": true}), 0)
         }
         RemoteCall::Print(file) => {
-            crate::pc_extra::print_workspace_file(app, file, Some(&by)).await?;
+            crate::pc_extra::print_workspace_file(app, file, Some(&by), thinking).await?;
             (serde_json::json!({"done": true}), 0)
         }
         RemoteCall::Media(key) => {
-            crate::pc_extra::press_media_key(app, key, Some(&by)).await?;
+            crate::pc_extra::press_media_key(app, key, Some(&by), thinking).await?;
             (serde_json::json!({"done": true}), 0)
         }
         RemoteCall::ClipboardRead => {
-            let text = crate::pc_extra::read_clipboard(app, Some(&by)).await?;
+            let text = crate::pc_extra::read_clipboard(app, Some(&by), thinking).await?;
             let chars = text.chars().count();
             (serde_json::json!({"text": text}), chars)
         }
@@ -1375,10 +1380,10 @@ fn command_end(exit_code: Option<i32>, timed_out: bool) -> String {
 /// device may still run commands. The whole command goes to the answers
 /// log (escaped, one line); a notification shows its start. The output
 /// goes back without this PC's paths.
-async fn command_for(app: &AppHandle, remote: &str, device: &str, command: &str) -> Result<serde_json::Value, String> {
+async fn command_for(app: &AppHandle, remote: &str, device: &str, command: &str, thinking: Option<&str>) -> Result<serde_json::Value, String> {
     let still_allowed = || tools_allowed(app) && may_command(&load_phones(app), remote);
     let by = crate::approval::Device { name: device, still_allowed: &still_allowed };
-    let ran = crate::pc::run_checked_command(app, command, Some(&by)).await?;
+    let ran = crate::pc::run_checked_command(app, command, Some(&by), thinking).await?;
     let how = command_end(ran.exit_code, ran.timed_out);
     crate::remote_ask::log_use(app, device, &format!("ran a command ({how}): {command}"));
     use tauri_plugin_notification::NotificationExt;
@@ -1411,6 +1416,7 @@ async fn write_for(
     file: String,
     kind: crate::pc_write::WriteKind,
     text: String,
+    thinking: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     let still_allowed = || tools_allowed(app) && may_write(&load_phones(app), remote);
     let by = crate::approval::Device { name: device, still_allowed: &still_allowed };
@@ -1423,7 +1429,7 @@ async fn write_for(
     if plan.unchanged() {
         return Ok(serde_json::json!({"done": false, "unchanged": true, "file": plan.file}));
     }
-    if !crate::approval::ask_for(app, &crate::pc_write::question(device, &plan), Some(&by)).await {
+    if !crate::approval::ask_for(app, &crate::pc_write::question(device, &plan), Some(&by), thinking).await {
         return Err("The user said no on the PC. Nothing was written.".into());
     }
     let plan = tauri::async_runtime::spawn_blocking(move || crate::pc_write::apply(&workspace, &history, &plan).map(|_| plan))
@@ -1464,15 +1470,23 @@ async fn read_text(recv: &mut iroh::endpoint::RecvStream, bytes: usize) -> Resul
 /// pc_files::read; actions through act_for; a command through
 /// command_for; a change through write_for, with the device's `text`).
 /// Each use is logged with the answers log.
-async fn tool_for(app: &AppHandle, remote: &str, device: &str, chat: &str, call: RemoteCall, text: String) -> Result<serde_json::Value, String> {
+async fn tool_for(
+    app: &AppHandle,
+    remote: &str,
+    device: &str,
+    chat: &str,
+    call: RemoteCall,
+    text: String,
+    thinking: Option<&str>,
+) -> Result<serde_json::Value, String> {
     if let RemoteCall::Command(command) = &call {
-        return command_for(app, remote, device, command).await;
+        return command_for(app, remote, device, command, thinking).await;
     }
     if matches!(call, RemoteCall::Open(_) | RemoteCall::Print(_) | RemoteCall::Media(_) | RemoteCall::ClipboardRead) {
-        return act_for(app, remote, device, call).await;
+        return act_for(app, remote, device, call, thinking).await;
     }
     if let RemoteCall::Write { file, kind, .. } = call {
-        return write_for(app, remote, device, file, kind, text).await;
+        return write_for(app, remote, device, file, kind, text, thinking).await;
     }
     if call != RemoteCall::PcInfo && !may_read_now(app, remote, device, chat).await {
         return Err("Not allowed on the PC: reading its workspace for this chat was refused".into());
@@ -2094,7 +2108,7 @@ async fn serve_stream(
                     let _ = recv.stop(0u32.into());
                     match text {
                         Err(error) => Err(error),
-                        Ok(text) => tool_for(&app, &remote, &device, &chat, call, text).await,
+                        Ok(text) => tool_for(&app, &remote, &device, &chat, call, text, args.thinking.as_deref()).await,
                     }
                 }
             };
@@ -3088,19 +3102,28 @@ mod tests {
             Some(Request::Tool {
                 name: "workspace_read".into(),
                 chat: CHAT.into(),
-                args: ToolArgs { file: Some("notes.md".into()), key: None, command: None, bytes: None },
+                args: ToolArgs { file: Some("notes.md".into()), key: None, command: None, bytes: None, thinking: None },
             })
         );
         assert_eq!(
             parse_request(br#"{"op":"tool","name":"pc_media","chat":"c0ffee-chat_0123456789","args":{"key":"mute","path":"x"}}"#),
-            Some(Request::Tool { name: "pc_media".into(), chat: CHAT.into(), args: ToolArgs { file: None, key: Some("mute".into()), command: None, bytes: None } })
+            Some(Request::Tool { name: "pc_media".into(), chat: CHAT.into(), args: ToolArgs { file: None, key: Some("mute".into()), command: None, bytes: None, thinking: None } })
         );
         assert_eq!(
             parse_request(br#"{"op":"tool","name":"pc_run_command","chat":"c0ffee-chat_0123456789","args":{"command":"Get-Date","cwd":"C:/","always":true}}"#),
             Some(Request::Tool {
                 name: "pc_run_command".into(),
                 chat: CHAT.into(),
-                args: ToolArgs { file: None, key: None, command: Some("Get-Date".into()), bytes: None },
+                args: ToolArgs { file: None, key: None, command: Some("Get-Date".into()), bytes: None, thinking: None },
+            })
+        );
+        // The device's model's thinking: carried for the question only.
+        assert_eq!(
+            parse_request(br#"{"op":"tool","name":"pc_run_command","chat":"c0ffee-chat_0123456789","args":{"command":"Get-Date","thinking":"the user asked"}}"#),
+            Some(Request::Tool {
+                name: "pc_run_command".into(),
+                chat: CHAT.into(),
+                args: ToolArgs { command: Some("Get-Date".into()), thinking: Some("the user asked".into()), ..ToolArgs::default() },
             })
         );
         assert_eq!(
@@ -3113,14 +3136,14 @@ mod tests {
 
     #[test]
     fn tool_checks_go_switch_then_device_then_list_then_arguments() {
-        let read = |file: &str| ToolArgs { file: Some(file.into()), key: None, command: None, bytes: None };
+        let read = |file: &str| ToolArgs { file: Some(file.into()), key: None, command: None, bytes: None, thinking: None };
         const NONE: DeviceMay = DeviceMay { read: false, act: false, command: false, write: false };
         const READ: DeviceMay = DeviceMay { read: true, act: false, command: false, write: false };
         const ACT: DeviceMay = DeviceMay { read: false, act: true, command: false, write: false };
         const BOTH: DeviceMay = DeviceMay { read: true, act: true, command: false, write: false };
         const COMMAND: DeviceMay = DeviceMay { read: false, act: false, command: true, write: false };
         const ALL: DeviceMay = DeviceMay { read: true, act: true, command: true, write: true };
-        let run = |c: &str| ToolArgs { file: None, key: None, command: Some(c.into()), bytes: None };
+        let run = |c: &str| ToolArgs { file: None, key: None, command: Some(c.into()), bytes: None, thinking: None };
         // Each check wins over every later one, whatever else is wrong.
         assert_eq!(check_tool(false, BOTH, "pc_info", CHAT, &ToolArgs::default()), Err(OFF_TOOLS.into()));
         assert_eq!(check_tool(false, NONE, "run_command", "x", &read("../x")), Err(OFF_TOOLS.into()));
@@ -3201,7 +3224,7 @@ mod tests {
         assert_eq!(check_tool(true, ACT, "pc_open", CHAT, &read("budget.xlsx")), Ok(RemoteCall::Open("budget.xlsx".into())));
         assert_eq!(check_tool(true, ACT, "pc_print", CHAT, &read("letter.docx")), Ok(RemoteCall::Print("letter.docx".into())));
         assert_eq!(check_tool(true, ACT, "pc_clipboard_read", CHAT, &read("x")), Ok(RemoteCall::ClipboardRead));
-        let key = |k: &str| ToolArgs { file: None, key: Some(k.into()), command: None, bytes: None };
+        let key = |k: &str| ToolArgs { file: None, key: Some(k.into()), command: None, bytes: None, thinking: None };
         assert_eq!(check_tool(true, ACT, "pc_media", CHAT, &key("volume_up")), Ok(RemoteCall::Media("volume_up".into())));
         for bad in ["enter", "alt_f4", "", "PLAY_PAUSE"] {
             assert!(check_tool(true, ACT, "pc_media", CHAT, &key(bad)).is_err(), "{bad}");
@@ -3222,7 +3245,7 @@ mod tests {
         use crate::pc_write::{WriteKind, MAX_WRITE};
         const WRITE: DeviceMay = DeviceMay { read: false, act: false, command: false, write: true };
         const OTHERS: DeviceMay = DeviceMay { read: true, act: true, command: true, write: false };
-        let text = |file: &str, bytes: Option<u64>| ToolArgs { file: Some(file.into()), key: None, command: None, bytes };
+        let text = |file: &str, bytes: Option<u64>| ToolArgs { file: Some(file.into()), key: None, command: None, bytes, thinking: None };
         // The order holds: switch, then this device's "may write", then
         // the list, then the arguments, whatever else is wrong.
         for name in WRITE_TOOLS {
@@ -3320,7 +3343,7 @@ mod tests {
         let still = body.find("let still_allowed = || tools_allowed(app) && may_write(&load_phones(app), remote);").unwrap();
         let plan = body.find("crate::pc_write::plan(").unwrap();
         let ask = body
-            .find("if !crate::approval::ask_for(app, &crate::pc_write::question(device, &plan), Some(&by)).await {")
+            .find("if !crate::approval::ask_for(app, &crate::pc_write::question(device, &plan), Some(&by), thinking).await {")
             .unwrap();
         let apply = body.find("crate::pc_write::apply(").unwrap();
         let log = body.find("crate::remote_ask::log_use(app, device, &note);").unwrap();

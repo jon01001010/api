@@ -55,15 +55,21 @@ pub fn clipboard_question_for(text: &str, by: Option<&str>) -> String {
     }
 }
 
+/// `thinking`: the model's thinking from just before the request, shown
+/// under approval::MODEL_THINKING only (never parsed).
 #[tauri::command]
-pub async fn clipboard_read(app: AppHandle) -> Result<String, String> {
-    read_clipboard(&app, None).await
+pub async fn clipboard_read(app: AppHandle, thinking: Option<String>) -> Result<String, String> {
+    read_clipboard(&app, None, thinking.as_deref()).await
 }
 
 /// The clipboard's text, after the native "Allow?" that shows it (every
 /// time). The one door for this PC's own tool and a paired device's
 /// `pc_clipboard_read` (link.rs; `by` names the device).
-pub async fn read_clipboard(app: &AppHandle, by: Option<&crate::approval::Device<'_>>) -> Result<String, String> {
+pub async fn read_clipboard(
+    app: &AppHandle,
+    by: Option<&crate::approval::Device<'_>>,
+    thinking: Option<&str>,
+) -> Result<String, String> {
     let text = tauri::async_runtime::spawn_blocking(|| {
         arboard::Clipboard::new()
             .and_then(|mut c| c.get_text())
@@ -74,7 +80,7 @@ pub async fn read_clipboard(app: &AppHandle, by: Option<&crate::approval::Device
     if text.trim().is_empty() {
         return Err("There is no text on the clipboard".into());
     }
-    if !crate::approval::ask_for(app, &clipboard_question_for(&text, by.map(|d| d.name)), by).await {
+    if !crate::approval::ask_for(app, &clipboard_question_for(&text, by.map(|d| d.name)), by, thinking).await {
         return Err("The user said no. Nothing was read.".into());
     }
     let mut text = text;
@@ -139,18 +145,25 @@ pub fn media_question(key: &str, by: Option<&str>) -> String {
     }
 }
 
+/// `thinking`: the model's thinking from just before the request, shown
+/// under approval::MODEL_THINKING only (never parsed).
 #[tauri::command]
-pub async fn media_key(app: AppHandle, key: String) -> Result<(), String> {
-    press_media_key(&app, &key, None).await
+pub async fn media_key(app: AppHandle, key: String, thinking: Option<String>) -> Result<(), String> {
+    press_media_key(&app, &key, None, thinking.as_deref()).await
 }
 
 /// Presses one media key, after the native "Allow?" (every time). The one
 /// door for this PC's own tool and a paired device's `pc_media` (link.rs;
 /// `by` names the device).
-pub async fn press_media_key(app: &AppHandle, key: &str, by: Option<&crate::approval::Device<'_>>) -> Result<(), String> {
+pub async fn press_media_key(
+    app: &AppHandle,
+    key: &str,
+    by: Option<&crate::approval::Device<'_>>,
+    thinking: Option<&str>,
+) -> Result<(), String> {
     let vk = media_vk(key).ok_or("Unknown media key")?;
     // Asked natively too, like every other door to the PC (rule 6).
-    if !crate::approval::ask_for(app, &media_question(key, by.map(|d| d.name)), by).await {
+    if !crate::approval::ask_for(app, &media_question(key, by.map(|d| d.name)), by, thinking).await {
         return Err("The user said no. No key was pressed.".into());
     }
     let key = key.to_string();
@@ -224,21 +237,28 @@ pub fn print_question(name: &str, by: Option<&str>) -> String {
     }
 }
 
+/// `thinking`: the model's thinking from just before the request, shown
+/// under approval::MODEL_THINKING only (never parsed).
 #[tauri::command]
-pub async fn print_file(app: AppHandle, name: String) -> Result<(), String> {
-    print_workspace_file(&app, &name, None).await
+pub async fn print_file(app: AppHandle, name: String, thinking: Option<String>) -> Result<(), String> {
+    print_workspace_file(&app, &name, None, thinking.as_deref()).await
 }
 
 /// Prints a workspace file with its app, after the native "Allow?" (every
 /// time). The one door for this PC's own tool and a paired device's
 /// `pc_print` (link.rs; `by` names the device).
-pub async fn print_workspace_file(app: &AppHandle, name: &str, by: Option<&crate::approval::Device<'_>>) -> Result<(), String> {
+pub async fn print_workspace_file(
+    app: &AppHandle,
+    name: &str,
+    by: Option<&crate::approval::Device<'_>>,
+    thinking: Option<&str>,
+) -> Result<(), String> {
     if !printable(name) {
         return Err("Only documents, pictures and text files are printed".into());
     }
     let path = crate::pc::workspace_file(app, name)?;
     let question = print_question(name, by.map(|d| d.name));
-    if !crate::approval::ask_for(app, &question, by).await {
+    if !crate::approval::ask_for(app, &question, by, thinking).await {
         return Err("The user said no. Nothing was printed.".into());
     }
     tauri::async_runtime::spawn_blocking(move || print(&path))

@@ -824,6 +824,8 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'key',
       'command',
       'bytes',
+      // Shown in the question only (approval::with_thinking), never parsed.
+      'thinking',
     ]);
     // "may act": off by default (old records too, and again after pairing
     // anew), turned on only after the PC's own dialog (no device can
@@ -838,10 +840,10 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // every time naming the device, and checks the switch and the flag
     // again after the answer; then logged and notified.
     expect(link).toMatch(
-      /async fn act_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_act\(&load_phones\(app\), remote\);[\s\S]*?crate::pc::open_file\(app, file, Some\(&by\)\)\.await\?[\s\S]*?crate::pc_extra::print_workspace_file\(app, file, Some\(&by\)\)\.await\?[\s\S]*?crate::pc_extra::press_media_key\(app, key, Some\(&by\)\)\.await\?[\s\S]*?crate::pc_extra::read_clipboard\(app, Some\(&by\)\)\.await\?[\s\S]*?log_use\(app, device, &note\)[\s\S]*?notification\(\)/,
+      /async fn act_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_act\(&load_phones\(app\), remote\);[\s\S]*?crate::pc::open_file\(app, file, Some\(&by\), thinking\)\.await\?[\s\S]*?crate::pc_extra::print_workspace_file\(app, file, Some\(&by\), thinking\)\.await\?[\s\S]*?crate::pc_extra::press_media_key\(app, key, Some\(&by\), thinking\)\.await\?[\s\S]*?crate::pc_extra::read_clipboard\(app, Some\(&by\), thinking\)\.await\?[\s\S]*?log_use\(app, device, &note\)[\s\S]*?notification\(\)/,
     );
     expect(link).toMatch(
-      /async fn tool_for[^{]*\{\s*if let RemoteCall::Command\(command\) = &call \{\s*return command_for\(app, remote, device, command\)\.await;\s*\}\s*if matches!\(call, RemoteCall::Open\(_\) \| RemoteCall::Print\(_\) \| RemoteCall::Media\(_\) \| RemoteCall::ClipboardRead\) \{\s*return act_for\(app, remote, device, call\)\.await;/,
+      /async fn tool_for[^{]*\{\s*if let RemoteCall::Command\(command\) = &call \{\s*return command_for\(app, remote, device, command, thinking\)\.await;\s*\}\s*if matches!\(call, RemoteCall::Open\(_\) \| RemoteCall::Print\(_\) \| RemoteCall::Media\(_\) \| RemoteCall::ClipboardRead\) \{\s*return act_for\(app, remote, device, call, thinking\)\.await;/,
     );
     // Stage 3: "may run commands", its own flag (separate from "may act"),
     // off by default (old records too, and again after pairing anew),
@@ -862,7 +864,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'can run anything you can on this PC, after you allow each command',
     );
     expect(link).toMatch(
-      /async fn command_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_command\(&load_phones\(app\), remote\);[\s\S]*?let ran = crate::pc::run_checked_command\(app, command, Some\(&by\)\)\.await\?;[\s\S]*?log_use\(app, device, &format!\("ran a command \(\{how\}\): \{command\}"\)\)[\s\S]*?notification\(\)[\s\S]*?command_note\([\s\S]*?"output": output_for_device\(&ran\.output, &local_folders\(app\)\)/,
+      /async fn command_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_command\(&load_phones\(app\), remote\);[\s\S]*?let ran = crate::pc::run_checked_command\(app, command, Some\(&by\), thinking\)\.await\?;[\s\S]*?log_use\(app, device, &format!\("ran a command \(\{how\}\): \{command\}"\)\)[\s\S]*?notification\(\)[\s\S]*?command_note\([\s\S]*?"output": output_for_device\(&ran\.output, &local_folders\(app\)\)/,
     );
     // Stage 4: "may write", its own flag (separate from the other three),
     // off by default (old records too, and again after pairing anew),
@@ -888,7 +890,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /let checked = check_tool\([\s\S]*?RemoteCall::Write \{ bytes, \.\. \} => read_text\(&mut recv, \*bytes\)\.await,/,
     );
     expect(link).toMatch(
-      /async fn write_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_write\(&load_phones\(app\), remote\);[\s\S]*?crate::pc_write::plan\([\s\S]*?if !crate::approval::ask_for\(app, &crate::pc_write::question\(device, &plan\), Some\(&by\)\)\.await \{\s*return Err[\s\S]*?crate::pc_write::apply\([\s\S]*?log_use\(app, device, &note\)[\s\S]*?notification\(\)/,
+      /async fn write_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_write\(&load_phones\(app\), remote\);[\s\S]*?crate::pc_write::plan\([\s\S]*?if !crate::approval::ask_for\(app, &crate::pc_write::question\(device, &plan\), Some\(&by\), thinking\)\.await \{\s*return Err[\s\S]*?crate::pc_write::apply\([\s\S]*?log_use\(app, device, &note\)[\s\S]*?notification\(\)/,
     );
     const writeFor = link.slice(
       link.indexOf('async fn write_for'),
@@ -896,7 +898,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     );
     expect(writeFor).not.toMatch(/ask_with_always|Always|ask_on_this_pc/);
     expect(link).toMatch(
-      /if let RemoteCall::Write \{ file, kind, \.\. \} = call \{\s*return write_for\(app, remote, device, file, kind, text\)\.await;/,
+      /if let RemoteCall::Write \{ file, kind, \.\. \} = call \{\s*return write_for\(app, remote, device, file, kind, text, thinking\)\.await;/,
     );
     const pcWrite = tauri('src/pc_write.rs');
     expect(pcWrite).toContain(
@@ -935,21 +937,21 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // device named; a device's yes counts only while still allowed.
     const approvalRs = tauri('src/approval.rs');
     expect(approvalRs).toMatch(
-      /pub async fn ask_for[^{]*\{\s*if !ask\(app, question\)\.await \{\s*return false;\s*\}\s*by\.is_none_or\(\|d\| \(d\.still_allowed\)\(\)\)/,
+      /pub async fn ask_for[^{]*\{\s*let yes = ask\(app, &with_thinking\(question, thinking\)\)\.await && by\.is_none_or\(\|d\| \(d\.still_allowed\)\(\)\);/,
     );
     const pcOwn = tauri('src/pc.rs');
     const extraOwn = tauri('src/pc_extra.rs');
     expect(pcOwn).toMatch(
-      /pub async fn open_workspace_file\(app: AppHandle, name: String\) -> Result<\(\), String> \{\s*open_file\(&app, &name, None\)\.await\s*\}/,
+      /pub async fn open_workspace_file\(app: AppHandle, name: String, thinking: Option<String>\) -> Result<\(\), String> \{\s*open_file\(&app, &name, None, thinking\.as_deref\(\)\)\.await\s*\}/,
     );
     expect(extraOwn).toMatch(
-      /pub async fn print_file\(app: AppHandle, name: String\) -> Result<\(\), String> \{\s*print_workspace_file\(&app, &name, None\)\.await\s*\}/,
+      /pub async fn print_file\(app: AppHandle, name: String, thinking: Option<String>\) -> Result<\(\), String> \{\s*print_workspace_file\(&app, &name, None, thinking\.as_deref\(\)\)\.await\s*\}/,
     );
     expect(extraOwn).toMatch(
-      /pub async fn media_key\(app: AppHandle, key: String\) -> Result<\(\), String> \{\s*press_media_key\(&app, &key, None\)\.await\s*\}/,
+      /pub async fn media_key\(app: AppHandle, key: String, thinking: Option<String>\) -> Result<\(\), String> \{\s*press_media_key\(&app, &key, None, thinking\.as_deref\(\)\)\.await\s*\}/,
     );
     expect(extraOwn).toMatch(
-      /pub async fn clipboard_read\(app: AppHandle\) -> Result<String, String> \{\s*read_clipboard\(&app, None\)\.await\s*\}/,
+      /pub async fn clipboard_read\(app: AppHandle, thinking: Option<String>\) -> Result<String, String> \{\s*read_clipboard\(&app, None, thinking\.as_deref\(\)\)\.await\s*\}/,
     );
     for (const [src, fn] of [
       [pcOwn, 'open_file'],
@@ -960,7 +962,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       const body = src.slice(src.indexOf(`pub async fn ${fn}(`));
       const end = body.indexOf('\n}\n');
       expect(body.slice(0, end)).toMatch(
-        /if !crate::approval::ask_for\(app, &[^;]*by\.map\(\|d\| d\.name\)[^;]*\)\.await \{\s*return Err|let question = \w+\(name, by\.map\(\|d\| d\.name\)\);\s*if !crate::approval::ask_for\(app, &question, by\)\.await \{\s*return Err/,
+        /if !crate::approval::ask_for\(app, &[^;]*by\.map\(\|d\| d\.name\)[^;]*\)\.await \{\s*return Err|let question = \w+\(name, by\.map\(\|d\| d\.name\)\);\s*if !crate::approval::ask_for\(app, &question, by, thinking\)\.await \{\s*return Err/,
       );
       expect(body.slice(0, end)).not.toMatch(/ask_with_always|Always/);
     }
@@ -1211,7 +1213,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /if \(method !== 'pair' && method !== 'closeTunnel'\) \{\s*const gate = await homePcGate/,
     );
     expect(link).toMatch(
-      /'tool',\s*pc,\s*name,\s*chat,\s*JSON\.stringify\(\{\s*\.\.\.\(args\.file !== undefined \? \{file: args\.file\} : \{\}\),\s*\.\.\.\(args\.key !== undefined \? \{key: args\.key\} : \{\}\),\s*\.\.\.\(args\.command !== undefined \? \{command: args\.command\} : \{\}\),\s*\.\.\.\(args\.content !== undefined \? \{content: args\.content\} : \{\}\),\s*\}\)/,
+      /'tool',\s*pc,\s*name,\s*chat,\s*JSON\.stringify\(\{\s*\.\.\.\(args\.file !== undefined \? \{file: args\.file\} : \{\}\),\s*\.\.\.\(args\.key !== undefined \? \{key: args\.key\} : \{\}\),\s*\.\.\.\(args\.command !== undefined \? \{command: args\.command\} : \{\}\),\s*\.\.\.\(args\.content !== undefined \? \{content: args\.content\} : \{\}\),\s*\.\.\.\(args\.thinking \? \{thinking: args\.thinking\} : \{\}\),\s*\}\)/,
     );
     // A change on the PC is told to the model as a plain message built
     // here from this device's own file name and the PC's line counts
@@ -1472,7 +1474,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // (Asked by this PC or a paired device: the same dialog, the device
     // named; the text is never logged either way: remote_ask::loggable.)
     expect(x).toMatch(
-      /if !crate::approval::ask_for\(app, &clipboard_question_for\(&text, by\.map\(\|d\| d\.name\)\), by\)\.await \{\s*return Err/,
+      /if !crate::approval::ask_for\(app, &clipboard_question_for\(&text, by\.map\(\|d\| d\.name\)\), by, thinking\)\.await \{\s*return Err/,
     );
     expect(x).toMatch(/fn clipboard_question\([\s\S]*?preview\(text, 600\)/);
     expect(x).toMatch(
@@ -1492,11 +1494,11 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // Print: documents and pictures only, and it asks.
     expect(x).toMatch(/if !printable\(name\) \{\s*return Err/);
     expect(x).toMatch(
-      /pub async fn print_workspace_file[\s\S]*?approval::ask_for\(app, &question, by\)\.await/,
+      /pub async fn print_workspace_file[\s\S]*?approval::ask_for\(app, &question, by, thinking\)\.await/,
     );
     // Media keys: a fixed list, never any other key, and it asks natively.
     expect(x).toMatch(
-      /let vk = media_vk\(key\)\.ok_or[^;]*;\s*\/\/[^\n]*\n\s*if !crate::approval::ask_for\(app, &media_question\(key, by\.map\(\|d\| d\.name\)\), by\)\.await \{\s*return Err/,
+      /let vk = media_vk\(key\)\.ok_or[^;]*;\s*\/\/[^\n]*\n\s*if !crate::approval::ask_for\(app, &media_question\(key, by\.map\(\|d\| d\.name\)\), by, thinking\)\.await \{\s*return Err/,
     );
     // The quick key is registered only when the user switches it on.
     const lib = tauri('src/lib.rs');
@@ -1542,10 +1544,10 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // The PC's own command and a paired device's pc_run_command (stage 3)
     // go through the very same function; only the question names the asker.
     expect(pc).toMatch(
-      /pub async fn run_command\(app: AppHandle, command: String\) -> Result<Ran, String> \{\s*run_checked_command\(&app, &command, None\)\.await\s*\}/,
+      /pub async fn run_command\(app: AppHandle, command: String, thinking: Option<String>\) -> Result<Ran, String> \{\s*run_checked_command\(&app, &command, None, thinking\.as_deref\(\)\)\.await\s*\}/,
     );
     expect(pc).toMatch(
-      /pub async fn run_checked_command\(app: &AppHandle, command: &str, by: Option<&crate::approval::Device<'_>>\) -> Result<Ran, String> \{\s*let command = check_command\(command\)\?;\s*\/\/[^\n]*\n\s*if !crate::approval::ask_for\(app, &command_question_for\(&command, by\.map\(\|d\| d\.name\)\), by\)\.await \{\s*return Err[\s\S]*?let dir = workspace\(app\)\?;[\s\S]*?run\(&command, &dir, COMMAND_TIME_LIMIT\)/,
+      /pub async fn run_checked_command\(\s*app: &AppHandle,\s*command: &str,\s*by: Option<&crate::approval::Device<'_>>,\s*thinking: Option<&str>,\s*\) -> Result<Ran, String> \{\s*let command = check_command\(command\)\?;\s*\/\/[^\n]*\n\s*if !crate::approval::ask_for\(app, &command_question_for\(&command, by\.map\(\|d\| d\.name\)\), by, thinking\)\.await \{\s*return Err[\s\S]*?let dir = workspace\(app\)\?;[\s\S]*?run\(&command, &dir, COMMAND_TIME_LIMIT\)/,
     );
     expect(pc).not.toContain('ask_with_always');
     // The dialog shows exactly what runs: no carriage returns, controls or
@@ -1590,7 +1592,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     const outside = tauri('src/outside.rs');
     // Every access asks, on this PC only (never a device), never "always".
     expect(outside).toMatch(
-      /if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*audit\(&app, "model", action\.word\(\), "said no", &shown\);\s*return Err/,
+      /if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*audit\(&app, "model", action\.word\(\), "said no", &shown, thinking\);\s*return Err/,
     );
     expect(outside).not.toMatch(
       /ask_with_always|Answer::Always|ALWAYS|ask_for\(|approval::ask\(|remember/,
@@ -1975,6 +1977,205 @@ describe('security review 2 (2026-11-15), app code', () => {
     );
     expect(ask).toMatch(
       /pub fn log_outside[\s\S]*?log_file\(app\)\.map\(\|f\| f\.with_file_name\(OUTSIDE_LOG\)\)[\s\S]*?append_to\(&file, line\);/,
+    );
+  });
+});
+
+describe('Rule 1: the model is treated as possibly hostile (chat guards, 2026-11-15)', () => {
+  const tauri = (file: string) => read(`src-tauri/${file}`);
+  const guard = read('src/services/agent/chatGuard.ts');
+  const keysOf = (name: string) => {
+    const start = guard.indexOf(`export const ${name}`);
+    const body = guard.slice(start, guard.indexOf('\n};', start));
+    return [...body.matchAll(/^ {2}(\w+): /gm)].map(m => m[1]);
+  };
+
+  it('the chat loop asks the guard before every tool and tells it after', () => {
+    const runner = read('src/services/agent/AgentRunner.ts');
+    const one = runner.slice(
+      runner.indexOf('async function executeOne'),
+      runner.indexOf('export function runToolCall'),
+    );
+    // After the allowed-list check, before the tool is called; a refusal
+    // returns without calling it.
+    expect(one).toMatch(
+      /!allowedTalentNames\.includes\(fnName\)[\s\S]*?const verdict = await guard\.before\(guardCall\);\s*if \(!verdict\.ok\) \{[\s\S]*?return \{[\s\S]*?handler\.execute\(parsedArgs, ctx\)[\s\S]*?guard\?\.after\(guardCall, toolResult\);/,
+    );
+    expect(runner).toMatch(
+      /guard\?\.beforeModelRequest\(\);\s*const completionPromise = engine/,
+    );
+    // Stop on "asking a lot" ends the run.
+    expect(runner).toMatch(/if \(signal\?\.aborted \|\| stopRun\) \{\s*break;/);
+    // Chats and loop plans both pass a guard.
+    expect(read('src/hooks/useChatSession.ts')).toMatch(
+      /runAgent\(\{[\s\S]*?guard: inAppGuard\(messageInfo\.sessionId, lease\.signal,/,
+    );
+    expect(read('src/services/loops/planRunner.ts')).toMatch(
+      /runToolCall\([\s\S]*?inAppGuard\(PLAN_GUARD_CHAT, signal\),\s*\);/,
+    );
+  });
+
+  it('read-then-leak: the private reads and what goes out are explicit lists', () => {
+    expect(keysOf('PRIVATE_READS')).toEqual([
+      'outside_files',
+      'clipboard_read',
+      'pc_clipboard_read',
+      'pc_workspace_read',
+      'run_command',
+      'pc_run_command',
+    ]);
+    expect(keysOf('OUTGOING')).toEqual([
+      'web_search',
+      'read_url',
+      'compose_message',
+      'share_text',
+      'search_in_app',
+      'navigate_to',
+      'pc_workspace_read',
+      'pc_open',
+      'pc_print',
+      'pc_run_command',
+      'pc_workspace_write',
+      'pc_workspace_append',
+      'pc_workspace_undo',
+    ]);
+    expect(read('src/services/talents/PcPictureEngine.ts')).toContain(
+      "readonly sendsTo = 'your Home PC, to make a picture';",
+    );
+    // Only a result that is not an error marks the chat; once marked,
+    // anything going out asks (the model can't answer: the app's window).
+    expect(guard).toMatch(
+      /after\(\{name, args, engine\}, result\) \{\s*if \(result\.type !== 'error' && readsPrivate\(name, args, engine\)\) \{\s*markPrivateRead\(chat, name\);/,
+    );
+    expect(guard).toMatch(
+      /const guardAsks = marked !== null && out !== null;[\s\S]*?if \(guardAsks\) \{\s*const allowed = await deps\.ask\(\{\s*kind: 'outgoing',\s*what: out,/,
+    );
+    expect(read('src/services/agent/guardQuestions.ts')).toMatch(
+      /return requestFileApproval\(guardProposal\(q\), signal\);/,
+    );
+  });
+
+  it('the ask-rate limit and "allow nothing more" hold', () => {
+    expect(guard).toContain('export const ASK_LIMIT = 8;');
+    expect(guard).toContain('export const ASK_WINDOW_MS = 2 * 60 * 1000;');
+    expect(guard).toMatch(
+      /if \(nothingMoreAllowed\(chat\) && guarded\) \{\s*return \{ok: false, message: REFUSED_NOTHING_MORE\};/,
+    );
+    const gate = read('src/services/talents/fileApprovalGate.ts');
+    expect(gate).toMatch(
+      /if \(chat && nothingMoreAllowed\(chat\)\) \{\s*return Promise\.resolve\(false\);/,
+    );
+    const host = read('src/components/FileApprovalHost.tsx');
+    expect(host).toContain("Don't allow anything more in this chat");
+    expect(host).toMatch(
+      /proposal\?\.action === 'too_many'[\s\S]*?decideFileApproval\(false\)\}>Stop[\s\S]*?decideFileApproval\(true\)\}>\s*Continue/,
+    );
+    // Native questions too: the app refuses before invoking them (the
+    // guard runs before every tool of the desktop and of the paired PC).
+    for (const name of [
+      'run_command',
+      'outside_files',
+      'clipboard_read',
+      'media_control',
+      'print_file',
+      'open_file',
+      'pc_run_command',
+      'pc_clipboard_read',
+      'pc_open',
+      'pc_print',
+      'pc_media',
+      'pc_workspace_write',
+    ]) {
+      expect(guard).toContain(`'${name}',`);
+    }
+  });
+
+  it("the model's thinking is shown after the facts and logged, never parsed", () => {
+    expect(guard).toContain('export const THINKING_SHOWN = 600;');
+    const approval = tauri('src/approval.rs');
+    expect(approval).toContain('pub const MAX_THINKING: usize = 600;');
+    expect(approval).toMatch(
+      /pub async fn ask_for\([^)]*thinking: Option<&str>\) -> bool \{\s*let yes = ask\(app, &with_thinking\(question, thinking\)\)\.await[^;]*;\s*crate::remote_ask::log_asked\(app, by\.map\(\|d\| d\.name\), yes, question, thinking\);/,
+    );
+    // Every tool question on the PC passes the thinking along.
+    for (const file of ['src/pc.rs', 'src/pc_extra.rs', 'src/link.rs']) {
+      const text = tauri(file);
+      for (const m of text.matchAll(
+        /crate::approval::ask_for\(([^;]*?)\)\.await/g,
+      )) {
+        expect([file, m[1].trim().endsWith('thinking')]).toEqual([file, true]);
+      }
+    }
+    // The native commands take it as an optional argument.
+    const pc = tauri('src/pc.rs');
+    const extra = tauri('src/pc_extra.rs');
+    expect(pc).toContain(
+      'pub async fn run_command(app: AppHandle, command: String, thinking: Option<String>)',
+    );
+    expect(pc).toContain(
+      'pub async fn open_workspace_file(app: AppHandle, name: String, thinking: Option<String>)',
+    );
+    expect(extra).toContain(
+      'pub async fn clipboard_read(app: AppHandle, thinking: Option<String>)',
+    );
+    expect(extra).toContain(
+      'pub async fn media_key(app: AppHandle, key: String, thinking: Option<String>)',
+    );
+    expect(extra).toContain(
+      'pub async fn print_file(app: AppHandle, name: String, thinking: Option<String>)',
+    );
+    const outside = tauri('src/outside.rs');
+    expect(outside).toMatch(
+      /let question = crate::approval::with_thinking\(&question\(action, &shown, &facts, reason\.as_deref\(\)\), thinking\);/,
+    );
+    const audits = [...outside.matchAll(/audit\(&app, "model"[^;]*;/g)];
+    expect(audits.length).toBe(5);
+    expect(audits.every(m => m[0].endsWith(', thinking);'))).toBe(true);
+    // The desktop passes it to every native question it asks.
+    const desk = read('src/services/talents/DesktopToolsEngine.ts');
+    for (const call of [
+      "('run_command', {command, thinking})",
+      "('clipboard_read', {thinking})",
+      "('media_key', {key: action, thinking})",
+      "('print_file', {name: filename, thinking})",
+      "('open_workspace_file', {name: filename, thinking})",
+    ]) {
+      expect(desk).toContain(call);
+    }
+    expect(desk).toMatch(/reason,\s*thinking,\s*\}\);/);
+    // A device's request: the thinking cut to fit the line, shown only.
+    expect(read('native/homelink/src/lib.rs')).toMatch(
+      /if let Some\(fit\) = fit_thinking\(thinking, room\) \{\s*args\.insert\("thinking"\.into\(\), fit\.into\(\)\);/,
+    );
+    // The in-app questions: the thinking as shown and the red warning.
+    const gate = read('src/services/talents/fileApprovalGate.ts');
+    expect(gate).toMatch(
+      /thinking: thinkingShown\(from\.thinking\),\s*warning: thinkingWarning\(from\.thinking\),/,
+    );
+  });
+
+  it("risky commands get the app's warning in the question, which never blocks", () => {
+    const pc = tauri('src/pc.rs');
+    expect(pc).toMatch(
+      /pub fn command_question_for[\s\S]*?command_risks\(command\)[\s\S]*?characters\)\{risks\}\\n\\nA command can do anything/,
+    );
+    // Only the question uses it (and its test): a warning never stops a command.
+    const body = pc.slice(0, pc.indexOf('#[cfg(test)]'));
+    expect([...body.matchAll(/command_risks\(/g)].length).toBe(2);
+    for (const risk of [
+      'RISK_DOWNLOAD_RUN',
+      'RISK_HIDDEN',
+      'RISK_DELETE',
+      'RISK_PERSIST',
+      'RISK_CREDENTIALS',
+      'RISK_NETWORK',
+      'RISK_SECURITY_OFF',
+    ]) {
+      expect(pc).toContain(`pub const ${risk}: &str`);
+    }
+    // Every command question and its answer is logged, the PC's own too.
+    expect(tauri('src/remote_ask.rs')).toMatch(
+      /pub fn log_asked[\s\S]*?append\(app, \|when\| asked_line\(when, by, yes, question, thinking\)\);/,
     );
   });
 });

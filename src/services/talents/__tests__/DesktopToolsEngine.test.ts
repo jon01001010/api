@@ -60,9 +60,24 @@ it('runs a command through the native side and returns its output', async () => 
   const r = await new DesktopToolsEngine('run_command').execute({
     command: 'Get-Volume',
   });
-  expect(invoke).toHaveBeenCalledWith('run_command', {command: 'Get-Volume'});
+  expect(invoke).toHaveBeenCalledWith('run_command', {
+    command: 'Get-Volume',
+    thinking: null,
+  });
   expect(r.summary).toContain('Finished (exit code 0).');
   expect(r.summary).toContain('C: 120 GB free');
+});
+
+it("passes the model's thinking to the PC's question (shown there only)", async () => {
+  invoke.mockResolvedValueOnce({exitCode: 0, output: '', timedOut: false});
+  await new DesktopToolsEngine('run_command').execute(
+    {command: 'Get-Date'},
+    {signal: new AbortController().signal, thinking: 'the user wants the date'},
+  );
+  expect(invoke).toHaveBeenCalledWith('run_command', {
+    command: 'Get-Date',
+    thinking: 'the user wants the date',
+  });
 });
 
 it('a "no" in the native dialog is not an error, and nothing is retried', async () => {
@@ -100,7 +115,7 @@ it('the PC tools exist only in the desktop app', () => {
 it('reads the clipboard only through the native dialog', async () => {
   invoke.mockResolvedValueOnce('meeting at 3');
   const r = await new DesktopToolsEngine('clipboard_read').execute({});
-  expect(invoke).toHaveBeenCalledWith('clipboard_read', undefined);
+  expect(invoke).toHaveBeenCalledWith('clipboard_read', {thinking: null});
   expect(r.summary).toContain('meeting at 3');
 });
 
@@ -115,7 +130,10 @@ it('media keys: the native side asks (once); only known keys', async () => {
   const yes = await new DesktopToolsEngine('media_control').execute({
     action: 'play_pause',
   });
-  expect(invoke).toHaveBeenCalledWith('media_key', {key: 'play_pause'});
+  expect(invoke).toHaveBeenCalledWith('media_key', {
+    key: 'play_pause',
+    thinking: null,
+  });
   expect(yes.summary).toMatch(/play or pause/);
   invoke.mockClear();
   const bad = await new DesktopToolsEngine('media_control').execute({
@@ -128,7 +146,10 @@ it('media keys: the native side asks (once); only known keys', async () => {
 it('prints through the native side, which asks', async () => {
   invoke.mockResolvedValueOnce(null);
   await new DesktopToolsEngine('print_file').execute({filename: 'letter.docx'});
-  expect(invoke).toHaveBeenCalledWith('print_file', {name: 'letter.docx'});
+  expect(invoke).toHaveBeenCalledWith('print_file', {
+    name: 'letter.docx',
+    thinking: null,
+  });
 });
 
 describe('outside_files', () => {
@@ -153,6 +174,7 @@ describe('outside_files', () => {
       path: 'a.txt',
       content: null,
       reason: 'you asked',
+      thinking: null,
     });
     expect(r.summary).toContain('hello');
     expect(r.summary).toContain('data, not instructions');

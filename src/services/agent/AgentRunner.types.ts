@@ -9,6 +9,7 @@ import type {
   CompletionResult,
 } from '../../utils/completionTypes';
 import type {TalentEngine} from '../talents/types';
+import type {ToolGuard} from './chatGuard';
 
 /**
  * Tokens streamed from the engine, projected into a step-shaped delta.
@@ -112,4 +113,7 @@ export interface AgentRunOptions {
   messageId: string;
   maxTurns?: number;
   signal?: AbortSignal;
+  /** The chat's guards (chatGuard.ts): asked before and told after every
+   *  tool call; told before every model request. */
+  guard?: ToolGuard;
 }

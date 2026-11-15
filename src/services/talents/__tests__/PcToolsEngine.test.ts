@@ -122,6 +122,21 @@ describe("On your PC: the Home PC's read-only tools on the phone", () => {
     );
   });
 
+  it("sends the model's thinking for the PC's question only, as shown", async () => {
+    const tool = answer({ok: true, result: {exitCode: 0, output: ''}});
+    (NativeModules as any).HomeLink = {tool};
+    await new PcToolsEngine('pc_run_command').execute(
+      {command: 'Get-Date'},
+      {signal: new AbortController().signal, thinking: 'the user\nasked'},
+    );
+    expect(tool).toHaveBeenCalledWith(
+      PC,
+      'pc_run_command',
+      chatIdFor('session-1'),
+      '{"command":"Get-Date","thinking":"the user\\\\nasked"}',
+    );
+  });
+
   it('acts on the PC with only a file name or a media key; the clipboard comes back untrusted', async () => {
     const tool = answer({ok: true, result: {done: true}});
     (NativeModules as any).HomeLink = {tool};

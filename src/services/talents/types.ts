@@ -61,6 +61,14 @@ export interface TalentExecuteContext {
    * background so later steps can still run.
    */
   inApprovedShortcut?: boolean;
+  /**
+   * The model's thinking from just before this request (raw). Shown with
+   * the tool's question only, after the facts ("The model was thinking:");
+   * never parsed, never sent anywhere else.
+   */
+  thinking?: string;
+  /** The chat asking (for "Don't allow anything more in this chat"). */
+  chat?: string;
 }
 
 export interface TalentEngine {

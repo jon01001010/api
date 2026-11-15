@@ -46,6 +46,7 @@ import {describePc, MEDIA_ACTIONS} from './DesktopToolsEngine';
 import {pickHomePc} from './PcPictureEngine';
 import {utf8Bytes} from './fileWorkspace';
 import {wrapUntrusted} from './untrustedContent';
+import {thinkingShown} from '../agent/chatGuard';
 import {
   TalentEngine,
   TalentExecuteContext,
@@ -405,7 +406,13 @@ export class PcToolsEngine implements TalentEngine {
       key?: string;
       command?: string;
       content?: string;
+      thinking?: string;
     } = {};
+    // The model's thinking, shown in the PC's question under "The model
+    // was thinking:" only (the PC never parses it; cut to fit there).
+    if (ctx?.thinking) {
+      toolArgs.thinking = thinkingShown(ctx.thinking);
+    }
     if (FILE_TOOLS.includes(this.name)) {
       const file =
         typeof args.filename === 'string' ? args.filename.trim() : '';

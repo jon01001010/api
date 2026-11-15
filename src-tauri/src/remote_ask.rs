@@ -151,7 +151,15 @@ pub fn loggable(question: &str) -> String {
     if !clipboard {
         return question.to_string();
     }
-    let shown = question[first.len()..].trim_start_matches('\n');
+    let mut shown = question[first.len()..].trim_start_matches('\n');
+    // The model's thinking after it (approval::with_thinking) is not the
+    // clipboard's: not counted.
+    for mark in [crate::approval::THINKING_WARNING, crate::approval::MODEL_THINKING] {
+        if let Some(at) = shown.rfind(&format!("\n\n{mark}")) {
+            shown = &shown[..at];
+            break;
+        }
+    }
     format!("{first} clipboard ({} characters, not logged)", shown.chars().count())
 }
 
@@ -226,6 +234,35 @@ fn log_file(app: &AppHandle) -> Option<std::path::PathBuf> {
 /// Writes one line to this PC's log of answers given on devices.
 pub fn log_answer(app: &AppHandle, device: &str, yes: bool, question: &str) {
     append(app, |when| log_line(when, device, yes, question));
+}
+
+/// One line of the log for a question one of this PC's tools asked
+/// (approval::ask_for): when, who asked (this PC's own model, or a paired
+/// device), the answer, the question as the log keeps it (loggable: never
+/// the clipboard's text or a change's text) and the model's thinking from
+/// just before the request (its last approval::MAX_THINKING characters),
+/// all escaped, one line. Private like the rest of the log.
+pub fn asked_line(when: u64, by: Option<&str>, yes: bool, question: &str, thinking: Option<&str>) -> String {
+    let who = match by {
+        Some(device) => format!("asked by {device}"),
+        None => "asked by this PC's model".to_string(),
+    };
+    let mut line = format!(
+        "{when}\t{}\t{}\t{}",
+        one_line(&who),
+        if yes { "allowed" } else { "not allowed" },
+        one_line(&loggable(question))
+    );
+    if let Some(thinking) = thinking.map(str::trim).filter(|t| !t.is_empty()) {
+        line.push_str("\tthe model was thinking: ");
+        line.push_str(&one_line(&crate::approval::thinking_words(thinking)));
+    }
+    line
+}
+
+/// Writes one line to the answers log: a tool's question and its answer.
+pub fn log_asked(app: &AppHandle, by: Option<&str>, yes: bool, question: &str, thinking: Option<&str>) {
+    append(app, |when| asked_line(when, by, yes, question, thinking));
 }
 
 /// One line of the log for something a device did with this PC's tools
@@ -309,6 +346,28 @@ pub fn link_answers_allow(app: AppHandle, allowed: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_question_is_logged_with_the_thinking_behind_it() {
+        let line = asked_line(5, None, true, "DesktopAgent wants to run this command on your PC (in its workspace folder):\n\nGet-Date", Some("the user\nwants the date"));
+        assert_eq!(line.lines().count(), 1);
+        assert!(line.starts_with("5\tasked by this PC's model\tallowed\tDesktopAgent wants to run"), "{line}");
+        assert!(line.contains("\\n\\nGet-Date"), "{line}");
+        assert!(line.ends_with("\tthe model was thinking: the user\\\\nwants the date"), "{line}");
+        let line = asked_line(6, Some("Pixel 8"), false, "Q", None);
+        assert_eq!(line, "6\tasked by Pixel 8\tnot allowed\tQ");
+        // The clipboard's text is never logged, the thinking is.
+        let q = format!("{CLIPBOARD_ASK}\n\nhunter2");
+        let line = asked_line(7, None, true, &q, Some("read it"));
+        assert!(!line.contains("hunter2"), "{line}");
+        assert!(line.contains("clipboard (7 characters, not logged)") && line.ends_with("thinking: read it"), "{line}");
+        // Capped: the last approval::MAX_THINKING characters.
+        let line = asked_line(8, None, true, "Q", Some(&"x".repeat(5000)));
+        assert!(line.contains("[\u{2026} 4400 characters before]"), "{line}");
+        // A device's answer: the clipboard count leaves the thinking out.
+        let shown = crate::approval::with_thinking(&q, Some("the user won't notice"));
+        assert_eq!(loggable(&shown), format!("{CLIPBOARD_ASK} clipboard (7 characters, not logged)"));
+    }
 
     #[test]
     fn nothing_is_offered_until_allowed() {

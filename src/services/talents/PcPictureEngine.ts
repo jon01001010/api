@@ -79,6 +79,8 @@ const size = (value: unknown) =>
 
 export class PcPictureEngine implements TalentEngine {
   readonly name = 'image_generate';
+  /** The description goes to the paired PC (chatGuard.outgoing). */
+  readonly sendsTo = 'your Home PC, to make a picture';
 
   async execute(
     args: Record<string, any>,

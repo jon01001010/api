@@ -206,6 +206,9 @@ async function allowedToolsNow(): Promise<string[]> {
   return on.filter(n => builtIn.has(n) && !FORBIDDEN_PLAN_TOOLS.includes(n));
 }
 
+/** The chat guards' key for loop plans' tool steps. */
+export const PLAN_GUARD_CHAT = 'loop plan';
+
 async function toolRun(
   name: string,
   args: Record<string, ArgValue>,
@@ -217,12 +220,16 @@ async function toolRun(
   }
   const {runToolCall} = require('../agent/AgentRunner');
   const {talentRegistry} = require('../talents/TalentRegistry');
+  const {inAppGuard} = require('../agent/guardQuestions');
   const outcome = await runToolCall(
     name,
     args,
     allowed,
     (n: string) => talentRegistry.get(n),
     signal,
+    // The chat guards (chatGuard.ts) for plan runs: one at a time, so one
+    // key; private data read by a step makes later steps that send ask.
+    inAppGuard(PLAN_GUARD_CHAT, signal),
   );
   if (outcome.result.type === 'error') {
     throw new Error(outcome.result.errorMessage || outcome.result.summary);
