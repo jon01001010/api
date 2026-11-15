@@ -43,12 +43,34 @@ describe('Make a loop sheet', () => {
     );
 
     fireEvent.press(getByTestId('make-loop-start'));
+    // The dry run first: the exact first message, nothing sent or started.
+    await waitFor(() => getByTestId('loop-dry-run'));
+    expect(getByTestId('loop-dry-run-message').props.children).toContain(
+      'This is the first run of my loop "Fit by summer"',
+    );
+    expect(getByTestId('loop-dry-run-message').props.children).toContain(
+      '1. Stretch\n2. Walk',
+    );
+    expect(start).not.toHaveBeenCalled();
+    // Back keeps the edits.
+    fireEvent.press(getByTestId('loop-dry-run-back'));
+    expect(getByTestId('make-loop-prompt').props.children).toContain(
+      '1. Stretch\n2. Walk',
+    );
+    fireEvent.press(getByTestId('make-loop-start'));
+    await waitFor(() => getByTestId('loop-dry-run'));
+    fireEvent.press(getByTestId('loop-dry-run-start'));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     const input = start.mock.calls[0][0] as any;
     expect(input.templateId).toBe('custom');
     expect(input.custom.title).toBe('Fit by summer');
     expect(input.custom.prompt).toContain('1. Stretch\n2. Walk');
     expect(input.custom.prompt).not.toContain('Sleep early');
+    expect(input.custom.plan).toEqual({
+      goal: 'Help me get fit.',
+      steps: ['Stretch', 'Walk'],
+    });
+    expect(input.battery).toBeUndefined();
   });
 
   it('shows why a draft failed, and offers to write it yourself', async () => {

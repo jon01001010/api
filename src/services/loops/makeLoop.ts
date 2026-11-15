@@ -12,6 +12,11 @@
  * to the model while drafting.
  */
 import {
+  type BatteryGuard,
+  cleanBattery,
+  CUSTOM_LOOP_ID,
+  cleanCustomPrompt,
+  daysOf,
   EVERY_MS,
   type Every,
   type Loop,
@@ -51,6 +56,8 @@ export interface LoopDraft {
   maxRuns: number;
   days: number;
   steps: string[];
+  /** Phone: when it may come due (default: charging or above 20%). */
+  battery?: BatteryGuard;
 }
 
 /** One line of plain text: no control characters, no braces, trimmed. */
@@ -332,7 +339,61 @@ export function previewOf(draft: LoopDraft, now = Date.now()): Loop {
     endAt: now + days * EVERY_MS.day,
     paused: false,
     log: [],
+    battery: cleanBattery(draft.battery),
   };
+}
+
+const CHECKLIST = '\n\nThe plan, as a checklist:\n';
+
+/**
+ * A custom loop's goal and steps, to edit them: as saved at Start, or read
+ * back from its prompt (loops started before plans were saved). Undefined
+ * when the prompt isn't one loopPromptOf made (then the whole prompt is
+ * edited as text).
+ */
+export function planOfLoop(
+  loop: Loop,
+): {goal: string; steps: string[]} | undefined {
+  if (loop.templateId !== CUSTOM_LOOP_ID) {
+    return undefined;
+  }
+  if (loop.plan) {
+    return loop.plan;
+  }
+  const at = loop.prompt.indexOf(CHECKLIST);
+  const goal = at < 0 ? loop.prompt : loop.prompt.slice(0, at);
+  const steps =
+    at < 0
+      ? []
+      : loop.prompt
+          .slice(at + CHECKLIST.length)
+          .split('\n\n')[0]
+          .split('\n')
+          .map(l => l.replace(/^\d+\.\s*/, ''));
+  const plan = {goal, steps};
+  return loopPromptOf({...blankDraft(''), prompt: goal, steps}) === loop.prompt
+    ? plan
+    : undefined;
+}
+
+/** A running loop as a draft for the editor (Edit on its card). */
+export function draftOfLoop(loop: Loop, now = Date.now()): LoopDraft {
+  const plan = planOfLoop(loop);
+  return {
+    title: loop.title,
+    prompt: plan ? plan.goal : loop.prompt,
+    every: loop.every,
+    at: loop.at,
+    maxRuns: loop.maxRuns,
+    days: daysOf(loop, now),
+    steps: plan ? plan.steps : [],
+    battery: cleanBattery(loop.battery),
+  };
+}
+
+/** The prompt an edited draft gives: from the plan, or the text as is. */
+export function editedPromptOf(draft: LoopDraft, withSteps: boolean): string {
+  return withSteps ? loopPromptOf(draft) : cleanCustomPrompt(draft.prompt);
 }
 
 // ---------------------------------------------------------- asking the model

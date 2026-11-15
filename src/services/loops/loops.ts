@@ -54,6 +54,172 @@ export interface Loop {
   /** The loop's own chat, made at its first run. */
   sessionId?: string;
   log: {at: number; what: string}[];
+  /** When the user pressed Start (days are counted from here). */
+  startedAt?: number;
+  /** Phone only: when it may come due (default: charging or above 20%). */
+  battery?: BatteryGuard;
+  /** Custom loops: what each run does and the checklist, as approved. */
+  plan?: {goal: string; steps: string[]};
+  /** Fingerprints of the last run's reply (no-progress stop). */
+  progress?: {steps: string; reply: string};
+  /** Why it paused by itself (shown on the card); none if the user paused. */
+  pausedWhy?: string;
+}
+
+/**
+ * Battery guard (phone): when a loop is due and the guard isn't met, the
+ * app doesn't ask; it logs "Waiting: battery" and looks again later. The
+ * desktop has no battery guard (always OK).
+ */
+export type BatteryGuard =
+  | {kind: 'above'; percent: number}
+  | {kind: 'charger'}
+  | {kind: 'any'};
+export const DEFAULT_BATTERY: BatteryGuard = {kind: 'above', percent: 20};
+/** How long a loop waits before the battery is looked at again. */
+export const BATTERY_WAIT_MS = 30 * 60_000;
+export const WAITING_BATTERY = 'Waiting: battery';
+
+/** The phone's battery: level 0–1 (below 0: unknown), and charging. */
+export interface BatteryState {
+  level: number;
+  charging: boolean;
+}
+
+/** A guard as saved: anything odd becomes the default. */
+export function cleanBattery(guard: unknown): BatteryGuard {
+  const g = guard as any;
+  if (g?.kind === 'charger' || g?.kind === 'any') {
+    return {kind: g.kind};
+  }
+  if (g?.kind === 'above' && Number.isFinite(g.percent)) {
+    return {
+      kind: 'above',
+      percent: Math.min(95, Math.max(5, Math.round(g.percent))),
+    };
+  }
+  return DEFAULT_BATTERY;
+}
+
+/** Whether the guard is met (no battery reading, e.g. desktop: yes). */
+export function batteryOk(
+  guard: BatteryGuard | undefined,
+  state: BatteryState | undefined,
+): boolean {
+  const g = cleanBattery(guard);
+  if (!state || g.kind === 'any' || state.charging) {
+    return true;
+  }
+  if (g.kind === 'charger') {
+    return false;
+  }
+  if (!Number.isFinite(state.level) || state.level < 0) {
+    return true;
+  }
+  return Math.round(state.level * 100) >= g.percent;
+}
+
+export function batteryText(guard: BatteryGuard | undefined): string {
+  const g = cleanBattery(guard);
+  if (g.kind === 'charger') {
+    return 'Only on the charger';
+  }
+  if (g.kind === 'any') {
+    return 'Any battery level';
+  }
+  return `Only when charging or battery above ${g.percent}%`;
+}
+
+/** Due, but the battery guard isn't met: look again later, quietly. */
+export function waitForBattery(loop: Loop, now = Date.now()): Loop {
+  const next = {...loop, nextAt: now + BATTERY_WAIT_MS};
+  // One log line while it waits, not one every half hour.
+  if (loop.log[0]?.what === WAITING_BATTERY) {
+    return {
+      ...next,
+      log: [{at: now, what: WAITING_BATTERY}, ...loop.log.slice(1)],
+    };
+  }
+  return addLog(next, WAITING_BATTERY, now);
+}
+
+/** Two runs in a row with the same next steps (or reply): pause. */
+export const NO_PROGRESS_WHY = 'no progress for 2 runs';
+
+const norm = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
+
+/** A short fingerprint of a text (the reply itself is not stored). */
+export function fingerprint(text: string): string {
+  let a = 5381;
+  let b = 52711;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    a = (a * 33 + c) % 2147483647;
+    b = (b * 31 + c) % 1000000007;
+  }
+  return `${a.toString(36)}${b.toString(36)}:${text.length}`;
+}
+
+/**
+ * After a run's reply is complete: compares it with the last run's. Same
+ * next steps (when it had any), or the very same reply, twice in a row →
+ * the loop pauses and says why. An empty reply (stopped) is not counted.
+ */
+export function afterReply(loop: Loop, reply: string, now = Date.now()): Loop {
+  const text = norm(String(reply ?? ''));
+  if (!text) {
+    return loop;
+  }
+  const steps = nextStepsOf(String(reply)).map(norm).join('\n');
+  const progress = {
+    steps: steps ? fingerprint(steps) : '',
+    reply: fingerprint(text),
+  };
+  const prev = loop.progress;
+  const same =
+    !!prev &&
+    ((progress.steps !== '' && progress.steps === prev.steps) ||
+      progress.reply === prev.reply);
+  if (same && !loop.paused) {
+    return addLog(
+      {...loop, progress, paused: true, pausedWhy: NO_PROGRESS_WHY},
+      `Paused: ${NO_PROGRESS_WHY}`,
+      now,
+    );
+  }
+  return {...loop, progress};
+}
+
+/** Pause or resume by the user (resuming forgets the last fingerprint). */
+export function togglePause(loop: Loop, now = Date.now()): Loop {
+  return loop.paused
+    ? addLog(
+        {...loop, paused: false, pausedWhy: undefined, progress: undefined},
+        'Resumed',
+        now,
+      )
+    : addLog({...loop, paused: true, pausedWhy: undefined}, 'Paused', now);
+}
+
+/**
+ * The reply to a message the app sent (messages newest first): the newest
+ * non-user, non-system message above the newest user message, if that user
+ * message is the one sent. Otherwise undefined.
+ */
+export function replyTo(
+  messages: any[],
+  sent: string,
+  userId: string,
+  textOf: (m: any) => string,
+): string | undefined {
+  const i = messages.findIndex(m => m?.author?.id === userId);
+  if (i < 0 || textOf(messages[i]) !== sent) {
+    return undefined;
+  }
+  const reply = messages
+    .slice(0, i)
+    .find(m => m?.author?.id !== userId && !m?.metadata?.system);
+  return reply ? textOf(reply) : undefined;
 }
 
 const KEY = '@pocketagent/loops/v1';
@@ -140,7 +306,8 @@ export function summary(loop: Loop): string {
     `Comes back ${EVERY_LABEL[loop.every]}${time}, at most ${loop.maxRuns} times, ` +
     `for up to ${days} day(s). Asks before each run. Uses only the tools ` +
     'you have switched on; anything outside the app still asks. Never ' +
-    'changes itself.'
+    `changes itself. Phone: ${batteryText(loop.battery).toLowerCase()}. ` +
+    'Pauses if two runs in a row bring nothing new.'
   );
 }
 
@@ -229,22 +396,55 @@ export async function updateLoop(
   return loops[i];
 }
 
-/**
- * The user pressed Start. A ready-made loop names its template and blanks;
- * a custom one (templateId 'custom') brings the title and prompt the user
- * saw and approved. Same limits for both. Only the user's screens call this.
- */
-export async function startLoop(input: {
+export interface LoopInput {
   templateId: string;
   values: Record<string, string>;
   /** For templateId 'custom' only. */
-  custom?: {title: string; prompt: string};
+  custom?: {
+    title: string;
+    prompt: string;
+    plan?: {goal: string; steps: string[]};
+  };
   every: Every;
   at?: {hour: number; minute: number};
   maxRuns: number;
   days: number;
+  battery?: BatteryGuard;
   now?: number;
-}): Promise<{ok: true; loop: Loop} | {ok: false; error: string}> {
+}
+
+/** What a custom loop may use, in plain words (dry run). */
+export const CUSTOM_USES =
+  'The model, and only the tools you have switched on in the Toolbox.';
+
+const cleanAt = (at: Loop['at']): Loop['at'] =>
+  at &&
+  Number.isInteger(at.hour) &&
+  at.hour >= 0 &&
+  at.hour < 24 &&
+  Number.isInteger(at.minute) &&
+  at.minute >= 0 &&
+  at.minute < 60
+    ? {hour: at.hour, minute: at.minute}
+    : undefined;
+
+const cleanPlan = (plan: Loop['plan']): Loop['plan'] =>
+  plan && typeof plan.goal === 'string' && Array.isArray(plan.steps)
+    ? {
+        goal: plan.goal,
+        steps: plan.steps.filter(x => typeof x === 'string').slice(0, 20),
+      }
+    : undefined;
+
+/**
+ * The loop Start would make, without saving it (also the dry run's
+ * preview). A ready-made loop names its template and blanks; a custom one
+ * (templateId 'custom') brings the title and prompt the user saw and
+ * approved. Same limits for both.
+ */
+export function buildLoop(
+  input: LoopInput,
+): {ok: true; loop: Loop} | {ok: false; error: string} {
   let made: {id: string; title: string; prompt: string};
   if (input.templateId === CUSTOM_LOOP_ID) {
     const title = cleanBlank(input.custom?.title ?? '').slice(
@@ -270,40 +470,215 @@ export async function startLoop(input: {
     }
     made = {id: template.id, title: template.title, prompt: filled.prompt};
   }
+  const now = input.now ?? Date.now();
+  const at = cleanAt(input.at);
+  const every = input.every in EVERY_MS ? input.every : 'day';
+  const plan =
+    made.id === CUSTOM_LOOP_ID ? cleanPlan(input.custom?.plan) : undefined;
+  return {
+    ok: true,
+    loop: {
+      id: `${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      templateId: made.id,
+      title: made.title,
+      prompt: made.prompt,
+      every,
+      at,
+      nextAt: firstRun(every, at, now),
+      runs: 0,
+      maxRuns: Math.min(MAX_RUNS, Math.max(1, Math.round(input.maxRuns))),
+      endAt:
+        now +
+        Math.min(MAX_DAYS, Math.max(1, Math.round(input.days))) * EVERY_MS.day,
+      paused: false,
+      log: [{at: now, what: 'Started'}],
+      startedAt: now,
+      battery: cleanBattery(input.battery),
+      ...(plan ? {plan} : {}),
+    },
+  };
+}
+
+/**
+ * The user pressed "Looks right, start" (after the dry run). Only the
+ * user's screens call this.
+ */
+export async function startLoop(
+  input: LoopInput,
+): Promise<{ok: true; loop: Loop} | {ok: false; error: string}> {
+  const built = buildLoop(input);
+  if (!built.ok) {
+    return built;
+  }
   const loops = await loadLoops();
   if (loops.length >= MAX_LOOPS) {
     return {ok: false, error: `At most ${MAX_LOOPS} loops; stop one first`};
   }
-  const now = input.now ?? Date.now();
-  const at =
-    input.at &&
-    Number.isInteger(input.at.hour) &&
-    input.at.hour >= 0 &&
-    input.at.hour < 24 &&
-    Number.isInteger(input.at.minute) &&
-    input.at.minute >= 0 &&
-    input.at.minute < 60
-      ? input.at
-      : undefined;
-  const loop: Loop = {
-    id: `${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-    templateId: made.id,
-    title: made.title,
-    prompt: made.prompt,
-    every: input.every in EVERY_MS ? input.every : 'day',
-    at,
-    nextAt: firstRun(input.every, at, now),
-    runs: 0,
-    maxRuns: Math.min(MAX_RUNS, Math.max(1, Math.round(input.maxRuns))),
-    endAt:
-      now +
-      Math.min(MAX_DAYS, Math.max(1, Math.round(input.days))) * EVERY_MS.day,
-    paused: false,
-    log: [{at: now, what: 'Started'}],
-  };
-  loops.push(loop);
+  loops.push(built.loop);
   await saveLoops(loops);
-  return {ok: true, loop};
+  return built;
+}
+
+/** The next few run times (dry run), within the loop's limits. */
+export function upcomingRuns(loop: Loop, count = 3): number[] {
+  const out: number[] = [];
+  let t = loop.nextAt;
+  let left = loop.maxRuns - loop.runs;
+  while (left > 0 && out.length < count && t <= loop.endAt) {
+    out.push(t);
+    t += EVERY_MS[loop.every];
+    left--;
+  }
+  return out;
+}
+
+/**
+ * The dry run before Start: exactly what the first run's message will be,
+ * when runs happen, the limits and guards, and what it may use. Pure: it
+ * sends nothing and runs nothing.
+ */
+export function dryRunOf(
+  loop: Loop,
+  uses: string,
+): {message: string; times: number[]; limits: string[]; uses: string} {
+  return {
+    message: runMessage(loop),
+    times: upcomingRuns(loop, 3),
+    limits: [
+      `At most ${loop.maxRuns} runs, until ${new Date(
+        loop.endAt,
+      ).toLocaleDateString()} (hard limits: ${MAX_RUNS} runs, ${MAX_DAYS} days).`,
+      'Asks before each run: Skip, Later or Run now.',
+      `Phone: ${batteryText(loop.battery).toLowerCase()}; otherwise it waits.`,
+      'Pauses if two runs in a row bring nothing new.',
+    ],
+    uses: `${uses} Anything outside the app still asks.`,
+  };
+}
+
+/** When the loop was started (older loops: their oldest log line). */
+export function startOf(loop: Loop, now = Date.now()): number {
+  if (typeof loop.startedAt === 'number' && Number.isFinite(loop.startedAt)) {
+    return loop.startedAt;
+  }
+  return loop.log.reduce((min, e) => Math.min(min, e.at), now);
+}
+
+/** How many days the loop lasts, counted from its start. */
+export function daysOf(loop: Loop, now = Date.now()): number {
+  return Math.max(
+    1,
+    Math.round((loop.endAt - startOf(loop, now)) / EVERY_MS.day),
+  );
+}
+
+/** What the user changed in Edit. */
+export interface LoopEdit {
+  title: string;
+  /** The whole prompt each run gets (custom loops: built from the plan). */
+  prompt: string;
+  plan?: {goal: string; steps: string[]};
+  every: Every;
+  at?: {hour: number; minute: number};
+  maxRuns: number;
+  days: number;
+  battery?: BatteryGuard;
+}
+
+/**
+ * A running loop as the user edited it, within the hard limits. Keeps runs
+ * so far, its chat and log; a new schedule moves the next time; logs
+ * "Edited". Days still count from the start (never past MAX_DAYS), and runs
+ * can't go below the runs already done.
+ */
+export function editLoop(
+  loop: Loop,
+  edit: LoopEdit,
+  now = Date.now(),
+): {ok: true; loop: Loop} | {ok: false; error: string} {
+  const title = cleanBlank(edit.title ?? '').slice(0, MAX_CUSTOM_TITLE);
+  const prompt = cleanCustomPrompt(edit.prompt ?? '');
+  if (!title) {
+    return {ok: false, error: 'Give the loop a name'};
+  }
+  if (!prompt) {
+    return {ok: false, error: 'Say what each run should do'};
+  }
+  const every = edit.every in EVERY_MS ? edit.every : loop.every;
+  const timed = every === 'day' || every === 'week';
+  const at = timed ? cleanAt(edit.at) : undefined;
+  if (timed && !at) {
+    return {ok: false, error: 'Time as HH:MM, e.g. 07:30'};
+  }
+  const days = Math.min(MAX_DAYS, Math.max(1, Math.round(edit.days) || 1));
+  const startedAt = startOf(loop, now);
+  const endAt = startedAt + days * EVERY_MS.day;
+  if (endAt <= now) {
+    return {ok: false, error: 'Choose more days: that end is already past'};
+  }
+  const maxRuns = Math.min(
+    MAX_RUNS,
+    Math.max(1, loop.runs, Math.round(edit.maxRuns) || 1),
+  );
+  const sameSchedule =
+    every === loop.every &&
+    at?.hour === loop.at?.hour &&
+    at?.minute === loop.at?.minute;
+  let nextAt = loop.nextAt;
+  if (!sameSchedule) {
+    nextAt = timed
+      ? firstRun(every, at, now)
+      : loop.runs > 0
+        ? now + EVERY_MS[every]
+        : now;
+  }
+  const newPrompt = prompt !== loop.prompt;
+  const plan =
+    loop.templateId === CUSTOM_LOOP_ID
+      ? (cleanPlan(edit.plan) ?? (newPrompt ? undefined : loop.plan))
+      : undefined;
+  return {
+    ok: true,
+    loop: addLog(
+      {
+        ...loop,
+        title,
+        prompt,
+        every,
+        at,
+        nextAt,
+        maxRuns,
+        endAt,
+        startedAt,
+        battery: cleanBattery(edit.battery ?? loop.battery),
+        plan,
+        // A new prompt starts afresh for the no-progress check.
+        progress: newPrompt ? undefined : loop.progress,
+      },
+      'Edited',
+      now,
+    ),
+  };
+}
+
+/** Saves the user's edit of a running loop (and moves its alarm). */
+export async function saveLoopEdit(
+  id: string,
+  edit: LoopEdit,
+  now = Date.now(),
+): Promise<{ok: true; loop: Loop} | {ok: false; error: string}> {
+  const loops = await loadLoops();
+  const i = loops.findIndex(l => l.id === id);
+  if (i < 0) {
+    return {ok: false, error: 'That loop was stopped'};
+  }
+  const r = editLoop(loops[i], edit, now);
+  if (!r.ok) {
+    return r;
+  }
+  loops[i] = r.loop;
+  await saveLoops(loops);
+  return r;
 }
 
 export async function stopLoop(id: string): Promise<void> {
