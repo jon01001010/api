@@ -73,7 +73,8 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
   - Model choice and per-device settings (model files, GPU, storage, permissions) stay per device.
 - [ ] Desktop tools in the workspace folder only; voice; quick chat on a hotkey.
 
-- [x] **Ready-made loops**, first version (built 2026-11-13; check on the phone and PC): **Toolbox → Loops**. Pick one of 7 starter loops, fill in the blanks, choose how often (every hour / 3 hours / day at a time / week), how many runs and days, press Start. When one is due (checked every minute while the app is open) the app asks **Skip / Later (1 h) / Run now**; a run is a message in the loop's own chat ("Loop: …"), so every tool switch and "Allow?" still applies. Each reply ends with "Next steps:", shown as tap buttons under it. Running loops: next time, runs so far, last log lines, Run now / Pause / Stop. Still to do from the write-up below: "Make a loop" from one sentence, plans as step programs with a dry run, Android job scheduler (runs while the app is closed), notifications, sharing, battery guards. See "Ready-made loops" below.
+- [x] **Ready-made loops**, first version (built 2026-11-13; check on the phone and PC): **Toolbox → Loops**. Pick one of 7 starter loops, fill in the blanks, choose how often (every hour / 3 hours / day at a time / week), how many runs and days, press Start. When one is due (checked every minute while the app is open) the app asks **Skip / Later (1 h) / Run now**; a run is a message in the loop's own chat ("Loop: …"), so every tool switch and "Allow?" still applies. Each reply ends with "Next steps:", shown as tap buttons under it. Running loops: next time, runs so far, last log lines, Run now / Pause / Stop. Still to do from the write-up below: plans as step programs with a dry run, Android job scheduler (runs while the app is closed), notifications, sharing, battery guards. See "Ready-made loops" below.
+- [x] **Make a loop from one sentence** (built 2026-11-15; check on the phone and PC): **Toolbox → Loops → Make a loop**. Type one sentence ("help me get fit before summer"), pick Short / Normal / Detailed, press Draft: the loaded model (local or remote, same generation slot as the chat, no tools, one completion) writes a plan as JSON; the app reads it as data only (first JSON object, every field checked, runs/days clamped to the hard limits, steps cut to the level and at most 20). The draft shows name, what each run does, how often, runs/days, the steps (edit, delete, move up/down, add), the plain summary and the whole prompt each run gets; nothing runs before Start. If the reply can't be read: a plain message, Try again or Write it myself. Saved as a custom loop (`templateId: 'custom'`), same limits as the ready-made ones; the steps are a checklist inside its prompt that each run continues. `src/services/loops/makeLoop.ts`, `src/screens/MakeLoopSheet.tsx`.
 
 - [ ] **Reasoning that doesn't loop** (first real use 2026-11-08: a 2B model with Think on went back and forth "wait, I should…" and never answered "hi"):
   - A thinking budget: a cap on reasoning tokens (setting, default small for small models; llama-server's reasoning budget), then it must answer.
@@ -132,13 +133,13 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
 A loop is a small agent job that comes back on a timer: it does its part, shows the result, and ends with **next steps** the user can tap. Ready-made ones in a gallery, so nobody has to know what an "agentic loop" is.
 
 **The shape of every loop (user, 2026-11-08): Prompt → Research → Breakdown → Timers → Continue → Ask**
-1. [ ] **Prompt:** the user says what they want in one sentence ("help me get fit before summer", "plan my move"); or picks a ready-made loop, which is this sentence filled in.
-2. [ ] **Research:** the model gathers what it needs with the tools that are switched on (web, memory, workspace files; the PC's tools over the home link later), and shows what it found and where from.
-3. [ ] **Breakdown:** it turns the goal into small, concrete steps with rough times, shown as a checklist the user can edit, reorder or delete before anything starts.
+1. [x] **Prompt:** the user says what they want in one sentence ("help me get fit before summer", "plan my move"); or picks a ready-made loop, which is this sentence filled in. (Built: "Make a loop".)
+2. [ ] **Research:** the model gathers what it needs with the tools that are switched on (web, memory, workspace files; the PC's tools over the home link later), and shows what it found and where from. (Not yet: drafting uses no tools; research happens in the runs, in the loop's chat.)
+3. [ ] **Breakdown:** it turns the goal into small, concrete steps with rough times, shown as a checklist the user can edit, reorder or delete before anything starts. (Built: the checklist, editable before Start. Not yet: rough times per step.)
 4. [ ] **Timers:** each step gets a when (a time, "every morning", "in 2 days", "after step 3"); the user sees the whole schedule and can change any of it. Limits (how often, end date, battery) are set here.
 5. [ ] **Continue:** at each timer the loop picks up where it left off: does its part of the next step, updates the checklist, and adjusts the plan if something changed.
 6. [ ] **Ask:** before anything that matters (an action outside the app, changing the plan, spending, sending, more time) it asks; and at each check-in it asks the user how it went, then shows the next steps as buttons. No answer = it waits, it never guesses ahead.
-- [ ] One **"Make a loop"** button: type the sentence, the app runs steps 2–4 and shows the plan for approval; nothing runs before the user presses Start.
+- [x] One **"Make a loop"** button: type the sentence, the app runs steps 2–4 and shows the plan for approval; nothing runs before the user presses Start. (Built 2026-11-15: steps 3 and a single timer for the whole loop; not yet research before drafting, nor a timer per step.)
 
 **Agentic planning: the plan is a program (user, 2026-11-08)**
 - [ ] A plan is saved as structured steps, not chat text, and run by a fixed runner in the app, step by step, like a small program. It stays data, never code (rule 4): the runner only knows a short list of step kinds, and the model can't add new ones.
@@ -150,7 +151,7 @@ A loop is a small agent job that comes back on a timer: it does its part, shows 
 - [ ] Versioned: each edit makes a new version; going back is one tap. Ready-made loops are just shipped plans; shared plans (QR / file) are reviewed and installed off, like tools.
 - [ ] Runs where it fits: the phone for quick steps, the PC (home link) for long or heavy ones; a step can say "on the PC", and the PC's questions can be answered on the phone.
 
-- [ ] **The user chooses how many steps** (user, 2026-11-08): a detail level when making the plan (Short ≈ 3 steps, Normal ≈ 5–7, Detailed ≈ 10–15, or an exact number), and a hard maximum per plan (default 20, settable). The model must fit the plan to it; asking for more steps later is a plan change the user approves.
+- [ ] **The user chooses how many steps** (user, 2026-11-08): a detail level when making the plan (Short ≈ 3 steps, Normal ≈ 5–7, Detailed ≈ 10–15, or an exact number), and a hard maximum per plan (default 20, settable). The model must fit the plan to it; asking for more steps later is a plan change the user approves. (Built: Short / Normal / Detailed, the draft cut to the level, hard maximum 20; the user can add steps up to 20 before Start. Not yet: an exact number, a settable maximum, changing steps after Start.)
 - [ ] **Loop guards** (all on by default, shown on the plan's card, only the user can raise them):
   - Each **repeat** block has a maximum count; each plan a maximum number of steps run in total and a maximum run time.
   - A budget per run: model calls, tool calls, tokens; on the phone also battery (stop below a level, heavy work only on the charger).
@@ -161,7 +162,7 @@ A loop is a small agent job that comes back on a timer: it does its part, shows 
 
 **How it looks to the user**
 - [x] A **Loops** gallery: each card says in one line what it does, how often, and what it may use. Pick one, fill in the blanks (topic, time, how long), press Start. No prompt writing.
-- [ ] Before it starts, a plain summary: "Runs every day at 7:00 for 2 weeks. May use: weather, calendar, memory (read). Never sends, buys or deletes anything."
+- [ ] Before it starts, a plain summary (built for "Make a loop": how often, runs, days, asks before each run, and the whole prompt; not yet the per-tool "May use" line): "Runs every day at 7:00 for 2 weeks. May use: weather, calendar, memory (read). Never sends, buys or deletes anything."
 - [x] Each run ends with a short result and 1–3 **next steps** as buttons ("Do step 2 now", "Remind me at 5", "Done, skip ahead"). Tapping one continues the loop; ignoring it is fine.
 - [ ] A **Running loops** list: next run time, runs so far, Pause / Stop / Edit; a notification per run (can be turned off). (Built: next time, runs, log, Run now / Pause / Stop. Not yet: Edit, notifications.)
 

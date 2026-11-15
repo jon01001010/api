@@ -26,6 +26,7 @@ import {
   addLog,
 } from '../services/loops/loops';
 import {runLoopNow} from '../services/loops/loopRunner';
+import {MakeLoopSheet} from './MakeLoopSheet';
 
 const EVERY: Every[] = ['hour', '3hours', 'day', 'week'];
 
@@ -152,6 +153,7 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
 }) => {
   const [loops, setLoops] = useState<Loop[]>([]);
   const [setup, setSetup] = useState<LoopTemplate | null>(null);
+  const [making, setMaking] = useState(false);
   const reload = useCallback(() => {
     loadLoops().then(setLoops);
   }, []);
@@ -223,7 +225,14 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
             </View>
           </View>
         ))}
-        {setup ? (
+        {making ? (
+          <MakeLoopSheet
+            onDone={() => {
+              setMaking(false);
+              reload();
+            }}
+          />
+        ) : setup ? (
           <Setup
             template={setup}
             onDone={() => {
@@ -233,6 +242,13 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
           />
         ) : (
           <View style={{gap: 6}}>
+            <Button
+              mode="contained-tonal"
+              icon="pencil-plus-outline"
+              onPress={() => setMaking(true)}
+              testID="make-loop-open">
+              Make a loop
+            </Button>
             {LOOP_TEMPLATES.map(t => (
               <Card
                 key={t.id}
