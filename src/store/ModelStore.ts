@@ -43,7 +43,8 @@ import {
   THIS_PC,
 } from '../services/desktop/thisPc';
 import {routerStore} from './RouterStore';
-import {chatSessionStore} from './ChatSessionStore';
+import {chatSessionStore, setThinkingDefault} from './ChatSessionStore';
+import {isSmallModel} from '../utils/modelFit';
 import {GenerationSlot, type GenerationLease} from './generationLease';
 import {
   draftCacheDefaults,
@@ -4654,3 +4655,5 @@ class ModelStore {
 }
 
 export const modelStore = new ModelStore();
+// Small models think off by default (utils/modelFit isSmallModel).
+setThinkingDefault(() => !isSmallModel(modelStore.activeModel));

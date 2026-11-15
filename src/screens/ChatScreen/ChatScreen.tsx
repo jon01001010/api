@@ -162,6 +162,8 @@ export const ChatScreen: React.FC = observer(() => {
     chatSessionStore.newChatThinkingOverride,
     chatSessionStore.newChatReasoningEffort,
     activePalId,
+    // Small models think off by default (ChatSessionStore resolver).
+    modelStore.activeModelId,
   ]);
 
   // Tool-compatibility one-time banner: when the active Pal declares

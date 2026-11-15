@@ -1,4 +1,4 @@
-import {chatSessionStore} from '../ChatSessionStore';
+import {chatSessionStore, setThinkingDefault} from '../ChatSessionStore';
 import {palStore} from '../PalStore';
 import {defaultCompletionSettings} from '../ChatSessionStore';
 import {CompletionParams} from '../../utils/completionTypes';
@@ -344,6 +344,29 @@ describe('ChatSessionStore - Pal Settings', () => {
       // Tools came from the requested talent.
       const toolNames = tools.map((t: any) => t?.function?.name ?? t?.name);
       expect(toolNames).toContain('calculate');
+    });
+  });
+
+  describe('small models think off by default', () => {
+    afterEach(() => setThinkingDefault(() => true));
+
+    it('turns thinking off when the loaded model is small', async () => {
+      setThinkingDefault(() => false);
+      const result = await chatSessionStore.resolveCompletionSettings();
+      expect(result.enable_thinking).toBe(false);
+    });
+
+    it("keeps the user's own choice", async () => {
+      setThinkingDefault(() => false);
+      chatSessionStore.newChatThinkingOverride = true;
+      const result = await chatSessionStore.resolveCompletionSettings();
+      expect(result.enable_thinking).toBe(true);
+      expect(result.reasoning).toEqual({enabled: true});
+    });
+
+    it('leaves bigger models as they were', async () => {
+      const result = await chatSessionStore.resolveCompletionSettings();
+      expect(result.enable_thinking).toBe(true);
     });
   });
 });

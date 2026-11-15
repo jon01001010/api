@@ -1,5 +1,7 @@
 import {buildMemoryContext} from '../services/talents/agentMemory';
 import {applyThinkingBudget, readThinkingLength} from '../utils/thinkingBudget';
+import {guardThinkingLoops} from '../api/loopGuardEngine';
+import {modelSpeedStore} from '../utils/modelSpeed';
 import {mirrorAfterReply} from '../services/sync/deviceSync';
 import {messagesForModel} from '../services/chatSummary';
 import React, {useRef} from 'react';
@@ -560,6 +562,10 @@ async function applyEventToStore(
         },
       });
       chatSessionStore.recordCompletionSnapshot(snapshot);
+      // The model's real speed on this device, shown next to it.
+      modelSpeedStore
+        .record(modelStore.activeModelId, finalResult.timings)
+        .catch(() => {});
       if (snapshot.isRemote) {
         modelStore.reprobeRemoteCapsAfterCompletion();
       }
@@ -933,7 +939,8 @@ export const useChatSession = (
     try {
       const agentMaxTurns = await readAgentMaxTurns();
       const events = runAgent({
-        engine,
+        // Thinking that goes round in circles ends early (api/loopGuardEngine).
+        engine: guardThinkingLoops(engine),
         maxTurns: agentMaxTurns,
         initialParams: cleanCompletionParams as ApiCompletionParams,
         allowedTalentNames: palTalents,

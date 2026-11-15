@@ -26,6 +26,8 @@ import {
 } from 'react-native-paper';
 
 import {ProjectionModelSelector, MemoryRequirement} from '../../../components';
+import {FitLabel} from '../../../components/FitLabel';
+import {formatSpeed, modelSpeedStore} from '../../../utils/modelSpeed';
 
 import {useTheme, useMemoryCheck, useStorageCheck} from '../../../hooks';
 
@@ -126,6 +128,11 @@ export const ModelCard: React.FC<ModelCardProps> = observer(
     const isDownloading = modelStore.isDownloading(model.id);
     const isHfModel = model.origin === ModelOrigin.HF;
     const isRemoteModel = model.origin === ModelOrigin.REMOTE;
+    // Real speed on this device, after the first replies.
+    useEffect(() => {
+      modelSpeedStore.load();
+    }, []);
+    const speedText = formatSpeed(modelSpeedStore.speedOf(model.id));
     const cardId = model.filename || model.id;
 
     const modelCaps = modelStore.capsFor(model);
@@ -725,6 +732,11 @@ export const ModelCard: React.FC<ModelCardProps> = observer(
                     <Text style={styles.serverLinkText}>
                       {model.serverName || 'Remote'}
                     </Text>
+                    {speedText ? (
+                      <Text style={styles.sizeInfoText} testID="model-speed">
+                        {speedText}
+                      </Text>
+                    ) : null}
                   </TouchableOpacity>
                 ) : (
                   <View style={styles.sizeInfo}>
@@ -735,6 +747,7 @@ export const ModelCard: React.FC<ModelCardProps> = observer(
                     />
                     <Text style={styles.sizeInfoText}>
                       {getModelSizeString(model, isActiveModel, l10n)}
+                      {speedText ? ` · ${speedText}` : ''}
                     </Text>
                   </View>
                 )}
@@ -755,6 +768,18 @@ export const ModelCard: React.FC<ModelCardProps> = observer(
                 style={styles.storageErrorText}>
                 {storageNOkMessage}
               </HelperText>
+            )}
+
+            {/* Find the fit: memory needed and where it runs here */}
+            {!isRemoteModel && !isDownloaded && !isDownloading && (
+              <FitLabel
+                fileBytes={model.size + (projectionModelForCheck?.size ?? 0)}
+                name={[model.repo, model.filename, model.name]
+                  .filter(Boolean)
+                  .join(' ')}
+                params={model.params}
+                style={styles.fitText}
+              />
             )}
 
             {/* Display warnings */}

@@ -1574,6 +1574,20 @@ class ChatSessionStore {
       }
     }
 
+    // Small models (under ~3B) think off unless the user turns it on: with
+    // Think on they went "wait, I should…" round and round (2026-11-08).
+    // Baked into the session's snapshot, so the chat's pill shows it; the
+    // user's own choice (below, or a custom session) still wins.
+    if (resolvedSettings.enable_thinking !== false && !thinksByDefault()) {
+      resolvedSettings = {
+        ...resolvedSettings,
+        enable_thinking: false,
+        ...(resolvedSettings.reasoning && {
+          reasoning: {...resolvedSettings.reasoning, enabled: false},
+        }),
+      };
+    }
+
     // No-session-only: apply user's explicit thinking override last so it
     // wins over pal's enable_thinking. Overlays the local enable_thinking flag
     // AND the reasoning carrier (so the remote wire path honors the on/off
@@ -1624,6 +1638,16 @@ class ChatSessionStore {
       activePalId,
     );
   }
+}
+
+/**
+ * Whether the loaded model thinks unless told otherwise. Set by ModelStore
+ * (small models: no); kept here as a function so this store needs no import
+ * of ModelStore.
+ */
+let thinksByDefault: () => boolean = () => true;
+export function setThinkingDefault(fn: () => boolean) {
+  thinksByDefault = fn;
 }
 
 export const chatSessionStore = new ChatSessionStore();
