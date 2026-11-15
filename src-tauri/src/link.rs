@@ -2616,7 +2616,8 @@ mod tests {
     /// only remove: nothing on its path adds a device or sets a right.
     #[test]
     fn a_removal_notice_only_removes_as_remove_here_does() {
-        let source = include_str!("link.rs");
+        // The Windows checkout has "\r\n" line ends; compare with "\n".
+        let source = &include_str!("link.rs").replace("\r\n", "\n");
         let code = &source[..source.find("#[cfg(test)]").unwrap()];
         let forget = &code[code.find("pub async fn link_forget(").unwrap()..];
         let forget = &forget[..forget.find("\n}").unwrap()];
@@ -3229,7 +3230,8 @@ mod tests {
     /// a device only after its dialog too, with every right off.
     #[test]
     fn rights_are_written_only_after_this_pcs_own_dialog() {
-        let source = include_str!("link.rs");
+        // The Windows checkout has "\r\n" line ends; compare with "\n".
+        let source = &include_str!("link.rs").replace("\r\n", "\n");
         for (name, set) in [
             ("answer", "set_may_answer"),
             ("picture", "set_may_picture"),

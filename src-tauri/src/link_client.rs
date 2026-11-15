@@ -350,7 +350,7 @@ mod tests {
     /// each other off the relay); and no new device keys are made.
     #[test]
     fn one_key_means_the_link_endpoint_itself() {
-        let source = include_str!("link_client.rs");
+        let source = &include_str!("link_client.rs").replace("\r\n", "\n");
         let client = &source[source.find("fn client(app").unwrap()..];
         let client = &client[..client.find("#[derive(Serialize)]").unwrap()];
         assert!(client.contains("Phone::with_endpoint(tauri::async_runtime::block_on(crate::link::device_endpoint(app))?"));
@@ -358,7 +358,7 @@ mod tests {
         assert!(client.contains("Some(key) => Phone::with_key(key, None)?"));
         let own = &source[source.find("fn own_key(app").unwrap()..source.find("fn own_key_in_use").unwrap()];
         assert!(!own.contains("generate()"));
-        let link = include_str!("link.rs");
+        let link = &include_str!("link.rs").replace("\r\n", "\n");
         let device = &link[link.find("pub async fn device_endpoint").unwrap()..];
         let device = &device[..device.find("\n}").unwrap()];
         assert!(device.contains("bind(app, &mut running)"));
