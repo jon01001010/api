@@ -46,6 +46,7 @@ jest.mock('../syncSources', () => ({
 import {
   applyItems,
   cleanItems,
+  MAX_CLOCK_SKEW,
   merge,
   promptHistory,
   readItems,
@@ -147,4 +148,51 @@ it('drops malformed or oversized items from the other device', () => {
     ]),
   ).toEqual([item('systemPrompt', 'ok', 1)]);
   expect(cleanItems('nonsense')).toEqual([]);
+});
+
+describe('a time far in the future (a clock ahead, or forged)', () => {
+  it('is taken as a few minutes ahead at most', () => {
+    expect(
+      cleanItems([{key: 'systemPrompt', text: 'x', updatedAt: 9e15}], 1000),
+    ).toEqual([item('systemPrompt', 'x', 1000 + MAX_CLOCK_SKEW)]);
+    expect(
+      cleanItems([{key: 'systemPrompt', text: 'x', updatedAt: 1e300}], 1000)[0]
+        .updatedAt,
+    ).toBe(1000 + MAX_CLOCK_SKEW);
+  });
+
+  it('no longer locks an injected edit in: the next real edit wins', async () => {
+    mockText.prompt = 'Mine';
+    await readItems(1000);
+    // A paired device sends an injected prompt "from the far future".
+    const now = 2000;
+    const local = await readItems(now);
+    const merged = merge(
+      local,
+      cleanItems([item('systemPrompt', 'Evil', 9e15)], now),
+    );
+    expect(merged.takenHere).toEqual(['systemPrompt']);
+    await applyItems(merged.items, now);
+    expect(mockText.prompt).toBe('Evil');
+    // What this device now passes on carries its own time, not the future.
+    const after = await readItems(3000);
+    expect(after.find(i => i.key === 'systemPrompt')!.updatedAt).toBe(now);
+    // The user fixes it later: a device that still has "Evil" (with the
+    // time it got it) no longer wins.
+    mockText.prompt = 'Mine again';
+    const fixed = await readItems(10 * 60_000);
+    const replay = cleanItems([item('systemPrompt', 'Evil', now)], 10 * 60_000);
+    expect(merge(fixed, replay).takenHere).toEqual([]);
+  });
+
+  it('a future time stored before the clamp is brought back to now', async () => {
+    mockText.prompt = 'Seen';
+    await readItems(1000);
+    const key = Object.keys(mockStore).find(k => k.includes('sync/state'))!;
+    const state = JSON.parse(mockStore[key]);
+    state.systemPrompt.updatedAt = 9e15;
+    mockStore[key] = JSON.stringify(state);
+    const items = await readItems(5000);
+    expect(items.find(i => i.key === 'systemPrompt')!.updatedAt).toBe(5000);
+  });
 });

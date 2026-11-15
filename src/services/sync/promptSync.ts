@@ -53,6 +53,18 @@ export interface SyncItem {
   updatedAt: number;
 }
 
+/**
+ * How far ahead of this device's clock another device's time may be (ms).
+ * Later times are taken as this much ahead, so a clock far ahead (or a
+ * forged time) can't make an edit win forever.
+ */
+export const MAX_CLOCK_SKEW = 5 * 60_000;
+
+/** A time from another device, no later than now plus the allowed skew. */
+export function clampTime(t: number, now = Date.now()): number {
+  return Math.min(Math.max(0, t), now + MAX_CLOCK_SKEW);
+}
+
 const STATE_KEY = '@pocketagent/sync/state/v1';
 const PROMPT_HISTORY_KEY = '@pocketagent/sync/prompt-history/v1';
 const historyKey = (key: SyncKey) =>
@@ -121,7 +133,8 @@ export async function readItems(now = Date.now()): Promise<SyncItem[]> {
     const updatedAt = isEmpty(key, text)
       ? 0
       : seen && seen.print === print
-        ? seen.updatedAt
+        ? // Never later than now (heals a time stored before the clamp).
+          Math.min(seen.updatedAt, now)
         : now;
     state[key] = {print, updatedAt};
     items.push({key, text, updatedAt});
@@ -130,8 +143,8 @@ export async function readItems(now = Date.now()): Promise<SyncItem[]> {
   return items;
 }
 
-/** Only well-formed items, one per key, within size. */
-export function cleanItems(raw: unknown): SyncItem[] {
+/** Only well-formed items, one per key, within size; times clamped. */
+export function cleanItems(raw: unknown, now = Date.now()): SyncItem[] {
   const list = Array.isArray(raw) ? raw : [];
   const out: SyncItem[] = [];
   for (const key of SYNC_KEYS) {
@@ -143,7 +156,7 @@ export function cleanItems(raw: unknown): SyncItem[] {
       typeof item.updatedAt === 'number' &&
       Number.isFinite(item.updatedAt)
     ) {
-      out.push({key, text: item.text, updatedAt: Math.max(0, item.updatedAt)});
+      out.push({key, text: item.text, updatedAt: clampTime(item.updatedAt, now)});
     }
   }
   return out;
@@ -231,10 +244,13 @@ export async function promptHistory(): Promise<{at: number; text: string}[]> {
  * replace in history, and remembers them as seen (so they don't count as
  * local edits next time).
  */
-export async function applyItems(items: SyncItem[]): Promise<SyncKey[]> {
+export async function applyItems(
+  items: SyncItem[],
+  now = Date.now(),
+): Promise<SyncKey[]> {
   const state = await loadState();
   const changed: SyncKey[] = [];
-  for (const item of cleanItems(items)) {
+  for (const item of cleanItems(items, now)) {
     const current = await readText(item.key);
     if (current !== item.text) {
       if (item.key === 'systemPrompt') {
@@ -255,8 +271,12 @@ export async function applyItems(items: SyncItem[]): Promise<SyncKey[]> {
     }
     // What it is here now (assistants are added, never deleted: the list
     // here may hold more than what came).
-    const now = await readText(item.key);
-    state[item.key] = {print: fingerprint(now), updatedAt: item.updatedAt};
+    // Stored no later than now: what this device passes on is its own time.
+    const text = await readText(item.key);
+    state[item.key] = {
+      print: fingerprint(text),
+      updatedAt: Math.min(item.updatedAt, now),
+    };
   }
   await AsyncStorage.setItem(STATE_KEY, JSON.stringify(state));
   return changed;
