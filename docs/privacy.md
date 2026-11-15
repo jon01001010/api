@@ -31,6 +31,8 @@ All of it is in the app's private storage, which other apps can't read (unless t
 | Removal notices (device circle: which device keys were removed, by which key, when; the last numbers seen; at most 8 waiting to be passed on) and the keys of the Home PCs this PC uses | Same place as the link key. On the phone: an owner-only file next to its link key, in the no-backup folder. |
 | A second PC's link key (when it is paired to a main PC) | Same as above. Since 2026-11-15 a PC uses one key in both roles (new installs, or after "Use one key for this PC"); an older separate key is kept there, unused. |
 | The log of questions answered on a paired device (`answers.log`) | Linux: the settings folder; Windows: `AppData\Local`. Not reachable by the screens without asking. |
+| The log of files reached outside the workspace (`outside.log`: when, the path, list / read / write / delete, allowed or refused; never contents) | Next to `answers.log`. |
+| Copies of files outside the workspace that the model replaced or deleted (with your Allow; the newest 50) | The same private folder, `outside/kept`. |
 | The model server's password | Made new at every model start, kept in memory only, passed to the model server privately (not on its command line). |
 
 **Anything running as you on the PC can read Credential Manager and these files.** A copied link key would let someone pose as that PC (sealing the key to the PC is being considered). If you think a device or key is compromised, remove the device in the PC's list: it is cut off at once.
