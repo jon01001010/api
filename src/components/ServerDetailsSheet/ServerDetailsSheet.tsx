@@ -207,7 +207,27 @@ export const ServerDetailsSheet: React.FC<ServerDetailsSheetProps> = observer(
               text: l10n.common.delete,
               style: 'destructive',
               onPress: () => {
+                const pc = serverStore.servers.find(
+                  sv => sv.id === serverId,
+                )?.homeLinkPc;
                 serverStore.removeServer(serverId);
+                // A Home PC removed here is removed on your other devices
+                // too, like "Remove here" in Your devices (signed notice;
+                // only when no other entry here still uses that PC).
+                if (
+                  pc &&
+                  !serverStore.servers.some(sv => sv.homeLinkPc === pc)
+                ) {
+                  const circle = require('../../services/homeLink/circle');
+                  circle
+                    .tellRemoval(pc, serverStore.servers)
+                    .then((told: {ok: boolean}) => {
+                      if (told.ok) {
+                        return circle.passRemovalsOn(serverStore);
+                      }
+                    })
+                    .catch(() => {});
+                }
               },
             },
           ],
