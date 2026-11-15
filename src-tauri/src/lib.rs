@@ -7,6 +7,7 @@ mod approval;
 mod docs;
 mod download;
 mod files;
+mod image_gen;
 #[cfg(feature = "link")]
 mod link;
 #[cfg(not(feature = "link"))]
@@ -64,6 +65,8 @@ pub fn run() {
         .manage(net::Requests::default())
         .manage(model_server::ModelServer::default())
         .manage(download::Downloads::default())
+        // Pictures: one at a time, sd-cli per picture (image_gen.rs).
+        .manage(image_gen::ImageGen::default())
         // HTML previews: their own address, sandboxed, no network (rule 3).
         .manage(preview::Previews::default())
         // Home link: off until the user switches it on (link.rs).
@@ -103,6 +106,8 @@ pub fn run() {
             model_server::pick_model_file,
             model_server::model_server_start,
             model_server::model_server_stop,
+            image_gen::image_generate,
+            image_gen::image_cancel,
             system::system_info,
             timing::startup_timing,
             transfer::pick_import_file,
@@ -131,6 +136,7 @@ pub fn run() {
     app.run(|handle, event| {
         // Never leave the model server running after the app closes.
         if let tauri::RunEvent::Exit = event {
+            handle.state::<image_gen::ImageGen>().stop();
             if let Some(mut running) = handle
                 .state::<model_server::ModelServer>()
                 .0
@@ -157,6 +163,7 @@ mod tests {
             include_str!("secrets.rs"),
             include_str!("net.rs"),
             include_str!("model_server.rs"),
+            include_str!("image_gen.rs"),
             include_str!("system.rs"),
             include_str!("timing.rs"),
             include_str!("docs.rs"),

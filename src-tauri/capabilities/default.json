@@ -37,6 +37,8 @@
     "allow-pick-model-file",
     "allow-model-server-start",
     "allow-model-server-stop",
+    "allow-image-generate",
+    "allow-image-cancel",
     "allow-system-info",
     "allow-startup-timing",
     "allow-pick-import-file",

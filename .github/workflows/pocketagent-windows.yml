@@ -32,6 +32,12 @@ env:
   LLAMA_TAG: b11662
   LLAMA_ZIP: llama-b11662-bin-win-vulkan-x64.zip
   LLAMA_SHA256: d84541495f3608482c35a5c8c24267a8d61117d89d5cf34a557b3ed877b272f8
+  # Pinned stable-diffusion.cpp release (1 Nov 2026) for pictures on the PC
+  # (src-tauri/src/image_gen.rs): its Windows Vulkan build and checksum (the
+  # digest GitHub lists for the asset). Change all three together, on purpose.
+  SD_TAG: master-1039-290148d
+  SD_ZIP: sd-master-290148d-bin-win-vulkan-x64.zip
+  SD_SHA256: d333b2b3fd0a26e5a0917341e6a730c95335e551f342f5bf8b5b4f4ccf0b3cf1
 jobs:
   windows:
     runs-on: windows-2022
@@ -95,6 +101,37 @@ jobs:
         with:
           path: ${{ env.LLAMA_ZIP }}
           key: llama-cpp-${{ env.LLAMA_SHA256 }}
+      - name: Restore the pinned stable-diffusion.cpp archive (cached copy)
+        id: sd-cache
+        if: github.event_name == 'push' || inputs.stage == 'exe'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.SD_ZIP }}
+          key: sd-cpp-${{ env.SD_SHA256 }}
+      - name: Add the pinned picture maker sd-cli (checksum checked)
+        if: github.event_name == 'push' || inputs.stage == 'exe'
+        run: |
+          set -euo pipefail
+          if [ ! -f "$SD_ZIP" ]; then
+            curl -sSfL --retry 8 --retry-delay 60 --retry-all-errors -o "$SD_ZIP" \
+              "https://github.com/leejet/stable-diffusion.cpp/releases/download/${SD_TAG}/${SD_ZIP}"
+          fi
+          echo "${SD_SHA256}  ${SD_ZIP}" | sha256sum -c -
+          powershell -NoProfile -Command "Expand-Archive -Path '${SD_ZIP}' -DestinationPath 'sd-unpacked' -Force"
+          # sd-cli.exe and the libraries next to it, wherever the zip keeps them.
+          exe=$(find sd-unpacked -name sd-cli.exe | head -1)
+          test -n "$exe"
+          cp -r "$(dirname "$exe")"/. src-tauri/sd/
+          # Never shipped: sd-server has no password (any program could use it).
+          rm -f src-tauri/sd/sd-server.exe
+          test -f src-tauri/sd/sd-cli.exe
+          ls src-tauri/sd
+      - name: Keep a copy of the stable-diffusion.cpp archive
+        if: steps.sd-cache.outputs.cache-hit != 'true' && (github.event_name == 'push' || inputs.stage == 'exe')
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.SD_ZIP }}
+          key: sd-cpp-${{ env.SD_SHA256 }}
       - name: Rust tests (native side)
         if: github.event_name == 'push' || inputs.stage == 'exe'
         working-directory: src-tauri

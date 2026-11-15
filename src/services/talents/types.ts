@@ -10,6 +10,8 @@ export interface WebSearchResultItem {
  * - `type: 'text'` means only a textual summary is produced.
  * - `type: 'search'` carries structured hits for the UI; the model still reads
  *   `summary` (the wrapped menu) exactly as it would a `text` result.
+ * - `type: 'image'` means a picture was made (`path`: the app's own path,
+ *   /pocketagent/…; shown in the chat, can be saved with Save a copy).
  * - `type: 'audio'` means an audio file was produced (future TTS support).
  * - `type: 'error'` means the engine failed; errorMessage describes what went wrong.
  * `summary` is always present and is what gets fed back to the model as the
@@ -24,6 +26,7 @@ export type TalentResult =
       results: WebSearchResultItem[];
       summary: string;
     }
+  | {type: 'image'; path: string; name: string; summary: string}
   | {type: 'audio'; audioUri: string; summary: string}
   | {type: 'error'; summary: string; errorMessage: string};
 

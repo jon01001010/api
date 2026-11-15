@@ -18,12 +18,12 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 /// The workspace as the screens name it (src/services/talents/fileWorkspace.ts).
-const WORKSPACE: &str = "Documents/PocketAgentFiles";
+pub(crate) const WORKSPACE: &str = "Documents/PocketAgentFiles";
 const COMMAND_TIME_LIMIT: Duration = Duration::from_secs(60);
 const MAX_OUTPUT: usize = 32 * 1024;
 const MAX_COMMAND: usize = 2000;
 
-fn workspace(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn workspace(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join(WORKSPACE);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)

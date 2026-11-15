@@ -118,3 +118,78 @@ it('prints through the native side, which asks', async () => {
   await new DesktopToolsEngine('print_file').execute({filename: 'letter.docx'});
   expect(invoke).toHaveBeenCalledWith('print_file', {name: 'letter.docx'});
 });
+
+describe('image_generate', () => {
+  const RNFS = require('@dr.pogodin/react-native-fs');
+  const installed = (yes: boolean) =>
+    RNFS.exists.mockImplementation(async () => yes);
+  afterEach(() => RNFS.exists.mockReset());
+
+  it('says how to get a model when none is downloaded; runs nothing', async () => {
+    installed(false);
+    const r = await new DesktopToolsEngine('image_generate').execute({
+      prompt: 'a cat',
+    });
+    expect(r.type).toBe('text');
+    expect(r.summary).toMatch(/Toolbox, Image models/);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('makes the picture natively with the first downloaded set and returns it as an image', async () => {
+    installed(true);
+    invoke.mockResolvedValueOnce({
+      name: 'picture-20261115-101530-ab12.png',
+      path: '/pocketagent/Documents/PocketAgentFiles/images/picture-20261115-101530-ab12.png',
+      seed: 7,
+      seconds: 9,
+    });
+    const r = await new DesktopToolsEngine('image_generate').execute({
+      prompt: ' a red fox ',
+      width: 768,
+    });
+    expect(invoke).toHaveBeenCalledWith('image_generate', {
+      model: 'flux2-klein-4b',
+      prompt: 'a red fox',
+      width: 768,
+      height: 768,
+      steps: null,
+      seed: null,
+    });
+    expect(r.type).toBe('image');
+    expect(r.summary).toContain('images/picture-20261115-101530-ab12.png');
+  });
+
+  it('a refused prompt comes back as the native side says it', async () => {
+    installed(true);
+    invoke.mockRejectedValueOnce(
+      'Refused: it combines minors with sexual content. Nothing was made.',
+    );
+    const r = await new DesktopToolsEngine('image_generate').execute({
+      prompt: 'x',
+    });
+    expect(r.type).toBe('error');
+    expect(r.summary).toMatch(/Refused/);
+  });
+
+  it("the chat's Stop stops the picture maker", async () => {
+    installed(true);
+    let finish: (v: unknown) => void = () => {};
+    invoke.mockImplementation((cmd: string) =>
+      cmd === 'image_generate'
+        ? new Promise(resolve => {
+            finish = resolve;
+          })
+        : Promise.resolve(null),
+    );
+    const stop = new AbortController();
+    const running = new DesktopToolsEngine('image_generate').execute(
+      {prompt: 'a cat'},
+      {signal: stop.signal},
+    );
+    await new Promise(r => setTimeout(r, 0));
+    stop.abort();
+    expect(invoke).toHaveBeenCalledWith('image_cancel', undefined);
+    finish({name: 'p.png', path: 'p', seed: 1, seconds: 1});
+    await running;
+  });
+});

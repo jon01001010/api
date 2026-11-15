@@ -3,3 +3,6 @@
 # Downloaded by the build (pinned llama.cpp release), never committed.
 /llama/*
 !/llama/README.md
+# The pinned stable-diffusion.cpp picture maker, also put here by the build.
+/sd/*
+!/sd/README.md

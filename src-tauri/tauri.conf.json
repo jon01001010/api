@@ -55,7 +55,8 @@
       }
     },
     "resources": {
-      "llama/": "llama/"
+      "llama/": "llama/",
+      "sd/": "sd/"
     }
   }
 }
