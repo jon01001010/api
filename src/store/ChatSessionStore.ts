@@ -33,6 +33,18 @@ type MessageUpdate =
 export const NEW_SESSION_TITLE = 'New Session';
 const TITLE_LIMIT = 40;
 
+/**
+ * Deleted chats leave a tombstone, so the deletion reaches mirrored devices
+ * (src/services/sync/chatDeletes.ts). Never fails a delete.
+ */
+async function recordDeleted(ids: string[]): Promise<void> {
+  try {
+    await require('../services/sync/chatDeletes').recordChatsDeleted(ids);
+  } catch {
+    // Without it the chat may come back from a mirrored device; still deleted here.
+  }
+}
+
 // Coalesce per-token writes into batched UI flushes (~33 Hz).
 const STREAMING_THROTTLE_MS = 30;
 
@@ -334,6 +346,7 @@ class ChatSessionStore {
   async deleteSession(id: string): Promise<void> {
     try {
       await chatSessionRepository.deleteSession(id);
+      await recordDeleted([id]);
 
       if (id === this.activeSessionId) {
         this.resetActiveSession();
@@ -1416,6 +1429,7 @@ class ChatSessionStore {
 
       // Delete from database
       await chatSessionRepository.deleteSessions(idsToDelete);
+      await recordDeleted(idsToDelete);
 
       // Check if active session was deleted
       const wasActiveSessionDeleted =

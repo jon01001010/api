@@ -9,7 +9,14 @@ import {Alert} from 'react-native';
 import {invoke} from '@tauri-apps/api/core';
 import {listen} from '@tauri-apps/api/event';
 
-import {mirrorOnPc, SYNC_ROOM} from './chatSync';
+import {
+  applyTombstones,
+  askAboutHeld,
+  describeDeletes,
+  forgetTombstones,
+  knownTombstones,
+} from './chatDeletes';
+import {mirrorOnPc, readAllChats, SYNC_ROOM, writeChats} from './chatSync';
 
 import {
   applyItems,
@@ -91,23 +98,54 @@ export async function answerSync(
   }
   // Chats, only if mirroring is allowed here too.
   let send: unknown[] = [];
+  let tombstones: unknown[] = [];
   if (chats && (await hostMirrorAllowed())) {
-    const room = SYNC_ROOM - JSON.stringify(merged.items).length;
+    const from = device || 'a paired device';
+    // Chats deleted on the device: removed here unless changed here since
+    // (kept under Recently deleted); too many at once: asked first.
+    const del = await applyTombstones(
+      await readAllChats(),
+      chats.tombstones,
+      from,
+    );
+    const known = await knownTombstones();
+    const room =
+      SYNC_ROOM -
+      JSON.stringify(merged.items).length -
+      JSON.stringify(known).length;
     const r = await mirrorOnPc(
       chats.sessions,
       chats.versions,
       Math.max(room, 0),
+      {read: readAllChats, write: writeChats},
+      {
+        tombstones: known,
+        hold: new Set(del.held.map(h => h.chat.session.id)),
+      },
     );
+    await forgetTombstones(r.revived);
     send = r.send;
-    if (r.taken) {
+    tombstones = await knownTombstones();
+    if (r.taken || del.deleted.length) {
       await require('../../store').chatSessionStore.loadSessionList();
+    }
+    if (del.deleted.length) {
+      Alert.alert(
+        'Kept in step',
+        `${describeDeletes(del.deleted.length, from)}.`,
+      );
+    }
+    if (del.held.length) {
+      askAboutHeld(del.held, from, async () => {
+        await require('../../store').chatSessionStore.loadSessionList();
+      });
     }
   }
   return JSON.stringify({
     ok: true,
     items: merged.items,
     takenByPc: changed,
-    chats: {sessions: send},
+    chats: {sessions: send, tombstones},
   });
 }
 
