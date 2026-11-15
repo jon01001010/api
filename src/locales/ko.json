@@ -1224,9 +1224,9 @@
       "resultCountLabel": "검색당 결과 수",
       "resultCountDescription": "결과가 적을수록 모델의 컨텍스트에 더 많은 공간이 유지됩니다.",
       "consentTitle": "검색어는 기기 외부로 전송됩니다",
-      "consentDescription": "Pal이 웹을 검색하면 여러분의 검색어가 인터넷을 통해 선택한 제공자로 전송돼요. Pal이 페이지를 읽을 때, 선택한 제공자에 자체 리더가 없으면 URL과 페이지 내용이 대신 기본 리더 서비스(r.jina.ai)로 전송될 수 있어요. 키와 검색어는 절대 PocketAgent로 전송되지 않아요.",
+      "consentDescription": "모델이 웹을 검색하면 검색어가 휴대폰에서 DuckDuckGo로 전송돼요. 모델이 페이지를 읽을 때는 휴대폰이 해당 사이트에서 직접 가져와요. PocketAgent로는 아무것도 전송되지 않아요.",
       "consentAccept": "확인했습니다",
-      "consentRequired": "키를 설정하고 검색을 활성화하려면 위 고지에 동의해 주세요.",
+      "consentRequired": "웹 검색을 켜려면 위의 안내에 동의하세요.",
       "consentGivenTitle": "웹 검색이 활성화됨",
       "consentGivenDescription": "위에서 설명한 대로 쿼리와 페이지 읽기 결과가 기기를 벗어날 수 있습니다.",
       "consentRevoke": "동의 철회"

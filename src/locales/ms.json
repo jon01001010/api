@@ -183,9 +183,9 @@
       "resultCountLabel": "Bilangan hasil setiap carian",
       "resultCountDescription": "Lebih sedikit hasil mengekalkan lebih banyak ruang dalam konteks model.",
       "consentTitle": "Carian meninggalkan peranti anda",
-      "consentDescription": "Apabila Pal mencari di web, pertanyaan anda dihantar ke penyedia yang dipilih melalui internet. Apabila Pal membaca sesuatu halaman, URL dan kandungan halaman mungkin dihantar ke perkhidmatan pembaca lalai (r.jina.ai) sebaliknya jika penyedia yang dipilih tiada pembaca natif. Kunci dan pertanyaan tidak sekali-kali dihantar ke PocketAgent.",
+      "consentDescription": "Apabila model mencari di web, pertanyaan anda dihantar dari telefon anda ke DuckDuckGo. Apabila model membaca halaman, telefon anda mengambilnya terus dari laman tersebut. Tiada apa-apa dihantar kepada PocketAgent.",
       "consentAccept": "Saya faham",
-      "consentRequired": "Terima pendedahan di atas untuk menetapkan kunci dan mendayakan carian.",
+      "consentRequired": "Terima penjelasan di atas untuk menghidupkan carian web.",
       "consentGivenTitle": "Carian web telah didayakan",
       "consentGivenDescription": "Pertanyaan dan bacaan halaman mungkin meninggalkan peranti anda seperti yang diterangkan di atas.",
       "consentRevoke": "Batalkan"

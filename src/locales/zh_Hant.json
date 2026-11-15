@@ -1224,9 +1224,9 @@
       "resultCountLabel": "每次搜尋的結果數",
       "resultCountDescription": "結果越少，模型的上下文就能保留更多空間。",
       "consentTitle": "搜尋會離開你的裝置",
-      "consentDescription": "當 Pal 搜尋網路時，你的查詢會透過網際網路傳送給所選的供應商。當 Pal 讀取網頁時，若所選供應商沒有內建的閱讀器，網址與頁面內容可能會改為傳送給預設的閱讀器服務（r.jina.ai）。金鑰與查詢絕不會傳送給 PocketAgent。",
+      "consentDescription": "當模型搜尋網路時，你的查詢會從你的手機傳送到 DuckDuckGo。當模型讀取網頁時，你的手機會直接從該網站取得。不會傳送任何內容給 PocketAgent。",
       "consentAccept": "我了解",
-      "consentRequired": "請接受上方的說明，以設定金鑰並啟用搜尋。",
+      "consentRequired": "接受上方說明即可開啟網路搜尋。",
       "consentGivenTitle": "網路搜尋已啟用",
       "consentGivenDescription": "如上所述，查詢與網頁讀取可能會離開你的裝置。",
       "consentRevoke": "撤銷"

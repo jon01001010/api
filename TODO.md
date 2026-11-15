@@ -219,7 +219,7 @@ A loop is a small agent job that comes back on a timer: it does its part, shows 
 - [ ] Phone check: search, then "read the first result"; a page that redirects; a PDF / non-HTML link (refused cleanly).
 - [x] **Web search is free, no key:** the paid providers (Brave, Tavily, Exa, Firecrawl, Parallel — all need sign-ups now) are no longer offered; their adapters stay in the code, not selectable. The one search is **DuckDuckGo**, done by the phone from its plain HTML results page (not an official API: can change or rate-limit, and says so). Reading a page needs only the consent, no key.
 - [ ] Phone check: consent, then "search the web for …" and "read the first result"; a few searches in a row (rate limit message).
-- [ ] The consent text in non-English locales still mentions r.jina.ai and keys; English is updated.
+- [x] The consent text in every language now says what really happens (DuckDuckGo from the phone, pages fetched directly, nothing to PocketAgent; no keys) (2026-11-15). The other languages were rewritten from the English; a native speaker check is welcome.
 - [x] `read_url`: an http page and its https version count as the same page (https preferred when both are allowed).
 - [x] Workspace file operations: `file_append`, `file_patch`, `file_diff`, `file_history`, `file_undo`; per-file version history; diff shown in the approval dialog.
 - [x] Fix newline (`file_read_range`, `file_search`) and extension (`file_info`) matching bugs.

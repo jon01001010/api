@@ -183,9 +183,9 @@
       "resultCountLabel": "Hasil per pencarian",
       "resultCountDescription": "Lebih sedikit hasil menyisakan lebih banyak ruang dalam konteks model.",
       "consentTitle": "Pencarian meninggalkan perangkat Anda",
-      "consentDescription": "Saat Pal mencari di web, kueri Anda dikirim ke penyedia yang dipilih melalui internet. Saat Pal membaca halaman, URL dan konten halaman dapat dikirim ke layanan pembaca default (r.jina.ai) jika penyedia yang dipilih tidak memiliki pembaca bawaan. Kunci dan kueri tidak pernah dikirim ke PocketAgent.",
+      "consentDescription": "Saat model mencari di web, kueri Anda dikirim dari ponsel Anda ke DuckDuckGo. Saat model membaca halaman, ponsel Anda mengambilnya langsung dari situs tersebut. Tidak ada yang dikirim ke PocketAgent.",
       "consentAccept": "Saya mengerti",
-      "consentRequired": "Terima pengungkapan di atas untuk mengatur kunci dan mengaktifkan pencarian.",
+      "consentRequired": "Setujui penjelasan di atas untuk menyalakan pencarian web.",
       "consentGivenTitle": "Pencarian web diaktifkan",
       "consentGivenDescription": "Kueri dan pembacaan halaman dapat meninggalkan perangkat Anda seperti dijelaskan di atas.",
       "consentRevoke": "Cabut"

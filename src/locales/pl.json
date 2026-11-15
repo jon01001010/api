@@ -185,9 +185,9 @@
       "resultCountLabel": "Liczba wyników na wyszukiwanie",
       "resultCountDescription": "Mniej wyników zostawia więcej miejsca w kontekście modelu.",
       "consentTitle": "Wyszukiwania opuszczają Twoje urządzenie",
-      "consentDescription": "Gdy Kumpel przeszukuje internet, Twoje zapytanie jest wysyłane przez internet do wybranego dostawcy. Gdy Kumpel odczytuje stronę, jej adres URL i zawartość mogą zostać wysłane do domyślnej usługi odczytu (r.jina.ai), jeśli wybrany dostawca nie ma własnego mechanizmu odczytu. Klucze i zapytania nigdy nie są wysyłane do PocketAgent.",
+      "consentDescription": "Gdy model przeszukuje internet, Twoje zapytanie jest wysyłane z telefonu do DuckDuckGo. Gdy model czyta stronę, telefon pobiera ją bezpośrednio z tej witryny. Nic nie jest wysyłane do PocketAgent.",
       "consentAccept": "Rozumiem",
-      "consentRequired": "Zaakceptuj powyższą informację, aby ustawić klucz i włączyć wyszukiwanie.",
+      "consentRequired": "Zaakceptuj powyższą informację, aby włączyć wyszukiwanie w internecie.",
       "consentGivenTitle": "Wyszukiwanie w internecie jest włączone",
       "consentGivenDescription": "Zapytania i odczyty stron mogą opuszczać Twoje urządzenie w sposób opisany powyżej.",
       "consentRevoke": "Cofnij zgodę"

@@ -183,9 +183,9 @@
       "resultCountLabel": "每次搜索的结果数",
       "resultCountDescription": "结果越少，模型的上下文就能保留更多空间。",
       "consentTitle": "搜索会离开您的设备",
-      "consentDescription": "当 Pal 搜索网络时，您的查询会通过互联网发送给所选服务商。当 Pal 读取网页时，如果所选服务商没有自带的阅读器，网址和网页内容可能会改为发送给默认阅读服务（r.jina.ai）。密钥和查询绝不会发送给 PocketAgent。",
+      "consentDescription": "当模型搜索网络时，你的查询会从你的手机发送到 DuckDuckGo。当模型读取网页时，你的手机会直接从该网站获取。不会向 PocketAgent 发送任何内容。",
       "consentAccept": "我已了解",
-      "consentRequired": "同意以上声明后，可设置密钥并启用搜索。",
+      "consentRequired": "接受上方说明即可开启网络搜索。",
       "consentGivenTitle": "联网搜索已启用",
       "consentGivenDescription": "如上所述，查询和网页读取可能会离开您的设备。",
       "consentRevoke": "撤销"

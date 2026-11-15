@@ -102,9 +102,9 @@
       "resultCountLabel": "Resultados por búsqueda",
       "resultCountDescription": "Un menor número de resultados conserva más espacio en el contexto del modelo.",
       "consentTitle": "Las búsquedas salen de tu dispositivo",
-      "consentDescription": "Cuando un Pal busca en la web, tu consulta se envía al proveedor seleccionado a través de internet. Cuando un Pal lee una página, la URL y su contenido pueden enviarse en su lugar a un servicio de lectura predeterminado (r.jina.ai) si el proveedor seleccionado no cuenta con un lector nativo. Las claves y las consultas nunca se envían a PocketAgent.",
+      "consentDescription": "Cuando el modelo busca en la web, tu consulta se envía desde tu teléfono a DuckDuckGo. Cuando el modelo lee una página, tu teléfono la descarga directamente de ese sitio. No se envía nada a PocketAgent.",
       "consentAccept": "Entendido",
-      "consentRequired": "Acepta la declaración anterior para ingresar una clave y habilitar la búsqueda.",
+      "consentRequired": "Acepta el aviso de arriba para activar la búsqueda web.",
       "consentGivenTitle": "La búsqueda en la web está activada",
       "consentGivenDescription": "Las consultas y la lectura de páginas pueden salir de tu dispositivo como se describe arriba.",
       "consentRevoke": "Retirar"

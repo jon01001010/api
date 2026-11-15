@@ -183,9 +183,9 @@
       "resultCountLabel": "検索ごとの結果数",
       "resultCountDescription": "結果数を減らすと、モデルのコンテキストに余裕が生まれます。",
       "consentTitle": "検索はデバイスの外に送信されます",
-      "consentDescription": "Palがウェブを検索すると、クエリはインターネット経由で選択したプロバイダーに送信されます。Palがページを読み取る際、選択したプロバイダーに独自のリーダーがない場合は、代わりにURLとページの内容がデフォルトのリーダーサービス（r.jina.ai）に送信されることがあります。キーとクエリがPocketAgentに送信されることは一切ありません。",
+      "consentDescription": "モデルがウェブを検索すると、検索語はあなたのスマートフォンからDuckDuckGoに送信されます。モデルがページを読むときは、スマートフォンがそのサイトから直接取得します。PocketAgentには何も送信されません。",
       "consentAccept": "理解しました",
-      "consentRequired": "キーを設定して検索を有効にするには、上記の説明に同意してください。",
+      "consentRequired": "ウェブ検索をオンにするには、上記の説明に同意してください。",
       "consentGivenTitle": "ウェブ検索が有効になっています",
       "consentGivenDescription": "上記のとおり、クエリとページの読み取りがデバイスの外に送信されることがあります。",
       "consentRevoke": "取り消す"
