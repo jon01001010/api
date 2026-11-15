@@ -156,7 +156,11 @@ export function cleanItems(raw: unknown, now = Date.now()): SyncItem[] {
       typeof item.updatedAt === 'number' &&
       Number.isFinite(item.updatedAt)
     ) {
-      out.push({key, text: item.text, updatedAt: clampTime(item.updatedAt, now)});
+      out.push({
+        key,
+        text: item.text,
+        updatedAt: clampTime(item.updatedAt, now),
+      });
     }
   }
   return out;
