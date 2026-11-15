@@ -17,6 +17,7 @@ import {
   keepEarlierVersions,
   knownTombstones,
 } from './chatDeletes';
+import {describeAssistantDeletes} from './assistantDeletes';
 import {mirrorOnPc, readAllChats, SYNC_ROOM, writeChats} from './chatSync';
 
 import {
@@ -138,10 +139,19 @@ export async function answerSync(
   }
   const local = await readItems();
   const merged = merge(local, cleanItems(remote));
-  const changed = await applyItems(merged.items);
+  const report = {assistantsDeleted: 0, assistantsHeld: 0};
+  const changed = await applyItems(merged.items, Date.now(), {
+    from: device || 'a paired device',
+    report,
+  });
   if (changed.length) {
     keptInStepNotice(
       `${describeKeys(changed)} updated from ${device || 'a paired device'}. The earlier versions are kept in history.`,
+    );
+  }
+  if (report.assistantsDeleted) {
+    keptInStepNotice(
+      `${describeAssistantDeletes(report.assistantsDeleted, device || 'a paired device')}.`,
     );
   }
   // Chats, only if mirroring is allowed here too.

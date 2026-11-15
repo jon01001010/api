@@ -237,9 +237,15 @@ class PalStore {
   };
 
   /**
-   * Deletes a pal
+   * Deletes a pal. Deleting one of your own is remembered, so keeping in
+   * step deletes it on the paired device too; `bySync`: removed because it
+   * was deleted on another device (no new deletion; its picture is kept
+   * for "Recently deleted").
    */
-  deletePal = async (id: string): Promise<void> => {
+  deletePal = async (
+    id: string,
+    opts: {bySync?: boolean} = {},
+  ): Promise<void> => {
     try {
       // Find the pal to get its thumbnail path before deletion
       const palIndex = this.pals.findIndex(p => p.id === id);
@@ -247,8 +253,17 @@ class PalStore {
 
       const success = await palRepository.deletePal(id);
       if (success) {
+        if (pal && !opts.bySync) {
+          try {
+            await require('../services/sync/assistantDeletes').recordAssistantDeleted(
+              pal,
+            );
+          } catch (syncError) {
+            console.warn('Failed to remember the deletion:', syncError);
+          }
+        }
         // Clean up local thumbnail image if it exists
-        if (pal?.thumbnail_url) {
+        if (pal?.thumbnail_url && !opts.bySync) {
           try {
             await deletePalThumbnail(pal.thumbnail_url);
           } catch (imageError) {

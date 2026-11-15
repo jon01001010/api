@@ -42,6 +42,11 @@ jest.mock('../../services', () => ({
   },
 }));
 
+const mockRecordDeleted = jest.fn(async (_pal: any) => {});
+jest.mock('../../services/sync/assistantDeletes', () => ({
+  recordAssistantDeleted: (pal: any) => mockRecordDeleted(pal),
+}));
+
 // Mock MobX persist
 jest.mock('mobx-persist-store', () => ({
   makePersistable: jest.fn(),
@@ -327,6 +332,28 @@ describe('PalStore', () => {
 
         expect(palRepository.deletePal).toHaveBeenCalledWith(mockPal.id);
         expect(palStore.pals).not.toContain(mockPal);
+      });
+
+      it('remembers the deletion (keeping in step), unless a sync removed it', async () => {
+        (palRepository.deletePal as jest.Mock).mockResolvedValue(true);
+        mockRecordDeleted.mockClear();
+        (imageUtils.deletePalThumbnail as jest.Mock).mockClear();
+        const withPicture = {...mockPal, thumbnail_url: 'pic.png'};
+        runInAction(() => {
+          palStore.pals = [withPicture];
+        });
+        await palStore.deletePal(mockPal.id, {bySync: true});
+        expect(mockRecordDeleted).not.toHaveBeenCalled();
+        // Kept for "Recently deleted".
+        expect(imageUtils.deletePalThumbnail).not.toHaveBeenCalled();
+        expect(palStore.pals).toEqual([]);
+
+        runInAction(() => {
+          palStore.pals = [withPicture];
+        });
+        await palStore.deletePal(mockPal.id);
+        expect(mockRecordDeleted).toHaveBeenCalledWith(withPicture);
+        expect(imageUtils.deletePalThumbnail).toHaveBeenCalledWith('pic.png');
       });
 
       it('should handle deletion errors gracefully', async () => {

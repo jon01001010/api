@@ -3,6 +3,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {Image, StyleSheet, View} from 'react-native';
 import {Button, Card, Switch, Text} from 'react-native-paper';
 
+import {RecentlyDeletedAssistants} from '../../components/HomeLinkSync/RecentlyDeletedAssistants';
 import {RecentlyDeletedChats} from '../../components/HomeLinkSync/RecentlyDeletedChats';
 import {describeEvent} from '../../services/homeLink/homeLink';
 import {
@@ -196,6 +197,7 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
           </View>
         ) : null}
         {syncAllowed && mirrorAllowed ? <RecentlyDeletedChats /> : null}
+        {syncAllowed ? <RecentlyDeletedAssistants /> : null}
         <View style={styles.syncRow}>
           <Text variant="bodySmall" style={styles.syncText}>
             Let paired devices answer this PC's "Allow?" questions too: they see

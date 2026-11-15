@@ -84,6 +84,10 @@ export type SyncOutcome =
       chatsDeleted?: number;
       /** Deletions from the PC waiting for the user's answer (too many). */
       chatsHeld?: number;
+      /** Assistants deleted on the PC, removed here (kept under Recently deleted). */
+      assistantsDeleted?: number;
+      /** Assistant deletions from the PC waiting for the user's answer. */
+      assistantsHeld?: number;
     }
   | {ok: false; error: string};
 
@@ -129,7 +133,11 @@ export async function syncWithPc(pc: string): Promise<SyncOutcome> {
     if (!agreed.length) {
       return {ok: false, error: "The PC's answer had nothing in it"};
     }
-    const changedHere = await applyItems(agreed);
+    const report = {assistantsDeleted: 0, assistantsHeld: 0};
+    const changedHere = await applyItems(agreed, Date.now(), {
+      from: 'the PC',
+      report,
+    });
     let chatsReceived = 0;
     let chatsDeleted = 0;
     let chatsHeld = 0;
@@ -197,6 +205,10 @@ export async function syncWithPc(pc: string): Promise<SyncOutcome> {
       chatsSent: chats?.sessions.length ?? 0,
       chatsReceived,
       ...(mirror ? {chatsDeleted, chatsHeld} : {}),
+      ...(report.assistantsDeleted
+        ? {assistantsDeleted: report.assistantsDeleted}
+        : {}),
+      ...(report.assistantsHeld ? {assistantsHeld: report.assistantsHeld} : {}),
     };
   } catch (e) {
     return {ok: false, error: e instanceof Error ? e.message : String(e)};

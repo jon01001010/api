@@ -11,6 +11,8 @@ import {
 } from '../../services/sync/deviceSync';
 import {describeKeys} from '../../services/sync/promptSync';
 import {describeDeletes} from '../../services/sync/chatDeletes';
+import {describeAssistantDeletes} from '../../services/sync/assistantDeletes';
+import {RecentlyDeletedAssistants} from './RecentlyDeletedAssistants';
 import {RecentlyDeletedChats} from './RecentlyDeletedChats';
 import {
   answerForPcOn,
@@ -47,6 +49,12 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
     }
     setSynced(n => n + 1);
     const parts = [
+      r.assistantsDeleted
+        ? describeAssistantDeletes(r.assistantsDeleted, 'the PC')
+        : '',
+      r.assistantsHeld
+        ? `${r.assistantsHeld} assistants deleted on the PC wait for your answer`
+        : '',
       r.chatsDeleted ? describeDeletes(r.chatsDeleted, 'the PC') : '',
       r.chatsHeld
         ? `${r.chatsHeld} chats deleted on the PC wait for your answer`
@@ -72,8 +80,9 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
       <View style={styles.row}>
         <Text variant="bodySmall" style={styles.text}>
           Keep the system prompt, memory, assistants and custom tools in step
-          with this PC (the newer edit wins; the other is kept in history). The
-          PC must allow it too.
+          with this PC (the newer edit wins; the other is kept in history).
+          Deleting one of your assistants deletes it on the PC too (unless
+          changed there since). The PC must allow it too.
         </Text>
         <Switch
           value={on}
@@ -109,6 +118,7 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
         </View>
       ) : null}
       {on && mirror ? <RecentlyDeletedChats refresh={synced} /> : null}
+      {on ? <RecentlyDeletedAssistants refresh={synced} /> : null}
       {on ? (
         <Button
           compact

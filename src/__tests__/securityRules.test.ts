@@ -829,6 +829,18 @@ describe('Paired devices: sync, mirrored chats, answers (review of 2026-11-15)',
     expect(read('src/services/sync/syncSources.ts')).toContain(
       'const local = all.filter(isOwn);',
     );
+    // Assistant deletions: times clamped, only your own deleted, asked
+    // first above 5, removed ones kept (restorable).
+    const assistants = read('src/services/sync/assistantDeletes.ts');
+    expect(assistants).toContain('t <= now + MAX_CLOCK_SKEW;');
+    expect(assistants).toContain('editedAt: clampTime(at, now),');
+    expect(assistants).toContain('export const DELETE_CAP = 5;');
+    expect(assistants).toContain(
+      'ownPals: () => (palStore().pals as Pal[]).filter(isOwn),',
+    );
+    expect(assistants).toMatch(
+      /await store\.save\(RECENT_KEY, \[\.\.\.added, \.\.\.recent\]\);\s*for \(const r of added\) \{\s*await store\.remove/,
+    );
     // Pictures: never a web address, only the app's own picture folder.
     expect(read('src/api/openai.ts')).toMatch(
       /if \(!isOwnImagePath\(url\)\) \{[^}]*return null;/,

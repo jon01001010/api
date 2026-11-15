@@ -8,7 +8,8 @@
  * item the newer one wins and the other is kept in history (memory keeps
  * every earlier version already; the system prompt keeps its last 10). An
  * empty item (or memory's starting template) counts as "nothing yet" and
- * never wins over real text.
+ * never wins over real text. Assistants are the exception: merged one by
+ * one, with deletions (see assistantDeletes.ts).
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -175,7 +176,11 @@ export interface Merged {
   takenThere: SyncKey[];
 }
 
-/** Item by item, the newer edit wins; empty never wins over real text. */
+/**
+ * Item by item, the newer edit wins; empty never wins over real text.
+ * Assistants are merged one by one (assistantDeletes.ts): both lists are
+ * joined and, for each assistant, its newer edit or deletion wins.
+ */
 export function merge(local: SyncItem[], remote: SyncItem[]): Merged {
   const result: Merged = {items: [], takenHere: [], takenThere: []};
   for (const key of SYNC_KEYS) {
@@ -190,6 +195,29 @@ export function merge(local: SyncItem[], remote: SyncItem[]): Merged {
     if (l.text === r.text) {
       result.items.push({...l, updatedAt: Math.max(l.updatedAt, r.updatedAt)});
       continue;
+    }
+    if (key === 'assistants') {
+      // One by one: the newer edit or deletion of each assistant wins.
+      const m = require('./assistantDeletes').mergeAssistants(
+        l.text,
+        r.text,
+        l.updatedAt,
+        r.updatedAt,
+      );
+      if (m) {
+        result.items.push({
+          key,
+          text: m.text,
+          updatedAt: Math.max(l.updatedAt, r.updatedAt),
+        });
+        if (m.takenHere) {
+          result.takenHere.push(key);
+        }
+        if (m.takenThere) {
+          result.takenThere.push(key);
+        }
+        continue;
+      }
     }
     const lEmpty = isEmpty(key, l.text);
     const rEmpty = isEmpty(key, r.text);
@@ -251,12 +279,19 @@ export async function promptHistory(): Promise<{at: number; text: string}[]> {
 export async function applyItems(
   items: SyncItem[],
   now = Date.now(),
+  opts: {
+    /** Which device they came from ("the PC", or the device's name). */
+    from?: string;
+    /** Filled in: assistants deleted here, or waiting for an answer. */
+    report?: {assistantsDeleted: number; assistantsHeld: number};
+  } = {},
 ): Promise<SyncKey[]> {
   const state = await loadState();
   const changed: SyncKey[] = [];
   for (const item of cleanItems(items, now)) {
     const current = await readText(item.key);
     if (current !== item.text) {
+      let wrote = true;
       if (item.key === 'systemPrompt') {
         await keepHistory('systemPrompt', current);
         await writeGlobalPrompt(item.text);
@@ -264,17 +299,29 @@ export async function applyItems(
         await userMemoryReplace(item.text, current);
       } else if (item.key === 'modelMemory') {
         await memoryReplace(item.text, current);
+      } else if (item.key === 'assistants') {
+        // Only when something here changed (the same assistants under
+        // another id, or held deletions, are no change).
+        const did = await require('./syncSources').writeAssistants(item.text, {
+          from: opts.from,
+          at: Math.min(item.updatedAt, now),
+          report: opts.report,
+        });
+        if (did === false) {
+          wrote = false;
+        } else {
+          await keepHistory(item.key, current);
+        }
       } else {
         await keepHistory(item.key, current);
-        const sources = require('./syncSources');
-        await (item.key === 'assistants'
-          ? sources.writeAssistants(item.text)
-          : sources.writeCustomTools(item.text));
+        await require('./syncSources').writeCustomTools(item.text);
       }
-      changed.push(item.key);
+      if (wrote) {
+        changed.push(item.key);
+      }
     }
-    // What it is here now (assistants are added, never deleted: the list
-    // here may hold more than what came).
+    // What it is here now (the list here may differ from what came: a
+    // starter assistant under its own id, a deletion waiting for an answer).
     // Stored no later than now: what this device passes on is its own time.
     const text = await readText(item.key);
     state[item.key] = {
