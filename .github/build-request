@@ -2,4 +2,4 @@ Change this file on the windows branch to build the phone app (APK) and the
 desktop apps (Windows, Linux) together, from the same commit, so they match.
 Each app shows its build in App Info; the home link says when phone and PC
 differ.
-Requested: 2026-11-15T19:28:45Z (pc tools stage 3, device circle stages 1-2, two home pcs fix)
+Requested: 2026-11-15T19:38:25Z (retry: rule test fixed; pc tools stage 3, circle 1-2, npu detection)
