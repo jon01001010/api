@@ -111,3 +111,7 @@ SECURITY.md rule 6 and `docs/privacy.md` are updated at each stage (who can remo
 4. Moving a PC to one key: (a) automatic, with a note signed by both keys (recommended); (b) pair again by hand.
 5. Should a device that **receives** a removal notice ask first? (a) no, remove and tell the user (recommended); (b) ask "Laptop says Phone was removed. Remove it here too?".
 6. Rights in the circle: (a) each right given per pair, as now (recommended); (b) also a "same rights on all my devices" shortcut (each device still asks once).
+
+## Decided (owner, 2026-11-15)
+
+Option A now. 6a: any device's signed removal is obeyed. 7a: introductions later, after stages 1–3. 8b: moving a PC to one key means pairing again by hand. 9a: a received removal is applied and the user is told. 10a: permissions per pair.

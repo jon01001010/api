@@ -98,3 +98,7 @@ Also in stage 1: **turning everything off at once.** The PC's global switch is k
 3. Should **run_command** from a device exist at all? (a) yes, stage 3 as above; (b) not before the security audit; (c) never.
 4. The PC's global switch for device tools after a PC restart: (a) stays as it was (like pictures; recommended); (b) off after every restart until turned on again by hand (stricter, more clicks).
 5. Is Option B ("Hand off") wanted later, knowing the phone then gets the PC's whole Toolbox? (a) yes, later; (b) no.
+
+## Decided (owner, 2026-11-15)
+
+Option A (remote tools). 1c: the phone that asked may also allow it, as today. 2b: reading the PC workspace asks once per chat. 3a: `run_command` from a device in stage 3, behind its own permission. 4a: the switch keeps its state after a PC restart. 5a: hand-off of whole tasks wanted later.
