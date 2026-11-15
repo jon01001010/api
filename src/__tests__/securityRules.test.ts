@@ -82,6 +82,31 @@ describe('Rule 2: switches are off unless the user turns them on', () => {
       await expect(readGlobalTools()).resolves.toEqual([]);
     },
   );
+
+  it('a shared tool (QR, file, pasted code) is checked, shown, installed off', () => {
+    const src = read('src/services/talents/toolImport.ts');
+    // The same checks as tool_save, and a taken name is never replaced.
+    expect(src).toMatch(/checkCustomTool\(/);
+    expect(src).toMatch(/status: 'name_taken'/);
+    // Off before saving; saved without a name to replace.
+    const install = src.slice(
+      src.indexOf('export async function installSharedTool'),
+    );
+    expect(install.indexOf('switchOffTools([tool.name])')).toBeGreaterThan(0);
+    expect(install.indexOf('switchOffTools(')).toBeLessThan(
+      install.indexOf('saveCustomTool('),
+    );
+    expect(install).toMatch(
+      /saveCustomTool\(\{\.\.\.tool, createdBy: 'user'\}\)/,
+    );
+    // A code is data: unpacking only parses (rule 4), and the review screen
+    // shows the full definition before Install.
+    const qr = read('src/services/talents/toolQr.ts');
+    expect(qr).not.toMatch(/talentRegistry|\.execute\(|eval\(|new Function/);
+    const ui = read('src/screens/ToolCodeDialogs.tsx');
+    expect(ui).toMatch(/describeCustomTool\(review\.tool\)/);
+    expect(ui).not.toMatch(/\.execute\(|talentRegistry/);
+  });
 });
 
 describe('Rule 3: the HTML preview is a closed box', () => {

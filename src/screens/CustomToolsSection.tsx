@@ -21,6 +21,8 @@ import {
   type ShortcutStep,
 } from '../services/talents/customTools';
 
+import {ToolCodeDialogs, canScanWithCamera} from './ToolCodeDialogs';
+
 interface Props {
   enabledTools: string[];
   disabled: boolean;
@@ -96,6 +98,13 @@ export const CustomToolsSection: React.FC<Props> = ({
   // own text (defaultValue) and the app only reads it: feeding it back on
   // every key press made the cursor jump on Android inside a dialog.
   const [session, setSession] = useState(0);
+  const [sharing, setSharing] = useState<CustomTool | null>(null);
+  const [receiving, setReceiving] = useState<null | 'camera' | 'paste'>(null);
+  const [receiveSession, setReceiveSession] = useState(0);
+  const receive = (how: 'camera' | 'paste') => {
+    setReceiveSession(n => n + 1);
+    setReceiving(how);
+  };
 
   const reload = useCallback(() => {
     listCustomTools()
@@ -203,6 +212,12 @@ export const CustomToolsSection: React.FC<Props> = ({
                 </Button>
                 <Button
                   compact
+                  testID={'custom-tool-share-' + tool.name}
+                  onPress={() => setSharing(tool)}>
+                  Share
+                </Button>
+                <Button
+                  compact
                   testID={'custom-tool-delete-' + tool.name}
                   onPress={() => remove(tool)}>
                   Delete
@@ -220,6 +235,22 @@ export const CustomToolsSection: React.FC<Props> = ({
             }}>
             New custom tool
           </Button>
+          <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 8}}>
+            {/* On the desktop (no camera) Scan QR opens the paste box. */}
+            <Button
+              mode="outlined"
+              icon="qrcode-scan"
+              testID="custom-tool-scan"
+              onPress={() => receive(canScanWithCamera() ? 'camera' : 'paste')}>
+              Scan QR
+            </Button>
+            <Button
+              mode="outlined"
+              testID="custom-tool-paste"
+              onPress={() => receive('paste')}>
+              Paste a code
+            </Button>
+          </View>
         </Card.Content>
       </Card>
       <Portal>
@@ -326,6 +357,15 @@ export const CustomToolsSection: React.FC<Props> = ({
           </Dialog.Actions>
         </Dialog>
       </Portal>
+      <ToolCodeDialogs
+        sharing={sharing}
+        onShareDismiss={() => setSharing(null)}
+        receiving={receiving}
+        receiveSession={receiveSession}
+        onReceiveDismiss={() => setReceiving(null)}
+        onInstalled={reload}
+        errorColor={errorColor}
+      />
     </>
   );
 };
