@@ -914,3 +914,56 @@ describe('Paired devices: sync, mirrored chats, answers (review of 2026-11-15)',
     );
   });
 });
+
+describe('Rule 2: phone actions ask every time, in a chain too', () => {
+  it('a chain of phone actions asks before every step, even inside a shortcut', async () => {
+    // Static: no chain step is ever quiet, and a chain runs phone actions
+    // that are switched on, nothing else.
+    expect(read('src/services/talents/PhoneActionsEngine.ts')).toContain(
+      'const quiet = !step && ctx?.inApprovedShortcut === true;',
+    );
+    const chain = read('src/services/talents/PhoneActionChain.ts');
+    expect(chain).not.toMatch(/inApprovedShortcut|talentRegistry/);
+    expect(chain).toContain('if (!PHONE_TOOL_NAMES.includes(action))');
+    expect(chain).toContain('if (!switchedOn.includes(action))');
+    // Behaviour: the list first, then one question per step.
+    const asked: string[] = [];
+    let Chain: any;
+    jest.isolateModules(() => {
+      jest.doMock('../services/talents/fileApprovalGate', () => ({
+        requestFileApproval: async (p: {filename: string}) => {
+          asked.push(p.filename);
+          return true;
+        },
+      }));
+      jest.doMock('../services/phoneActions/native', () => ({
+        performPhoneAction: async () => ({ok: true}),
+        actionAsksItself: () => false,
+        describeFailure: () => 'failed',
+        listInstalledApps: async () => [],
+        findContacts: async () => [],
+      }));
+      jest.doMock('../utils/globalToolSettings', () => ({
+        readGlobalTools: async () => ['set_timer', 'navigate_to'],
+      }));
+      require('react-native').AppState.currentState = 'active';
+      Chain =
+        require('../services/talents/PhoneActionChain').PhoneActionChainEngine;
+    });
+    const result = await new Chain().execute(
+      {
+        steps: [
+          {action: 'set_timer', args: {minutes: 5}},
+          {action: 'navigate_to', args: {destination: 'Home'}},
+        ],
+      },
+      {signal: new AbortController().signal, inApprovedShortcut: true},
+    );
+    expect(asked).toEqual([
+      'Do these 2 steps? Each one asks again before it runs.',
+      'Step 1 of 2: Set a 5 min timer?',
+      'Step 2 of 2: Open maps for "Home"?',
+    ]);
+    expect(result.summary).toMatch(/^All 2 steps done/);
+  });
+});

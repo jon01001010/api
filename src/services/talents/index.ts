@@ -6,6 +6,7 @@ import {ReadUrlEngine} from './ReadUrlEngine';
 import {FileToolsEngine, FILE_OPERATIONS} from './FileToolsEngine';
 import {MemoryToolsEngine} from './MemoryToolsEngine';
 import {PhoneActionsEngine, PHONE_TOOL_NAMES} from './PhoneActionsEngine';
+import {PhoneActionChainEngine} from './PhoneActionChain';
 import {DesktopToolsEngine, DESKTOP_TOOL_NAMES} from './DesktopToolsEngine';
 import {ToolMakerEngine, TOOL_MAKER_NAMES} from './ToolMakerEngine';
 import {talentRegistry} from './TalentRegistry';
@@ -80,6 +81,8 @@ export function registerDefaultTalents(): void {
   for (const name of PHONE_TOOL_NAMES) {
     talentRegistry.register(new PhoneActionsEngine(name));
   }
+  // Several phone actions in a row: the list first, then each step asks.
+  talentRegistry.register(new PhoneActionChainEngine());
   // The PC's own tools: only in the desktop app (off until switched on).
   if ((globalThis as any).__TAURI_INTERNALS__) {
     for (const name of DESKTOP_TOOL_NAMES) {
