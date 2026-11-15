@@ -7,6 +7,11 @@
  * With the app closed, a notification says a loop is due (loopNotify.ts);
  * tapping it opens the app, which asks the same question. It never runs a
  * loop by itself.
+ *
+ * Guards: a due loop whose battery guard isn't met (phone) is not asked
+ * about; it waits ("Waiting: battery") and is looked at again in 30
+ * minutes. After a run's reply is complete, two runs in a row with the
+ * same next steps (or the same reply) pause the loop (loops.ts afterReply).
  */
 import {Alert, AppState} from 'react-native';
 
@@ -16,14 +21,20 @@ import {
   syncLoopAlarms,
   takeOpenedLoop,
 } from './loopNotify';
+import {readBattery} from './loopBattery';
 import {
   addLog,
+  afterReply,
+  batteryOk,
+  batteryText,
   dueLoops,
   isFinished,
   loadLoops,
   nextRun,
+  replyTo,
   runMessage,
   updateLoop,
+  waitForBattery,
   type Loop,
 } from './loops';
 
@@ -85,7 +96,9 @@ export async function runLoopNow(
       now,
     ),
   );
-  await send(runMessage(loop));
+  const message = runMessage(loop);
+  // Resolves when the reply is complete (or stopped).
+  await send(message);
   const sessionId = chatSessionStore.activeSessionId;
   if (!exists && sessionId) {
     await updateLoop(loop.id, l => ({...l, sessionId}));
@@ -94,7 +107,36 @@ export async function runLoopNow(
       `Loop: ${loop.title}`,
     );
   }
+  const reply = replyOf(sessionId, message);
+  if (reply !== undefined) {
+    const after = await updateLoop(loop.id, l => afterReply(l, reply));
+    if (after?.pausedWhy && after.paused && !loop.paused) {
+      Alert.alert(
+        `Loop paused: ${loop.title}`,
+        `Paused: ${after.pausedWhy}. The last two runs brought nothing new ` +
+          '(the same next steps, or the same reply). Change it with Edit, ' +
+          'or Resume it, on its card in Toolbox → Loops.',
+      );
+    }
+  }
   return undefined;
+}
+
+/** The finished reply to the run's message in the loop's chat, if any. */
+function replyOf(
+  sessionId: string | null | undefined,
+  sent: string,
+): string | undefined {
+  try {
+    const {chatSessionStore} = deps();
+    const {derivedText, user} = require('../../utils/chat');
+    const session = chatSessionStore.sessions.find(
+      (s: any) => s.id === sessionId,
+    );
+    return replyTo(session?.messages ?? [], sent, user.id, derivedText);
+  } catch {
+    return undefined;
+  }
 }
 
 const asked = new Set<string>();
@@ -154,7 +196,22 @@ export async function lookForDue(
   now = Date.now(),
   opened?: string,
 ): Promise<Loop | undefined> {
-  const due = dueLoops(await loadLoops(), now).filter(l => !showing.has(l.id));
+  let due = dueLoops(await loadLoops(), now).filter(l => !showing.has(l.id));
+  // Battery guard (phone): not met → don't ask; wait and look again later.
+  if (due.length) {
+    const battery = await readBattery();
+    const waiting = due.filter(l => !batteryOk(l.battery, battery));
+    for (const l of waiting) {
+      await updateLoop(l.id, x => waitForBattery(x, now));
+      if (l.id === opened) {
+        Alert.alert(
+          `Loop waiting: ${l.title}`,
+          `${batteryText(l.battery)}. It looks again in 30 minutes.`,
+        );
+      }
+    }
+    due = due.filter(l => !waiting.includes(l));
+  }
   const pick =
     due.find(l => l.id === opened) ??
     due.find(l => !asked.has(`${l.id}:${l.nextAt}`));

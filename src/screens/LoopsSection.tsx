@@ -1,7 +1,9 @@
 /**
  * Toolbox → Loops: the ready-made loops gallery and the running loops
  * (src/services/loops). Pick one, fill in the blanks, choose how often,
- * press Start. Nothing runs without a tap: when one is due the app asks.
+ * press Start, check the dry run, "Looks right, start". Nothing runs
+ * without a tap: when one is due the app asks. A running loop's card has
+ * Edit (only the user edits a loop).
  */
 import React, {useCallback, useEffect, useState} from 'react';
 import {Alert, View} from 'react-native';
@@ -12,21 +14,39 @@ import {
   type LoopTemplate,
 } from '../services/loops/loopTemplates';
 import {
+  type BatteryGuard,
+  batteryText,
+  buildLoop,
+  CUSTOM_LOOP_ID,
+  DEFAULT_BATTERY,
   EVERY_LABEL,
+  editLoop,
   type Every,
   isFinished,
   loadLoops,
   type Loop,
+  type LoopEdit,
+  type LoopInput,
   MAX_DAYS,
   MAX_RUNS,
-  startLoop,
+  saveLoopEdit,
   stopLoop,
   summary,
+  togglePause,
   updateLoop,
-  addLog,
 } from '../services/loops/loops';
+import {
+  cleanLine,
+  cleanSteps,
+  draftOfLoop,
+  type LoopDraft,
+  MAX_GOAL,
+  MAX_PLAN_STEPS,
+  planOfLoop,
+} from '../services/loops/makeLoop';
 import {runLoopNow} from '../services/loops/loopRunner';
-import {MakeLoopSheet} from './MakeLoopSheet';
+import {DryRunOf, LoopDraftEditor, MakeLoopSheet} from './MakeLoopSheet';
+import {BatteryPicker} from './LoopParts';
 import {isLoopNotifyOn, setLoopNotifyOn} from '../services/loops/loopNotify';
 import {ensureNotificationPermission} from '../utils/androidPermission';
 
@@ -56,33 +76,50 @@ const Setup: React.FC<{
   const [time, setTime] = useState(timeText(template.at));
   const [runs, setRuns] = useState(String(template.maxRuns));
   const [days, setDays] = useState(String(template.days));
+  const [battery, setBattery] = useState<BatteryGuard>(DEFAULT_BATTERY);
   const [error, setError] = useState('');
+  /** Start pressed: the dry run of this input, before anything starts. */
+  const [checking, setChecking] = useState<LoopInput | null>(null);
   const timed = every === 'day' || every === 'week';
 
-  const start = async () => {
+  const start = () => {
     const at = timed ? parseTime(time) : undefined;
     if (timed && !at) {
       setError('Time as HH:MM, e.g. 07:30');
       return;
     }
-    const r = await startLoop({
+    const input: LoopInput = {
       templateId: template.id,
       values,
       every,
       at,
       maxRuns: Number(runs) || template.maxRuns,
       days: Number(days) || template.days,
-    });
-    if (!r.ok) {
-      setError(r.error);
+      battery,
+    };
+    const built = buildLoop(input);
+    if (!built.ok) {
+      setError(built.error);
       return;
     }
-    if (await isLoopNotifyOn()) {
-      await ensureNotificationPermission();
-    }
-    Alert.alert(`Started: ${template.title}`, summary(r.loop));
-    onDone();
+    setError('');
+    setChecking(input);
   };
+
+  if (checking) {
+    return (
+      <Card mode="outlined" testID={`loop-setup-${template.id}`}>
+        <Card.Content>
+          <DryRunOf
+            input={checking}
+            uses={template.uses}
+            onBack={() => setChecking(null)}
+            onDone={onDone}
+          />
+        </Card.Content>
+      </Card>
+    );
+  }
 
   return (
     <Card mode="outlined" testID={`loop-setup-${template.id}`}>
@@ -136,6 +173,7 @@ const Setup: React.FC<{
             onChangeText={setDays}
           />
         </View>
+        <BatteryPicker value={battery} onChange={setBattery} />
         <Text variant="bodySmall">May use: {template.uses}</Text>
         <Text variant="bodySmall">
           Asks before each run, then runs in its own chat. Never sends, buys or
@@ -153,12 +191,63 @@ const Setup: React.FC<{
   );
 };
 
+/** Edit on a running loop's card: keeps runs so far and the log. */
+const EditLoop: React.FC<{loop: Loop; onDone: () => void}> = ({
+  loop,
+  onDone,
+}) => {
+  const [initial] = useState(() => draftOfLoop(loop));
+  const withSteps =
+    loop.templateId === CUSTOM_LOOP_ID && planOfLoop(loop) !== undefined;
+  const toEdit = (d: LoopDraft, prompt: string): LoopEdit => ({
+    title: d.title,
+    prompt,
+    plan: withSteps
+      ? {
+          goal: cleanLine(d.prompt, MAX_GOAL),
+          steps: cleanSteps(d.steps, MAX_PLAN_STEPS),
+        }
+      : undefined,
+    every: d.every,
+    at: d.at,
+    maxRuns: d.maxRuns,
+    days: d.days,
+    battery: d.battery,
+  });
+  return (
+    <View testID={`loop-edit-${loop.id}`}>
+      <LoopDraftEditor
+        initial={initial}
+        withSteps={withSteps}
+        intro={`Edit "${loop.title}". Runs so far (${loop.runs}) and the log are kept; a new time moves the next run.`}
+        saveLabel="Save"
+        saveTestID="loop-edit-save"
+        runsDone={loop.runs}
+        describe={(d, prompt) => {
+          const r = editLoop(loop, toEdit(d, prompt));
+          return r.ok ? summary(r.loop) : r.error;
+        }}
+        onBack={onDone}
+        onSave={async (d, prompt) => {
+          const r = await saveLoopEdit(loop.id, toEdit(d, prompt));
+          if (!r.ok) {
+            return r.error;
+          }
+          onDone();
+          return undefined;
+        }}
+      />
+    </View>
+  );
+};
+
 export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
   onOpenChat,
 }) => {
   const [loops, setLoops] = useState<Loop[]>([]);
   const [setup, setSetup] = useState<LoopTemplate | null>(null);
   const [making, setMaking] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
   const [notify, setNotify] = useState(true);
   const reload = useCallback(() => {
     loadLoops().then(setLoops);
@@ -207,56 +296,76 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
             testID="loops-notify-switch"
           />
         </View>
-        {loops.map(l => (
-          <View key={l.id} testID={`loop-${l.id}`} style={{gap: 4}}>
-            <Text variant="titleSmall">
-              {l.title}
-              {l.paused ? ' (paused)' : isFinished(l) ? ' (finished)' : ''}
-            </Text>
-            <Text variant="bodySmall" numberOfLines={2}>
-              {l.prompt}
-            </Text>
-            <Text variant="bodySmall">
-              {l.runs} of {l.maxRuns} runs
-              {isFinished(l)
-                ? ''
-                : ` · next ${new Date(l.nextAt).toLocaleString()}`}
-            </Text>
-            {l.log.slice(0, 3).map(e => (
-              <Text key={`${e.at}${e.what}`} variant="bodySmall">
-                {new Date(e.at).toLocaleString()}: {e.what}
+        {loops.map(l =>
+          editing === l.id ? (
+            <EditLoop
+              key={l.id}
+              loop={l}
+              onDone={() => {
+                setEditing(null);
+                reload();
+              }}
+            />
+          ) : (
+            <View key={l.id} testID={`loop-${l.id}`} style={{gap: 4}}>
+              <Text variant="titleSmall">
+                {l.title}
+                {l.paused ? ' (paused)' : isFinished(l) ? ' (finished)' : ''}
               </Text>
-            ))}
-            <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 4}}>
-              {!isFinished(l) ? (
-                <Button compact onPress={() => runNow(l.id)}>
-                  Run now
-                </Button>
+              {l.paused && l.pausedWhy ? (
+                <Text variant="bodySmall" testID={`loop-why-${l.id}`}>
+                  Paused: {l.pausedWhy}. Edit it, or Resume to try again.
+                </Text>
               ) : null}
-              <Button
-                compact
-                onPress={async () => {
-                  await updateLoop(l.id, x =>
-                    addLog(
-                      {...x, paused: !x.paused},
-                      x.paused ? 'Resumed' : 'Paused',
-                    ),
-                  );
-                  reload();
-                }}>
-                {l.paused ? 'Resume' : 'Pause'}
-              </Button>
-              <Button
-                compact
-                onPress={async () => {
-                  await stopLoop(l.id);
-                  reload();
-                }}>
-                Stop
-              </Button>
+              <Text variant="bodySmall" numberOfLines={2}>
+                {l.prompt}
+              </Text>
+              <Text variant="bodySmall">
+                {l.runs} of {l.maxRuns} runs
+                {isFinished(l)
+                  ? ''
+                  : ` · next ${new Date(l.nextAt).toLocaleString()}`}
+              </Text>
+              <Text variant="bodySmall">
+                Phone: {batteryText(l.battery).toLowerCase()}
+              </Text>
+              {l.log.slice(0, 3).map(e => (
+                <Text key={`${e.at}${e.what}`} variant="bodySmall">
+                  {new Date(e.at).toLocaleString()}: {e.what}
+                </Text>
+              ))}
+              <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 4}}>
+                {!isFinished(l) ? (
+                  <Button compact onPress={() => runNow(l.id)}>
+                    Run now
+                  </Button>
+                ) : null}
+                <Button
+                  compact
+                  onPress={() => setEditing(l.id)}
+                  testID={`loop-edit-open-${l.id}`}>
+                  Edit
+                </Button>
+                <Button
+                  compact
+                  onPress={async () => {
+                    await updateLoop(l.id, x => togglePause(x));
+                    reload();
+                  }}>
+                  {l.paused ? 'Resume' : 'Pause'}
+                </Button>
+                <Button
+                  compact
+                  onPress={async () => {
+                    await stopLoop(l.id);
+                    reload();
+                  }}>
+                  Stop
+                </Button>
+              </View>
             </View>
-          </View>
-        ))}
+          ),
+        )}
         {making ? (
           <MakeLoopSheet
             onDone={() => {
