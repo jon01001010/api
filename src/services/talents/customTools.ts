@@ -43,6 +43,8 @@ export type CustomTool =
     };
 
 const STORAGE_KEY = '@pocketagent/custom-tools/v1';
+/** Toolbox switches (names of switched-on tools); read in globalToolSettings. */
+export const GLOBAL_TOOLS_KEY = '@pocketagent/global-tools/v1';
 export const MAX_STEPS = 8;
 const MAX_INSTRUCTIONS = 8000;
 
@@ -390,9 +392,41 @@ export async function saveCustomTool(
 }
 
 /**
+ * Turns these tools' Toolbox switches off. Works on the stored list directly
+ * (globalToolSettings imports this file). Names that are not custom tools
+ * now are removed too, so a deleted name can't come back switched on.
+ * Missing or malformed settings already mean "no tools" and are left alone.
+ */
+export async function switchOffTools(names: string[]): Promise<void> {
+  if (!names.length) {
+    return;
+  }
+  const raw = await AsyncStorage.getItem(GLOBAL_TOOLS_KEY);
+  if (!raw) {
+    return;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(parsed)) {
+    return;
+  }
+  const off = new Set(names);
+  const next = parsed.filter(n => !off.has(n));
+  if (next.length !== parsed.length) {
+    await AsyncStorage.setItem(GLOBAL_TOOLS_KEY, JSON.stringify(next));
+  }
+}
+
+/**
  * Replaces all custom tools with a list from another device (keeping in
  * step). Each goes through the same checks as a saved tool; bad ones are
- * left out. Tools stay off until switched on here (Toolbox).
+ * left out. A tool that is new here, changed, or no longer there is switched
+ * off (before the new definitions are saved), so nothing from another device
+ * runs until switched on here (Toolbox). Unchanged tools keep their switch.
  */
 export async function replaceCustomTools(input: unknown[]): Promise<void> {
   await ensureCustomToolsLoaded();
@@ -407,11 +441,21 @@ export async function replaceCustomTools(input: unknown[]): Promise<void> {
       list.push(checked);
     }
   }
+  const before = new Map(tools.map(t => [t.name, describeCustomTool(t)]));
+  const kept = new Set(
+    list
+      .filter(t => before.get(t.name) === describeCustomTool(t))
+      .map(t => t.name),
+  );
+  const names = new Set([...before.keys(), ...list.map(t => t.name)]);
+  await switchOffTools([...names].filter(n => !kept.has(n)));
   await persist(list);
 }
 
+/** Removes a tool and always turns its Toolbox switch off. */
 export async function deleteCustomTool(name: string): Promise<boolean> {
   await ensureCustomToolsLoaded();
+  await switchOffTools([name]);
   if (!tools.some(t => t.name === name)) {
     return false;
   }

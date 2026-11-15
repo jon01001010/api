@@ -1313,6 +1313,7 @@ export const ChatView = observer(
                   {bottom: chatInputHeight.height},
                 ]}>
                 <SuggestedPromptsRow
+                  fullText
                   prompts={loopSteps}
                   onSelect={prompt =>
                     wrappedOnSendPress({type: 'text', text: prompt})

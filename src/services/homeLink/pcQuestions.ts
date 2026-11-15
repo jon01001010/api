@@ -1,7 +1,9 @@
 /**
  * "The PC asks, the phone can answer" (TODO): while switched on for a paired
  * PC (here) and allowed on that PC, the PC's "Allow?" questions show here too,
- * word for word, and can be answered Allow or Don't allow. That question
+ * word for word (hidden characters shown as markers), and can be answered
+ * Allow or Don't allow; a question too long to show whole shows its start
+ * and end, and can only be refused here. That question
  * only, never "always". The PC's own window stays open; the first answer
  * (here or there) wins. Looks every few seconds, only while the app is open.
  */
@@ -47,13 +49,67 @@ export function newQuestions(
   ) as PcQuestion[];
 }
 
+/** Longest question shown whole (characters, and lines). */
+export const MAX_SHOWN = 2000;
+export const MAX_LINES = 40;
+const HEAD_CHARS = 1200;
+const TAIL_CHARS = 600;
+const HEAD_LINES = 24;
+const TAIL_LINES = 12;
+
+/**
+ * Characters that change how text looks without showing themselves:
+ * direction controls (U+202A–U+202E, U+2066–U+2069, U+061C), zero-width and
+ * marks (U+200B–U+200F, U+2060, U+FEFF), line and paragraph separators, and
+ * control characters other than a newline or a tab.
+ */
+const HIDDEN =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u061C\u200B-\u200F\u2028-\u202E\u2060\u2066-\u2069\uFEFF]/g;
+
+/** Each hidden character as a visible marker, e.g. ⟦U+202E⟧. */
+export function showHidden(text: string): string {
+  return text.replace(
+    HIDDEN,
+    c => `⟦U+${c.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}⟧`,
+  );
+}
+
+/**
+ * A question as the phone shows it: hidden characters made visible, and,
+ * when it is too long (characters or lines), its start AND its end with what
+ * was left out counted in the middle. The end of a question is never hidden.
+ */
+export function questionView(q: PcQuestion): {
+  text: string;
+  shortened: boolean;
+} {
+  const all = q.text;
+  const lines = all.split('\n');
+  if (all.length <= MAX_SHOWN && lines.length <= MAX_LINES) {
+    return {text: showHidden(all), shortened: false};
+  }
+  let head = lines.slice(0, HEAD_LINES).join('\n').slice(0, HEAD_CHARS);
+  let tail = lines.slice(-TAIL_LINES).join('\n').slice(-TAIL_CHARS);
+  if (head.length + tail.length > all.length) {
+    // Few, very long lines: plain character counts.
+    head = all.slice(0, HEAD_CHARS);
+    tail = all.slice(-TAIL_CHARS);
+  }
+  const left = all.length - head.length - tail.length;
+  return {
+    text: `${showHidden(head)}\n… (${left} characters not shown) …\n${showHidden(tail)}`,
+    shortened: true,
+  };
+}
+
 /** What the phone shows: the PC's exact words, and what answering does. */
 export function questionMessage(q: PcQuestion): string {
-  const text = q.text.length > 2000 ? `${q.text.slice(0, 2000)}…` : q.text;
-  return `${text}\n\n(Asked on your PC. Answer within ${Math.max(
-    1,
-    q.secondsLeft,
-  )} s; this allows it once only. The PC's own window stays open.)`;
+  const view = questionView(q);
+  const seconds = Math.max(1, q.secondsLeft);
+  return view.shortened
+    ? `${view.text}\n\nToo long to show here; answer on the PC. (You can still say Don't allow here, within ${seconds} s.)`
+    : `${view.text}\n\n(Asked on your PC. Answer within ${seconds} s; this allows it once only. The PC's own window stays open.)`;
 }
 
 const shown = new Set<string>();
@@ -80,10 +136,19 @@ function show(pc: string, q: PcQuestion) {
       Alert.alert('Not sent', r.error);
     }
   };
-  Alert.alert('Your PC asks', questionMessage(q), [
-    {text: "Don't allow", style: 'cancel', onPress: () => send(false)},
-    {text: 'Allow once', onPress: () => send(true)},
-  ]);
+  const no = {
+    text: "Don't allow",
+    style: 'cancel' as const,
+    onPress: () => send(false),
+  };
+  // A question too long to show whole is never allowed from here.
+  Alert.alert(
+    'Your PC asks',
+    questionMessage(q),
+    questionView(q).shortened
+      ? [no]
+      : [no, {text: 'Allow once', onPress: () => send(true)}],
+  );
 }
 
 /** One look at every PC this is switched on for; the wait until the next. */

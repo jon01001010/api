@@ -2,8 +2,9 @@
  * Where each kept-in-step item lives on this device, and how it is read and
  * written (src/services/sync/promptSync.ts decides what wins).
  *
- * - assistants: your own assistants (not store ones), without what belongs
- *   to one device (its chosen model, picture file). Matched by id, then by
+ * - assistants: your own assistants (not store ones: those are never read,
+ *   matched or rewritten), without what belongs to one device (its chosen
+ *   model, picture file). Matched by id, then by
  *   name (each device makes its own starter assistants); added or updated,
  *   never deleted by a sync. TODO: deleting an assistant comes back from
  *   the other device; chat tombstones (chatDeletes.ts) don't fit here as
@@ -47,10 +48,11 @@ const palRepository = () =>
   require('../../repositories/PalRepository').palRepository;
 const customTools = () => require('../talents/customTools');
 
+/** One of your own assistants (not downloaded from the store). */
+const isOwn = (p: Pal) => (p.source ?? 'local') === 'local';
+
 export async function readAssistants(): Promise<string> {
-  const pals: Pal[] = (palStore().pals as Pal[]).filter(
-    p => (p.source ?? 'local') === 'local',
-  );
+  const pals: Pal[] = (palStore().pals as Pal[]).filter(isOwn);
   const list = pals
     .map(portablePal)
     .sort((a, b) => String(a.id).localeCompare(String(b.id)));
@@ -71,7 +73,13 @@ export async function writeAssistants(text: string): Promise<void> {
     }
     const fields = portablePal(raw);
     delete fields.id;
-    const local: Pal[] = store.pals;
+    const all: Pal[] = store.pals;
+    if (all.some(p => p.id === raw.id && !isOwn(p))) {
+      // Same id as a downloaded assistant: never rewritten by a sync.
+      continue;
+    }
+    // Only your own assistants are matched (store ones are never rewritten).
+    const local = all.filter(isOwn);
     const same =
       local.find(p => p.id === raw.id) ?? local.find(p => p.name === raw.name);
     if (same) {

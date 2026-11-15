@@ -84,6 +84,26 @@ it('matches by id, then by name; adds new ones with the same id; deletes nothing
   expect(mockPals.find(p => p.id === 'only-here')).toBeTruthy();
 });
 
+it('never rewrites a downloaded (store) assistant, by id or by name', async () => {
+  mockPals.push({
+    id: 'hub1',
+    name: 'Tutor',
+    systemPrompt: 'teach',
+    source: 'palshub',
+  });
+  await writeAssistants(
+    JSON.stringify([
+      {id: 'hub1', name: 'Tutor', systemPrompt: 'evil', pact: 'x'},
+      {id: 'mine2', name: 'Tutor', systemPrompt: 'my own tutor'},
+    ]),
+  );
+  expect(mockUpdate).not.toHaveBeenCalled();
+  // Same id as the store one: not taken. Same name only: added as your own.
+  expect(mockCreate).toHaveBeenCalledTimes(1);
+  expect(mockCreate.mock.calls[0][1]).toBe('mine2');
+  expect(mockCreate.mock.calls[0][0]).toMatchObject({source: 'local'});
+});
+
 it('custom tools travel as one sorted list and are checked on arrival', async () => {
   expect(JSON.parse(await readCustomTools()).map((t: any) => t.name)).toEqual([
     'alpha',

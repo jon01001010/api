@@ -154,9 +154,16 @@ export function runMessage(loop: Loop): string {
   return (
     `${intro}\n\n${loop.prompt}\n\n` +
     'Keep it short. End with a line "Next steps:" and then 1 to 3 short ' +
-    'next steps I can tap, one per line.'
+    `next steps I can tap, one per line, each under ${MAX_STEP_CHARS} characters.`
   );
 }
+
+/**
+ * Longest next step offered as a button: its whole text fits on the chip
+ * (shown in full, never cut), so a tap never sends words the user didn't
+ * see. Longer ones are not offered.
+ */
+export const MAX_STEP_CHARS = 80;
 
 /** The 1–3 next steps at the end of a reply (none if it has none). */
 export function nextStepsOf(text: string): string[] {
@@ -172,7 +179,7 @@ export function nextStepsOf(text: string): string[] {
         .replace(/\*\*/g, '')
         .trim(),
     )
-    .filter(l => l.length > 0 && l.length <= 120)
+    .filter(l => l.length > 0 && l.length <= MAX_STEP_CHARS)
     .slice(0, 3);
 }
 

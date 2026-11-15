@@ -14,6 +14,7 @@ import {
   askAboutHeld,
   describeDeletes,
   forgetTombstones,
+  keepEarlierVersions,
   knownTombstones,
 } from './chatDeletes';
 import {mirrorOnPc, readAllChats, SYNC_ROOM, writeChats} from './chatSync';
@@ -73,6 +74,54 @@ export async function setHostSyncAllowed(allowed: boolean): Promise<void> {
   await invoke('link_sync_allow', {allowed});
 }
 
+let noticeOpen = false;
+/** Notices that came while one was open (the newest few, and how many). */
+let waiting: string[] = [];
+let waitingCount = 0;
+const WAITING_SHOWN = 3;
+
+/**
+ * "Kept in step" on this PC: at most one shown at a time. Notices that come
+ * while one is open wait, and are shown together (the newest few, and how
+ * many more) once it is closed, so many syncs can't pile up dialogs.
+ */
+export function keptInStepNotice(message: string): void {
+  if (noticeOpen) {
+    waitingCount++;
+    waiting = [...waiting.filter(m => m !== message), message].slice(
+      -WAITING_SHOWN,
+    );
+    return;
+  }
+  noticeOpen = true;
+  const closed = () => {
+    if (!noticeOpen) {
+      return;
+    }
+    noticeOpen = false;
+    if (waitingCount) {
+      const more = waitingCount - waiting.length;
+      const text =
+        waiting.join('\n\n') +
+        (more > 0 ? `\n\n(and ${more} more like these)` : '');
+      waiting = [];
+      waitingCount = 0;
+      keptInStepNotice(text);
+    }
+  };
+  Alert.alert('Kept in step', message, [{text: 'OK', onPress: closed}], {
+    cancelable: true,
+    onDismiss: closed,
+  });
+}
+
+/** For tests. */
+export function resetKeptInStepNotice(): void {
+  noticeOpen = false;
+  waiting = [];
+  waitingCount = 0;
+}
+
 /** One sync from a paired device: merge, write here, answer (exported for tests). */
 export async function answerSync(
   body: string,
@@ -91,8 +140,7 @@ export async function answerSync(
   const merged = merge(local, cleanItems(remote));
   const changed = await applyItems(merged.items);
   if (changed.length) {
-    Alert.alert(
-      'Kept in step',
+    keptInStepNotice(
       `${describeKeys(changed)} updated from ${device || 'a paired device'}. The earlier versions are kept in history.`,
     );
   }
@@ -121,6 +169,8 @@ export async function answerSync(
       {
         tombstones: known,
         hold: new Set(del.held.map(h => h.chat.session.id)),
+        // A copy that drops messages here: the earlier version is kept.
+        keep: (here, list) => keepEarlierVersions(here, list, from),
       },
     );
     await forgetTombstones(r.revived);
@@ -130,10 +180,7 @@ export async function answerSync(
       await require('../../store').chatSessionStore.loadSessionList();
     }
     if (del.deleted.length) {
-      Alert.alert(
-        'Kept in step',
-        `${describeDeletes(del.deleted.length, from)}.`,
-      );
+      keptInStepNotice(`${describeDeletes(del.deleted.length, from)}.`);
     }
     if (del.held.length) {
       askAboutHeld(del.held, from, async () => {

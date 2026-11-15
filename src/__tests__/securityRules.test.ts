@@ -721,3 +721,54 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(read('web/tauriNet.js')).toMatch(/!host\.endsWith\('\.localhost'\)/);
   });
 });
+
+describe('Paired devices: sync, mirrored chats, answers (review of 2026-11-15)', () => {
+  it('what comes from a paired device is checked, bounded and kept', () => {
+    // Custom tools from a sync (or deleted) are switched off before saving.
+    const tools = read('src/services/talents/customTools.ts');
+    expect(tools).toMatch(
+      /await switchOffTools\(\[\.\.\.names\]\.filter\(n => !kept\.has\(n\)\)\);\s*await persist\(list\);/,
+    );
+    expect(tools).toMatch(
+      /deleteCustomTool[\s\S]*?await switchOffTools\(\[name\]\);/,
+    );
+    // Times from another device: at most a few minutes ahead.
+    const prompt = read('src/services/sync/promptSync.ts');
+    expect(prompt).toContain('export const MAX_CLOCK_SKEW = 5 * 60_000;');
+    expect(prompt).toContain('updatedAt: clampTime(item.updatedAt, now)');
+    expect(prompt).toContain('updatedAt: Math.min(item.updatedAt, now)');
+    expect(read('src/services/sync/chatDeletes.ts')).toContain(
+      't.deletedAt <= now + MAX_CLOCK_SKEW',
+    );
+    // Mirrored messages: known authors, kinds and metadata keys only.
+    const chats = read('src/services/sync/chatSync.ts');
+    expect(chats).toContain(
+      "export const MIRRORED_TYPES: readonly string[] = ['text', 'assistant_turn'];",
+    );
+    const metadata = chats.slice(
+      chats.indexOf('const METADATA'),
+      chats.indexOf('export function mirroredMetadata'),
+    );
+    expect(metadata).not.toMatch(/imageUris|audioUri|uri\b/i);
+    expect(chats).toContain('.map((m: any) => mirroredMessage(m, id, now))');
+    // A copy that drops messages keeps the earlier version first.
+    expect(read('src/services/sync/hostSync.web.ts')).toContain(
+      'keep: (here, list) => keepEarlierVersions(here, list, from)',
+    );
+    expect(read('src/services/sync/deviceSync.ts')).toContain(
+      "await keepEarlierVersions(local, newer, 'the PC')",
+    );
+    // Store assistants are never rewritten by a sync.
+    expect(read('src/services/sync/syncSources.ts')).toContain(
+      'const local = all.filter(isOwn);',
+    );
+    // Pictures: never a web address, only the app's own picture folder.
+    expect(read('src/api/openai.ts')).toMatch(
+      /if \(!isOwnImagePath\(url\)\) \{[^}]*return null;/,
+    );
+    // A PC question too long to show whole can only be refused here.
+    expect(read('src/services/homeLink/pcQuestions.ts')).toMatch(
+      /questionView\(q\)\.shortened\s*\?\s*\[no\]/,
+    );
+  });
+});

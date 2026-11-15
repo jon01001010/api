@@ -13,7 +13,9 @@ import {
   cleanTombstones,
   DELETE_CAP,
   describeDeletes,
+  keepEarlierVersions,
   keepHeld,
+  RECENT_ROOM,
   knownTombstones,
   MAX_TOMBSTONES,
   pruneTombstones,
@@ -29,6 +31,7 @@ import {
   type ChatRecord,
   type Tombstone,
 } from '../chatSync';
+import {MAX_CLOCK_SKEW} from '../promptSync';
 
 const DAY = 86_400_000;
 const NOW = 1_800_000_000_000;
@@ -38,6 +41,8 @@ const chat = (id: string, texts: string[], at: number): ChatRecord => ({
   messages: texts.map((t, i) => ({
     id: `${id}-m${i}`,
     session_id: id,
+    author: 'y9d7f8pgn',
+    type: 'text',
     text: t,
     position: i,
     created_at: at,
@@ -257,4 +262,77 @@ it('the PC does not take or send back a chat deleted after its last change', asy
   expect(written.map(c => c.session.id)).toEqual(['revived']);
   expect(r.revived).toEqual(['revived']);
   expect(r.send.map(c => c.session.id)).toEqual(['kept']);
+});
+
+it('a deletion time more than a few minutes ahead is ignored', () => {
+  expect(
+    cleanTombstones(
+      [
+        {id: 'soon', deletedAt: NOW + MAX_CLOCK_SKEW},
+        {id: 'later', deletedAt: NOW + MAX_CLOCK_SKEW + 1},
+        {id: 'far', deletedAt: 9e15},
+      ],
+      NOW,
+    ).map(t => t.id),
+  ).toEqual(['soon']);
+});
+
+describe('a mirrored copy that replaces a chat here', () => {
+  it('keeps the earlier version when the copy drops messages; restorable', async () => {
+    const here = chat('c', ['a', 'b', 'c', 'd'], NOW - 1000);
+    const {state, store} = device([here]);
+    const forged = chat('c', ['x'], NOW);
+    const ok = await keepEarlierVersions(
+      new Map([['c', here]]),
+      [forged],
+      'Pixel',
+      store,
+    );
+    expect(ok).toEqual([forged]);
+    expect(state.recent).toHaveLength(1);
+    expect(state.recent[0]).toMatchObject({from: 'Pixel', replaced: true});
+    expect(state.recent[0].chat.messages.map(m => m.text)).toEqual([
+      'a',
+      'b',
+      'c',
+      'd',
+    ]);
+    // Written over, then restored: the earlier messages are back, newer.
+    await store.write(ok);
+    state.now = NOW + 10;
+    expect(await restoreDeleted('c', store)).toBe(true);
+    const back = state.chats.get('c')!;
+    expect(back.messages.map(m => m.text)).toEqual(['a', 'b', 'c', 'd']);
+    expect(back.session.updated_at).toBe(NOW + 10);
+  });
+
+  it('a copy that only adds messages keeps nothing', async () => {
+    const here = chat('c', ['a'], NOW - 1000);
+    const {state, store} = device([here]);
+    const grown = chat('c', ['a', 'b'], NOW - 1000);
+    expect(
+      await keepEarlierVersions(
+        new Map([['c', here]]),
+        [grown],
+        'Pixel',
+        store,
+      ),
+    ).toEqual([grown]);
+    expect(state.recent).toEqual([]);
+  });
+
+  it('no room to keep the earlier version: the copy is not taken', async () => {
+    const big = chat('c', ['y'.repeat(RECENT_ROOM)], NOW - 1000);
+    const {state, store} = device([big]);
+    const newChat = chat('n', ['new'], NOW);
+    expect(
+      await keepEarlierVersions(
+        new Map([['c', big]]),
+        [chat('c', [], NOW), newChat],
+        'Pixel',
+        store,
+      ),
+    ).toEqual([newChat]);
+    expect(state.recent).toEqual([]);
+  });
 });

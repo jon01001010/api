@@ -45,7 +45,11 @@ jest.mock('@tauri-apps/api/core', () => ({invoke: jest.fn()}));
 jest.mock('@tauri-apps/api/event', () => ({listen: jest.fn()}));
 
 import {setSyncWithPc, syncWithPc, syncWithPcOn} from '../deviceSync';
-import {answerSync} from '../hostSync.web';
+import {
+  answerSync,
+  keptInStepNotice,
+  resetKeptInStepNotice,
+} from '../hostSync.web';
 
 beforeEach(() => {
   for (const k of Object.keys(mockStore)) {
@@ -87,6 +91,8 @@ it('the PC takes a newer prompt from the device, keeps its own newer notes, and 
   expect(alert).toHaveBeenCalledWith(
     'Kept in step',
     expect.stringContaining('System prompt updated from Pixel'),
+    expect.anything(),
+    expect.anything(),
   );
   alert.mockRestore();
 });
@@ -138,4 +144,29 @@ it("says so when the PC hasn't allowed it", async () => {
     error: 'Keeping in step is off on the PC',
   });
   expect(mockText.prompt).toBe('');
+});
+
+it('"Kept in step" on the PC: one at a time, later ones shown together after', () => {
+  resetKeptInStepNotice();
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  for (let i = 1; i <= 50; i++) {
+    keptInStepNotice(`change ${i}`);
+  }
+  expect(alert).toHaveBeenCalledTimes(1);
+  const close = (n: number) => (alert.mock.calls[n] as any)[2][0].onPress();
+  close(0);
+  expect(alert).toHaveBeenCalledTimes(2);
+  const text = String(alert.mock.calls[1][1]);
+  expect(text).toContain('change 50');
+  expect(text).toContain('change 48');
+  expect(text).not.toContain('change 47');
+  expect(text).toContain('and 46 more');
+  close(1);
+  expect(alert).toHaveBeenCalledTimes(2);
+  // Closing twice (OK, then dismissed) doesn't open more.
+  close(1);
+  keptInStepNotice('next');
+  expect(alert).toHaveBeenCalledTimes(3);
+  alert.mockRestore();
+  resetKeptInStepNotice();
 });

@@ -10,10 +10,11 @@ import {
 } from '../../services/sync/chatDeletes';
 
 /**
- * Chats removed here because they were deleted on a mirrored device, kept
- * 30 days: each can be restored (it then comes back on the other device
- * too). Shows nothing when there are none. `refresh`: change it to re-read
- * (after a sync).
+ * Chats removed here because they were deleted on a mirrored device, and
+ * earlier versions of chats a mirrored copy replaced, kept 30 days: each
+ * can be restored (it then comes back on the other device too). Shows
+ * nothing when there are none. `refresh`: change it to re-read (after a
+ * sync).
  */
 export const RecentlyDeletedChats: React.FC<{refresh?: unknown}> = ({
   refresh,
@@ -58,12 +59,12 @@ export const RecentlyDeletedChats: React.FC<{refresh?: unknown}> = ({
       {open ? (
         <>
           <Text variant="bodySmall" style={styles.note}>
-            {`Kept ${RECENT_DAYS} days. Restoring a chat brings it back on the other device too.`}
+            {`Kept ${RECENT_DAYS} days. Restoring a chat (or an earlier version) brings it back on the other device too.`}
           </Text>
           {list.map(r => (
             <View key={r.chat.session.id} style={styles.row}>
               <Text variant="bodySmall" style={styles.title} numberOfLines={2}>
-                {`${String(r.chat.session.title || 'Chat')} · deleted on ${r.from}, ${new Date(r.removedAt).toLocaleDateString()}`}
+                {`${String(r.chat.session.title || 'Chat')} · ${r.replaced ? `earlier version, replaced from ${r.from}` : `deleted on ${r.from}`}, ${new Date(r.removedAt).toLocaleDateString()}`}
               </Text>
               <Button
                 compact

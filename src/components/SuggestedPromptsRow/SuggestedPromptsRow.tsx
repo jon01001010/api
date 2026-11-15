@@ -19,12 +19,18 @@ interface SuggestedPromptsRowProps {
    * is loaded — matches the send-button disabled behavior.
    */
   disabled?: boolean;
+  /**
+   * Show each prompt's whole text (no cut-off). For prompts from a model's
+   * reply (a loop's next steps): a tap must never send words not shown.
+   */
+  fullText?: boolean;
 }
 
 export const SuggestedPromptsRow: React.FC<SuggestedPromptsRowProps> = ({
   prompts,
   onSelect,
   disabled = false,
+  fullText = false,
 }) => {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -53,7 +59,9 @@ export const SuggestedPromptsRow: React.FC<SuggestedPromptsRowProps> = ({
               pressed && !disabled ? styles.chipPressed : null,
               disabled ? styles.chipDisabled : null,
             ]}>
-            <Text style={styles.chipText} numberOfLines={2}>
+            <Text
+              style={styles.chipText}
+              numberOfLines={fullText ? undefined : 2}>
               {prompt}
             </Text>
           </Pressable>
