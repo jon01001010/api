@@ -37,6 +37,26 @@ const rel = (file: string) =>
 // Line breaks normalised: a Windows checkout has \r\n.
 const read = (file: string) =>
   fs.readFileSync(path.join(ROOT, file), 'utf8').replace(/\r\n/g, '\n');
+/** A workflow's jobs, by name (the two-space keys under `jobs:`). */
+const jobsOf = (workflow: string): Record<string, string> => {
+  const body = workflow.slice(workflow.indexOf('\njobs:\n'));
+  const out: Record<string, string> = {};
+  const heads = [...body.matchAll(/^ {2}([\w-]+):\n/gm)];
+  heads.forEach((m, i) => {
+    const end = i + 1 < heads.length ? heads[i + 1].index : body.length;
+    out[m[1]] = body.slice(m.index, end);
+  });
+  return out;
+};
+const stepNamed = (job: string, name: string) => {
+  const step = job
+    .split(/\n\s+- name: /)
+    .find(s => s.split('\n')[0].trim() === name);
+  if (!step) {
+    throw new Error(`no step "${name}"`);
+  }
+  return step;
+};
 const filesMatching = (pattern: RegExp) =>
   sourceFiles(SRC)
     .filter(f => pattern.test(fs.readFileSync(f, 'utf8')))
@@ -916,13 +936,13 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     }
   });
 
-  it('the APK signing key is used only by the signing step, which keeps the debug key without it', () => {
+  it('the APK signing key is used only by the signing step, in its own job that ran none of the build, which keeps the debug key without it', () => {
     const dir = path.join(__dirname, '..', '..', '.github', 'workflows');
     let signing = '';
     for (const file of fs.readdirSync(dir)) {
       const text = fs.readFileSync(path.join(dir, file), 'utf8');
       for (const step of text.split(/\n\s+- name: /)) {
-        if (/secrets\.ANDROID_KEY/.test(step)) {
+        if (/ANDROID_KEY/.test(step)) {
           expect([file, step.split('\n')[0].trim()]).toEqual([
             'pocketagent-integration-apk.yml',
             'Sign the APK with our release key (when its secrets are set)',
@@ -937,6 +957,151 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // The key file is removed again, and never printed.
     expect(signing).toContain(`trap 'rm -f "$keystore"' EXIT`);
     expect(signing).not.toMatch(/echo "\$ANDROID_KEY/);
+    // Its job: after the build, before the release; no repository rights;
+    // no checkout, nothing from the repository or the build is run (only
+    // the downloaded APK is read), apksigner from pinned build-tools.
+    const jobs = jobsOf(
+      read('.github/workflows/pocketagent-integration-apk.yml'),
+    );
+    expect(Object.keys(jobs)).toEqual(['diagnostic', 'sign', 'release']);
+    const sign = jobs.sign;
+    expect(sign).toContain('Sign the APK with our release key');
+    expect(sign).toMatch(/\n {4}needs: diagnostic\n/);
+    expect(sign).toMatch(/\n {4}permissions: \{\}\n/);
+    expect(sign).toMatch(/BUILD_TOOLS: '\d+\.\d+\.\d+'/);
+    expect(sign).toContain('apksigner="$BUILD_TOOLS_DIR/apksigner"');
+    for (const banned of [
+      'actions/checkout',
+      'yarn',
+      'npm ',
+      'npx ',
+      'gradle',
+      'bash scripts/',
+      'node ',
+      'cache',
+    ]) {
+      expect([banned, sign.includes(banned)]).toEqual([banned, false]);
+    }
+    const uses = [...sign.matchAll(/uses: ([^\s]+)/g)].map(m => m[1]);
+    expect(uses.sort()).toEqual([
+      'actions/download-artifact@v4',
+      'actions/upload-artifact@v4',
+    ]);
+    // The signed APK is verified, and it is what the release publishes.
+    expect(signing).toMatch(/apksigner" sign [\s\S]*?--out signed\.apk/);
+    expect(signing).toMatch(/rm -f "\$keystore"\n\s+mv signed\.apk/);
+    expect(signing).toContain('verify --verbose --print-certs');
+    expect(jobs.release).toMatch(/\n {4}needs: sign\n/);
+    expect(jobs.release).toContain(
+      'name: pocketagent-signed-apk-${{ github.run_id }}',
+    );
+    expect(jobs.diagnostic).not.toMatch(/\$\{\{\s*secrets\./);
+  });
+
+  it('the published APK is the release build: not debuggable, no dev support, its bundle built in, checked before signing', () => {
+    // Gradle: prodRelease, debug-signed without a release keystore (installs
+    // over the earlier test APKs), dev support off.
+    expect(read('scripts/build-api-helper-npu.sh')).toMatch(
+      /arm64-v8a assembleProdRelease\n/,
+    );
+    expect(read('scripts/build-api-helper-npu.sh')).not.toContain(
+      'assembleProdDebug',
+    );
+    const gradle = read('android/app/build.gradle');
+    const release = gradle.slice(
+      gradle.indexOf('        release {', gradle.indexOf('buildTypes {')),
+      gradle.indexOf('        releaseE2e {'),
+    );
+    expect(release).toContain('debuggable false');
+    expect(release).toContain(
+      'buildConfigField "boolean", "USE_DEV_SUPPORT", "false"',
+    );
+    expect(release).toContain(
+      'signingConfig(signingConfigs.release.storeFile != null ? signingConfigs.release : signingConfigs.debug)',
+    );
+    expect(gradle).toContain('def enableProguardInReleaseBuilds = false');
+    expect(read('android/gradle.properties')).toMatch(/^hermesEnabled=true$/m);
+    expect(
+      read('android/app/src/main/java/com/pocketagent/MainApplication.kt'),
+    ).toContain(
+      'override fun getUseDeveloperSupport(): Boolean = BuildConfig.USE_DEV_SUPPORT',
+    );
+    // The workflow: only the release APK; checked in the build job and
+    // again in the signing job before and after the key.
+    const workflow = read('.github/workflows/pocketagent-integration-apk.yml');
+    expect(workflow).not.toMatch(/prod\/debug|prod-debug|ProdDebug/);
+    const jobs = jobsOf(workflow);
+    expect(stepNamed(jobs.diagnostic, 'Keep verified APK')).toContain(
+      'path: android/app/build/outputs/apk/prod/release/app-prod-release.apk',
+    );
+    const checks = [
+      stepNamed(
+        jobs.diagnostic,
+        'Check the APK is a release build (not debuggable, bundle built in)',
+      ),
+      stepNamed(
+        jobs.sign,
+        'Check the APK is a release build before signing (not debuggable, bundle built in)',
+      ),
+      stepNamed(
+        jobs.sign,
+        'Check the signed APK (signature valid, still not debuggable)',
+      ),
+    ];
+    for (const check of checks) {
+      expect(check).toContain('dump badging "$apk"');
+      expect(check).toMatch(
+        /if grep -q '\^application-debuggable' <<< "\$badging"; then\n\s+echo "::error::[^"]*"\n\s+exit 1/,
+      );
+      expect(check).toContain('dump xmltree --file AndroidManifest.xml "$apk"');
+      expect(check).toContain('grep -qvE \'=false$\' <<< "$flags"');
+      // Hermes bytecode's magic number at the start of the bundle.
+      expect(check).toContain("bytes.fromhex('c61fbc03c103191f')");
+    }
+    // In order: built, checked, kept; checked again before the key.
+    const order = (job: string, names: string[]) =>
+      names.map(n => job.indexOf(`- name: ${n}\n`));
+    const built = order(jobs.diagnostic, [
+      'Assemble and verify NPU APK',
+      'Check the APK is a release build (not debuggable, bundle built in)',
+      'Keep verified APK',
+    ]);
+    expect(built.every(i => i > 0)).toBe(true);
+    expect([...built].sort((a, b) => a - b)).toEqual(built);
+    const signed = order(jobs.sign, [
+      'Check the APK is a release build before signing (not debuggable, bundle built in)',
+      'Sign the APK with our release key (when its secrets are set)',
+      'Check the signed APK (signature valid, still not debuggable)',
+      'Keep the signed APK',
+    ]);
+    expect(signed.every(i => i > 0)).toBe(true);
+    expect([...signed].sort((a, b) => a - b)).toEqual(signed);
+  });
+
+  it('the Linux picture maker from the cache must match the SHA-256 recorded when it was built', () => {
+    const linux = read('.github/workflows/pocketagent-linux.yml');
+    const restore = stepNamed(
+      linux,
+      'Restore the pinned picture maker build (cached copy)',
+    );
+    expect(restore).toMatch(
+      /restore-keys: \|\n\s+sd-cli-\$\{\{ env\.SD_COMMIT \}\}[^\n]*-sha256-$/,
+    );
+    const build = stepNamed(
+      linux,
+      'Build the pinned picture maker sd-cli (x64, CPU; checked against its recorded SHA-256 when cached)',
+    );
+    expect(build).toContain(
+      'CACHED_KEY: ${{ steps.sd-cache.outputs.cache-matched-key }}',
+    );
+    expect(build).toContain('expected="${CACHED_KEY##*-sha256-}"');
+    expect(build).toContain('[[ "$expected" =~ ^[0-9a-f]{64}$ ]]');
+    expect(build).toMatch(
+      /if ! echo "\$\{expected\} {2}sd-built\/sd-cli" \| sha256sum -c -; then\n[^\n]*\n\s+exit 1/,
+    );
+    expect(build).toContain('echo "sha256=$sha" >> "$GITHUB_OUTPUT"');
+    const save = stepNamed(linux, 'Keep a copy of the picture maker build');
+    expect(save).toContain('-sha256-${{ steps.sd-build.outputs.sha256 }}');
   });
 
   it('network from the native side is http/https only', () => {
@@ -1066,9 +1231,22 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(gen).toContain('target_arch = "aarch64"');
     const win = read('.github/workflows/pocketagent-windows.yml');
     expect(win).toMatch(
-      /echo "\$\{SD_SHA256\}  \$\{SD_ZIP\}" \| sha256sum -c -/,
+      /echo "\$\{SD_SHA256\} {2}\$\{SD_ZIP\}" \| sha256sum -c -/,
     );
     expect(win).toContain('rm -f src-tauri/sd/sd-server.exe');
+    // A model file with a checksum is checked while it downloads; a
+    // mismatch is deleted, never renamed into place. A set marked verified
+    // without a checksum for every file is refused.
+    expect(tauri('src/download.rs')).toMatch(
+      /if sha256 != expected \{\s*let _ = std::fs::remove_file\(&part\);\s*return fail/,
+    );
+    const imageModels = read('src/services/imageGen/imageModels.ts');
+    expect(imageModels).toMatch(
+      /const problem = checksumProblem\(set\);\s*if \(problem\) \{\s*throw/,
+    );
+    expect(imageModels).toMatch(
+      /if \(set\.verified && file\.sha256 === null\) \{\s*return/,
+    );
     // Only commercially usable models are listed.
     const models = read('src/services/imageGen/imageModels.json').toLowerCase();
     for (const banned of ['flux.1-dev', 'klein-9b', 'sd-turbo', 'sdxl-turbo']) {

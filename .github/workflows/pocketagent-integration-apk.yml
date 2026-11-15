@@ -185,7 +185,7 @@ jobs:
         timeout-minutes: 20
         run: |
           set -euo pipefail
-          gradle -p android --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a :app:compileProdDebugKotlin :app:compileProdDebugJavaWithJavac 2>&1 | tee diagnostic-build.log
+          gradle -p android --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a :app:compileProdReleaseKotlin :app:compileProdReleaseJavaWithJavac 2>&1 | tee diagnostic-build.log
       # Restore native intermediates from a prior attempt with matching inputs.
       # Cache reuse is best-effort and does not establish build correctness.
       - name: Validate native variant selection
@@ -204,9 +204,9 @@ jobs:
             node_modules/llama.rn/android/.cxx
             node_modules/llama.rn/android/build/intermediates/cxx
             node_modules/llama.rn/android/build/generated/source/codegen
-          key: pocketagent-native-arm64-v2-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-${{ github.run_id }}
+          key: pocketagent-native-arm64-release-v3-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-${{ github.run_id }}
           restore-keys: |
-            pocketagent-native-arm64-v2-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-
+            pocketagent-native-arm64-release-v3-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-
       - name: Inspect native cache and disk budget
         if: github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native'
         run: |
@@ -229,44 +229,41 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/build-api-helper-npu.sh 2>&1 | tee diagnostic-build.log
-      # Our own release key, once the owner has added it (TODO.md, Pre-release:
-      # "Signed builds"). Without these secrets nothing changes: the APK keeps
-      # React Native's public debug signature, as before. The key is written
-      # to the runner's temporary folder only for apksigner and removed after.
-      # Forks never receive these secrets.
-      - name: Sign the APK with our release key (when its secrets are set)
+      # The published APK must be the release variant: not debuggable (a
+      # debuggable app gives `adb run-as` its private files on any unlocked
+      # phone) and with its JS bundle built in (dev support would load code
+      # from any "Metro" listening on the phone). Checked here and again in
+      # the signing job, before any key touches it.
+      - name: Check the APK is a release build (not debuggable, bundle built in)
         if: success() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          apk=android/app/build/outputs/apk/prod/debug/app-prod-debug.apk
+          apk=android/app/build/outputs/apk/prod/release/app-prod-release.apk
           test -s "$apk"
-          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
-            echo "No release key set: the APK keeps the debug signature."
-            exit 0
-          fi
-          if [ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ] || [ -z "${ANDROID_KEY_ALIAS:-}" ]; then
-            echo "::error::ANDROID_KEYSTORE_BASE64 is set but ANDROID_KEYSTORE_PASSWORD or ANDROID_KEY_ALIAS is missing."
+          aapt2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          # Not debuggable: no application-debuggable in badging, and no
+          # android:debuggable other than false in the manifest.
+          badging=$("$aapt2" dump badging "$apk")
+          manifest=$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk")
+          grep -q "^package: name='org.apihelper.local'" <<< "$badging"
+          if grep -q '^application-debuggable' <<< "$badging"; then
+            echo "::error::The APK is debuggable; only a release build may be published."
             exit 1
           fi
-          # A key made with keytool's defaults (PKCS12) has one password.
-          export ANDROID_KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
-          keystore="$RUNNER_TEMP/release.keystore"
-          trap 'rm -f "$keystore"' EXIT
-          (umask 077 && printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$keystore")
-          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
-          # Signs in place, replacing the debug signature.
-          "$apksigner" sign --ks "$keystore" --ks-key-alias "$ANDROID_KEY_ALIAS" \
-            --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD "$apk"
-          "$apksigner" verify --verbose --print-certs "$apk" | grep -E '^(Verified|Signer #1 certificate (DN|SHA-256))'
-          if "$apksigner" verify --print-certs "$apk" | grep -q 'CN=Android Debug'; then
-            echo "::error::The APK is still signed with the debug key."
+          flags=$(grep -oE ':debuggable\(0x0101000f\)=[^ ]+' <<< "$manifest" || true)
+          if [ -n "$flags" ] && grep -qvE '=false$' <<< "$flags"; then
+            echo "::error::The APK's manifest sets android:debuggable ($flags)."
             exit 1
           fi
+          # The JS is built in as Hermes bytecode, so it never asks a "Metro".
+          python3 -I - "$apk" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              head = z.open('assets/index.android.bundle').read(8)
+          if head != bytes.fromhex('c61fbc03c103191f'):
+              sys.exit('assets/index.android.bundle is not Hermes bytecode')
+          PY
+          echo "Release build: not debuggable, Hermes bundle built in."
       - name: Record native build disk usage
         if: always() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
         run: |
@@ -291,7 +288,7 @@ jobs:
             node_modules/llama.rn/android/.cxx
             node_modules/llama.rn/android/build/intermediates/cxx
             node_modules/llama.rn/android/build/generated/source/codegen
-          key: pocketagent-native-arm64-v2-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: pocketagent-native-arm64-release-v3-${{ runner.os }}-${{ hashFiles('yarn.lock', 'patches/**', 'scripts/android-payload-manifest.json', 'android/build.gradle', 'android/gradle.properties') }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Keep logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -310,11 +307,157 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pocketagent-integration-apk-${{ github.run_id }}-${{ github.run_attempt }}
-          path: android/app/build/outputs/apk/prod/debug/app-prod-debug.apk
+          path: android/app/build/outputs/apk/prod/release/app-prod-release.apk
           if-no-files-found: error
-          # Only the release job below needs this copy (minutes later); the
-          # APK to install lives on the release. 14-day copies (~80 MB each)
-          # filled the free Actions storage.
+          # Only the jobs below need this copy (minutes later); the APK to
+          # install lives on the release. 14-day copies (~80 MB each) filled
+          # the free Actions storage.
+          retention-days: 1
+
+  # Signs the APK with our release key, once the owner has added it (TODO.md,
+  # Pre-release: "Signed builds"), on a fresh runner that ran none of the
+  # build's code (npm install scripts, Gradle plugins, the NDK build): it only
+  # downloads the built APK and uses the runner's own Android SDK (pinned
+  # build-tools). Without the key's secrets the APK keeps React Native's
+  # public debug signature, as before. The key is written to the runner's
+  # temporary folder only for apksigner and removed after. Forks never
+  # receive these secrets. This job has no repository permissions.
+  sign:
+    needs: diagnostic
+    if: success() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions: {}
+    env:
+      BUILD_TOOLS: '36.0.0'
+    steps:
+      - name: Download the built APK
+        uses: actions/download-artifact@v4
+        with:
+          name: pocketagent-integration-apk-${{ github.run_id }}-${{ github.run_attempt }}
+          path: built
+      - name: Use the runner's Android build-tools (pinned version)
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          tools="$sdk/build-tools/$BUILD_TOOLS"
+          if [ ! -x "$tools/apksigner" ] || [ ! -x "$tools/aapt2" ]; then
+            # Not preinstalled on this image: the SDK manager checks the
+            # package's checksum from the Android repository.
+            yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;$BUILD_TOOLS" > /dev/null
+          fi
+          test -x "$tools/apksigner"
+          test -x "$tools/aapt2"
+          sha256sum "$tools/lib/apksigner.jar" "$tools/aapt2"
+          echo "BUILD_TOOLS_DIR=$tools" >> "$GITHUB_ENV"
+      - name: Check the APK is a release build before signing (not debuggable, bundle built in)
+        run: |
+          set -euo pipefail
+          # Only the APK came from the build; this job runs nothing of it.
+          mv built/app-prod-release.apk app-prod-release.apk
+          apk=app-prod-release.apk
+          test -s "$apk"
+          aapt2="$BUILD_TOOLS_DIR/aapt2"
+          # Not debuggable: no application-debuggable in badging, and no
+          # android:debuggable other than false in the manifest.
+          badging=$("$aapt2" dump badging "$apk")
+          manifest=$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk")
+          grep -q "^package: name='org.apihelper.local'" <<< "$badging"
+          if grep -q '^application-debuggable' <<< "$badging"; then
+            echo "::error::The APK is debuggable; only a release build may be published."
+            exit 1
+          fi
+          flags=$(grep -oE ':debuggable\(0x0101000f\)=[^ ]+' <<< "$manifest" || true)
+          if [ -n "$flags" ] && grep -qvE '=false$' <<< "$flags"; then
+            echo "::error::The APK's manifest sets android:debuggable ($flags)."
+            exit 1
+          fi
+          # The JS is built in as Hermes bytecode, so it never asks a "Metro".
+          python3 -I - "$apk" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              head = z.open('assets/index.android.bundle').read(8)
+          if head != bytes.fromhex('c61fbc03c103191f'):
+              sys.exit('assets/index.android.bundle is not Hermes bytecode')
+          PY
+          echo "Release build: not debuggable, Hermes bundle built in."
+      - name: Sign the APK with our release key (when its secrets are set)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          apk=app-prod-release.apk
+          test -s "$apk"
+          apksigner="$BUILD_TOOLS_DIR/apksigner"
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "No release key set: the APK keeps the debug signature."
+            certs=$("$apksigner" verify --print-certs "$apk")
+            grep -q 'CN=Android Debug' <<< "$certs"
+            echo "debug" > signed-with.txt
+            exit 0
+          fi
+          if [ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ] || [ -z "${ANDROID_KEY_ALIAS:-}" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is set but ANDROID_KEYSTORE_PASSWORD or ANDROID_KEY_ALIAS is missing."
+            exit 1
+          fi
+          # A key made with keytool's defaults (PKCS12) has one password.
+          export ANDROID_KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
+          keystore="$RUNNER_TEMP/release.keystore"
+          trap 'rm -f "$keystore"' EXIT
+          (umask 077 && printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$keystore")
+          # Replaces the debug signature (v1-v3 schemes for minSdk 24).
+          "$apksigner" sign --ks "$keystore" --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD \
+            --out signed.apk "$apk"
+          rm -f "$keystore"
+          mv signed.apk "$apk"
+          certs=$("$apksigner" verify --verbose --print-certs "$apk")
+          grep -E '^(Verified|Signer #1 certificate (DN|SHA-256))' <<< "$certs"
+          if grep -q 'CN=Android Debug' <<< "$certs"; then
+            echo "::error::The APK is still signed with the debug key."
+            exit 1
+          fi
+          echo "release" > signed-with.txt
+      - name: Check the signed APK (signature valid, still not debuggable)
+        run: |
+          set -euo pipefail
+          apk=app-prod-release.apk
+          "$BUILD_TOOLS_DIR/apksigner" verify "$apk"
+          aapt2="$BUILD_TOOLS_DIR/aapt2"
+          # Not debuggable: no application-debuggable in badging, and no
+          # android:debuggable other than false in the manifest.
+          badging=$("$aapt2" dump badging "$apk")
+          manifest=$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk")
+          grep -q "^package: name='org.apihelper.local'" <<< "$badging"
+          if grep -q '^application-debuggable' <<< "$badging"; then
+            echo "::error::The APK is debuggable; only a release build may be published."
+            exit 1
+          fi
+          flags=$(grep -oE ':debuggable\(0x0101000f\)=[^ ]+' <<< "$manifest" || true)
+          if [ -n "$flags" ] && grep -qvE '=false$' <<< "$flags"; then
+            echo "::error::The APK's manifest sets android:debuggable ($flags)."
+            exit 1
+          fi
+          # The JS is built in as Hermes bytecode, so it never asks a "Metro".
+          python3 -I - "$apk" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              head = z.open('assets/index.android.bundle').read(8)
+          if head != bytes.fromhex('c61fbc03c103191f'):
+              sys.exit('assets/index.android.bundle is not Hermes bytecode')
+          PY
+          echo "Release build: not debuggable, Hermes bundle built in."
+      - name: Keep the signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketagent-signed-apk-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            app-prod-release.apk
+            signed-with.txt
+          if-no-files-found: error
           retention-days: 1
 
   # Publishes the verified APK as a pre-release so it can be downloaded and
@@ -322,17 +465,17 @@ jobs:
   # arrive zipped). Only this job can write to the repository: it runs no
   # third-party actions, just GitHub's artifact download and the gh CLI.
   release:
-    needs: diagnostic
+    needs: sign
     if: success() && (github.event_name == 'push' || inputs.stage == 'apk' || inputs.stage == 'native')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - name: Download verified APK
+      - name: Download the signed APK
         uses: actions/download-artifact@v4
         with:
-          name: pocketagent-integration-apk-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pocketagent-signed-apk-${{ github.run_id }}-${{ github.run_attempt }}
           path: apk
       - name: Name the APK and write its checksum
         env:
@@ -342,8 +485,8 @@ jobs:
           set -euo pipefail
           safe_branch=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')
           asset="PocketAgent-${safe_branch}-${RUN_ID}.apk"
-          test -s apk/app-prod-debug.apk
-          mv apk/app-prod-debug.apk "apk/${asset}"
+          test -s apk/app-prod-release.apk
+          mv apk/app-prod-release.apk "apk/${asset}"
           (cd apk && sha256sum "$asset" > SHA256SUMS)
           cat apk/SHA256SUMS
       - name: Publish pre-release
@@ -364,9 +507,14 @@ jobs:
           asset="PocketAgent-${safe_branch}-${RUN_ID}.apk"
           test -s "apk/${asset}"
           test -s apk/SHA256SUMS
+          case "$(cat apk/signed-with.txt)" in
+            release) key="our release key" ;;
+            debug) key="React Native's public debug key (the owner's key is not set yet)" ;;
+            *) echo "::error::Unknown signing key"; exit 1 ;;
+          esac
           gh release create "$tag" "apk/${asset}" apk/SHA256SUMS \
             --target "$SHA" \
             --prerelease \
             --title "PocketAgent test APK: ${BRANCH} (${SHA:0:7})" \
-            --notes "Debug test build from branch \`${BRANCH}\`, commit ${SHA}, workflow run ${RUN_ID}. Not a release. Tap the .apk below on the phone to download and install. SHA256SUMS holds its SHA-256 checksum."
+            --notes "Test build (release variant, not debuggable) from branch \`${BRANCH}\`, commit ${SHA}, workflow run ${RUN_ID}, signed with ${key}. Not a release. Tap the .apk below on the phone to download and install. SHA256SUMS holds its SHA-256 checksum."
           echo "Release: https://github.com/${GH_REPO}/releases/tag/${tag}" >> "$GITHUB_STEP_SUMMARY"

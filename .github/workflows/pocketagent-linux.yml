@@ -142,18 +142,40 @@ jobs:
         with:
           path: ${{ env.LLAMA_TAR }}
           key: llama-cpp-${{ env.LLAMA_SHA256 }}
+      # The cached copy's key ends with the SHA-256 of the sd-cli it holds,
+      # recorded when it was built; a restored copy must match it, or the
+      # build fails (never a silent rebuild). There is no exact key: the
+      # newest copy for this commit and runner is taken by its prefix.
       - name: Restore the pinned picture maker build (cached copy)
         id: sd-cache
         if: matrix.arch == 'x64'
         uses: actions/cache/restore@v4
         with:
           path: sd-built
-          key: sd-cpp-${{ env.SD_COMMIT }}-cpu-avx2-${{ matrix.runner }}
-      - name: Build the pinned picture maker sd-cli (x64, CPU; skipped when cached)
+          key: sd-cli-${{ env.SD_COMMIT }}-cpu-avx2-${{ matrix.runner }}-sha256-none
+          restore-keys: |
+            sd-cli-${{ env.SD_COMMIT }}-cpu-avx2-${{ matrix.runner }}-sha256-
+      - name: Build the pinned picture maker sd-cli (x64, CPU; checked against its recorded SHA-256 when cached)
+        id: sd-build
         if: matrix.arch == 'x64'
+        env:
+          CACHED_KEY: ${{ steps.sd-cache.outputs.cache-matched-key }}
         run: |
           set -euo pipefail
-          if [ ! -x sd-built/sd-cli ]; then
+          if [ -n "$CACHED_KEY" ]; then
+            expected="${CACHED_KEY##*-sha256-}"
+            if ! [[ "$expected" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::The cached sd-cli has no recorded SHA-256 ($CACHED_KEY)."
+              exit 1
+            fi
+            # A plain file, not a link, and exactly the binary that was built.
+            test -f sd-built/sd-cli && test ! -L sd-built/sd-cli
+            if ! echo "${expected}  sd-built/sd-cli" | sha256sum -c -; then
+              echo "::error::The cached sd-cli does not match the SHA-256 recorded when it was built."
+              exit 1
+            fi
+          else
+            rm -rf sd-built
             git clone --quiet --depth 1 --branch "$SD_TAG" --recurse-submodules \
               --shallow-submodules https://github.com/leejet/stable-diffusion.cpp sd-src
             # The tag must still be the pinned commit.
@@ -168,6 +190,9 @@ jobs:
             mkdir -p sd-built
             cp sd-src/build/bin/sd-cli sd-built/
           fi
+          sha=$(sha256sum sd-built/sd-cli | cut -d' ' -f1)
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "sd-cli SHA-256: \`$sha\`" >> "$GITHUB_STEP_SUMMARY"
           cp sd-built/sd-cli src-tauri/sd/sd-cli
           chmod +x src-tauri/sd/sd-cli
           ldd src-tauri/sd/sd-cli
@@ -175,11 +200,11 @@ jobs:
           # It starts (all its libraries found); its help text may end non-zero.
           (src-tauri/sd/sd-cli --help || true) | head -5
       - name: Keep a copy of the picture maker build
-        if: matrix.arch == 'x64' && steps.sd-cache.outputs.cache-hit != 'true'
+        if: matrix.arch == 'x64' && steps.sd-cache.outputs.cache-matched-key == ''
         uses: actions/cache/save@v4
         with:
           path: sd-built
-          key: sd-cpp-${{ env.SD_COMMIT }}-cpu-avx2-${{ matrix.runner }}
+          key: sd-cli-${{ env.SD_COMMIT }}-cpu-avx2-${{ matrix.runner }}-sha256-${{ steps.sd-build.outputs.sha256 }}
       - name: Rust tests (native side)
         working-directory: src-tauri
         run: cargo test --locked

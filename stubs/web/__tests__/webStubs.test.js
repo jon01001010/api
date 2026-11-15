@@ -62,6 +62,7 @@ describe('downloads in the desktop app', () => {
   it('downloadFile streams through the native side with begin and progress', async () => {
     jest.resetModules();
     const calls = [];
+    const expectedSha = [];
     jest.doMock('../tauri', () => {
       class Channel {
         constructor(onMessage) {
@@ -74,10 +75,16 @@ describe('downloads in the desktop app', () => {
         invoke: async (cmd, args) => {
           calls.push([cmd, args && args.path]);
           if (cmd === 'fs_download') {
+            expectedSha.push(args.sha256);
             const send = args.onEvent.onMessage;
             send({type: 'begin', statusCode: 200, contentLength: 10});
             send({type: 'progress', bytesWritten: 5, contentLength: 10});
-            send({type: 'done', statusCode: 200, bytesWritten: 10});
+            send({
+              type: 'done',
+              statusCode: 200,
+              bytesWritten: 10,
+              sha256: 'f'.repeat(64),
+            });
           }
           return null;
         },
@@ -89,13 +96,17 @@ describe('downloads in the desktop app', () => {
       fromUrl: 'https://huggingface.co/x/resolve/main/m.gguf',
       toFile: '/pocketagent/Documents/models/m.gguf',
       headers: {Authorization: 'Bearer t'},
+      sha256: 'f'.repeat(64),
       begin: r => seen.push(['begin', r.contentLength]),
       progress: r => seen.push(['progress', r.bytesWritten]),
     });
     await expect(job.promise).resolves.toMatchObject({
       statusCode: 200,
       bytesWritten: 10,
+      sha256: 'f'.repeat(64),
     });
+    // The expected checksum reaches the native side.
+    expect(expectedSha).toEqual(['f'.repeat(64)]);
     expect(seen).toEqual([
       ['begin', 10],
       ['progress', 5],

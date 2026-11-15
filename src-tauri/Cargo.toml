@@ -38,6 +38,8 @@ arboard = { version = "=3.7.0", default-features = false }
 tauri-plugin-notification = "=2.8.1"
 tauri-plugin-global-shortcut = "=2.4.1"
 png = "=0.18.1"
+# Checks downloaded picture models against the SHA-256 in their list (download.rs).
+sha2 = "=0.10.9"
 
 [features]
 default = ["link"]
