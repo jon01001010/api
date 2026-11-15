@@ -116,16 +116,18 @@ export const askPcForPicture = (
  * Asks the PC for one of its tools (read only: `pc_info`, `workspace_list`,
  * `workspace_read`, under "May read"; actions that ask on the PC every
  * time: `pc_open`, `pc_print`, `pc_media`, `pc_clipboard_read`, under "May
- * act"; only while the PC allows device tools, for this device; it refuses
- * otherwise with a clear message). `chat`: this chat's random id (reading
- * the workspace asks on the PC once per chat). Only a file's name and a
- * media key are sent as arguments; the PC checks them itself.
+ * act"; a command, `pc_run_command`, shown whole and asked on the PC every
+ * time, under "May run commands"; only while the PC allows device tools,
+ * for this device; it refuses otherwise with a clear message). `chat`:
+ * this chat's random id (reading the workspace asks on the PC once per
+ * chat). Only a file's name, a media key and a command are sent as
+ * arguments; the PC checks them itself.
  */
 export const askPcTool = (
   pc: string,
   name: string,
   chat: string,
-  args: {file?: string; key?: string} = {},
+  args: {file?: string; key?: string; command?: string} = {},
 ) =>
   ask<{result: unknown}>(
     'tool',
@@ -135,6 +137,7 @@ export const askPcTool = (
     JSON.stringify({
       ...(args.file !== undefined ? {file: args.file} : {}),
       ...(args.key !== undefined ? {key: args.key} : {}),
+      ...(args.command !== undefined ? {command: args.command} : {}),
     }),
   );
 
@@ -222,6 +225,9 @@ export function describeEvent(e: PairingEvent): string {
   }
   if (e.kind === 'may-act') {
     return `${when}: “${e.name || 'a device'}” may now ask the PC to open or print a file, press a media key or give its clipboard (each asked on the PC)`;
+  }
+  if (e.kind === 'may-command') {
+    return `${when}: “${e.name || 'a device'}” may now ask the PC to run commands (each shown whole and asked on the PC)`;
   }
   if (e.kind === 'may-answer') {
     return `${when}: \u201c${e.name || 'a device'}\u201d may now answer the PC's \u201cAllow?\u201d questions`;

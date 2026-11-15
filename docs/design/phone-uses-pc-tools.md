@@ -1,6 +1,6 @@
 # Design: the phone uses the PC's tools
 
-Status: **decided** (written 2026-11-15; owner decisions at the end). Stage 1 (read only) built 2026-11-15: tools `pc_info`, `workspace_list`, `workspace_read` (phone names `pc_info`, `pc_workspace_list`, `pc_workspace_read`); search, ranges and file info are not in stage 1. Stage 2 (actions that already ask) built 2026-11-15: `pc_open`, `pc_print`, `pc_media`, `pc_clipboard_read` (the same names on the phone and the PC) under the per-device "May act"; as decided in 1c, no self-answer check (the asking device may answer like any device that may answer). TODO.md items: "The phone uses the PC's tools", "Together with the phone (home link)".
+Status: **decided** (written 2026-11-15; owner decisions at the end). Stage 1 (read only) built 2026-11-15: tools `pc_info`, `workspace_list`, `workspace_read` (phone names `pc_info`, `pc_workspace_list`, `pc_workspace_read`); search, ranges and file info are not in stage 1. Stage 2 (actions that already ask) built 2026-11-15: `pc_open`, `pc_print`, `pc_media`, `pc_clipboard_read` (the same names on the phone and the PC) under the per-device "May act"; as decided in 1c, no self-answer check (the asking device may answer like any device that may answer). Stage 3 (commands) built 2026-11-15: `pc_run_command` under its own per-device "May run commands" (`may_command`), through the very same function as the PC's own `run_command`; output sent without the PC's paths. TODO.md items: "The phone uses the PC's tools", "Together with the phone (home link)".
 
 ## 1. The goal
 

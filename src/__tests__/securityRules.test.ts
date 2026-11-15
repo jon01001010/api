@@ -386,6 +386,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'link_tools_allow',
         'link_device_may_read',
         'link_device_may_act',
+        'link_device_may_command',
         'homelink_pair',
         'homelink_status',
         'homelink_start_model',
@@ -585,7 +586,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /#\[serde\(default, rename = "mayAnswer"[^\n]*\]\s*pub may_answer: bool,/,
     );
     expect(link).toMatch(
-      /Phone \{ id: remote\.clone\(\), name: name\.clone\(\), may_answer: false, may_picture: false, may_read: false, may_act: false \}/,
+      /Phone \{ id: remote\.clone\(\), name: name\.clone\(\), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false \}/,
     );
     expect(link).toMatch(
       /pub async fn link_device_may_answer[\s\S]*?if allowed \{[\s\S]*?if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*return Err[\s\S]*?let mut phones = load_phones\(&app\);[\s\S]*?save_phones/,
@@ -641,10 +642,10 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // already ask; the order of the checks is unchanged: switch → this
     // device's flag for that tool → the fixed list → the arguments.
     expect(link).toMatch(
-      /Some\(Request::Tool \{ name, chat, args \}\) if paired => \{\s*let phones = load_phones\(&app\);\s*let may = DeviceMay \{ read: may_read\(&phones, &remote\), act: may_act\(&phones, &remote\) \};\s*let checked = check_tool\(tools_allowed\(&app\), may, &name, &chat, &args\);/,
+      /Some\(Request::Tool \{ name, chat, args \}\) if paired => \{\s*let phones = load_phones\(&app\);\s*let may = DeviceMay \{\s*read: may_read\(&phones, &remote\),\s*act: may_act\(&phones, &remote\),\s*command: may_command\(&phones, &remote\),\s*\};\s*let checked = check_tool\(tools_allowed\(&app\), may, &name, &chat, &args\);/,
     );
     expect(link).toMatch(
-      /pub fn check_tool[^{]*\{\s*if !tools_on \{\s*return Err\(OFF_TOOLS\.into\(\)\);\s*\}\s*let acts = ACT_TOOLS\.contains\(&name\);\s*let device_may = if acts \{\s*may\.act\s*\} else if REMOTE_TOOLS\.contains\(&name\) \{\s*may\.read\s*\} else \{\s*may\.read \|\| may\.act\s*\};\s*if !device_may \{\s*return Err[^;]*;\s*\}\s*if !REMOTE_TOOLS\.contains\(&name\) \{\s*return Err\(NOT_A_REMOTE_TOOL\.into\(\)\);\s*\}\s*check_chat\(chat\)\?;[\s\S]*?crate::pc_files::check_name\(file\)\?[\s\S]*?crate::pc_extra::media_vk\(key\)\.is_none\(\)/,
+      /pub fn check_tool[^{]*\{\s*if !tools_on \{\s*return Err\(OFF_TOOLS\.into\(\)\);\s*\}\s*let commands = COMMAND_TOOLS\.contains\(&name\);\s*let acts = ACT_TOOLS\.contains\(&name\);\s*let device_may = if commands \{\s*may\.command\s*\} else if acts \{\s*may\.act\s*\} else if REMOTE_TOOLS\.contains\(&name\) \{\s*may\.read\s*\} else \{\s*may\.read \|\| may\.act \|\| may\.command\s*\};\s*if !device_may \{\s*return Err[^;]*;\s*\}\s*if !REMOTE_TOOLS\.contains\(&name\) \{\s*return Err\(NOT_A_REMOTE_TOOL\.into\(\)\);\s*\}\s*check_chat\(chat\)\?;[\s\S]*?crate::pc_files::check_name\(file\)\?[\s\S]*?crate::pc_extra::media_vk\(key\)\.is_none\(\)[\s\S]*?"pc_run_command" => \{[\s\S]*?Ok\(RemoteCall::Command\(crate::pc::check_command\(command\)\?\)\)/,
     );
     // The fixed list: exactly stage 1's reads and stage 2's actions.
     const remoteTools = link.match(
@@ -660,7 +661,11 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'pc_print',
       'pc_media',
       'pc_clipboard_read',
+      'pc_run_command',
     ]);
+    expect(link).toContain(
+      'pub const COMMAND_TOOLS: &[&str] = &["pc_run_command"];',
+    );
     expect(link).toContain(
       'pub const ACT_TOOLS: &[&str] = &["pc_open", "pc_print", "pc_media", "pc_clipboard_read"];',
     );
@@ -671,6 +676,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect([...toolArgs.matchAll(/pub (\w+): /g)].map(m => m[1])).toEqual([
       'file',
       'key',
+      'command',
     ]);
     // "may act": off by default (old records too, and again after pairing
     // anew), turned on only after the PC's own dialog (no device can
@@ -688,8 +694,35 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /async fn act_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_act\(&load_phones\(app\), remote\);[\s\S]*?crate::pc::open_file\(app, file, Some\(&by\)\)\.await\?[\s\S]*?crate::pc_extra::print_workspace_file\(app, file, Some\(&by\)\)\.await\?[\s\S]*?crate::pc_extra::press_media_key\(app, key, Some\(&by\)\)\.await\?[\s\S]*?crate::pc_extra::read_clipboard\(app, Some\(&by\)\)\.await\?[\s\S]*?log_use\(app, device, &note\)[\s\S]*?notification\(\)/,
     );
     expect(link).toMatch(
-      /async fn tool_for[^{]*\{\s*if matches!\(call, RemoteCall::Open\(_\) \| RemoteCall::Print\(_\) \| RemoteCall::Media\(_\) \| RemoteCall::ClipboardRead\) \{\s*return act_for\(app, remote, device, call\)\.await;/,
+      /async fn tool_for[^{]*\{\s*if let RemoteCall::Command\(command\) = &call \{\s*return command_for\(app, remote, device, command\)\.await;\s*\}\s*if matches!\(call, RemoteCall::Open\(_\) \| RemoteCall::Print\(_\) \| RemoteCall::Media\(_\) \| RemoteCall::ClipboardRead\) \{\s*return act_for\(app, remote, device, call\)\.await;/,
     );
+    // Stage 3: "may run commands", its own flag (separate from "may act"),
+    // off by default (old records too, and again after pairing anew),
+    // turned on only after the PC's own dialog with a strong warning,
+    // recorded in the pairing history. A command runs through the very same
+    // function as the PC's own run_command (check_command, the whole command
+    // asked natively every time naming the device, never "always", the
+    // workspace folder, 60 s, the output capped), the switch and the flag
+    // checked again after the answer; the whole command logged, a
+    // notification for each, the output sent without this PC's paths.
+    expect(link).toMatch(
+      /#\[serde\(default, rename = "mayCommand"[^\n]*\]\s*pub may_command: bool,/,
+    );
+    expect(link).toMatch(
+      /pub async fn link_device_may_command[\s\S]*?if allowed \{[\s\S]*?let question = may_command_question\(&name, &key\);\s*if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*return Err[\s\S]*?let mut phones = load_phones\(&app\);[\s\S]*?save_phones[\s\S]*?record\(&app, "may-command"/,
+    );
+    expect(link).toContain(
+      'can run anything you can on this PC, after you allow each command',
+    );
+    expect(link).toMatch(
+      /async fn command_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_command\(&load_phones\(app\), remote\);[\s\S]*?let ran = crate::pc::run_checked_command\(app, command, Some\(&by\)\)\.await\?;[\s\S]*?log_use\(app, device, &format!\("ran a command \(\{how\}\): \{command\}"\)\)[\s\S]*?notification\(\)[\s\S]*?command_note\([\s\S]*?"output": output_for_device\(&ran\.output, &local_folders\(app\)\)/,
+    );
+    const commandFor = link.slice(
+      link.indexOf('async fn command_for'),
+      link.indexOf('async fn tool_for'),
+    );
+    expect(commandFor).not.toMatch(/ask_with_always|Always|crate::pc::run\(/);
+    expect(link).toContain('pub const MAX_DEVICE_OUTPUT: usize = 32 * 1024;');
     // The clipboard by its length only in the log and the notification.
     expect(link).toMatch(
       /RemoteCall::ClipboardRead => format!\("\{device\} got the text on this PC's clipboard \(\{clipboard_chars\} characters\)"\)/,
@@ -934,7 +967,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
   it("the phone's PC tools: their own names, off by default, results untrusted, behind the PIN", () => {
     const engine = read('src/services/talents/PcToolsEngine.ts');
     expect(engine).toMatch(
-      /export const PC_TOOL_NAMES = \[\s*'pc_info',\s*'pc_workspace_list',\s*'pc_workspace_read',\s*'pc_open',\s*'pc_print',\s*'pc_media',\s*'pc_clipboard_read',\s*\] as const;/,
+      /export const PC_TOOL_NAMES = \[\s*'pc_info',\s*'pc_workspace_list',\s*'pc_workspace_read',\s*'pc_open',\s*'pc_print',\s*'pc_media',\s*'pc_clipboard_read',\s*'pc_run_command',\s*\] as const;/,
     );
     // What the PC sends back is its data (a file, the clipboard): wrapped
     // as untrusted. Only the actions get a plain "done" built here from
@@ -947,6 +980,9 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       engine.indexOf('export class PcToolsEngine'),
     );
     expect(done).not.toContain('pc_clipboard_read');
+    // A command's output (and exit code) is the PC's data too: never a
+    // plain "done" built here.
+    expect(done).not.toContain('pc_run_command');
     expect(done).not.toContain('result');
     // Only a file's name or a media key goes to the PC, through the one
     // gated ask().
@@ -959,7 +995,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /if \(method !== 'pair' && method !== 'closeTunnel'\) \{\s*const gate = await homePcGate/,
     );
     expect(link).toMatch(
-      /'tool',\s*pc,\s*name,\s*chat,\s*JSON\.stringify\(\{\s*\.\.\.\(args\.file !== undefined \? \{file: args\.file\} : \{\}\),\s*\.\.\.\(args\.key !== undefined \? \{key: args\.key\} : \{\}\),\s*\}\)/,
+      /'tool',\s*pc,\s*name,\s*chat,\s*JSON\.stringify\(\{\s*\.\.\.\(args\.file !== undefined \? \{file: args\.file\} : \{\}\),\s*\.\.\.\(args\.key !== undefined \? \{key: args\.key\} : \{\}\),\s*\.\.\.\(args\.command !== undefined \? \{command: args\.command\} : \{\}\),\s*\}\)/,
     );
     // Registered on the phone only (the PC has its own pc_info), and no
     // tool is switched on by default.
@@ -1272,9 +1308,14 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
   it("the PC's own tools: commands ask every time, files stay in the workspace", () => {
     const pc = tauri('src/pc.rs');
     // run_command: checked, then the native dialog with the whole command,
-    // every time (approval::ask: Allow / Don't allow, never "always").
+    // every time (approval::ask_for: Allow / Don't allow, never "always").
+    // The PC's own command and a paired device's pc_run_command (stage 3)
+    // go through the very same function; only the question names the asker.
     expect(pc).toMatch(
-      /let command = check_command\(&command\)\?;[\s\S]*?if !crate::approval::ask\(&app, &command_question\(&command\)\)\.await \{\s*return Err/,
+      /pub async fn run_command\(app: AppHandle, command: String\) -> Result<Ran, String> \{\s*run_checked_command\(&app, &command, None\)\.await\s*\}/,
+    );
+    expect(pc).toMatch(
+      /pub async fn run_checked_command\(app: &AppHandle, command: &str, by: Option<&crate::approval::Device<'_>>\) -> Result<Ran, String> \{\s*let command = check_command\(command\)\?;\s*\/\/[^\n]*\n\s*if !crate::approval::ask_for\(app, &command_question_for\(&command, by\.map\(\|d\| d\.name\)\), by\)\.await \{\s*return Err[\s\S]*?let dir = workspace\(app\)\?;[\s\S]*?run\(&command, &dir, COMMAND_TIME_LIMIT\)/,
     );
     expect(pc).not.toContain('ask_with_always');
     // The dialog shows exactly what runs: no carriage returns, controls or
@@ -1284,7 +1325,14 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /pub fn check_command[\s\S]*?c != '\\n' && c != '\\t' && crate::remote_ask::hidden_char\(c\)[\s\S]*?command\.lines\(\)\.count\(\) > MAX_LINES/,
     );
     expect(pc).toContain('pub const MAX_LINES: usize = 20;');
-    expect(pc).toMatch(/fn command_question[\s\S]*?\{chars\} characters/);
+    expect(pc).toMatch(/fn command_question_for[\s\S]*?\{chars\} characters/);
+    // Never cut (a device that may answer sees the whole command too).
+    const commandQuestion = pc.slice(
+      pc.indexOf('pub fn command_question_for'),
+      pc.indexOf('/// Most lines a command may have'),
+    );
+    expect(commandQuestion).toContain('\\n\\n{command}\\n\\n');
+    expect(commandQuestion).not.toMatch(/take\(|truncate|preview|\.\.\]/);
     expect(pc).not.toContain('remember');
     // Runs in the workspace folder, with a time limit.
     expect(pc).toMatch(/run\(&command, &dir, COMMAND_TIME_LIMIT\)/);

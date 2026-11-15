@@ -19,6 +19,7 @@ import {
   homeLinkAvailable,
   linkDeviceMayAct,
   linkDeviceMayAnswer,
+  linkDeviceMayCommand,
   linkDeviceMayPicture,
   linkDeviceMayRead,
   linkForget,
@@ -309,6 +310,16 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
                   accessibilityLabel={`${phone.name} may ask this PC to open, print, press media keys or read the clipboard`}
                   testID={`home-link-may-act-${phone.id}`}
                   onValueChange={v => run(() => linkDeviceMayAct(phone.id, v))}
+                />
+                <Text variant="bodySmall">May run commands</Text>
+                <Switch
+                  value={!!phone.mayCommand}
+                  disabled={busy}
+                  accessibilityLabel={`${phone.name} may ask this PC to run commands (each one asked here)`}
+                  testID={`home-link-may-command-${phone.id}`}
+                  onValueChange={v =>
+                    run(() => linkDeviceMayCommand(phone.id, v))
+                  }
                 />
               </>
             ) : null}

@@ -231,7 +231,7 @@ pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_picture(
 }
 
 /// Asks the PC for one of its tools (`args`: JSON; only a
-/// file's name and a media key are sent on). Answers {"ok": true, "result": …}.
+/// file's name, a media key and a command are sent on). Answers {"ok": true, "result": …}.
 #[no_mangle]
 pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_tool(
     mut env: JNIEnv,

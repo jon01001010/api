@@ -104,6 +104,16 @@ describe('home link (phone side)', () => {
     expect(
       describeEvent({n: 3, at: 0, kind: 'may-act', name: 'Pixel'}),
     ).toContain('“Pixel” may now ask the PC to open or print a file');
+    expect(
+      describeEvent({n: 4, at: 0, kind: 'may-command', name: 'Pixel'}),
+    ).toContain('“Pixel” may now ask the PC to run commands');
+    await askPcTool(PC, 'pc_run_command', 'c', {command: 'Get-Date'});
+    expect(tool).toHaveBeenLastCalledWith(
+      PC,
+      'pc_run_command',
+      'c',
+      '{"command":"Get-Date"}',
+    );
   });
 
   it('names a device allowed to make pictures in the pairing history', () => {
