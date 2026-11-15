@@ -10,6 +10,8 @@ import {
   syncWithPcOn,
 } from '../../services/sync/deviceSync';
 import {describeKeys} from '../../services/sync/promptSync';
+import {describeDeletes} from '../../services/sync/chatDeletes';
+import {RecentlyDeletedChats} from './RecentlyDeletedChats';
 import {
   answerForPcOn,
   setAnswerForPc,
@@ -26,6 +28,7 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
   const [answer, setAnswer] = useState(false);
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState('');
+  const [synced, setSynced] = useState(0);
 
   useEffect(() => {
     syncWithPcOn(pc).then(setOn);
@@ -42,7 +45,12 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
       setLine(`Not in step: ${r.error}`);
       return;
     }
+    setSynced(n => n + 1);
     const parts = [
+      r.chatsDeleted ? describeDeletes(r.chatsDeleted, 'the PC') : '',
+      r.chatsHeld
+        ? `${r.chatsHeld} chats deleted on the PC wait for your answer`
+        : '',
       r.chatsReceived ? `${r.chatsReceived} chat(s) from the PC` : '',
       r.chatsSent ? `${r.chatsSent} chat(s) to the PC` : '',
       r.changedHere.length
@@ -83,7 +91,9 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
         <View style={styles.row}>
           <Text variant="bodySmall" style={styles.text}>
             Mirror chats with this PC too: your chats show up on both, and a
-            reply here reaches the PC a moment later. The PC must allow it too.
+            reply here reaches the PC a moment later. Deleting a chat on one
+            deletes it on the other (unless changed there since); it is kept 30
+            days under Recently deleted. The PC must allow it too.
           </Text>
           <Switch
             value={mirror}
@@ -98,6 +108,7 @@ export const HomeLinkSync: React.FC<{pc: string}> = ({pc}) => {
           />
         </View>
       ) : null}
+      {on && mirror ? <RecentlyDeletedChats refresh={synced} /> : null}
       {on ? (
         <Button
           compact

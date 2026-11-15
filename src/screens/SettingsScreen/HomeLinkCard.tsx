@@ -3,6 +3,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {Image, StyleSheet, View} from 'react-native';
 import {Button, Card, Switch, Text} from 'react-native-paper';
 
+import {RecentlyDeletedChats} from '../../components/HomeLinkSync/RecentlyDeletedChats';
 import {describeEvent} from '../../services/homeLink/homeLink';
 import {
   hostAnswersAllowed,
@@ -177,7 +178,9 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
           <View style={styles.syncRow}>
             <Text variant="bodySmall" style={styles.syncText}>
               Mirror chats with paired devices too (each device must switch it
-              on as well). Deleting a chat isn't mirrored yet.
+              on as well). Deleting a chat on one deletes it on the other
+              (unless changed there since); it is kept 30 days under Recently
+              deleted.
             </Text>
             <Switch
               value={mirrorAllowed}
@@ -191,6 +194,7 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
             />
           </View>
         ) : null}
+        {syncAllowed && mirrorAllowed ? <RecentlyDeletedChats /> : null}
         <View style={styles.syncRow}>
           <Text variant="bodySmall" style={styles.syncText}>
             Let paired devices answer this PC's "Allow?" questions too: they see

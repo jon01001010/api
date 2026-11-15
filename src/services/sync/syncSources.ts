@@ -5,7 +5,9 @@
  * - assistants: your own assistants (not store ones), without what belongs
  *   to one device (its chosen model, picture file). Matched by id, then by
  *   name (each device makes its own starter assistants); added or updated,
- *   never deleted by a sync.
+ *   never deleted by a sync. TODO: deleting an assistant comes back from
+ *   the other device; chat tombstones (chatDeletes.ts) don't fit here as
+ *   is, since assistants travel as one whole-list item (see TODO.md).
  * - customTools: the whole list; each checked like a tool you save; synced
  *   tools stay off until switched on on this device.
  */

@@ -8,8 +8,11 @@
  * chats that changed since it last synced with this PC; the PC takes the
  * newer ones and sends back what the device is missing or has older (newest
  * first, within a size budget; the rest comes next time). Chats keep their
- * ids on both devices. Not (yet): deleting a chat on one device deletes it
- * on the other; pictures in messages are files on one device only.
+ * ids on both devices. Deleting a chat travels too, as a tombstone (id and
+ * when; chatDeletes.ts): it removes the other device's copy only if that
+ * copy has not changed since, and the removed copy is kept 30 days under
+ * "Recently deleted" there. Not (yet): pictures in messages are files on
+ * one device only.
  */
 import {Q} from '@nozbe/watermelondb';
 
@@ -46,6 +49,27 @@ export interface ChatVersion {
   at: number;
   print: string;
   count: number;
+}
+
+/** A chat deleted on some device: its id, and when (ms). */
+export interface Tombstone {
+  id: string;
+  deletedAt: number;
+}
+
+/** Chat and message ids that may come from another device. */
+export const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Is this copy of a chat gone by a deletion? Only if it has not changed
+ * since the chat was deleted (a newer edit wins over a deletion).
+ */
+export function deletedBy(
+  v: ChatVersion,
+  tombstones: Map<string, number>,
+): boolean {
+  const at = tombstones.get(v.id);
+  return at !== undefined && v.at <= at;
 }
 
 const pick = (raw: any, fields: readonly string[]) => {
@@ -141,13 +165,13 @@ export function cleanChats(raw: unknown): ChatRecord[] {
       c &&
       c.session &&
       typeof c.session.id === 'string' &&
-      /^[A-Za-z0-9_-]{1,64}$/.test(c.session.id) &&
+      ID_PATTERN.test(c.session.id) &&
       Array.isArray(c.messages) &&
       c.messages.every(
         (m: any) =>
           m &&
           typeof m.id === 'string' &&
-          /^[A-Za-z0-9_-]{1,64}$/.test(m.id) &&
+          ID_PATTERN.test(m.id) &&
           m.session_id === c.session.id,
       ),
   );
@@ -208,7 +232,12 @@ export async function writeChats(chats: ChatRecord[]): Promise<void> {
   });
 }
 
-/** The PC side: take newer chats from the device, pick what to send back. */
+/**
+ * The PC side: take newer chats from the device, pick what to send back.
+ * `known`: deletions known here (a deleted chat is taken again only if it
+ * changed after it was deleted; `revived` names those); `hold`: chats not
+ * to send (a deletion waiting for the user's answer).
+ */
 export async function mirrorOnPc(
   incoming: unknown,
   deviceVersions: unknown,
@@ -217,12 +246,20 @@ export async function mirrorOnPc(
     read: () => Promise<Map<string, ChatRecord>>;
     write: (chats: ChatRecord[]) => Promise<void>;
   } = {read: readAllChats, write: writeChats},
-): Promise<{taken: number; send: ChatRecord[]}> {
+  known: {tombstones?: Tombstone[]; hold?: Set<string>} = {},
+): Promise<{taken: number; send: ChatRecord[]; revived: string[]}> {
   const local = await deps.read();
+  const gone = new Map(
+    (known.tombstones ?? []).map(t => [t.id, t.deletedAt] as const),
+  );
   const taken: ChatRecord[] = [];
   for (const chat of cleanChats(incoming)) {
     const here = local.get(chat.session.id);
-    if (!here || isNewer(versionOf(chat), versionOf(here))) {
+    const v = versionOf(chat);
+    if (deletedBy(v, gone)) {
+      continue;
+    }
+    if (!here || isNewer(v, versionOf(here))) {
       taken.push(chat);
     }
   }
@@ -236,16 +273,23 @@ export async function mirrorOnPc(
   }
   const send: ChatRecord[] = [];
   for (const chat of local.values()) {
-    if (takenIds.has(chat.session.id)) {
+    if (takenIds.has(chat.session.id) || known.hold?.has(chat.session.id)) {
       continue;
     }
     const mine = versionOf(chat);
+    if (deletedBy(mine, gone)) {
+      continue;
+    }
     const their = theirs.get(chat.session.id);
     if (!their || (their.print !== mine.print && isNewer(mine, their))) {
       send.push(chat);
     }
   }
-  return {taken: taken.length, send: within(send, budget)};
+  return {
+    taken: taken.length,
+    send: within(send, budget),
+    revived: [...takenIds].filter(id => gone.has(id)),
+  };
 }
 
 /** Room left for chats in one sync (the link carries 4 MB each way). */
