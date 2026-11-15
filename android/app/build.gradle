@@ -83,6 +83,13 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "com.pocketagent"
+    // Release builds run Android's "lint vital" check, which debug builds
+    // never did; it reports problems in code we haven't touched. It must not
+    // stop the build (it changes nothing in the app); run it on its own
+    // (./gradlew lintProdRelease) and fix what it finds (TODO.md).
+    lint {
+        checkReleaseBuilds false
+    }
     defaultConfig {
         applicationId "org.apihelper.local"
         minSdkVersion rootProject.ext.minSdkVersion

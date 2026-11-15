@@ -53,6 +53,7 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
 - [x] Public security policy (how to report a problem privately, scope, response times) and a changelog of security fixes (2026-11-15: `.github/SECURITY.md`, which GitHub shows as the policy; `docs/security-changelog.md`). **Owner:** switch on Settings → Code security → Private vulnerability reporting on GitHub, so the "Report a vulnerability" button exists.
 
 **Builds and installs**
+- [ ] Run Android lint on the release build on its own (`./gradlew lintProdRelease`) and fix what it reports; release builds skip "lint vital" since 2026-11-15 (it never ran on the old debug builds).
 - [ ] Signed builds: Windows installer and APK signed with our own keys; checksums published for every download. Today the APK is signed with React Native's public debug key (committed), so updates install in place but anyone could sign a look-alike update: a private release key (kept as a GitHub secret) before release; that one change means one reinstall.
   - [x] Checksums (2026-11-15): every release (APK, Windows setup.exe, Linux AppImage / deb) publishes a `SHA256SUMS` file; a test checks each publish step. **Check** on the next build that the file is there and matches.
   - [x] APK signing prepared (2026-11-15): the APK workflow's "Sign the APK with our release key" step signs with `apksigner` when the secrets below are set, and changes nothing without them. A test keeps the secrets in that step only.

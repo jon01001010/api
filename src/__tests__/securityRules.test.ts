@@ -910,7 +910,9 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
   it('the release token is used only by the publish steps', () => {
     const dir = path.join(__dirname, '..', '..', '.github', 'workflows');
     for (const file of fs.readdirSync(dir)) {
-      const text = fs.readFileSync(path.join(dir, file), 'utf8');
+      const text = fs
+        .readFileSync(path.join(dir, file), 'utf8')
+        .replace(/\r\n/g, '\n');
       // Split into steps; the token may appear only in "Publish pre-release".
       const steps = text.split(/\n\s+- name: /);
       for (const step of steps) {
@@ -927,7 +929,9 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
   it('every published build comes with its SHA-256 checksums', () => {
     const dir = path.join(__dirname, '..', '..', '.github', 'workflows');
     for (const file of fs.readdirSync(dir)) {
-      const text = fs.readFileSync(path.join(dir, file), 'utf8');
+      const text = fs
+        .readFileSync(path.join(dir, file), 'utf8')
+        .replace(/\r\n/g, '\n');
       for (const step of text.split(/\n\s+- name: /)) {
         if (step.includes('gh release create')) {
           expect([file, /\/SHA256SUMS \\\n/.test(step)]).toEqual([file, true]);
@@ -940,7 +944,9 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     const dir = path.join(__dirname, '..', '..', '.github', 'workflows');
     let signing = '';
     for (const file of fs.readdirSync(dir)) {
-      const text = fs.readFileSync(path.join(dir, file), 'utf8');
+      const text = fs
+        .readFileSync(path.join(dir, file), 'utf8')
+        .replace(/\r\n/g, '\n');
       for (const step of text.split(/\n\s+- name: /)) {
         if (/ANDROID_KEY/.test(step)) {
           expect([file, step.split('\n')[0].trim()]).toEqual([
