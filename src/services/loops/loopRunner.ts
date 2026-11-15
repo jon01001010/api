@@ -74,6 +74,9 @@ export async function runLoopNow(
   if (isFinished(loop, now)) {
     return 'This loop has reached its limit (runs or end date)';
   }
+  if (loop.kind === 'plan') {
+    return runPlanLoop(loop, now);
+  }
   if (!send) {
     return 'Open the chat first';
   }
@@ -131,6 +134,31 @@ export async function runLoopNow(
     }
   }
   return undefined;
+}
+
+/**
+ * A plan loop's run (after the user said Run now): its steps run in the
+ * app's plan runner (planRunner.ts), not as a chat message. Counted before
+ * it starts, like any run; refused (and not counted) while a plan run is
+ * unfinished.
+ */
+async function runPlanLoop(
+  loop: Loop,
+  now: number,
+): Promise<string | undefined> {
+  const {cantStartPlan, startPlanRun} = require('./planRunner');
+  const why = await cantStartPlan(loop.id);
+  if (why) {
+    return why;
+  }
+  await updateLoop(loop.id, l =>
+    addLog(
+      {...l, runs: l.runs + 1, nextAt: nextRun(l, now)},
+      `Run ${l.runs + 1} (plan)`,
+      now,
+    ),
+  );
+  return startPlanRun(loop);
 }
 
 /**

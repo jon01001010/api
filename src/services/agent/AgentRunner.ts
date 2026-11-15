@@ -197,6 +197,31 @@ async function executeOne(
 }
 
 /**
+ * One tool call outside the chat, through the same gate as the chat loop:
+ * refused unless `allowedTalentNames` holds it (a loop plan passes only the
+ * built-in tools switched on in the Toolbox now). The tool's own approval
+ * still asks. Never throws.
+ */
+export function runToolCall(
+  name: string,
+  args: Record<string, unknown>,
+  allowedTalentNames: string[],
+  talentLookup: (name: string) => ReturnType<AgentRunOptions['talentLookup']>,
+  signal?: AbortSignal,
+): Promise<AgentToolOutcome> {
+  return executeOne(
+    {
+      id: 'plan-step',
+      type: 'function',
+      function: {name, arguments: JSON.stringify(args ?? {})},
+    },
+    allowedTalentNames,
+    talentLookup,
+    signal,
+  );
+}
+
+/**
  * Build the API messages array for the next turn after a tool round.
  * The previous turn's assistant message + its tool responses are
  * appended in OpenAI-spec order (assistant-with-tool_calls precedes

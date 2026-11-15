@@ -24,6 +24,14 @@ import {
   MAX_RUNS,
   MAX_CUSTOM_PROMPT,
 } from './loops';
+import {
+  MAX_REPEAT_TIMES,
+  newStep,
+  type Plan,
+  type PlanTools,
+  validatePlan,
+  DEFAULT_GUARDS,
+} from './plan';
 import {stopQuietly} from '../../utils/stopQuietly';
 
 export type DetailLevel = 'short' | 'normal' | 'detailed';
@@ -46,6 +54,8 @@ export const MAX_GOAL = 600;
 export const MAX_STEP = 160;
 /** Longest reply the model may write for a draft, in tokens. */
 export const DRAFT_MAX_TOKENS = 900;
+/** The same with a plan's steps (more JSON). */
+export const PLAN_DRAFT_MAX_TOKENS = 2000;
 
 export interface LoopDraft {
   title: string;
@@ -58,6 +68,41 @@ export interface LoopDraft {
   steps: string[];
   /** Phone: when it may come due (default: charging or above 20%). */
   battery?: BatteryGuard;
+  /**
+   * A plan (steps the app runs, plan.ts), when the user asked for one:
+   * checked by validatePlan; `notes` say what was dropped and why.
+   */
+  program?: {plan: Plan; notes: string[]};
+}
+
+/** What a plan draft may use: the tools a plan may name, and those on now. */
+export interface PlanDraftTools {
+  tools: PlanTools;
+  on: string[];
+}
+
+/** The extra instructions when the user asks for a plan. */
+export function planDraftHint(on: string[], level: DetailLevel): string {
+  const tools = on.length
+    ? on.join(', ')
+    : '(none are switched on: do not use use_tool)';
+  return (
+    '\nAlso add "program": the steps the app itself runs on each check-in, ' +
+    `in order (${STEP_FIELD_HINT[level]}). Each step is an object with ` +
+    '"name" (short) and "kind", one of exactly: ask_model, use_tool, ' +
+    'ask_user, wait, check, repeat, notify, save. Fields per kind:\n' +
+    ' ask_model: "prompt" (may use {{step:N}} for the result of an earlier step N)\n' +
+    ` use_tool: "tool" (only one of: ${tools}), "args" (object of plain values)\n` +
+    ' ask_user: "question", "choices" (2 to 4 short strings)\n' +
+    ' wait: "seconds"\n' +
+    ' check: "step" (an earlier step number), "test" (contains, not_contains, ' +
+    'changed, above, below), "value", "ifNot" ("skip_next" or "end")\n' +
+    ` repeat: "count" (how many of the following steps), "times" (at most ${MAX_REPEAT_TIMES})\n` +
+    ' notify: "text"\n' +
+    ' save: "target" ("memory" or "workspace"), "text", "file" (workspace only, e.g. notes.md)\n' +
+    'Optional on any step: "timeLimitSec", "onFail" ("retry", "skip" or "stop"). ' +
+    'No other kinds, no code.'
+  );
 }
 
 /** One line of plain text: no control characters, no braces, trimmed. */
@@ -98,6 +143,8 @@ const STEP_FIELD_HINT: Record<DetailLevel, string> = {
 export function draftMessages(
   sentence: string,
   level: DetailLevel,
+  /** A plan was asked for: the tools switched on now. */
+  planOn?: string[],
 ): {role: 'system' | 'user'; content: string}[] {
   const goal = cleanLine(sentence, MAX_SENTENCE);
   return [
@@ -116,13 +163,17 @@ export function draftMessages(
         ` "days": how many days it lasts (1 to ${MAX_DAYS}),\n` +
         ' "steps": list of short, concrete steps as strings, in order}\n' +
         'Steps are things the user does; keep each under 15 words. ' +
-        'Do not include tool calls, links you are unsure of, or code.',
+        (planOn
+          ? `Do not include links you are unsure of, or code.${planDraftHint(planOn, level)}`
+          : 'Do not include tool calls, links you are unsure of, or code.'),
     },
     {
       role: 'user',
       content:
         `My goal: ${goal}\n` +
-        `Plan it in ${STEP_FIELD_HINT[level]}. JSON only.`,
+        `Plan it in ${STEP_FIELD_HINT[level]}.` +
+        (planOn ? ' Include "program".' : '') +
+        ' JSON only.',
     },
   ];
 }
@@ -244,6 +295,8 @@ export function parseDraft(
   reply: string,
   level: DetailLevel,
   sentence = '',
+  /** A plan was asked for: the tools a plan may name. */
+  planTools?: PlanTools,
 ): {ok: true; draft: LoopDraft} | {ok: false; error: string} {
   const obj = extractJsonObject(reply) as Record<string, unknown> | undefined;
   if (!obj) {
@@ -254,7 +307,21 @@ export function parseDraft(
     };
   }
   const steps = cleanSteps(obj.steps, DETAIL_LEVELS[level].max);
-  if (steps.length === 0) {
+  let program: LoopDraft['program'];
+  if (planTools) {
+    const checked = validatePlan(
+      {steps: obj.program, guards: DEFAULT_GUARDS},
+      planTools,
+    );
+    if (checked.plan.steps.length === 0) {
+      return {
+        ok: false,
+        error:
+          'The plan had no steps the app can run. Try again, or write it yourself.',
+      };
+    }
+    program = checked;
+  } else if (steps.length === 0) {
     return {
       ok: false,
       error:
@@ -285,6 +352,22 @@ export function parseDraft(
       maxRuns: clampInt(obj.maxRuns, 1, MAX_RUNS, 14),
       days: clampInt(obj.days, 1, MAX_DAYS, 14),
       steps,
+      ...(program ? {program} : {}),
+    },
+  };
+}
+
+/** An empty plan draft for "write it myself": one model step to edit. */
+export function blankPlanDraft(sentence: string): LoopDraft {
+  const draft = blankDraft(sentence);
+  return {
+    ...draft,
+    program: {
+      plan: {
+        steps: [{...newStep('ask_model'), prompt: draft.prompt}],
+        guards: {...DEFAULT_GUARDS},
+      },
+      notes: [],
     },
   };
 }
@@ -412,6 +495,8 @@ export function cancelDraft(): void {
 export async function draftLoop(
   sentence: string,
   level: DetailLevel,
+  /** Draft a plan (steps the app runs) too. */
+  plan?: PlanDraftTools,
 ): Promise<{ok: true; draft: LoopDraft} | {ok: false; error: string}> {
   const goal = cleanLine(sentence, MAX_SENTENCE);
   if (!goal) {
@@ -436,8 +521,8 @@ export async function draftLoop(
   current = lease;
   try {
     const result = await lease.engine.completion({
-      messages: draftMessages(goal, level),
-      n_predict: DRAFT_MAX_TOKENS,
+      messages: draftMessages(goal, level, plan?.on),
+      n_predict: plan ? PLAN_DRAFT_MAX_TOKENS : DRAFT_MAX_TOKENS,
       temperature: 0.3,
       jinja: true,
       enable_thinking: false,
@@ -449,6 +534,7 @@ export async function draftLoop(
       String(result?.content || result?.text || ''),
       level,
       goal,
+      plan?.tools,
     );
   } catch (error) {
     if (lease.signal.aborted) {

@@ -59,6 +59,7 @@ import {runLoopNow} from '../services/loops/loopRunner';
 import {DryRunOf, LoopDraftEditor, MakeLoopSheet} from './MakeLoopSheet';
 import {BatteryPicker, useSwitchedOnTools} from './LoopParts';
 import {LoopShareDialog} from './LoopCodeDialogs';
+import {PlanLoopCard} from './PlanParts';
 import {isLoopNotifyOn, setLoopNotifyOn} from '../services/loops/loopNotify';
 import {ensureNotificationPermission} from '../utils/androidPermission';
 
@@ -263,6 +264,7 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
   const [editing, setEditing] = useState<string | null>(null);
   const [notify, setNotify] = useState(true);
   const [sharing, setSharing] = useState<Loop | null>(null);
+  const tools = useSwitchedOnTools();
   const reload = useCallback(() => {
     loadLoops().then(setLoops);
     isLoopNotifyOn().then(setNotify);
@@ -348,6 +350,9 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
               <Text variant="bodySmall" numberOfLines={2}>
                 {l.prompt}
               </Text>
+              {l.kind === 'plan' ? (
+                <PlanLoopCard loopId={l.id} on={tools ?? []} />
+              ) : null}
               <Text variant="bodySmall">
                 {l.runs} of {l.maxRuns} runs
                 {isFinished(l)
@@ -392,12 +397,14 @@ export const LoopsSection: React.FC<{onOpenChat?: () => void}> = ({
                   testID={`loop-pause-${l.id}`}>
                   {l.notStarted ? 'Start' : l.paused ? 'Resume' : 'Pause'}
                 </Button>
-                <Button
-                  compact
-                  onPress={() => setSharing(l)}
-                  testID={`loop-share-open-${l.id}`}>
-                  Share
-                </Button>
+                {l.kind === 'plan' ? null : (
+                  <Button
+                    compact
+                    onPress={() => setSharing(l)}
+                    testID={`loop-share-open-${l.id}`}>
+                    Share
+                  </Button>
+                )}
                 <Button
                   compact
                   onPress={async () => {

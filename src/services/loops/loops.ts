@@ -69,6 +69,12 @@ export interface Loop {
    * until the user presses Start; its days count from that Start.
    */
   notStarted?: boolean;
+  /**
+   * 'plan': a run is the plan's steps, run by the app's plan runner
+   * (plan.ts, planRunner.ts; the steps are saved in planStore.ts), not a
+   * chat message. Only custom loops can be plans.
+   */
+  kind?: 'plan';
 }
 
 /**
@@ -591,6 +597,8 @@ export interface LoopInput {
   maxRuns: number;
   days: number;
   battery?: BatteryGuard;
+  /** Custom loops only: run as a plan (steps saved apart, planStore.ts). */
+  kind?: 'plan';
   now?: number;
 }
 
@@ -676,6 +684,9 @@ export function buildLoop(
       startedAt: now,
       battery: cleanBattery(input.battery),
       ...(plan ? {plan} : {}),
+      ...(made.id === CUSTOM_LOOP_ID && input.kind === 'plan'
+        ? {kind: 'plan' as const}
+        : {}),
     },
   };
 }

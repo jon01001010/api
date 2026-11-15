@@ -121,6 +121,52 @@ describe('Rule 2: switches are off unless the user turns them on', () => {
     const runner = read('src/services/loops/loopRunner.ts');
     expect(runner).toMatch(/if \(loop\.notStarted\) \{\s*return /);
   });
+
+  it('a loop plan is data: fixed step kinds, tools through the chat loop gate, guards', () => {
+    const {
+      STEP_KINDS,
+      FORBIDDEN_PLAN_TOOLS,
+    } = require('../services/loops/plan');
+    expect([...STEP_KINDS].sort()).toEqual([
+      'ask_model',
+      'ask_user',
+      'check',
+      'notify',
+      'repeat',
+      'save',
+      'use_tool',
+      'wait',
+    ]);
+    expect(FORBIDDEN_PLAN_TOOLS).toEqual(['tool_save', 'tool_delete']);
+    const plan = read('src/services/loops/plan.ts');
+    const runner = read('src/services/loops/planRunner.ts');
+    for (const src of [plan, runner]) {
+      expect(src).not.toMatch(/\.execute\(|eval\(|new Function/);
+    }
+    // Tools: only switched-on built-ins, through AgentRunner's own gate.
+    expect(runner).toMatch(/runToolCall\(/);
+    expect(runner).toMatch(/builtInToolNames\(\)/);
+    expect(runner).toMatch(/readGlobalTools\(\)/);
+    expect(read('src/services/agent/AgentRunner.ts')).toMatch(
+      /export function runToolCall[\s\S]*?return executeOne\(/,
+    );
+    // Runaway stop: the runner never changes a plan, a schedule, a tool
+    // switch, and never starts a plan from a step.
+    expect(runner).not.toMatch(
+      /savePlanVersion|savePlanEdit|restorePlanVersion|setToolsEnabled|setToolEnabled|writeGlobalTools|startLoop|saveLoops|nextAt/,
+    );
+    expect(runner.match(/startPlanRun\(/g)).toHaveLength(1);
+    // A step running when the app closed is asked about, never re-run.
+    expect(runner).toMatch(/kind: 'restart'/);
+    // Guards on by default.
+    const {DEFAULT_GUARDS} = require('../services/loops/plan');
+    expect(DEFAULT_GUARDS).toEqual({
+      maxSteps: 50,
+      maxMinutes: 10,
+      maxModelCalls: 10,
+      maxToolCalls: 10,
+    });
+  });
 });
 
 describe('Rule 3: the HTML preview is a closed box', () => {

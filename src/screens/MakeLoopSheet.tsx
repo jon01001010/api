@@ -31,6 +31,7 @@ import {
 } from '../services/loops/loops';
 import {
   blankDraft,
+  blankPlanDraft,
   cancelDraft,
   cleanLine,
   cleanSteps,
@@ -49,6 +50,9 @@ import {
 import {isLoopNotifyOn} from '../services/loops/loopNotify';
 import {ensureNotificationPermission} from '../utils/androidPermission';
 import {BatteryPicker, LoopDryRun, useSwitchedOnTools} from './LoopParts';
+import {type Plan, type PlanTools, validatePlan} from '../services/loops/plan';
+import {startPlanLoop} from '../services/loops/planStore';
+import {PlanDryRunView, PlanEditor, usePlanTools} from './PlanParts';
 
 const EVERY: Every[] = ['hour', '3hours', 'day', 'week'];
 const LEVELS: DetailLevel[] = ['short', 'normal', 'detailed'];
@@ -77,6 +81,10 @@ export const LoopDraftEditor: React.FC<{
   onBack: () => void;
   /** Returns an error to show, or undefined. */
   onSave: (draft: LoopDraft, prompt: string) => Promise<string | undefined>;
+  /** Shown above the summary (a plan's step editor). */
+  extra?: React.ReactNode;
+  /** Plans: no "what the model gets each run" (the steps say it). */
+  hidePrompt?: boolean;
 }> = ({
   initial,
   withSteps = true,
@@ -87,6 +95,8 @@ export const LoopDraftEditor: React.FC<{
   describe,
   onBack,
   onSave,
+  extra,
+  hidePrompt,
 }) => {
   const tools = useSwitchedOnTools();
   const [draft, setDraft] = useState<LoopDraft>(initial);
@@ -272,15 +282,20 @@ export const LoopDraftEditor: React.FC<{
           ) : null}
         </>
       ) : null}
+      {extra}
       <Text variant="bodySmall" testID="make-loop-summary">
         {describe
           ? describe(current, prompt)
           : summary(previewOf(current), tools)}
       </Text>
-      <Text variant="titleSmall">What the model gets each run</Text>
-      <Text variant="bodySmall" selectable testID="make-loop-prompt">
-        {prompt || '(empty)'}
-      </Text>
+      {hidePrompt ? null : (
+        <>
+          <Text variant="titleSmall">What the model gets each run</Text>
+          <Text variant="bodySmall" selectable testID="make-loop-prompt">
+            {prompt || '(empty)'}
+          </Text>
+        </>
+      )}
       {error ? (
         <Text variant="bodySmall" testID="make-loop-review-error">
           {error}
@@ -347,24 +362,93 @@ export const DryRunOf: React.FC<{
   );
 };
 
+/** The dry run of a plan loop about to start; "Looks right, start" starts it. */
+export const PlanStartCheck: React.FC<{
+  input: LoopInput;
+  plan: Plan;
+  tools: PlanTools;
+  onBack: () => void;
+  onDone: () => void;
+}> = ({input, plan, tools, onBack, onDone}) => {
+  const on = useSwitchedOnTools() ?? [];
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const built = buildLoop({...input, kind: 'plan'});
+  return (
+    <View style={{gap: 6}} testID="plan-start-check">
+      <Text variant="titleSmall">Dry run: {input.custom?.title}</Text>
+      {built.ok ? (
+        <Text variant="bodySmall">{summary(built.loop)}</Text>
+      ) : (
+        <Text variant="bodySmall">{built.error}</Text>
+      )}
+      <PlanDryRunView plan={plan} on={on} />
+      {error ? <Text variant="bodySmall">{error}</Text> : null}
+      <View style={{flexDirection: 'row', justifyContent: 'flex-end', gap: 4}}>
+        <Button onPress={onBack} disabled={busy}>
+          Back
+        </Button>
+        <Button
+          mode="contained"
+          disabled={busy || !built.ok}
+          onPress={async () => {
+            setBusy(true);
+            try {
+              const r = await startPlanLoop(input, plan, tools);
+              if (!r.ok) {
+                setError(r.error);
+                return;
+              }
+              if (await isLoopNotifyOn()) {
+                await ensureNotificationPermission();
+              }
+              Alert.alert(`Started: ${r.loop.title}`, summary(r.loop));
+              onDone();
+            } finally {
+              setBusy(false);
+            }
+          }}
+          testID="plan-start">
+          Looks right, start
+        </Button>
+      </View>
+    </View>
+  );
+};
+
 export const MakeLoopSheet: React.FC<{onDone: () => void}> = ({onDone}) => {
   const [sentence, setSentence] = useState('');
   const [level, setLevel] = useState<DetailLevel>('normal');
+  const [asPlan, setAsPlan] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [error, setError] = useState('');
   const [draft, setDraft] = useState<LoopDraft | null>(null);
+  /** A plan draft's steps, as the user edits them. */
+  const [program, setProgram] = useState<Plan | null>(null);
   /** The approved draft, shown as a dry run before it starts. */
   const [checking, setChecking] = useState<LoopInput | null>(null);
+  const planTools = usePlanTools();
+  const on = useSwitchedOnTools() ?? [];
   // Leaving the screen stops a draft being written.
   useEffect(() => cancelDraft, []);
+
+  const show = (d: LoopDraft) => {
+    setDraft(d);
+    setProgram(d.program ? d.program.plan : null);
+  };
 
   const ask = async () => {
     setError('');
     setDrafting(true);
     try {
-      const r = await draftLoop(sentence, level);
+      const r = asPlan
+        ? await draftLoop(sentence, level, {
+            tools: planTools,
+            on: on.filter(t => t in planTools),
+          })
+        : await draftLoop(sentence, level);
       if (r.ok) {
-        setDraft(r.draft);
+        show(r.draft);
       } else if (r.error !== 'Cancelled') {
         setError(r.error);
       }
@@ -381,7 +465,15 @@ export const MakeLoopSheet: React.FC<{onDone: () => void}> = ({onDone}) => {
         subtitleNumberOfLines={2}
       />
       <Card.Content style={{gap: 8}}>
-        {draft && checking ? (
+        {draft && checking && program ? (
+          <PlanStartCheck
+            input={checking}
+            plan={program}
+            tools={planTools}
+            onBack={() => setChecking(null)}
+            onDone={onDone}
+          />
+        ) : draft && checking ? (
           <DryRunOf
             input={checking}
             onBack={() => setChecking(null)}
@@ -390,11 +482,42 @@ export const MakeLoopSheet: React.FC<{onDone: () => void}> = ({onDone}) => {
         ) : draft ? (
           <LoopDraftEditor
             initial={draft}
-            intro="Check the plan and change anything. Nothing runs until you press Start and then confirm the dry run."
+            withSteps={!program}
+            hidePrompt={!!program}
+            extra={
+              program ? (
+                <PlanEditor
+                  plan={program}
+                  onChange={setProgram}
+                  tools={planTools}
+                  on={on}
+                  notes={draft.program?.notes}
+                />
+              ) : undefined
+            }
+            intro={
+              program
+                ? 'Check the plan and change any step. Nothing runs until you press Start and then confirm the dry run; each run still asks first.'
+                : 'Check the plan and change anything. Nothing runs until you press Start and then confirm the dry run.'
+            }
             saveLabel="Start"
             onBack={() => setDraft(null)}
             onSave={async (d, prompt) => {
               const input = customInput(d, prompt);
+              if (program) {
+                const checked = validatePlan(program, planTools);
+                if (!checked.plan.steps.length) {
+                  return 'A plan needs at least one step';
+                }
+                const built = buildLoop({...input, kind: 'plan'});
+                if (!built.ok) {
+                  return built.error;
+                }
+                setDraft({...d, program: draft.program});
+                setProgram(checked.plan);
+                setChecking(input);
+                return undefined;
+              }
               const built = buildLoop(input);
               if (!built.ok) {
                 return built.error;
@@ -427,6 +550,21 @@ export const MakeLoopSheet: React.FC<{onDone: () => void}> = ({onDone}) => {
                 </Chip>
               ))}
             </View>
+            <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 6}}>
+              <Chip
+                selected={!asPlan}
+                onPress={() => setAsPlan(false)}
+                disabled={drafting}>
+                Check-ins in a chat
+              </Chip>
+              <Chip
+                selected={asPlan}
+                onPress={() => setAsPlan(true)}
+                disabled={drafting}
+                testID="make-loop-as-plan">
+                Steps the app runs (plan)
+              </Chip>
+            </View>
             {drafting ? (
               <View
                 style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
@@ -452,7 +590,13 @@ export const MakeLoopSheet: React.FC<{onDone: () => void}> = ({onDone}) => {
                 <>
                   <Button onPress={onDone}>Cancel</Button>
                   <Button
-                    onPress={() => setDraft(blankDraft(sentence))}
+                    onPress={() =>
+                      show(
+                        asPlan
+                          ? blankPlanDraft(sentence)
+                          : blankDraft(sentence),
+                      )
+                    }
                     testID="make-loop-myself">
                     Write it myself
                   </Button>
