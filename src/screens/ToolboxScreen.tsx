@@ -13,6 +13,7 @@ const MEMORY_TOOL_NAMES = ['memory_get', 'memory_replace', 'memory_history', 'me
 import {CustomToolEngine} from '../services/talents/customTools';
 import {CustomToolsSection} from './CustomToolsSection';
 import {LoopsSection} from './LoopsSection';
+import {ImageModelsSection} from './ImageModelsSection';
 import {useTheme} from '../hooks';
 import {useIsFocused} from '@react-navigation/native';
 import {MemorySection} from '../components/PalsSheets/MemorySection';
@@ -244,6 +245,10 @@ const ToolboxScreenBody: React.FC = () => {
             ))}
           </Card.Content>
         </Card>
+        {/* Desktop app only: picture models for image_generate. */}
+        {(globalThis as any).__TAURI_INTERNALS__ ? (
+          <ImageModelsSection errorColor={errorColor} />
+        ) : null}
         {otherTools.map(tool => (
           <Card key={tool.name} mode="outlined">
             <Card.Content>

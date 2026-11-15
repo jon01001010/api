@@ -10,8 +10,19 @@
  * - clipboard_read: the clipboard's text, after a native dialog showing it.
  * - media_control: play / pause, next, previous, volume. Asks in the app.
  * - print_file: a workspace document or picture printed. Asks.
+ * - image_generate: a picture made on this PC (src-tauri/src/image_gen.rs)
+ *   with a downloaded picture model, saved in the workspace's `images`
+ *   folder (the app's own folder, so no question; the prompt shows in the
+ *   chat as the tool call). The native side caps it and refuses clearly
+ *   illegal prompts before anything runs.
  */
-import {TalentEngine, TalentResult, ToolDefinition} from './types';
+import {installedSet} from '../imageGen/imageModels';
+import {
+  TalentEngine,
+  TalentExecuteContext,
+  TalentResult,
+  ToolDefinition,
+} from './types';
 
 export const DESKTOP_TOOL_NAMES = [
   'pc_info',
@@ -20,6 +31,7 @@ export const DESKTOP_TOOL_NAMES = [
   'clipboard_read',
   'media_control',
   'print_file',
+  'image_generate',
 ] as const;
 type DesktopTool = (typeof DESKTOP_TOOL_NAMES)[number];
 
@@ -67,7 +79,35 @@ export const MEDIA_ACTIONS: Record<string, string> = {
   mute: 'mute or unmute',
 };
 
+export const IMAGE_SIZES = [512, 768, 1024];
+
 const DEFINITIONS: Record<DesktopTool, ToolDefinition['function']> = {
+  image_generate: {
+    name: 'image_generate',
+    description:
+      'Make a picture on this PC from a text description (local; nothing is uploaded). The picture is shown to the user in the chat and saved in the workspace folder images/. Write the prompt in English as a short visual description (subject, style, light). Takes seconds to minutes; one picture per call.',
+    parameters: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'What the picture shows (at most 1000 characters).',
+        },
+        width: {type: 'integer', enum: IMAGE_SIZES, description: 'Pixels.'},
+        height: {type: 'integer', enum: IMAGE_SIZES, description: 'Pixels.'},
+        steps: {
+          type: 'integer',
+          description: "Optional: 1-30; leave out for the model's default.",
+        },
+        seed: {
+          type: 'integer',
+          description:
+            'Optional: the same seed and prompt give the same picture.',
+        },
+      },
+      required: ['prompt'],
+    },
+  },
   clipboard_read: {
     name: 'clipboard_read',
     description:
@@ -140,11 +180,68 @@ const DEFINITIONS: Record<DesktopTool, ToolDefinition['function']> = {
   },
 };
 
+const intOr = (value: unknown, fallback?: number) =>
+  typeof value === 'number' && Number.isInteger(value) ? value : fallback;
+
+/** image_generate: checks here for clear messages; the native side decides. */
+async function makePicture(
+  args: Record<string, any>,
+  signal?: AbortSignal,
+): Promise<TalentResult> {
+  const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : '';
+  if (!prompt) {
+    throw new Error('Give the `prompt`: what the picture shows.');
+  }
+  const set = await installedSet();
+  if (!set) {
+    return {
+      type: 'text',
+      summary: `No picture model is downloaded yet. Tell the user to download one in Toolbox, Image models. ${STOP}`,
+    };
+  }
+  const width = intOr(args.width, set.kind === 'sd' ? 512 : 1024);
+  const height = intOr(args.height, width);
+  // The chat's Stop ends the picture maker too.
+  const cancel = () => {
+    invoke('image_cancel').catch(() => {});
+  };
+  signal?.addEventListener('abort', cancel);
+  try {
+    const made = await invoke<{
+      name: string;
+      path: string;
+      seed: number;
+      seconds: number;
+    }>('image_generate', {
+      model: set.id,
+      prompt,
+      width,
+      height,
+      steps: intOr(args.steps) ?? null,
+      seed: intOr(args.seed) ?? null,
+    });
+    return {
+      type: 'image',
+      path: made.path,
+      name: made.name,
+      summary: `Made the picture images/${made.name} (${width}x${height}, ${set.name}, seed ${made.seed}, ${made.seconds} s). The user sees it in the chat; you have not seen it, so don't describe it. ${STOP}`,
+    };
+  } finally {
+    signal?.removeEventListener('abort', cancel);
+  }
+}
+
 export class DesktopToolsEngine implements TalentEngine {
   constructor(readonly name: DesktopTool) {}
 
-  async execute(args: Record<string, any>): Promise<TalentResult> {
+  async execute(
+    args: Record<string, any>,
+    ctx?: TalentExecuteContext,
+  ): Promise<TalentResult> {
     try {
+      if (this.name === 'image_generate') {
+        return await makePicture(args, ctx?.signal);
+      }
       if (this.name === 'pc_info') {
         return {type: 'text', summary: describePc(await invoke('pc_info'))};
       }
