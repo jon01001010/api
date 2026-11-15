@@ -93,6 +93,12 @@ fn own_key_in_use(app: &AppHandle) -> Result<Option<[u8; 32]>, String> {
     Ok(if uses_link_key(one_key.as_deref(), own.is_some()) { None } else { own })
 }
 
+/// This PC's old device key while it still uses it (it signs removal
+/// notices for the PCs that know this PC by it); None with one key.
+pub fn device_key_in_use(app: &AppHandle) -> Option<iroh::SecretKey> {
+    own_key_in_use(app).ok().flatten().map(|key| iroh::SecretKey::from_bytes(&key))
+}
+
 fn client_slot() -> std::sync::MutexGuard<'static, Option<Arc<Phone>>> {
     CLIENT.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -198,8 +204,11 @@ pub async fn homelink_pair(app: AppHandle, qr: String) -> String {
 
 #[tauri::command]
 pub async fn homelink_status(app: AppHandle, pc: String) -> String {
+    let this = app.clone();
     answer(app, move |p| {
         let s = p.status(&pc)?;
+        // Removal notices both ways (device circle stage 2, link.rs).
+        crate::link::circle_round(&this, &p, &pc, &s.removals);
         Ok(serde_json::json!({
             "ok": true,
             "running": s.running,

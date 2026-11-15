@@ -66,6 +66,7 @@ const COMMANDS: &[&str] = &[
     "homelink_close_tunnel",
     "link_key_mode",
     "link_use_one_key",
+    "link_circle",
 ];
 
 fn main() {

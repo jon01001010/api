@@ -37,6 +37,12 @@
 //! - The PC's link key and the paired phones are kept where the screens
 //!   can't write: Windows Credential Manager, or on Linux a private file in
 //!   the app's settings folder (see read_entry).
+//! - Removal notices (device circle stage 2, homelink::circle): removing a
+//!   device here ("Remove here") signs a notice with this PC's key; paired
+//!   devices get it with their status ("removals"), and a device hands its
+//!   own to this PC ("removal"). A good notice from a device this PC trusts
+//!   removes that key here too, exactly as "Remove here" does, and the user
+//!   is told; it can only remove, never add a device or switch a right on.
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -51,6 +57,12 @@ pub const QR_PREFIX: &str = "PA1:P:";
 const KEY_ENTRY: &str = "DesktopAgent-link:key";
 const PHONES_ENTRY: &str = "DesktopAgent-link:phones";
 const EVENTS_ENTRY: &str = "DesktopAgent-link:events";
+/// The circle's state (homelink::circle::State): numbers seen, notices to
+/// pass on, the Home PCs this PC uses. In parts: a credential holds at most
+/// 1280 UTF-16 characters (CIRCLE_PART_UNITS each, CIRCLE_PARTS at most).
+const CIRCLE_ENTRY: &str = "DesktopAgent-link:circle";
+const CIRCLE_PARTS: usize = 12;
+const CIRCLE_PART_UNITS: usize = 1000;
 /// The PC's switch "Let paired devices make pictures on this PC" ("on").
 const PICTURES_ENTRY: &str = "DesktopAgent-link:pictures";
 /// Largest picture sent back to a device (a 1024 x 1024 PNG is 1-3 MB).
@@ -282,6 +294,11 @@ pub enum Request {
         chat: String,
         #[serde(default)]
         args: ToolArgs,
+    },
+    /// Removal notices a device hands on (device circle stage 2): each is
+    /// checked here (homelink::circle::check_removal) and can only remove.
+    Removal {
+        notices: Vec<homelink::circle::Removal>,
     },
     Http,
 }
@@ -674,7 +691,7 @@ pub struct LinkEvent {
     pub n: u64,
     /// Seconds since 1970 (the PC's clock).
     pub at: u64,
-    /// "code" | "paired" | "removed" | "may-answer"
+    /// "code" | "paired" | "removed" | "removed-by-notice" | "may-answer" …
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -712,6 +729,220 @@ fn record(app: &AppHandle, kind: &str, name: Option<String>) {
     add_event(&mut events, at, kind, name);
     if let Ok(json) = serde_json::to_string(&events) {
         let _ = write_entry(app, EVENTS_ENTRY, &json);
+    }
+}
+
+// ------------------------------------------------- device circle, stage 2
+
+use homelink::circle;
+
+/// Splits text into parts of at most `units` UTF-16 units each (the
+/// credential store counts those), never inside a character.
+pub fn split_parts(text: &str, units: usize) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut part = String::new();
+    let mut used = 0;
+    for c in text.chars() {
+        if used + c.len_utf16() > units {
+            parts.push(std::mem::take(&mut part));
+            used = 0;
+        }
+        part.push(c);
+        used += c.len_utf16();
+    }
+    if !part.is_empty() {
+        parts.push(part);
+    }
+    parts
+}
+
+/// Makes the state fit the store: the oldest news, then notices to pass
+/// on, then numbers seen go first.
+pub fn fit_circle(state: &mut circle::State) -> Vec<String> {
+    loop {
+        let parts = split_parts(&state.to_json(), CIRCLE_PART_UNITS);
+        if parts.len() <= CIRCLE_PARTS {
+            return parts;
+        }
+        if !state.news.is_empty() {
+            state.news.remove(0);
+        } else if !state.outbox.is_empty() {
+            state.outbox.remove(0);
+        } else if !state.seen.is_empty() {
+            state.seen.remove(0);
+        } else {
+            state.uses.clear();
+        }
+    }
+}
+
+fn load_circle(app: &AppHandle) -> circle::State {
+    let Some(count) = read_entry(app, CIRCLE_ENTRY).and_then(|c| c.trim().parse::<usize>().ok()) else {
+        return circle::State::default();
+    };
+    let mut text = String::new();
+    for i in 0..count.min(CIRCLE_PARTS) {
+        match read_entry(app, &format!("{CIRCLE_ENTRY}.{i}")) {
+            Some(part) => text.push_str(&part),
+            None => return circle::State::default(),
+        }
+    }
+    circle::State::from_json(&text)
+}
+
+fn save_circle(app: &AppHandle, state: &mut circle::State) -> Result<(), String> {
+    let parts = fit_circle(state);
+    for (i, part) in parts.iter().enumerate() {
+        write_entry(app, &format!("{CIRCLE_ENTRY}.{i}"), part)?;
+    }
+    write_entry(app, CIRCLE_ENTRY, &parts.len().to_string())
+}
+
+/// One change to the circle's state at a time (devices and the screens).
+static CIRCLE_LOCK: Mutex<()> = Mutex::new(());
+
+fn with_circle<T>(app: &AppHandle, f: impl FnOnce(&mut circle::State) -> T) -> T {
+    let _turn = CIRCLE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut state = load_circle(app);
+    state.prune(circle::now());
+    let out = f(&mut state);
+    let _ = save_circle(app, &mut state);
+    out
+}
+
+/// This PC's own keys: its link key, and its old device key while it still
+/// uses one (link_client.rs). A notice about either is about this PC.
+fn own_keys(app: &AppHandle) -> Vec<iroh::SecretKey> {
+    let mut keys: Vec<iroh::SecretKey> = secret_key(app).into_iter().collect();
+    if let Some(own) = crate::link_client::device_key_in_use(app) {
+        keys.push(own);
+    }
+    keys
+}
+
+/// A good notice (Verdict::Apply): its key is removed here exactly as
+/// "Remove here" removes it (a device that uses this PC is cut off at once
+/// and kept from pairing for an hour; a Home PC this PC uses is left to the
+/// screens, as news), and the user is told. Nothing else changes.
+fn apply_removal(app: &AppHandle, state: &mut circle::State, notice: &circle::Removal) {
+    let phones = load_phones(app);
+    let name_of = |key: &str| phones.iter().find(|p| p.id == key).map(|p| p.name.clone());
+    let removed_name = name_of(&notice.removed);
+    let by_name = name_of(&notice.by);
+    let used_here = state.uses(&notice.removed);
+    state.forget_used(&notice.removed);
+    let paired_here = removed_name.is_some() && forget_here(app, &notice.removed, "removed-by-notice").is_ok();
+    let told = paired_here || used_here;
+    if told {
+        use tauri_plugin_notification::NotificationExt;
+        let _ = app
+            .notification()
+            .builder()
+            .title("Removed on another of your devices")
+            .body(removal_note(by_name.as_deref(), removed_name.as_deref()))
+            .show();
+    }
+    state.add_news(circle::News {
+        removed: notice.removed.clone(),
+        by: notice.by.clone(),
+        at: notice.at,
+        removed_name,
+        by_name,
+        told,
+    });
+}
+
+/// What the user is told when a notice removed a device here.
+pub fn removal_note(by: Option<&str>, removed: Option<&str>) -> String {
+    format!(
+        "\u{201c}{}\u{201d} removed \u{201c}{}\u{201d} from your devices; removed here too.",
+        by.unwrap_or("Another of your devices"),
+        removed.unwrap_or("a device")
+    )
+}
+
+/// Notices handed over by `from` (a paired device's "removal", or a Home
+/// PC's status). Trusted: the devices paired here, the Home PCs this PC
+/// uses, and `from` when it is a Home PC this PC just reached.
+fn take_removals(app: &AppHandle, from: &str, from_is_home_pc: bool, notices: &[circle::Removal]) {
+    let me: Vec<String> = own_keys(app).iter().map(|k| k.public().to_string()).collect();
+    with_circle(app, |state| {
+        for notice in notices.iter().take(circle::MAX_NOTICES) {
+            let mut trusted: Vec<String> = load_phones(app).into_iter().map(|p| p.id).collect();
+            trusted.extend(state.uses.iter().cloned());
+            if from_is_home_pc {
+                trusted.push(from.to_string());
+            }
+            if state.take(notice, &me, &trusted, Some(from), circle::now()) == circle::Verdict::Apply {
+                apply_removal(app, state, notice);
+            }
+        }
+    });
+}
+
+/// The notices for a device asking for its status (each once).
+fn removals_for(app: &AppHandle, device: &str) -> Vec<circle::Removal> {
+    with_circle(app, |state| {
+        let out = state.outgoing_for(device, circle::now());
+        state.mark_sent(device, &out);
+        out
+    })
+}
+
+/// This PC as a device of another PC (link_client.rs): after its status,
+/// takes what that PC passed on and hands it this PC's own notices.
+pub fn circle_round(app: &AppHandle, phone: &homelink::Phone, pc: &str, removals: &[circle::Removal]) {
+    take_removals(app, pc, true, removals);
+    let out = with_circle(app, |state| state.outgoing_for(pc, circle::now()));
+    if !out.is_empty() && phone.send_removals(pc, &out).is_ok() {
+        with_circle(app, |state| state.mark_sent(pc, &out));
+    }
+}
+
+/// The screens' circle calls (the same JSON as the phone's, homelink
+/// circle_call): "remove" (the user removed a device here; a notice signed
+/// with each of this PC's keys waits to be passed on, and a device that
+/// uses this PC is removed as link_forget does) and "news" (removals
+/// applied here since last asked). `homePcs`: the Home PCs this PC uses
+/// now. Nothing here adds a device or a right. No network.
+pub fn circle_call(app: &AppHandle, request: &str) -> serde_json::Value {
+    let fail = |e: &str| serde_json::json!({"ok": false, "error": e});
+    let Ok(request) = serde_json::from_str::<serde_json::Value>(request) else {
+        return fail("Not a circle request");
+    };
+    let home_pcs: Vec<String> = request
+        .get("homePcs")
+        .and_then(|v| v.as_array())
+        .map(|list| list.iter().filter_map(|k| k.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    match request.get("op").and_then(|o| o.as_str()) {
+        Some("remove") => {
+            let key = request.get("key").and_then(|k| k.as_str()).unwrap_or("").to_string();
+            if circle::canonical_key(&key).is_none() {
+                return fail("Not a device key");
+            }
+            if load_phones(app).iter().any(|p| p.id == key) {
+                if let Err(e) = forget_here(app, &key, "removed") {
+                    return fail(&e);
+                }
+            }
+            let keys = own_keys(app);
+            with_circle(app, |state| {
+                state.set_uses(&home_pcs);
+                let now = circle::now();
+                let signed = keys.iter().filter(|k| state.sign(k, &key, now).is_ok()).count();
+                if signed > 0 {
+                    serde_json::json!({"ok": true})
+                } else {
+                    fail("Could not sign the removal")
+                }
+            })
+        }
+        Some("news") => with_circle(app, |state| {
+            state.set_uses(&home_pcs);
+            serde_json::json!({"ok": true, "news": state.take_news()})
+        }),
+        _ => fail("Not a circle request"),
     }
 }
 
@@ -1564,6 +1795,8 @@ async fn serve_stream(
                     "apiKey": address.map(|(_, key)| key),
                     // So the phone notices pairing codes made while away.
                     "events": load_events(&app),
+                    // Removal notices for this device (device circle).
+                    "removals": removals_for(&app, &remote),
                     // So the phone can say when the two apps' builds differ.
                     "build": pc_build(),
                     // The model a phone may start ("start"), by file name.
@@ -1734,6 +1967,12 @@ async fn serve_stream(
                     reply(&mut send, serde_json::json!({"ok": false, "error": error})).await
                 }
             }
+        }
+        Some(Request::Removal { notices }) if paired => {
+            // Each checked: signed by a device this PC trusts, new, in
+            // time, not about this PC; it can only remove.
+            take_removals(&app, &remote, false, &notices);
+            reply(&mut send, serde_json::json!({"ok": true})).await;
         }
         Some(Request::Http) if paired => {
             let Some((port, _)) = app.state::<crate::model_server::ModelServer>().address() else {
@@ -1928,16 +2167,30 @@ pub async fn link_status(app: AppHandle, link: State<'_, Link>) -> Result<LinkSt
 /// (a model request, a sync) is cut off at once.
 #[tauri::command]
 pub async fn link_forget(app: AppHandle, id: String) -> Result<(), String> {
-    let mut phones = load_phones(&app);
+    forget_here(&app, &id, "removed")
+}
+
+/// Removing a device here, by the user ("removed") or by a removal notice
+/// ("removed-by-notice"): the same every time. Its record goes, its open
+/// connections close at once, it can't ask to pair again for an hour, its
+/// chats' reading rights go, and the pairing history says so.
+fn forget_here(app: &AppHandle, id: &str, kind: &str) -> Result<(), String> {
+    let mut phones = load_phones(app);
     let name = phones.iter().find(|p| p.id == id).map(|p| p.name.clone());
     phones.retain(|p| p.id != id);
-    save_phones(&app, &phones)?;
+    save_phones(app, &phones)?;
     let link = app.state::<Link>();
-    link.removed.lock().unwrap().insert(id.clone(), Instant::now());
-    link.cut_off(&id);
-    link.read_grants.lock().unwrap().forget_device(&id);
-    record(&app, "removed", name);
+    link.removed.lock().unwrap().insert(id.to_string(), Instant::now());
+    link.cut_off(id);
+    link.read_grants.lock().unwrap().forget_device(id);
+    record(app, kind, name);
     Ok(())
+}
+
+/// The screens' circle calls (circle_call): JSON in, JSON out.
+#[tauri::command]
+pub async fn link_circle(app: AppHandle, request: String) -> String {
+    circle_call(&app, &request).to_string()
 }
 
 /// Lets one paired device answer this PC's "Allow?" questions, or stops
@@ -2333,6 +2586,99 @@ mod tests {
         assert_eq!(parse_request(br#"{"op":"files"}"#), None);
         assert_eq!(parse_request(b"GET / HTTP/1.1"), None);
         assert_eq!(parse_request(&vec![b' '; MAX_REQUEST_LINE + 1]), None);
+    }
+
+    /// Device circle stage 2: "removal" carries notices only, each exactly
+    /// a notice (no device to add, no right, no name).
+    #[test]
+    fn a_removal_request_is_notices_and_nothing_else() {
+        let key = iroh::SecretKey::from_bytes(&[7; 32]);
+        let removed = iroh::SecretKey::from_bytes(&[8; 32]).public().to_string();
+        let notice = circle::sign_removal(&key, &removed, 5, 1_800_000_000).unwrap();
+        let line = serde_json::json!({"op": "removal", "notices": [notice]}).to_string();
+        assert!(line.len() < MAX_REQUEST_LINE);
+        assert_eq!(parse_request(line.as_bytes()), Some(Request::Removal { notices: vec![notice.clone()] }));
+        // A notice with more in it (a right, a device to add) is no request.
+        let mut more = serde_json::to_value(&notice).unwrap();
+        more["mayCommand"] = serde_json::json!(true);
+        let line = serde_json::json!({"op": "removal", "notices": [more]}).to_string();
+        assert_eq!(parse_request(line.as_bytes()), None);
+        assert_eq!(parse_request(br#"{"op":"removal"}"#), None);
+        // The most a device hands on at once fits in one request line.
+        let many: Vec<_> = (0..circle::MAX_NOTICES as u64)
+            .map(|n| circle::sign_removal(&key, &removed, n + 1, u64::MAX / 2).unwrap())
+            .collect();
+        assert!(serde_json::json!({"op": "removal", "notices": many}).to_string().len() < MAX_REQUEST_LINE);
+    }
+
+    /// A notice taken here removes exactly as "Remove here" does (one
+    /// function: cut off, kept from pairing for an hour, history), and can
+    /// only remove: nothing on its path adds a device or sets a right.
+    #[test]
+    fn a_removal_notice_only_removes_as_remove_here_does() {
+        let source = include_str!("link.rs");
+        let code = &source[..source.find("#[cfg(test)]").unwrap()];
+        let forget = &code[code.find("pub async fn link_forget(").unwrap()..];
+        let forget = &forget[..forget.find("\n}").unwrap()];
+        assert!(forget.contains("forget_here(&app, &id, \"removed\")"));
+        let here = &code[code.find("fn forget_here(").unwrap()..];
+        let here = &here[..here.find("\n}").unwrap()];
+        for step in ["phones.retain(|p| p.id != id);", "link.removed.lock().unwrap().insert(", "link.cut_off(id);", "forget_device(id);", "record(app, kind, name);"] {
+            assert!(here.contains(step), "{step}");
+        }
+        let circle_code = &code[code.find("// ------------------------------------------------- device circle, stage 2").unwrap()..code.find("/// Which commit this PC app was built from").unwrap()];
+        for never in ["add_phone(", "Phone::new(", "set_may_", "write_entry(app, PICTURES_ENTRY", "write_entry(app, TOOLS_ENTRY", "sync_allowed", "ask_on_this_pc"] {
+            assert!(!circle_code.contains(never), "{never}");
+        }
+        // Applying is only ever after the check said so.
+        assert_eq!(circle_code.matches("apply_removal(app, state, notice)").count(), 1);
+        assert!(circle_code.contains("if state.take(notice, &me, &trusted, Some(from), circle::now()) == circle::Verdict::Apply {\n                apply_removal(app, state, notice);"));
+        assert!(circle_code.contains("forget_here(app, &notice.removed, \"removed-by-notice\")"));
+        // Paired devices only, at most MAX_NOTICES at once.
+        assert!(code.contains("Some(Request::Removal { notices }) if paired => {"));
+        assert!(circle_code.contains("notices.iter().take(circle::MAX_NOTICES)"));
+    }
+
+    #[test]
+    fn the_user_is_told_who_removed_what() {
+        assert_eq!(
+            removal_note(Some("Laptop"), Some("Pixel 8")),
+            "\u{201c}Laptop\u{201d} removed \u{201c}Pixel 8\u{201d} from your devices; removed here too."
+        );
+        assert!(removal_note(None, None).contains("Another of your devices"));
+    }
+
+    /// The circle's state is kept in parts small enough for a credential
+    /// (UTF-16), never split inside a character, and shrunk to fit.
+    #[test]
+    fn the_circle_state_fits_the_credential_store() {
+        let parts = split_parts("ab\u{1F600}cd", 3);
+        assert_eq!(parts, ["ab", "\u{1F600}c", "d"]);
+        assert_eq!(parts.concat(), "ab\u{1F600}cd");
+        assert!(split_parts("", 3).is_empty());
+        let key = iroh::SecretKey::from_bytes(&[7; 32]);
+        let mut state = circle::State::default();
+        for i in 0..40u8 {
+            let removed = iroh::SecretKey::from_bytes(&[100 + i; 32]).public().to_string();
+            state.sign(&key, &removed, 1_800_000_000).unwrap();
+            state.seen.push((removed.clone(), 1));
+            state.uses.push(removed.clone());
+            state.add_news(circle::News {
+                removed: removed.clone(),
+                by: removed,
+                at: 1,
+                removed_name: Some("\u{1F600}".repeat(40)),
+                by_name: Some("Laptop".into()),
+                told: false,
+            });
+        }
+        let parts = fit_circle(&mut state);
+        assert!(parts.len() <= CIRCLE_PARTS);
+        assert!(parts.iter().all(|p| p.encode_utf16().count() <= CIRCLE_PART_UNITS));
+        // Within Windows' limit for one credential (2560 bytes of UTF-16).
+        assert!(CIRCLE_PART_UNITS * 2 <= 2560);
+        assert_eq!(circle::State::from_json(&parts.concat()), state);
+        assert_eq!(state.outbox.len(), circle::MAX_OUTBOX);
     }
 
     #[test]
@@ -2907,9 +3253,15 @@ mod tests {
         let ask = pair.find("if crate::approval::ask_on_this_pc(&app, &question).await {").unwrap();
         let add = pair.find("add_phone(&mut phones, Phone::new(").unwrap();
         assert!(ask < add);
-        // Only these write the paired list: pairing, the five rights, removing.
+        // Only these write the paired list: pairing, the five rights, and
+        // removing (forget_here, for "Remove here" and removal notices,
+        // which only takes a device out).
         let code = &source[..source.find("#[cfg(test)]").unwrap()];
-        assert_eq!(code.matches("save_phones(&app, &phones)").count(), 7);
+        assert_eq!(code.matches("save_phones(&app, &phones)").count(), 6);
+        assert_eq!(code.matches("save_phones(app, &phones)").count(), 1);
+        let forget = &code[code.find("fn forget_here(").unwrap()..];
+        let forget = &forget[..forget.find("\n}").unwrap()];
+        assert!(forget.contains("phones.retain(|p| p.id != id);\n    save_phones(app, &phones)?;"));
     }
 
     #[test]

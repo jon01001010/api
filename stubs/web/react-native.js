@@ -50,6 +50,8 @@ const QUIET = {
       }),
     tool: (pc, name, chat, args) =>
       require('./tauri').invoke('homelink_tool', {pc, name, chat, args}),
+    // Device circle (stage 2): the PC's own removal notices (link.rs).
+    circle: request => require('./tauri').invoke('link_circle', {request}),
     openTunnel: pc => require('./tauri').invoke('homelink_open_tunnel', {pc}),
     closeTunnel: () => require('./tauri').invoke('homelink_close_tunnel'),
   },

@@ -217,6 +217,9 @@ export function describeEvent(e: PairingEvent): string {
   if (e.kind === 'removed') {
     return `${when}: phone \u201c${e.name || 'a phone'}\u201d was removed`;
   }
+  if (e.kind === 'removed-by-notice') {
+    return `${when}: \u201c${e.name || 'a device'}\u201d was removed on another of your devices, and on the PC too`;
+  }
   if (e.kind === 'may-picture') {
     return `${when}: \u201c${e.name || 'a device'}\u201d may now make pictures on the PC`;
   }

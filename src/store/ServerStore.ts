@@ -25,6 +25,7 @@ import {
   tunnelUrl,
   waitForPcModel,
 } from '../services/homeLink/homeLink';
+import {takeCircleNews} from '../services/homeLink/circle';
 import {
   forgetHomePcLock,
   homePcGate,
@@ -354,6 +355,15 @@ class ServerStore {
     }
     // A pairing code made (or a phone added) on the PC since last time.
     await noticePairingActivity(server.homeLinkPc, status.events);
+    // A device removed on another of your devices (signed removal notices,
+    // taken with this status): its Home PC entries go, and you are told.
+    await takeCircleNews(this);
+    if (!this.servers.some(s => s.id === serverId)) {
+      return {
+        ok: false,
+        error: 'This PC was removed on another of your devices',
+      };
+    }
     // Phone and PC apps built from different commits: say so once.
     await noticeBuildMismatch(server.homeLinkPc, status.build);
     let running = status.running && status.apiKey ? status : null;

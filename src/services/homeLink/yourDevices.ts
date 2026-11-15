@@ -7,7 +7,8 @@
  *
  * Only reads what is already here: no network, and nothing in this list
  * gives a right (each right is switched on, and asked, on the device that
- * gives it). Removing works as before, on this device only.
+ * gives it). Removing here also tells your other devices (stage 2: a
+ * removal notice signed by this device, circle.ts), which remove it too.
  */
 import type {LinkPhone} from '../desktop/homeLink';
 import type {ServerConfig} from '../../utils/types';
@@ -116,7 +117,7 @@ export function describeRights(device: YourDevice): string {
   return `May use here: ${device.rights.join(', ')}`;
 }
 
-/** Said before removing: only here, for now. */
+/** Said before removing: here at once, then on your other devices. */
 export function removeQuestion(device: YourDevice): string {
   const parts = [
     device.usesThis
@@ -125,7 +126,7 @@ export function removeQuestion(device: YourDevice): string {
     device.thisUses
       ? `This device stops using "${device.name}" (its Home PC entry and models here are removed).`
       : '',
-    'Removed on this device only: the other devices are not told yet (that comes in a later version). Remove it on them too.',
+    'Your other devices are told too, the next time they talk to this one (a notice signed by this device): each removes it as well and says so. A device that never talks to this one again is not told: remove it there by hand.',
   ];
   return parts.filter(Boolean).join('\n\n');
 }

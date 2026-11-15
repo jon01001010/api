@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-link-circle"
+description = "Enables the link_circle command without any pre-configured scope."
+commands.allow = ["link_circle"]
+
+[[permission]]
+identifier = "deny-link-circle"
+description = "Denies the link_circle command without any pre-configured scope."
+commands.deny = ["link_circle"]

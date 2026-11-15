@@ -4,6 +4,7 @@ import {Button, Card, Text} from 'react-native-paper';
 import {observer} from 'mobx-react';
 
 import {serverStore} from '../../store';
+import {passRemovalsOn, tellRemoval} from '../../services/homeLink/circle';
 import type {LinkKeyMode, LinkPhone} from '../../services/desktop/homeLink';
 import {
   describeDirection,
@@ -29,9 +30,10 @@ interface Props {
 }
 
 /**
- * "Your devices" (device-circle stage 1): every device this one is paired
- * with, either way, with what this device has given it. Removing works as
- * before and on this device only (telling the others comes later).
+ * "Your devices" (device circle): every device this one is paired with,
+ * either way, with what this device has given it. Removing works here at
+ * once, and (stage 2) a notice signed by this device tells the others,
+ * which remove it too.
  */
 export const YourDevices: React.FC<Props> = observer(
   ({phones = [], onForget, renderRights, keyMode, onUseOneKey, busy}) => {
@@ -50,9 +52,17 @@ export const YourDevices: React.FC<Props> = observer(
                 await onForget(device.key);
               }
               device.serverIds.forEach(id => serverStore.removeServer(id));
+              // Signed by this device; the others take it with their next
+              // status round trip (only ever a removal).
+              const told = await tellRemoval(device.key, serverStore.servers);
               setMessage(
-                `Removed "${device.name}" here. Remove this device on it too.`,
+                told.ok
+                  ? `Removed "${device.name}" here. Your other devices are told the next time they talk to this one.`
+                  : `Removed "${device.name}" here. Your other devices could not be told (${told.error}): remove it on them by hand.`,
               );
+              if (told.ok) {
+                passRemovalsOn(serverStore).catch(() => {});
+              }
             } catch (e) {
               setMessage(String(e));
             }
@@ -132,7 +142,7 @@ export const YourDevices: React.FC<Props> = observer(
         {devices.length > 0 ? (
           <Text variant="bodySmall" style={styles.note}>
             Rights are given per device, on the device that gives them. Removing
-            a device here does not remove it on your other devices yet.
+            a device here also tells your other devices, which remove it too.
           </Text>
         ) : null}
         {keyMode ? (

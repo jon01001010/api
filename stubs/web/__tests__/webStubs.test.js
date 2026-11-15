@@ -197,6 +197,7 @@ describe("PC to PC: the phone's HomeLink module on the desktop", () => {
     await link.answerQuestion('pc', 3, false);
     await link.picture('pc', 'a cat', 512, 0, 0);
     await link.tool('pc', 'workspace_read', 'chat-1', '{"file":"a.md"}');
+    await link.circle('{"op":"news","homePcs":[]}');
     expect(JSON.parse(await link.openTunnel('pc'))).toEqual({
       ok: true,
       port: 5000,
@@ -211,6 +212,7 @@ describe("PC to PC: the phone's HomeLink module on the desktop", () => {
       'homelink_answer_question',
       'homelink_picture',
       'homelink_tool',
+      'link_circle',
       'homelink_open_tunnel',
       'homelink_close_tunnel',
     ]);
@@ -230,5 +232,7 @@ describe("PC to PC: the phone's HomeLink module on the desktop", () => {
       chat: 'chat-1',
       args: '{"file":"a.md"}',
     });
+    // The circle goes to the PC's own removal notices, as JSON.
+    expect(calls[8][1]).toEqual({request: '{"op":"news","homePcs":[]}'});
   });
 });
