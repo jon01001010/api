@@ -197,6 +197,17 @@ jobs:
           pattern: desktopagent-linux-${{ github.run_id }}-${{ github.run_attempt }}-*
           merge-multiple: true
           path: pkg
+      - name: Write the checksums
+        run: |
+          set -euo pipefail
+          # Flat names (merge-multiple puts each package in its own folder).
+          find pkg -mindepth 2 -type f \( -name '*.AppImage' -o -name '*.deb' \) -exec mv -n {} pkg/ \;
+          cd pkg
+          shopt -s nullglob
+          packages=(*.AppImage *.deb)
+          if [ ${#packages[@]} -eq 0 ]; then echo "Nothing built"; exit 1; fi
+          sha256sum -- "${packages[@]}" > SHA256SUMS
+          cat SHA256SUMS
       - name: Publish pre-release
         env:
           # Your own token (repo secret, this repo only: Contents + Workflows),
@@ -212,11 +223,12 @@ jobs:
           set -euo pipefail
           safe_branch=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')
           tag="linux-${safe_branch}-${RUN_ID}-${RUN_ATTEMPT}"
-          files=$(find pkg -type f \( -name '*.AppImage' -o -name '*.deb' \))
+          files=$(find pkg -maxdepth 1 -type f \( -name '*.AppImage' -o -name '*.deb' \))
           if [ -z "$files" ]; then echo "Nothing built"; exit 1; fi
-          gh release create "$tag" $files \
+          test -s pkg/SHA256SUMS
+          gh release create "$tag" $files pkg/SHA256SUMS \
             --target "$SHA" \
             --prerelease \
             --title "DesktopAgent for Linux test build: ${BRANCH} (${SHA:0:7})" \
-            --notes "Test build from branch \`${BRANCH}\`, commit ${SHA}, workflow run ${RUN_ID}. Not a release. AppImage: make it executable (chmod +x) and run it. .deb: Debian/Ubuntu."
+            --notes "Test build from branch \`${BRANCH}\`, commit ${SHA}, workflow run ${RUN_ID}. Not a release. AppImage: make it executable (chmod +x) and run it. .deb: Debian/Ubuntu. SHA256SUMS holds their SHA-256 checksums."
           echo "Release: https://github.com/${GH_REPO}/releases/tag/${tag}" >> "$GITHUB_STEP_SUMMARY"

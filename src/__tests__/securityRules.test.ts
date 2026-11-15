@@ -595,6 +595,41 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     }
   });
 
+  it('every published build comes with its SHA-256 checksums', () => {
+    const dir = path.join(__dirname, '..', '..', '.github', 'workflows');
+    for (const file of fs.readdirSync(dir)) {
+      const text = fs.readFileSync(path.join(dir, file), 'utf8');
+      for (const step of text.split(/\n\s+- name: /)) {
+        if (step.includes('gh release create')) {
+          expect([file, /\/SHA256SUMS \\\n/.test(step)]).toEqual([file, true]);
+        }
+      }
+    }
+  });
+
+  it('the APK signing key is used only by the signing step, which keeps the debug key without it', () => {
+    const dir = path.join(__dirname, '..', '..', '.github', 'workflows');
+    let signing = '';
+    for (const file of fs.readdirSync(dir)) {
+      const text = fs.readFileSync(path.join(dir, file), 'utf8');
+      for (const step of text.split(/\n\s+- name: /)) {
+        if (/secrets\.ANDROID_KEY/.test(step)) {
+          expect([file, step.split('\n')[0].trim()]).toEqual([
+            'pocketagent-integration-apk.yml',
+            'Sign the APK with our release key (when its secrets are set)',
+          ]);
+          signing = step;
+        }
+      }
+    }
+    expect(signing).toMatch(
+      /if \[ -z "\$\{ANDROID_KEYSTORE_BASE64:-\}" \]; then[\s\S]*?exit 0/,
+    );
+    // The key file is removed again, and never printed.
+    expect(signing).toContain(`trap 'rm -f "$keystore"' EXIT`);
+    expect(signing).not.toMatch(/echo "\$ANDROID_KEY/);
+  });
+
   it('network from the native side is http/https only', () => {
     const net = tauri('src/net.rs');
     expect(net).toMatch(/"http" \| "https" => \{\}/);
