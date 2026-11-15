@@ -11,6 +11,7 @@ import {
   pcStatus,
   tunnelUrl,
 } from './homeLink';
+import {forgetHomePcLock} from './homePcLock';
 
 /** A local PC model reads long prompts slowly: wait up to 10 minutes. */
 const HOME_PC_TIMEOUT_MS = 10 * 60 * 1000;
@@ -22,6 +23,8 @@ export async function pairHomePc(
   if (!paired.ok) {
     return {ok: false, message: paired.error};
   }
+  // The PC approved this pairing: a PIN set before (e.g. forgotten) is gone.
+  await forgetHomePcLock(paired.pc);
   const tunnel = await openTunnel(paired.pc);
   if (!tunnel.ok) {
     return {ok: false, message: tunnel.error};

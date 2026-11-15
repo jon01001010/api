@@ -8,6 +8,7 @@
  * in the chat like one made on the PC (ImageTalentUI).
  */
 import {askPcForPicture} from '../homeLink/homeLink';
+import {unlockHomePc} from '../homeLink/homePcLock';
 import {
   TalentEngine,
   TalentExecuteContext,
@@ -96,6 +97,13 @@ export class PcPictureEngine implements TalentEngine {
       return {
         type: 'text',
         summary: `No Home PC is paired, so no picture can be made. Pictures are made on a paired PC (DesktopAgent): pair it by scanning its QR code (on the PC: Settings, Use this PC's model from your phone), then allow pictures there. ${STOP}`,
+      };
+    }
+    // The PC's PIN, if set on this device and locked: asked first.
+    if (!(await unlockHomePc(pc))) {
+      return {
+        type: 'text',
+        summary: `The Home PC is locked with a PIN on this device and it wasn't entered, so no picture was made. ${STOP}`,
       };
     }
     const width = size(args.width);

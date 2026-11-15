@@ -11,6 +11,7 @@ import {Alert, AppState} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {answerPcQuestion, pcQuestions, type PcQuestion} from './homeLink';
+import {unlockHomePc} from './homePcLock';
 
 const settingKey = (pc: string) => `@pocketagent/link/answer-for/${pc}`;
 
@@ -131,6 +132,10 @@ function pairedPcs(): string[] {
 function show(pc: string, q: PcQuestion) {
   shown.add(`${pc}:${q.id}`);
   const send = async (yes: boolean) => {
+    // Locked again meanwhile (PIN): asked first.
+    if (!(await unlockHomePc(pc))) {
+      return;
+    }
     const r = await answerPcQuestion(pc, q.id, yes);
     if (!r.ok) {
       Alert.alert('Not sent', r.error);

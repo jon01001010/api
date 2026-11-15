@@ -17,6 +17,7 @@ import {AppState} from 'react-native';
 
 import {serverStore} from '../../store/ServerStore';
 import {uiStore} from '../../store/UIStore';
+import {LOCKED, unlockHomePc} from './homePcLock';
 
 export const RECHECK_AFTER_MS = 2 * 60 * 1000;
 /** Quick checks show nothing; slower ones show RECONNECTING. */
@@ -151,6 +152,17 @@ export function homeLinkReady(
   }
   let seen = generation;
   return async signal => {
+    // The PC's PIN, if set on this device and locked: asked first.
+    const pc = serverStore.servers.find(s => s.id === serverId)?.homeLinkPc;
+    if (pc) {
+      const open = await untilAborted(unlockHomePc(pc), signal);
+      if (open === undefined) {
+        return; // Stopped.
+      }
+      if (!open) {
+        throw new Error(LOCKED);
+      }
+    }
     const result = await untilAborted(keepHomeLink(serverId), signal);
     if (!result) {
       return; // Stopped: the engine says so itself.

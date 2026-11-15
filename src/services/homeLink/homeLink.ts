@@ -11,6 +11,7 @@ import {Alert, NativeModules} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {buildCommit, buildsDiffer} from '../../utils/buildInfo';
+import {homePcGate} from './homePcLock';
 
 export const PAIRING_TAG = 'PA1:P:';
 
@@ -19,7 +20,14 @@ export function isPairingCode(text: string): boolean {
   return /^PA1:P:[0-9a-f]{64}:[0-9a-f]{32}$/.test(text.trim());
 }
 
-type Answer<T> = ({ok: true} & T) | {ok: false; error: string};
+type Answer<T> =
+  | ({ok: true} & T)
+  | {
+      ok: false;
+      error: string;
+      /** Refused by the PC's PIN lock. */
+      locked?: boolean;
+    };
 
 const native = () => NativeModules.HomeLink;
 
@@ -41,6 +49,15 @@ async function ask<T>(
   const mod = native();
   if (!mod || typeof mod[method] !== 'function') {
     return {ok: false, error: 'The home link is not in this build'};
+  }
+  // The PC's PIN (homePcLock), when set on this device: nothing goes to the
+  // PC while it is locked. Pairing (the PC asks) and closing the tunnel
+  // don't reach the PC's model.
+  if (method !== 'pair' && method !== 'closeTunnel') {
+    const gate = await homePcGate(String(args[0]));
+    if (!gate.ok) {
+      return {ok: false, error: gate.error, ...(gate.locked && {locked: true})};
+    }
   }
   try {
     const text: string = await mod[method](...args);

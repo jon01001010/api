@@ -25,6 +25,11 @@ import {
   tunnelUrl,
   waitForPcModel,
 } from '../services/homeLink/homeLink';
+import {
+  forgetHomePcLock,
+  homePcGate,
+  unlockHomePc,
+} from '../services/homeLink/homePcLock';
 
 const KEYCHAIN_SERVICE_PREFIX = 'pocketpal-server-';
 
@@ -197,7 +202,12 @@ class ServerStore {
   }
 
   removeServer(id: string): void {
+    const pc = this.servers.find(s => s.id === id)?.homeLinkPc;
     this.servers = this.servers.filter(s => s.id !== id);
+    // A Home PC's PIN goes with it (pairing again needs the PC's OK).
+    if (pc && !this.servers.some(s => s.homeLinkPc === pc)) {
+      forgetHomePcLock(pc).catch(() => {});
+    }
     this.dropList(id);
     // Remove all user-selected models for this server
     this.userSelectedModels = this.userSelectedModels.filter(
@@ -311,14 +321,24 @@ class ServerStore {
    *
    * `start` (Load): when no model runs on the PC, ask it to start the one it
    * last ran and wait until it has loaded. Listing models never starts one.
+   *
+   * The PC's PIN, if set on this device: Load (`start`) asks for it when
+   * locked; anything else is refused while locked (`locked`).
    */
   async prepareHomeLink(
     serverId: string,
     {start = false}: {start?: boolean} = {},
-  ): Promise<{ok: boolean; error?: string}> {
+  ): Promise<{ok: boolean; error?: string; locked?: boolean}> {
     const server = this.servers.find(s => s.id === serverId);
     if (!server?.homeLinkPc) {
       return {ok: true};
+    }
+    if (start) {
+      await unlockHomePc(server.homeLinkPc);
+    }
+    const gate = await homePcGate(server.homeLinkPc);
+    if (!gate.ok) {
+      return {ok: false, error: gate.error, locked: true};
     }
     const tunnel = await openTunnel(server.homeLinkPc);
     if (!tunnel.ok) {
@@ -414,8 +434,15 @@ class ServerStore {
     this.isLoading = true;
     this.error = null;
 
-    // Home PC: reopen the tunnel first (no-op for other servers).
-    await this.prepareHomeLink(serverId);
+    // Home PC: reopen the tunnel first (no-op for other servers). Locked
+    // by its PIN: nothing is sent to it.
+    const link = await this.prepareHomeLink(serverId);
+    if (link.locked) {
+      runInAction(() => {
+        this.isLoading = false;
+      });
+      return {ok: false, error: link.error};
+    }
     const {url} = this.servers.find(s => s.id === serverId) ?? server;
     try {
       const apiKey = await this.getApiKey(serverId);

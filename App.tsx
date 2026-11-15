@@ -37,6 +37,7 @@ import {
 } from './src/components';
 import {MarkdownProvider} from './src/components/MarkdownView';
 import {FileApprovalHost} from './src/components/FileApprovalHost';
+import {HomePcPinPrompt} from './src/components/HomePcLock';
 import {
   AutomationBridge,
   BenchmarkRunnerScreen,
@@ -132,6 +133,7 @@ const App = observer(() => {
           <PaperProvider theme={theme}>
             <L10nContext.Provider value={currentL10n}>
               <FileApprovalHost />
+              <HomePcPinPrompt />
               <MarkdownProvider>
                 <NavigationContainer
                   theme={navigationTheme}
