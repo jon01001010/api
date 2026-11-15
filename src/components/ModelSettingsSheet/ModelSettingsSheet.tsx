@@ -4,6 +4,7 @@ import {Button, Text, Divider, Switch, Chip} from 'react-native-paper';
 import {ModelSettings} from '../../screens/ModelsScreen/ModelSettings';
 import {Sheet} from '../Sheet';
 import {ProjectionModelSelector} from '../ProjectionModelSelector';
+import {LoraAdapterSection} from '../LoraAdapterSection';
 import {Model, ModelOrigin} from '../../utils/types';
 import {modelStore, serverStore} from '../../store';
 import {chatTemplates} from '../../utils/chat';
@@ -234,6 +235,15 @@ export const ModelSettingsSheet: React.FC<ModelSettingsSheetProps> = memo(
                   );
                 }}
               />
+            </>
+          )}
+
+          {/* LoRA adapters: style add-ons for a model on this device. */}
+          {!isRemote && (
+            <>
+              <Divider style={styles.multimodalDivider} />
+              <Text style={styles.multimodalSectionTitle}>Adapters</Text>
+              <LoraAdapterSection model={model} />
             </>
           )}
 

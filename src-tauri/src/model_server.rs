@@ -171,6 +171,35 @@ pub fn server_args(
     args
 }
 
+/// A LoRA adapter for the model (a small .gguf file that changes its style;
+/// the model file itself is never changed). llama-server reads
+/// `--lora-scaled FILE:SCALE` and splits it on ':' and ',', so a Windows path
+/// ("C:\…") can't be given whole: the adapter is named from the root of its
+/// drive, which must be the server's drive (the server runs in its own folder,
+/// never in the app's data folder, because llama.cpp also looks for its
+/// backend DLLs in the folder it runs in). Pure, so it can be tested.
+pub fn lora_args(adapter: &str, exe: &str, scale: f32) -> Result<Vec<String>, String> {
+    fn drive(p: &str) -> (Option<char>, &str) {
+        let b = p.as_bytes();
+        if b.len() >= 2 && b[1] == b':' && b[0].is_ascii_alphabetic() {
+            (Some(b[0].to_ascii_uppercase() as char), &p[2..])
+        } else {
+            (None, p)
+        }
+    }
+    let (adapter_drive, rest) = drive(adapter);
+    if adapter_drive != drive(exe).0 {
+        return Err("The adapter must be on the same drive as DesktopAgent".into());
+    }
+    let rooted = rest.starts_with('/') || rest.starts_with('\\');
+    let network = rest.starts_with("//") || rest.starts_with("\\\\");
+    if !rooted || network || rest.contains([':', ',', '"']) || rest.chars().any(char::is_control) {
+        return Err("This adapter's file name can't be used (no ':', ',' or '\"')".into());
+    }
+    let scale = if scale.is_finite() { scale.clamp(0.0, 1.0) } else { 1.0 };
+    Ok(vec!["--lora-scaled".into(), format!("{rest}:{scale:.2}")])
+}
+
 fn is_gguf(path: &std::path::Path) -> bool {
     path.extension()
         .map(|e| e.eq_ignore_ascii_case("gguf"))
@@ -204,6 +233,11 @@ pub struct LastModel {
     pub model_path: String,
     pub context: u32,
     pub projection_path: Option<String>,
+    /// The adapter the PC user chose for it, if any (never one from a phone).
+    #[serde(default)]
+    pub lora_path: Option<String>,
+    #[serde(default)]
+    pub lora_scale: Option<f32>,
 }
 
 fn last_model_file(app: &AppHandle) -> Option<PathBuf> {
@@ -239,8 +273,11 @@ pub async fn model_server_start(
     model_path: String,
     context: Option<u32>,
     projection_path: Option<String>,
+    lora_path: Option<String>,
+    lora_scale: Option<f32>,
 ) -> Result<Started, String> {
-    start_model(&app, model_path, context, projection_path, StartedBy::User).await
+    let lora = lora_path.map(|p| (p, lora_scale.unwrap_or(1.0)));
+    start_model(&app, model_path, context, projection_path, lora, StartedBy::User).await
 }
 
 /// Starts the model server (the PC's button, or a paired phone).
@@ -249,6 +286,7 @@ pub async fn start_model(
     model_path: String,
     context: Option<u32>,
     projection_path: Option<String>,
+    lora: Option<(String, f32)>,
     by: StartedBy,
 ) -> Result<Started, String> {
     let server = app.state::<ModelServer>();
@@ -272,6 +310,23 @@ pub async fn start_model(
             Some(found.real)
         }
         None => None,
+    };
+    // The adapter: like the vision part, only a file in the app's own folder
+    // (added there by the user through the app's own file import), never a
+    // link pointing elsewhere.
+    let exe = server_exe(app)?;
+    let lora_arguments = match &lora {
+        Some((p, scale)) => {
+            let found = crate::files::locate(&root, p)?;
+            let link = std::fs::symlink_metadata(&found.real)
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(true);
+            if !found.own || link || !is_gguf(&found.real) {
+                return Err("The adapter must be a .gguf file added to the app's own folder".into());
+            }
+            lora_args(&found.real.to_string_lossy(), &exe.to_string_lossy(), *scale)?
+        }
+        None => Vec::new(),
     };
     // Outside the app folder: ask, unless the user chose "Always allow this
     // file" for this exact file before (same path, size and time).
@@ -300,7 +355,6 @@ pub async fn start_model(
     model_server_stop(server.clone());
     let port = free_port()?;
     let key = random_key()?;
-    let exe = server_exe(app)?;
     let mut command = Command::new(&exe);
     // Its DLLs sit next to it.
     if let Some(dir) = exe.parent() {
@@ -313,6 +367,7 @@ pub async fn start_model(
         port,
         context.unwrap_or(8192),
     ));
+    command.args(&lora_arguments);
     // The password by environment, never on the command line (any program on
     // the PC can read a process's command line).
     command.env(PASSWORD_ENV, &key);
@@ -355,6 +410,8 @@ pub async fn start_model(
             model_path,
             context: context.unwrap_or(8192),
             projection_path,
+            lora_path: lora.as_ref().map(|(p, _)| p.clone()),
+            lora_scale: lora.as_ref().map(|(_, s)| *s),
         },
     );
     Ok(Started {
@@ -436,9 +493,15 @@ mod tests {
             model_path: "/pocketagent/Documents/models/m.gguf".into(),
             context: 8192,
             projection_path: None,
+            lora_path: Some("/pocketagent/Documents/models/lora/a.gguf".into()),
+            lora_scale: Some(0.8),
         };
         let text = serde_json::to_string(&last).unwrap();
         assert_eq!(serde_json::from_str::<LastModel>(&text).unwrap(), last);
+        // Saved before adapters existed: none.
+        let old: LastModel =
+            serde_json::from_str(r#"{"modelPath":"m","context":8192,"projectionPath":null}"#).unwrap();
+        assert_eq!(old.lora_path, None);
         // A phone never gets a dialog: refused instead (see start_model).
         assert_ne!(StartedBy::Phone, StartedBy::User);
     }
@@ -469,6 +532,62 @@ mod tests {
         );
         assert_eq!(unknown_architecture("unknown model architecture: ''"), None);
         assert_eq!(unknown_architecture("unknown model architecture: 'open"), None);
+    }
+
+    #[test]
+    fn an_adapter_is_passed_with_its_strength() {
+        let exe = r"C:\Program Files\DesktopAgent\llama\llama-server.exe";
+        let args = lora_args(
+            r"C:\Users\u\AppData\Roaming\app\Documents\models\lora\my-style.gguf",
+            exe,
+            0.8,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--lora-scaled".to_string(),
+                r"\Users\u\AppData\Roaming\app\Documents\models\lora\my-style.gguf:0.80".to_string()
+            ]
+        );
+        // The same drive, in any letter case.
+        assert!(lora_args("c:/a/b.gguf", exe, 1.0).is_ok());
+        // Linux: a plain path.
+        assert_eq!(
+            lora_args(
+                "/home/u/.local/share/app/Documents/models/lora/a.gguf",
+                "/usr/lib/app/llama/llama-server",
+                1.0
+            )
+            .unwrap()[1],
+            "/home/u/.local/share/app/Documents/models/lora/a.gguf:1.00"
+        );
+    }
+
+    #[test]
+    fn an_adapter_strength_stays_between_0_and_1() {
+        let at = |s: f32| lora_args("/a/b.gguf", "/x/llama-server", s).unwrap()[1].clone();
+        assert_eq!(at(0.0), "/a/b.gguf:0.00");
+        assert_eq!(at(2.0), "/a/b.gguf:1.00");
+        assert_eq!(at(-1.0), "/a/b.gguf:0.00");
+        assert_eq!(at(f32::NAN), "/a/b.gguf:1.00");
+    }
+
+    #[test]
+    fn an_adapter_path_llama_cpp_would_misread_is_refused() {
+        let exe = "C:/llama/llama-server.exe";
+        // Another drive (the server can't name it without "D:").
+        assert!(lora_args("D:/a/b.gguf", exe, 1.0).is_err());
+        assert!(lora_args("C:/a/b.gguf", "/usr/bin/llama-server", 1.0).is_err());
+        // Separators llama.cpp splits on, quotes, control characters.
+        for bad in ["C:/a/b:c.gguf", "C:/a/b,c.gguf", "C:/a/\"b\".gguf", "C:/a/b\nc.gguf"] {
+            assert!(lora_args(bad, exe, 1.0).is_err(), "{bad}");
+        }
+        // Not from the drive's root, a network share, or relative.
+        assert!(lora_args("C:a/b.gguf", exe, 1.0).is_err());
+        assert!(lora_args("//server/share/b.gguf", "/x/llama-server", 1.0).is_err());
+        assert!(lora_args(r"\\server\share\b.gguf", "/x/llama-server", 1.0).is_err());
+        assert!(lora_args("relative.gguf", "/x/llama-server", 1.0).is_err());
     }
 
     #[test]

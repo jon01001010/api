@@ -83,6 +83,31 @@ function rememberProjection(modelPath: string, projection?: string) {
   }
 }
 
+/** A LoRA adapter to run the model with: a file in the app's own folder. */
+export interface PcLora {
+  path: string;
+  /** Strength, 0–1. */
+  scale: number;
+}
+
+/**
+ * The model server's start arguments. The adapter must be in the app's own
+ * folder; the native side checks that again (model_server.rs).
+ */
+export function startArgs(
+  modelPath: string,
+  projectionPath?: string,
+  lora?: PcLora,
+) {
+  return {
+    modelPath,
+    context: 8192,
+    projectionPath: projectionPath ?? null,
+    loraPath: lora?.path ?? null,
+    loraScale: lora ? lora.scale : null,
+  };
+}
+
 /**
  * Starts the model server for a model file (a downloaded model's own path,
  * or a file the user picked) and lists it under the server "This PC".
@@ -91,10 +116,11 @@ function rememberProjection(modelPath: string, projection?: string) {
 export async function startOnThisPc(
   modelPath: string,
   projectionPath?: string,
+  lora?: PcLora,
 ): Promise<string> {
   const {url, apiKey} = await invoke<{url: string; apiKey: string}>(
     'model_server_start',
-    {modelPath, context: 8192, projectionPath: projectionPath ?? null},
+    startArgs(modelPath, projectionPath, lora),
   );
   const ready = await waitUntilReady(url, apiKey);
   if (ready !== true) {
@@ -184,6 +210,7 @@ async function isServing(
 export async function prepareThisPcModel(
   serverId: string,
   modelPath: string,
+  lora?: PcLora,
 ): Promise<void> {
   const server = serverStore.servers.find(s => s.id === serverId);
   if (!isDesktopApp() || !server || server.name !== THIS_PC) {
@@ -195,11 +222,7 @@ export async function prepareThisPcModel(
   }
   const {url, apiKey} = await invoke<{url: string; apiKey: string}>(
     'model_server_start',
-    {
-      modelPath,
-      context: 8192,
-      projectionPath: projectionFor(modelPath) ?? null,
-    },
+    startArgs(modelPath, projectionFor(modelPath), lora),
   );
   const ready = await waitUntilReady(url, apiKey);
   if (ready !== true) {

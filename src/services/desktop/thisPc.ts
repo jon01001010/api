@@ -19,12 +19,14 @@ export async function stopModelOnThisPc(): Promise<void> {}
 export async function prepareThisPcModel(
   _serverId: string,
   _modelPath: string,
+  _lora?: {path: string; scale: number},
 ): Promise<void> {}
 
 /** Phone: models run with llama.rn (initContext); never called there. */
 export async function startOnThisPc(
   _modelPath: string,
   _projectionPath?: string,
+  _lora?: {path: string; scale: number},
 ): Promise<string> {
   throw new Error('Only in the Windows app.');
 }

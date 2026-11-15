@@ -892,6 +892,8 @@ async fn serve_stream(
                         last.model_path,
                         Some(last.context),
                         last.projection_path,
+                        // The adapter the PC user chose (never one from the phone).
+                        last.lora_path.map(|p| (p, last.lora_scale.unwrap_or(1.0))),
                         crate::model_server::StartedBy::Phone,
                     )
                     .await
