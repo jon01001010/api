@@ -1,3 +1,5 @@
+import {readFileSync} from 'fs';
+import {join} from 'path';
 import {Alert, NativeModules} from 'react-native';
 
 jest.mock('@react-native-async-storage/async-storage', () => {
@@ -31,6 +33,7 @@ import {
   questionMessage,
   questionView,
   setAnswerForPc,
+  HIDDEN_RANGES,
   showHidden,
   stopQuestionWatch,
 } from '../pcQuestions';
@@ -141,11 +144,57 @@ describe('the PC asks, the phone can answer', () => {
     });
   });
 
+  it("hides exactly the PC's set (remote_ask::hidden_char), but newline and tab", () => {
+    const rust = readFileSync(
+      join(__dirname, '../../../../src-tauri/src/remote_ask.rs'),
+      'utf8',
+    );
+    const body = rust.slice(
+      rust.indexOf('pub fn hidden_char'),
+      rust.indexOf('\n}\n', rust.indexOf('pub fn hidden_char')),
+    );
+    expect(body).toContain('c.is_control()');
+    const pc = new Set<number>();
+    // char::is_control: the Cc category.
+    for (let c = 0; c <= 0x1f; c++) {
+      pc.add(c);
+    }
+    for (let c = 0x7f; c <= 0x9f; c++) {
+      pc.add(c);
+    }
+    const re = /'\\u\{([0-9A-Fa-f]+)\}'(?:\.\.=\s*'\\u\{([0-9A-Fa-f]+)\}')?/g;
+    let m: RegExpExecArray | null;
+    let found = 0;
+    while ((m = re.exec(body))) {
+      const a = parseInt(m[1], 16);
+      const b = m[2] ? parseInt(m[2], 16) : a;
+      for (let c = a; c <= b; c++) {
+        pc.add(c);
+      }
+      found++;
+    }
+    expect(found).toBeGreaterThan(8);
+    const phone = new Set<number>([0x09, 0x0a]);
+    for (const [a, b] of HIDDEN_RANGES) {
+      for (let c = a; c <= b; c++) {
+        phone.add(c);
+      }
+    }
+    expect([...phone].sort((x, y) => x - y)).toEqual(
+      [...pc].sort((x, y) => x - y),
+    );
+  });
+
   it('makes direction and invisible characters visible', () => {
     expect(showHidden('a\u202Eb\u2066c\u200Bd\uFEFFe\u200Ff\rg\u2028h')).toBe(
       'a⟦U+202E⟧b⟦U+2066⟧c⟦U+200B⟧d⟦U+FEFF⟧e⟦U+200F⟧f⟦U+000D⟧g⟦U+2028⟧h',
     );
     expect(showHidden('line\n\tnext')).toBe('line\n\tnext');
+    // The ones the PC also hides (review 2): soft hyphen, Mongolian vowel
+    // separator, annotation marks, tag characters, and a lone half.
+    expect(showHidden('a\u00ADb\u180Ec\uFFF9d\u{E0041}e\u206Ff\ud800')).toBe(
+      'a⟦U+00AD⟧b⟦U+180E⟧c⟦U+FFF9⟧d⟦U+E0041⟧e⟦U+206F⟧f⟦U+D800⟧',
+    );
     expect(
       questionMessage({id: 1, text: 'rm \u202Etxt.exe', secondsLeft: 5}),
     ).toContain('rm ⟦U+202E⟧txt.exe');

@@ -59,21 +59,49 @@ const HEAD_LINES = 24;
 const TAIL_LINES = 12;
 
 /**
- * Characters that change how text looks without showing themselves:
- * direction controls (U+202A–U+202E, U+2066–U+2069, U+061C), zero-width and
- * marks (U+200B–U+200F, U+2060, U+FEFF), line and paragraph separators, and
- * control characters other than a newline or a tab.
+ * Characters that change how text looks without showing themselves: the
+ * same set as the PC's `remote_ask::hidden_char` (a test pins both), except
+ * a newline and a tab, which show as themselves. Control characters, the
+ * soft hyphen (U+00AD), direction controls (U+061C, U+202A–U+202E,
+ * U+2066–U+2069), the Mongolian vowel separator (U+180E), zero-width and
+ * marks (U+200B–U+200F, U+2060–U+206F, U+FEFF), line and paragraph
+ * separators, interlinear annotation marks (U+FFF9–U+FFFB) and the tag
+ * characters (U+E0000–U+E007F).
  */
-const HIDDEN =
-  // eslint-disable-next-line no-control-regex
-  /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u061C\u200B-\u200F\u2028-\u202E\u2060\u2066-\u2069\uFEFF]/g;
+export const HIDDEN_RANGES: readonly (readonly [number, number])[] = [
+  [0x0000, 0x0008],
+  [0x000b, 0x001f],
+  [0x007f, 0x009f],
+  [0x00ad, 0x00ad],
+  [0x061c, 0x061c],
+  [0x180e, 0x180e],
+  [0x200b, 0x200f],
+  [0x2028, 0x202e],
+  [0x2060, 0x206f],
+  [0xfeff, 0xfeff],
+  [0xfff9, 0xfffb],
+  [0xe0000, 0xe007f],
+];
+
+const codePoint = (n: number) => `\\u{${n.toString(16)}}`;
+const HIDDEN = new RegExp(
+  `[${HIDDEN_RANGES.map(([a, b]) =>
+    a === b ? codePoint(a) : `${codePoint(a)}-${codePoint(b)}`,
+  ).join('')}]`,
+  'gu',
+);
+/** Half of a surrogate pair on its own (a long question cut inside one). */
+const LONE_HALF =
+  /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+
+const marker = (n: number) =>
+  `⟦U+${n.toString(16).toUpperCase().padStart(4, '0')}⟧`;
 
 /** Each hidden character as a visible marker, e.g. ⟦U+202E⟧. */
 export function showHidden(text: string): string {
-  return text.replace(
-    HIDDEN,
-    c => `⟦U+${c.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}⟧`,
-  );
+  return text
+    .replace(HIDDEN, c => marker(c.codePointAt(0) ?? 0))
+    .replace(LONE_HALF, c => marker(c.charCodeAt(0)));
 }
 
 /**
