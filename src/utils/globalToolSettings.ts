@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {deriveToolSchemas} from '../services/talents';
 import {ensureCustomToolsLoaded} from '../services/talents/customTools';
 
+// Same key as GLOBAL_TOOLS_KEY in customTools.ts (which switches tools off).
 const KEY = '@pocketagent/global-tools/v1';
 const PROMPT_KEY = '@pocketagent/global-system-prompt/v1';
 

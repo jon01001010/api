@@ -1,9 +1,12 @@
 import {
   CustomToolEngine,
+  GLOBAL_TOOLS_KEY,
   checkCustomTool,
+  deleteCustomTool,
   fillIn,
   fillInsOf,
   listCustomTools,
+  replaceCustomTools,
   resetCustomToolsForTests,
   saveCustomTool,
 } from '../customTools';
@@ -341,5 +344,70 @@ describe('tool_save and tool_delete (made by a model)', () => {
     expect(
       (await talentRegistry.get('tool_delete')!.execute({name: 'nope'})).type,
     ).toBe('error');
+  });
+});
+
+describe('custom tools from another device (keeping in step)', () => {
+  const store = () =>
+    require('@react-native-async-storage/async-storage').default.__store as Map<
+      string,
+      string
+    >;
+  const enabled = (): string[] =>
+    JSON.parse(store().get(GLOBAL_TOOLS_KEY) ?? '[]');
+  const notes = (text: string, name = 'notes') => ({
+    kind: 'instructions',
+    name,
+    description: 'd',
+    instructions: text,
+    createdBy: 'user',
+  });
+
+  it('uses the same storage key as the Toolbox switches', () => {
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '../../../utils/globalToolSettings.ts'),
+      'utf8',
+    );
+    expect(src).toContain(`const KEY = '${GLOBAL_TOOLS_KEY}';`);
+  });
+
+  it('a changed or new tool is switched off; an unchanged one stays on', async () => {
+    await replaceCustomTools([notes('v1'), notes('same', 'other')]);
+    store().set(
+      GLOBAL_TOOLS_KEY,
+      JSON.stringify(['notes', 'other', 'datetime']),
+    );
+    await replaceCustomTools([
+      notes('rewritten'),
+      notes('same', 'other'),
+      notes('x', 'brand_new'),
+    ]);
+    expect(enabled()).toEqual(['other', 'datetime']);
+    expect((await listCustomTools()).map(t => t.name)).toEqual([
+      'notes',
+      'other',
+      'brand_new',
+    ]);
+  });
+
+  it('a name that was switched on but deleted does not come back on', async () => {
+    await replaceCustomTools([notes('v1')]);
+    store().set(GLOBAL_TOOLS_KEY, JSON.stringify(['notes']));
+    expect(await deleteCustomTool('notes')).toBe(true);
+    expect(enabled()).toEqual([]);
+    // A stale switch for a missing tool is cleared too.
+    store().set(GLOBAL_TOOLS_KEY, JSON.stringify(['notes']));
+    expect(await deleteCustomTool('notes')).toBe(false);
+    expect(enabled()).toEqual([]);
+    store().set(GLOBAL_TOOLS_KEY, JSON.stringify(['notes']));
+    await replaceCustomTools([notes('v1')]);
+    expect(enabled()).toEqual([]);
+  });
+
+  it('a tool removed by a sync loses its switch', async () => {
+    await replaceCustomTools([notes('v1')]);
+    store().set(GLOBAL_TOOLS_KEY, JSON.stringify(['notes']));
+    await replaceCustomTools([]);
+    expect(enabled()).toEqual([]);
   });
 });
