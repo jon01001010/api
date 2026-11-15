@@ -26,6 +26,11 @@ pub async fn link_forget(_id: String) -> Result<(), String> {
     Err("The home link is not in this build".into())
 }
 
+#[tauri::command]
+pub async fn link_device_may_answer(_id: String, _allowed: bool) -> Result<(), String> {
+    Err("The home link is not in this build".into())
+}
+
 // PC to PC (link_client.rs): not in this build either.
 const OFF: &str = r#"{"ok":false,"error":"The home link is not in this build"}"#;
 

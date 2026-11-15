@@ -20,7 +20,7 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
   - [x] Second PC's link key in Credential Manager (Linux: owner-only file in the settings folder); the old `client.key` is moved there. The phone's key file is owner-only (0600).
   - [x] Removing a device closes its open connections at once and keeps it from pairing again for an hour; a paired or lately removed device can't use up a pairing code; request line within 10 s; one sync at a time per device.
   - [x] Media keys ask natively too.
-  - [ ] Per-device "may answer this PC's questions" choice (now: every paired device can answer while the PC's switch is on). Needs a switch per device in the PC's list.
+  - [x] Per-device "may answer this PC's questions" choice: off for each device (and for devices paired before), a "May answer" switch per device in the PC's list (shown while answering is on); switching it on asks in a native dialog on the PC and shows in the pairing history on paired devices; any other device's "questions" / "answer" is refused. **Check on Windows:** the dialog, the switch, and a device without it being refused.
   - [ ] Decide: rotate the model password (restart the model) when a device is removed. Low value now: the server listens on the PC only, and a removed device is cut off and can't reach it any more.
 - [ ] Optional PIN / fingerprint before the Home PC is used, or a decision not to.
 - [ ] Keys at rest and metadata written down plainly for users; PC link key sealed to the PC considered.

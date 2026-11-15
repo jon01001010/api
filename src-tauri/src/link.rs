@@ -52,6 +52,27 @@ const REMOVED_LOCKOUT: Duration = Duration::from_secs(60 * 60);
 pub struct Phone {
     pub id: String,
     pub name: String,
+    /// May answer this PC's "Allow?" questions (while the PC's switch is
+    /// on too). Off for each device until switched on here, which asks on
+    /// this PC; records saved before this existed have none: off.
+    #[serde(default, rename = "mayAnswer", skip_serializing_if = "std::ops::Not::not")]
+    pub may_answer: bool,
+}
+
+/// Whether this paired device may answer this PC's questions.
+pub fn may_answer(phones: &[Phone], id: &str) -> bool {
+    phones.iter().any(|p| p.id == id && p.may_answer)
+}
+
+/// Sets one device's "may answer"; false if it isn't paired.
+pub fn set_may_answer(phones: &mut [Phone], id: &str, allowed: bool) -> bool {
+    match phones.iter_mut().find(|p| p.id == id) {
+        Some(p) => {
+            p.may_answer = allowed;
+            true
+        }
+        None => false,
+    }
 }
 
 /// What a phone asks for on each new stream (one JSON line).
@@ -219,7 +240,7 @@ pub struct LinkEvent {
     pub n: u64,
     /// Seconds since 1970 (the PC's clock).
     pub at: u64,
-    /// "code" | "paired" | "removed"
+    /// "code" | "paired" | "removed" | "may-answer"
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -325,6 +346,7 @@ impl Drop for SyncTurn<'_> {
 }
 
 const OFF_ANSWERS: &str = "Answering this PC's questions is off on the PC (Settings → Use this PC's model from your phone)";
+const NOT_THIS_DEVICE: &str = "This device may not answer this PC's questions; allow it on the PC (Settings → Use this PC's model from your phone → Paired phones → May answer)";
 
 /// Most bytes one sync may carry (the device library's own limit too).
 pub const MAX_SYNC: usize = 4 * 1024 * 1024;
@@ -708,7 +730,10 @@ async fn serve_stream(
                 );
                 if crate::approval::ask_on_this_pc(&app, &question).await {
                     let mut phones = load_phones(&app);
-                    add_phone(&mut phones, Phone { id: remote.clone(), name: name.clone() });
+                    add_phone(
+                        &mut phones,
+                        Phone { id: remote.clone(), name: name.clone(), may_answer: false },
+                    );
                     let saved = save_phones(&app, &phones).is_ok();
                     if saved {
                         record(&app, "paired", Some(name));
@@ -801,19 +826,24 @@ async fn serve_stream(
         }
         Some(Request::Questions) if paired => {
             let questions = app.state::<crate::remote_ask::RemoteQuestions>();
-            let answer = if questions.allowed() {
-                serde_json::json!({"ok": true, "questions": questions.list()})
-            } else {
+            let answer = if !questions.allowed() {
                 serde_json::json!({"ok": false, "error": OFF_ANSWERS})
+            } else if !may_answer(&load_phones(&app), &remote) {
+                serde_json::json!({"ok": false, "error": NOT_THIS_DEVICE})
+            } else {
+                serde_json::json!({"ok": true, "questions": questions.list()})
             };
             reply(&mut send, answer).await;
         }
         Some(Request::Answer { id, yes }) if paired => {
             let questions = app.state::<crate::remote_ask::RemoteQuestions>();
+            let phones = load_phones(&app);
             let answer = if !questions.allowed() {
                 serde_json::json!({"ok": false, "error": OFF_ANSWERS})
+            } else if !may_answer(&phones, &remote) {
+                serde_json::json!({"ok": false, "error": NOT_THIS_DEVICE})
             } else {
-                let name = load_phones(&app)
+                let name = phones
                     .into_iter()
                     .find(|p| p.id == remote)
                     .map(|p| p.name)
@@ -979,6 +1009,39 @@ pub async fn link_forget(app: AppHandle, id: String) -> Result<(), String> {
     link.removed.lock().unwrap().insert(id.clone(), Instant::now());
     link.cut_off(&id);
     record(&app, "removed", name);
+    Ok(())
+}
+
+/// Lets one paired device answer this PC's "Allow?" questions, or stops
+/// it. Letting it is asked on this PC (a native dialog no device can
+/// answer); paired devices see it in the pairing history. Stopping it
+/// asks nothing.
+#[tauri::command]
+pub async fn link_device_may_answer(app: AppHandle, id: String, allowed: bool) -> Result<(), String> {
+    const NOT_PAIRED: &str = "That device is not paired with this PC";
+    let name = load_phones(&app)
+        .into_iter()
+        .find(|p| p.id == id)
+        .map(|p| p.name)
+        .ok_or(NOT_PAIRED)?;
+    if allowed {
+        let key: String = id.chars().take(16).collect();
+        let question = format!(
+            "Let \u{201c}{name}\u{201d} answer this PC's \u{201c}Allow?\u{201d} questions?\n\nWhile answering is on, it will see each question this PC asks (commands to run, files, pages) and can allow it once or refuse it, from anywhere. Only allow a device you own and keep locked.\n\nDevice key: {key}"
+        );
+        if !crate::approval::ask_on_this_pc(&app, &question).await {
+            return Err("Not allowed on this PC".into());
+        }
+    }
+    // Read again after the dialog (the list may have changed meanwhile).
+    let mut phones = load_phones(&app);
+    if !set_may_answer(&mut phones, &id, allowed) {
+        return Err(NOT_PAIRED.into());
+    }
+    save_phones(&app, &phones)?;
+    if allowed {
+        record(&app, "may-answer", Some(name));
+    }
     Ok(())
 }
 
@@ -1198,11 +1261,36 @@ mod tests {
         assert_eq!(clean_name(&"x".repeat(100)).len(), 40);
         let mut phones = Vec::new();
         for i in 0..(MAX_PHONES + 3) {
-            add_phone(&mut phones, Phone { id: format!("{i}"), name: "p".into() });
+            add_phone(&mut phones, Phone { id: format!("{i}"), name: "p".into(), may_answer: false });
         }
         assert_eq!(phones.len(), MAX_PHONES);
-        add_phone(&mut phones, Phone { id: "5".into(), name: "again".into() });
+        add_phone(&mut phones, Phone { id: "5".into(), name: "again".into(), may_answer: false });
         assert_eq!(phones.iter().filter(|p| p.id == "5").count(), 1);
+    }
+
+    #[test]
+    fn each_device_may_answer_only_once_allowed() {
+        // Saved before the field existed: not allowed.
+        let old: Vec<Phone> = serde_json::from_str(r#"[{"id":"a","name":"Pixel"},{"id":"b","name":"Laptop"}]"#).unwrap();
+        assert!(!may_answer(&old, "a") && !may_answer(&old, "b"));
+        let mut phones = old;
+        assert!(set_may_answer(&mut phones, "a", true));
+        assert!(may_answer(&phones, "a") && !may_answer(&phones, "b"));
+        assert!(!may_answer(&phones, "unknown"));
+        assert!(!set_may_answer(&mut phones, "unknown", true));
+        // Kept with the record; "off" is left out (the store is small).
+        let json = serde_json::to_string(&phones).unwrap();
+        assert_eq!(
+            json,
+            r#"[{"id":"a","name":"Pixel","mayAnswer":true},{"id":"b","name":"Laptop"}]"#
+        );
+        let back: Vec<Phone> = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, phones);
+        assert!(set_may_answer(&mut phones, "a", false));
+        assert!(!may_answer(&phones, "a"));
+        // Pairing again starts over (not allowed).
+        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false });
+        assert!(!may_answer(&phones, "a"));
     }
 
     #[test]

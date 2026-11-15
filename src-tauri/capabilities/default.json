@@ -50,6 +50,7 @@
     "allow-link-sync-allow",
     "allow-link-sync-reply",
     "allow-link-answers-allow",
+    "allow-link-device-may-answer",
     "allow-homelink-pair",
     "allow-homelink-status",
     "allow-homelink-start-model",

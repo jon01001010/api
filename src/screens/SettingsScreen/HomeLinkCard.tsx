@@ -15,6 +15,7 @@ import {
 } from '../../services/sync/hostSync';
 import {
   homeLinkAvailable,
+  linkDeviceMayAnswer,
   linkForget,
   linkOff,
   linkOn,
@@ -199,8 +200,8 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
           <Text variant="bodySmall" style={styles.syncText}>
             Let paired devices answer this PC's "Allow?" questions too: they see
             the same words and can allow once or refuse; the first answer wins.
-            Pairing a new device is only asked here. Each device must switch it
-            on too.
+            Pairing a new device is only asked here. Only devices you allow
+            below (each asked here), and each device must switch it on too.
           </Text>
           <Switch
             value={answersAllowed}
@@ -223,6 +224,20 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
             <Text variant="bodySmall" style={styles.phoneName}>
               {phone.name} · {phone.id.slice(0, 10)}…
             </Text>
+            {answersAllowed ? (
+              <>
+                <Text variant="bodySmall">May answer</Text>
+                <Switch
+                  value={!!phone.mayAnswer}
+                  disabled={busy}
+                  accessibilityLabel={`${phone.name} may answer this PC's questions`}
+                  testID={`home-link-may-answer-${phone.id}`}
+                  onValueChange={v =>
+                    run(() => linkDeviceMayAnswer(phone.id, v))
+                  }
+                />
+              </>
+            ) : null}
             <Button
               compact
               disabled={busy}

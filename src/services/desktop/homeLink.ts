@@ -6,6 +6,8 @@
 export interface LinkPhone {
   id: string;
   name: string;
+  /** May answer this PC's "Allow?" questions (missing: no). */
+  mayAnswer?: boolean;
 }
 
 export interface LinkEvent {
@@ -42,3 +44,7 @@ export async function linkPair(): Promise<LinkPairing> {
 export async function linkOn(): Promise<void> {}
 export async function linkOff(): Promise<void> {}
 export async function linkForget(_id: string): Promise<void> {}
+export async function linkDeviceMayAnswer(
+  _id: string,
+  _allowed: boolean,
+): Promise<void> {}
