@@ -5,7 +5,7 @@
 //! - `notify`: a system notification (timers and reminders when the window
 //!   is behind others). Shows text only.
 //! - `media_key`: play / pause, next, previous, volume (Windows media keys;
-//!   on Linux `playerctl` for play / next / previous). The tool asks first.
+//!   on Linux `playerctl` for play / next / previous), after a native dialog.
 //! - `print_file`: a workspace document or picture printed by its app,
 //!   after a native dialog.
 //! - `take_screenshot`: a picture of the screen, after a native dialog;
@@ -95,10 +95,31 @@ pub fn media_vk(key: &str) -> Option<u16> {
     })
 }
 
-#[tauri::command(async)]
-pub fn media_key(key: String) -> Result<(), String> {
+/// What the media key dialog says.
+pub fn media_question(key: &str) -> String {
+    let name = match key {
+        "play_pause" => "Play / pause",
+        "next" => "Next track",
+        "previous" => "Previous track",
+        "stop" => "Stop",
+        "volume_up" => "Volume up",
+        "volume_down" => "Volume down",
+        "mute" => "Mute",
+        _ => "?",
+    };
+    format!("DesktopAgent wants to press this media key on your PC:\n\n{name}")
+}
+
+#[tauri::command]
+pub async fn media_key(app: AppHandle, key: String) -> Result<(), String> {
     let vk = media_vk(&key).ok_or("Unknown media key")?;
-    press(vk, &key)
+    // Asked natively too, like every other door to the PC (rule 6).
+    if !crate::approval::ask(&app, &media_question(&key)).await {
+        return Err("The user said no. No key was pressed.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || press(vk, &key))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[cfg(windows)]
@@ -418,6 +439,8 @@ mod tests {
         assert_eq!(media_vk("volume_up"), Some(0xAF));
         assert_eq!(media_vk("enter"), None);
         assert_eq!(media_vk("alt_f4"), None);
+        assert!(media_question("volume_up").ends_with("Volume up"));
+        assert!(media_question("next").contains("media key"));
     }
 
     #[test]
