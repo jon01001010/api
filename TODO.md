@@ -867,7 +867,7 @@ Research (2026-11-07): **iroh 1.x** (Rust, MIT/Apache, 1.0 in June 2026; we pin 
 
 ## PocketAgent Desktop: companion app and phone ↔ desktop link (idea 2026-11-06, write-up only)
 
-A desktop app that pairs with the phone: trains the personal LoRA, runs bigger models (14B–30B) for the phone, and takes heavy jobs. **Platforms (decided 2026-11-07, updated 2026-11-12): Windows first, then Linux (x64 and ARM builds exist now); Linux not planned; no Apple at all (no Mac, no iPhone).** Open source, no Google, no account, no cloud.
+A desktop app that pairs with the phone: trains the personal LoRA, runs bigger models (14B–30B) for the phone, and takes heavy jobs. **Platforms (decided 2026-11-07, updated 2026-11-12): Windows first, then Linux (x64 and ARM builds exist now); no Apple at all (no Mac, no iPhone).** Open source, no Google, no account, no cloud.
 
 ### How they talk (the link)
 
