@@ -21,6 +21,21 @@ import {L10nContext} from '../../utils';
 import {ChevronDownIcon} from '../../assets/icons';
 import {Menu} from '../Menu';
 import {observer} from 'mobx-react';
+import {
+  describeMakerValues,
+  fillMakerSettings,
+  makerSettingsFor,
+} from '../../utils/makerSettings';
+import type {Model} from '../../utils/types';
+
+/** Every name the model goes by, for finding its family. */
+const modelNames = (model?: Model) =>
+  model
+    ? [model.name, model.filename, model.repo, model.remoteModelId, model.id]
+        .filter(Boolean)
+        .join(' ')
+    : undefined;
+
 interface ResetButtonProps {
   session: any;
   resetMenuVisible: boolean;
@@ -180,6 +195,33 @@ const ChatGenerationSettingsSheetImpl = ({
 
   const updateSettings = (name: string, value: any) => {
     setSettings(prev => ({...prev, [name]: value}));
+  };
+
+  // The model maker's recommended settings, offered, never forced: only
+  // values still at the app's default are filled in (utils/makerSettings).
+  const maker = makerSettingsFor(
+    modelNames(modelStore.activeModel),
+    settings.enable_thinking !== false,
+  );
+  const [makerNote, setMakerNote] = useState('');
+  useEffect(() => setMakerNote(''), [isVisible, maker?.family]);
+  const handleUseMakerSettings = () => {
+    if (!maker) {
+      return;
+    }
+    const fill = fillMakerSettings(
+      settings,
+      defaultCompletionSettings,
+      maker.values,
+    );
+    setSettings(fill.settings);
+    const parts = [
+      fill.filled.length
+        ? `Filled in: ${fill.filled.join(', ')}. Save to keep them.`
+        : '',
+      fill.kept.length ? `Kept yours: ${fill.kept.join(', ')}.` : '',
+    ].filter(Boolean);
+    setMakerNote(parts.length ? parts.join(' ') : 'Already set.');
   };
 
   const onCloseSheet = () => {
@@ -351,6 +393,21 @@ const ChatGenerationSettingsSheetImpl = ({
               ]}
               density="medium"
             />
+          </View>
+        )}
+
+        {maker && !isUsingPalSettings && (
+          <View style={styles.makerContainer} testID="maker-settings">
+            <Button
+              mode="outlined"
+              icon="tune-variant"
+              onPress={handleUseMakerSettings}>
+              {`Use the maker's settings (${maker.family})`}
+            </Button>
+            <Text variant="bodySmall" style={styles.makerText}>
+              {makerNote ||
+                `${describeMakerValues(maker.values)}. Values you changed stay.`}
+            </Text>
           </View>
         )}
 

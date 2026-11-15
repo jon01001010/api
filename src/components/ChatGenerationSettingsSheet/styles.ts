@@ -45,6 +45,13 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 8,
   },
+  makerContainer: {
+    marginBottom: 16,
+    gap: 6,
+  },
+  makerText: {
+    opacity: 0.8,
+  },
   settingsSourceTitle: {
     marginBottom: 8,
     fontWeight: '500',

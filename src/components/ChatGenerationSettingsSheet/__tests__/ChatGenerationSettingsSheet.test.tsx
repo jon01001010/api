@@ -291,4 +291,54 @@ describe('ChatGenerationSettingsSheet', () => {
       chatSessionStore.updateSessionCompletionSettings,
     ).not.toHaveBeenCalled();
   });
+
+  describe("maker's recommended settings", () => {
+    afterEach(() => {
+      runInAction(() => {
+        (modelStore as any).activeModel = undefined;
+      });
+    });
+
+    it('is not offered for models without known settings', async () => {
+      const {queryByTestId} = render(
+        <ChatGenerationSettingsSheet {...defaultProps} />,
+      );
+      await act(async () => {});
+      expect(queryByTestId('maker-settings')).toBeNull();
+    });
+
+    it("fills in the maker's values but keeps the user's own", async () => {
+      runInAction(() => {
+        (modelStore as any).activeModel = {id: 'q', name: 'Qwen3-8B'};
+      });
+      const {getByText, getByTestId} = render(
+        <ChatGenerationSettingsSheet {...defaultProps} />,
+      );
+      await act(async () => {});
+      expect(getByTestId('maker-settings')).toBeTruthy();
+
+      fireEvent.press(getByText("Use the maker's settings (Qwen3)"));
+      // temperature 1.0 was the user's (default 0.7): kept.
+      expect(
+        getByText(
+          'Filled in: top_p, top_k, min_p, penalty_present. Save to keep them. Kept yours: temperature.',
+        ),
+      ).toBeTruthy();
+
+      await act(async () => {
+        fireEvent.press(getByText('Save'));
+      });
+      expect(
+        chatSessionStore.updateSessionCompletionSettings,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          temperature: 1.0,
+          top_p: 0.95,
+          top_k: 20,
+          min_p: 0,
+          penalty_present: 1.5,
+        }),
+      );
+    });
+  });
 });
