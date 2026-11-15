@@ -446,7 +446,8 @@ Not every phone has an app for every intent (e.g. no Clock app that handles `SET
 
 **Phase 2: cross-app workflows (still intents only).**
 
-- [ ] Chain phase 1 actions with a confirmation per step (e.g. "navigate home, then play my playlist"). Bounded steps; cancel at any time.
+- [x] Chain phase 1 actions with a confirmation per step (e.g. "navigate home, then play my playlist"). Bounded steps; cancel at any time. (2026-11-15: tool `phone_actions_chain`, `src/services/talents/PhoneActionChain.ts`, off until switched on in Toolbox and offered only next to a phone action that is on. 2 to 5 steps, phone actions only, each switched on and checked by its own tool before anything is asked. The user first sees the numbered list ("Do these 3 steps?"), then every step asks again just before it runs ("Step 2 of 3: Play "Road trip" in your music app?"); a no, a failure or Stop ends the chain and says what was and wasn't done. When a step opens another app, the next question waits until the user is back in PocketAgent (up to 10 minutes). Never quiet, not even inside a shortcut, and a shortcut can't contain one. On the desktop the steps behave as the single actions do there. Tests: `PhoneActionChain.test.ts`, pin in `securityRules.test.ts`.)
+  - [ ] **Check on the phone:** "navigate home, then play my playlist": the list, then step 1, maps opens; back in PocketAgent, step 2 asks; Cancel there stops it.
 
 **Phase 3: using other apps by tapping and scrolling (optional; decide later).**
 
