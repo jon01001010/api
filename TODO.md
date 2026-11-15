@@ -11,6 +11,7 @@ Tidied 2026-11-15: done items ticked; device checks remain.
 Nothing goes to other people (testers included, beyond the owner) until every box here is ticked. Details are in the sections they point to.
 
 **Security**
+- [ ] **Files and the model as a risk (owner, 2026-11-15):** files live in the workspace; reaching outside it (e.g. "check my Downloads folder") asks on the PC every time, showing exactly what and read or write. Phone requests stay workspace-only. Treat the model itself as possibly hostile ("a 70B model on a task could try to hack"): approvals only from the native window; questions show facts (the model's reason marked as its words); places never reachable even with Allow (startup folders, scheduled tasks, .ssh, browser profiles and passwords, the app's own settings/keys, system folders); read-then-leak guard (after private data was read, anything going out asks and shows what); risky commands flagged; ask-rate limit and "allow nothing more in this chat"; every outside access and command logged.
 - [ ] Full security audit of both apps and the link: every door, approval, stored secret and way in (see "Before releasing to people").
 - [x] Model server password off the command line (2026-11-12: by environment, `LLAMA_API_KEY`; tested).
 - [x] Phone tunnel: only model requests, password required for everything (2026-11-12: the PC checks the first request on each connection; 403 otherwise; tested).
