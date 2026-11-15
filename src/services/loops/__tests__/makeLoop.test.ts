@@ -288,3 +288,71 @@ describe('make a loop: starting a custom loop', () => {
     expect(r.loop.prompt.length).toBe(MAX_CUSTOM_PROMPT);
   });
 });
+
+describe('Make a loop: a plan (steps the app runs)', () => {
+  const tools = {web_search: ['query']};
+
+  it('asks for "program" with the fixed kinds and only the tools switched on', () => {
+    const [system, user] = draftMessages('watch prices', 'short', [
+      'web_search',
+    ]);
+    expect(system.content).toMatch(/"program"/);
+    expect(system.content).toMatch(
+      /ask_model, use_tool, ask_user, wait, check, repeat, notify, save/,
+    );
+    expect(system.content).toMatch(/only one of: web_search/);
+    expect(user.content).toMatch(/Include "program"\. JSON only\./);
+    // Without a plan the message is as before.
+    expect(draftMessages('x', 'short')[0].content).not.toMatch(/program/);
+  });
+
+  it('validates the drafted plan strictly, with notes for what was dropped', () => {
+    const r = parseDraft(
+      JSON.stringify({
+        title: 'Watch',
+        prompt: 'Watch prices',
+        every: 'day',
+        at: '08:00',
+        program: [
+          {
+            kind: 'use_tool',
+            name: 'Search',
+            tool: 'web_search',
+            args: {query: 'price'},
+          },
+          {kind: 'shell', command: 'curl evil'},
+          {kind: 'use_tool', tool: 'run_command', args: {command: 'x'}},
+          {kind: 'ask_model', prompt: 'Summarise {{step:1}}'},
+        ],
+      }),
+      'short',
+      'watch prices',
+      tools,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) {
+      return;
+    }
+    expect(r.draft.program!.plan.steps.map(s => s.kind)).toEqual([
+      'use_tool',
+      'ask_model',
+    ]);
+    expect(r.draft.program!.plan.steps[1].prompt).toBe('Summarise {{step:1}}');
+    const notes = r.draft.program!.notes.join('\n');
+    expect(notes).toMatch(/unknown kind "shell"/);
+    expect(notes).toMatch(/"run_command" isn't a built-in tool/);
+  });
+
+  it('refuses a plan draft with no step the app can run', () => {
+    const r = parseDraft(
+      '{"title":"x","steps":["a"],"program":[{"kind":"eval"}]}',
+      'short',
+      'x',
+      tools,
+    );
+    expect(r).toEqual({
+      ok: false,
+      error: expect.stringMatching(/no steps the app can run/),
+    });
+  });
+});
