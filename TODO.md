@@ -129,6 +129,17 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
 - [ ] **Signed builds:** sign the Windows installer and the APK with our own keys and publish checksums, so a swapped download is caught.
 - [x] iPhone / web version: not made (decided 2026-11-12: no Apple, no iPhone).
 
+**Paired devices: sync, mirrored chats, answers (review 2026-11-15, app side; the native side is its own list)**
+- [x] **Synced custom tools stayed on** (fixed): a tool that a sync adds or changes, or that a sync removes, is switched off before the new list is saved; deleting a tool always switches its name off, so a later sync can't bring it back on. Unchanged tools keep their switch.
+- [x] **A time far in the future won forever** (fixed): times from another device count as at most 5 minutes ahead (prompt, memory, assistants, tools, chats, chat deletions); what is applied is stored with this device's own time, so an injected edit no longer comes back after the PC user fixes it. A future time stored before the fix is brought back to now.
+- [x] **Mirrored chats carried any metadata** (fixed): only messages from the user, the assistant or a summary, of the kinds the app saves (text, reply); only known metadata keys, each checked (no picture paths, no audio file, no author id; a key naming a file is dropped). A copy that drops or changes messages here keeps the earlier version 30 days under "Recently deleted" (restorable); with no room to keep it, the copy is not taken.
+- [x] **Pictures sent to a server** (fixed): the app never passes a web address on as a picture (the server would fetch it from its own network) and reads only pictures in its own folder (camera, gallery and workspace copies; on the PC imports and screenshots).
+- [x] **Long PC questions on the phone** (fixed): never cut at the end; a question too long to show whole shows its start and end with the count left out, and can only be refused on the phone ("answer on the PC"). Direction and invisible characters show as markers (⟦U+202E⟧).
+- [x] **"Kept in step" dialogs piling up on the PC** (fixed): one at a time; later ones are shown together after it closes.
+- [x] **Store assistants rewritten by a sync** (fixed): only your own assistants are matched and updated.
+- [x] **Loop next-step buttons cut at 2 lines** (fixed): a step's whole text shows on its button; steps over 80 characters are not offered.
+- [ ] Check on the phone and the PC: a mirrored chat with pictures (the pictures stay, the other side shows the text), "Recently deleted" showing "earlier version", a long "Allow?" question on the phone (start and end, Don't allow only), next-step buttons in a loop chat, sending a gallery picture and a camera picture to a cloud vision model (still works; only pictures in the app's own folder are read).
+
 ## Ready-made loops: timer + next steps, for beginners (idea 2026-11-08, write-up only)
 
 A loop is a small agent job that comes back on a timer: it does its part, shows the result, and ends with **next steps** the user can tap. Ready-made ones in a gallery, so nobody has to know what an "agentic loop" is.
