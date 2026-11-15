@@ -744,6 +744,13 @@ No Android sandbox on the PC: the native side (Rust) can use Windows directly (a
 - [ ] Rough speed to check on the user's PC: SD 1.5 about 5–20 s per picture, SDXL / Flux longer (depends on size and steps).
 - [ ] The phone over the home link: ask the PC for a picture (the PC runs it, the picture comes back), off until switched on on both devices.
 - [ ] Later: on the phone itself (slow; newest phones only).
+- **Research (2026-11-15; speeds are estimates, licences partly from secondary sources — check before any sale):**
+  - Engine: stable-diffusion.cpp (MIT, very active). Prebuilt `win-vulkan-x64` (pin with tag + checksum like llama.cpp); Linux better built from a pinned tag in Actions (its Linux builds need Ubuntu 26.04; no arm64 build). Ships `sd-cli` and `sd-server`; the server has no password, so start with `sd-cli` per picture. llama.cpp itself has no image generation.
+  - Default model: **FLUX.2 klein 4B** (Apache-2.0; about 5–7 GB with its Qwen3-4B text encoder and VAE; est. 5–15 s per 1024px picture on an 8 GB card). Alternative: Z-Image-Turbo (Apache-2.0). Small option for weak PCs: SD 1.5 (OpenRAIL: commercial use allowed but its use rules must be passed on).
+  - Not for a product you sell: FLUX.1 dev, FLUX.2 klein 9B, SD-Turbo, SDXL-Turbo (non-commercial); SD 3.5 only under US$1M revenue a year; FLUX.3 Klein licence unconfirmed.
+  - Phone: ask the PC (new `POST /v1/images/generations` in the link's allowlist, only while the image tool is on, size/steps/prompt capped). On the phone itself: stable-diffusion.cpp on CPU (SD 1.5, ~1.9 GB) or MNN; not Qualcomm QNN (proprietary). PineTab 2: not workable (tens of minutes per picture); hide on arm64 Linux.
+  - Safety: no content filter in the engine. Off by default; refuse clearly illegal prompts before generating; licence notice on first use; everything stays on the PC.
+  - Effort: about 2–3 weeks for the PC plus phone-via-PC; on the phone itself another 2–4 weeks.
 - [ ] Diffusion *text* models (LLaDA, Dream): llama.cpp has them only as an experimental separate tool, not in its server; wait until the server supports them.
 
 **Models and voice**
