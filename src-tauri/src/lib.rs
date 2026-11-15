@@ -19,6 +19,7 @@ mod link_client;
 use link as link_client;
 mod model_server;
 mod net;
+mod npu;
 mod open;
 mod pc;
 mod pc_extra;

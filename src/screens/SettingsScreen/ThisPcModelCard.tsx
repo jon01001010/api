@@ -7,7 +7,7 @@ import {
   runModelOnThisPc,
   stopModelOnThisPc,
 } from '../../services/desktop/thisPc';
-import {usePcHardware} from '../../services/desktop/pcHardware';
+import {npuText, usePcHardware} from '../../services/desktop/pcHardware';
 import {formatBytes} from '../../utils';
 
 /**
@@ -61,6 +61,11 @@ export const ThisPcModelCard: React.FC<{cardStyle?: object}> = ({
                   )
                   .join('')
               : ' · no graphics card found (models run in memory)'}
+          </Text>
+        ) : null}
+        {hardware ? (
+          <Text variant="bodySmall" testID="this-pc-npu">
+            {npuText(hardware.npus)}
           </Text>
         ) : null}
         <Button

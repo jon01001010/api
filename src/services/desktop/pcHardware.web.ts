@@ -1,5 +1,5 @@
 /**
- * The PC's hardware in the desktop app: memory, cores and graphics cards,
+ * The PC's hardware in the desktop app: memory, cores, graphics cards and NPU,
  * read by the native side (src-tauri/src/system.rs) once per app start, so
  * a new card or more memory shows up next time. Used to say where a model
  * runs ("Fits on your graphics card", …) before it is downloaded.
@@ -9,8 +9,8 @@ import {useEffect, useState} from 'react';
 const native = require('../../../stubs/web/systemInfo');
 
 import type {PcFit, PcHardware} from './pcHardware';
-export {FIT_TEXT} from './pcHardware';
-export type {PcFit, PcHardware} from './pcHardware';
+export {FIT_TEXT, npuText} from './pcHardware';
+export type {PcFit, PcHardware, PcNpu} from './pcHardware';
 
 let reading: Promise<PcHardware | null> | null = null;
 function read(): Promise<PcHardware | null> {
