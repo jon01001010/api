@@ -32,6 +32,10 @@ export const MAX_RUNS = 60;
 export const MAX_DAYS = 60;
 export const MAX_LOOPS = 10;
 const MAX_BLANK = 200;
+/** A loop made from one sentence ("Make a loop", makeLoop.ts). */
+export const CUSTOM_LOOP_ID = 'custom';
+export const MAX_CUSTOM_PROMPT = 4000;
+const MAX_CUSTOM_TITLE = 60;
 
 export interface Loop {
   id: string;
@@ -61,6 +65,20 @@ export function cleanBlank(text: string): string {
     .replace(/[{}]/g, '')
     .trim()
     .slice(0, MAX_BLANK);
+}
+
+/** A custom loop's prompt as the user approved it: plain text, capped. */
+export function cleanCustomPrompt(text: string): string {
+  return (
+    String(text ?? '')
+      .replace(/\r\n?/g, '\n')
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u0009\u000b-\u001f\u007f]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+      .slice(0, MAX_CUSTOM_PROMPT)
+      .trim()
+  );
 }
 
 /** The template's prompt with each {{blank}} filled in (all required). */
@@ -201,22 +219,46 @@ export async function updateLoop(
   return loops[i];
 }
 
+/**
+ * The user pressed Start. A ready-made loop names its template and blanks;
+ * a custom one (templateId 'custom') brings the title and prompt the user
+ * saw and approved. Same limits for both. Only the user's screens call this.
+ */
 export async function startLoop(input: {
   templateId: string;
   values: Record<string, string>;
+  /** For templateId 'custom' only. */
+  custom?: {title: string; prompt: string};
   every: Every;
   at?: {hour: number; minute: number};
   maxRuns: number;
   days: number;
   now?: number;
 }): Promise<{ok: true; loop: Loop} | {ok: false; error: string}> {
-  const template = LOOP_TEMPLATES.find(t => t.id === input.templateId);
-  if (!template) {
-    return {ok: false, error: 'Unknown loop'};
-  }
-  const filled = fillTemplate(template, input.values);
-  if (!filled.ok) {
-    return filled;
+  let made: {id: string; title: string; prompt: string};
+  if (input.templateId === CUSTOM_LOOP_ID) {
+    const title = cleanBlank(input.custom?.title ?? '').slice(
+      0,
+      MAX_CUSTOM_TITLE,
+    );
+    const prompt = cleanCustomPrompt(input.custom?.prompt ?? '');
+    if (!title) {
+      return {ok: false, error: 'Give the loop a name'};
+    }
+    if (!prompt) {
+      return {ok: false, error: 'Say what each run should do'};
+    }
+    made = {id: CUSTOM_LOOP_ID, title, prompt};
+  } else {
+    const template = LOOP_TEMPLATES.find(t => t.id === input.templateId);
+    if (!template) {
+      return {ok: false, error: 'Unknown loop'};
+    }
+    const filled = fillTemplate(template, input.values);
+    if (!filled.ok) {
+      return filled;
+    }
+    made = {id: template.id, title: template.title, prompt: filled.prompt};
   }
   const loops = await loadLoops();
   if (loops.length >= MAX_LOOPS) {
@@ -235,9 +277,9 @@ export async function startLoop(input: {
       : undefined;
   const loop: Loop = {
     id: `${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-    templateId: template.id,
-    title: template.title,
-    prompt: filled.prompt,
+    templateId: made.id,
+    title: made.title,
+    prompt: made.prompt,
     every: input.every in EVERY_MS ? input.every : 'day',
     at,
     nextAt: firstRun(input.every, at, now),
