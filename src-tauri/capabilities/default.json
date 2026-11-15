@@ -27,6 +27,7 @@
     "allow-open-external",
     "allow-pc-info",
     "allow-run-command",
+    "allow-outside-files",
     "allow-open-workspace-file",
     "allow-clipboard-read",
     "allow-notify",

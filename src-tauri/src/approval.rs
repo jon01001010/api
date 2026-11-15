@@ -99,8 +99,8 @@ pub async fn ask_for(app: &AppHandle, question: &str, by: Option<&Device<'_>>) -
     by.is_none_or(|d| (d.still_allowed)())
 }
 
-/// Asks on this PC only (pairing a new device).
-#[cfg_attr(not(feature = "link"), allow(dead_code))]
+/// Asks on this PC only (pairing a new device; the model reaching a file
+/// outside its workspace, outside.rs).
 pub async fn ask_on_this_pc(app: &AppHandle, question: &str) -> bool {
     allow_dialog(app, question).await.unwrap_or(false)
 }
@@ -120,6 +120,37 @@ fn allow_dialog(app: &AppHandle, question: &str) -> tauri::async_runtime::JoinHa
             ))
             .blocking_show()
     })
+}
+
+/// The label above any text the model supplied (its reason, the text it
+/// wants to write, a description) in a native question. The facts the app
+/// worked out itself (what, where, read or write, size) always come first;
+/// the model's words only after this label, so they can't pass for the
+/// app's own.
+pub const MODEL_SAYS: &str = "The model says:";
+/// Most characters of the model's words shown in one place of a question.
+pub const MAX_MODEL_TEXT: usize = 300;
+
+/// The model's words for a native question: on one line, line breaks and
+/// hidden characters (controls, bidi, zero-width: remote_ask::hidden_char)
+/// written as escapes, cut at MAX_MODEL_TEXT characters saying how long
+/// it was.
+pub fn model_words(text: &str) -> String {
+    let total = text.chars().count();
+    let mut out = String::new();
+    for (i, c) in text.chars().enumerate() {
+        if i == MAX_MODEL_TEXT {
+            out.push_str(&format!("\u{2026} [{total} characters in all]"));
+            break;
+        }
+        match c {
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push(' '),
+            c if crate::remote_ask::hidden_char(c) => out.push_str(&format!("\\u{{{:x}}}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 /// The answer to a question that offers "always".
@@ -195,6 +226,18 @@ mod tests {
         assert_eq!(answer_from(&R::No), Answer::No);
         assert_eq!(answer_from(&R::Yes), Answer::Once);
         assert_eq!(answer_from(&R::Custom("something else".into())), Answer::No);
+    }
+
+    #[test]
+    fn the_models_words_are_escaped_and_capped() {
+        assert_eq!(model_words("tidy up"), "tidy up");
+        assert_eq!(model_words("a\nAllow: yes"), "a\\nAllow: yes");
+        assert_eq!(model_words("x\u{202e}gpj.exe"), "x\\u{202e}gpj.exe");
+        assert_eq!(model_words("a\u{200b}b\rc"), "a\\u{200b}b\\u{d}c");
+        let long = model_words(&"y".repeat(1000));
+        assert!(long.starts_with(&"y".repeat(MAX_MODEL_TEXT)));
+        assert!(long.ends_with("[1000 characters in all]"), "{long}");
+        assert_eq!(long.chars().filter(|c| *c == 'y').count(), MAX_MODEL_TEXT);
     }
 
     #[test]

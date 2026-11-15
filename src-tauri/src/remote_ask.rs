@@ -240,13 +240,28 @@ pub fn log_use(app: &AppHandle, device: &str, what: &str) {
     append(app, |when| use_line(when, device, what));
 }
 
+/// The log of the model's file use outside its workspace (outside.rs),
+/// next to answers.log: the same private folder, the same rotation.
+pub const OUTSIDE_LOG: &str = "outside.log";
+
+/// Writes one line to the log of access outside the workspace (no file
+/// contents, ever: outside::log_line).
+pub fn log_outside(app: &AppHandle, line: impl FnOnce(u64) -> String) {
+    let Some(file) = log_file(app).map(|f| f.with_file_name(OUTSIDE_LOG)) else { return };
+    append_to(&file, line);
+}
+
 fn append(app: &AppHandle, line: impl FnOnce(u64) -> String) {
     let Some(file) = log_file(app) else { return };
+    append_to(&file, line);
+}
+
+fn append_to(file: &std::path::Path, line: impl FnOnce(u64) -> String) {
     let when = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    rotate(&file, MAX_LOG_BYTES);
+    rotate(file, MAX_LOG_BYTES);
     let mut options = std::fs::OpenOptions::new();
     options.create(true).append(true);
     #[cfg(unix)]

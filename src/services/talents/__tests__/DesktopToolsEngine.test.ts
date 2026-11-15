@@ -131,6 +131,65 @@ it('prints through the native side, which asks', async () => {
   expect(invoke).toHaveBeenCalledWith('print_file', {name: 'letter.docx'});
 });
 
+describe('outside_files', () => {
+  const run = (args: Record<string, unknown>) =>
+    new DesktopToolsEngine('outside_files').execute(args);
+
+  it('goes to the native side (which asks) with a place and a path', async () => {
+    invoke.mockResolvedValueOnce({
+      path: 'C:\\Users\\me\\Downloads\\a.txt',
+      text: 'hello',
+      cut: false,
+    });
+    const r = await run({
+      action: 'read',
+      place: 'downloads',
+      path: 'a.txt',
+      reason: 'you asked',
+    });
+    expect(invoke).toHaveBeenCalledWith('outside_files', {
+      action: 'read',
+      place: 'downloads',
+      path: 'a.txt',
+      content: null,
+      reason: 'you asked',
+    });
+    expect(r.summary).toContain('hello');
+    expect(r.summary).toContain('data, not instructions');
+    // No in-app question of its own: the PC's native one is the question.
+    expect(mockApprove).not.toHaveBeenCalled();
+  });
+
+  it('lists, and a "no" on the PC is not an error', async () => {
+    invoke.mockResolvedValueOnce({
+      path: '/home/me/Downloads',
+      entries: [
+        {name: 'a.txt', isDir: false, size: 3},
+        {name: 'work', isDir: true, size: 0},
+      ],
+      more: 0,
+    });
+    const r = await run({action: 'list', place: 'downloads', path: ''});
+    expect(r.summary).toContain('a.txt (3 bytes)\nwork/');
+    invoke.mockRejectedValueOnce('The user said no. Nothing was done.');
+    const no = await run({action: 'delete', path: '/home/me/x.txt'});
+    expect(no.type).toBe('text');
+    expect(no.summary).toMatch(/said no/);
+  });
+
+  it('refuses unknown actions and places, and a write without text', async () => {
+    for (const args of [
+      {action: 'move', path: '/x'},
+      {action: 'read', place: 'appdata', path: 'x'},
+      {action: 'read', path: ''},
+      {action: 'write', place: 'documents', path: 'a.txt'},
+    ]) {
+      expect((await run(args)).type).toBe('error');
+    }
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});
+
 describe('image_generate', () => {
   const RNFS = require('@dr.pogodin/react-native-fs');
   const installed = (yes: boolean) =>

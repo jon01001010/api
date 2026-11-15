@@ -21,6 +21,7 @@ mod model_server;
 mod net;
 mod npu;
 mod open;
+mod outside;
 mod pc;
 mod pc_extra;
 mod pc_files;
@@ -99,6 +100,7 @@ pub fn run() {
             open::open_external,
             pc::pc_info,
             pc::run_command,
+            outside::outside_files,
             pc::open_workspace_file,
             pc_extra::clipboard_read,
             pc_extra::notify,

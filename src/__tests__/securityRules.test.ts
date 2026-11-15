@@ -353,6 +353,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'open_external',
         'pc_info',
         'run_command',
+        'outside_files',
         'open_workspace_file',
         'clipboard_read',
         'notify',
@@ -438,7 +439,12 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     for (const [, name, body] of fns) {
       expect([name, body.includes('allowed(&app')]).toEqual([name, true]);
     }
-    expect(files).toMatch(/if !located\.own \{[\s\S]*?ask\(app, &question\)/);
+    // Outside the app's folder: resolved and checked against the places
+    // never reachable first, then asked, then logged. A link in the app's
+    // own folder that leads out is refused.
+    expect(files).toMatch(
+      /if located\.own \{\s*if !stays_inside\(&root, &located\.real\) \{\s*return Err[\s\S]*?return Ok\(located\.real\);\s*\}[\s\S]*?crate::outside::checked\(app, &located\.real\)[\s\S]*?let yes = ask\(app, &question\)\.await;\s*crate::outside::audit\(/,
+    );
     expect(tauri('src/approval.rs')).toContain('blocking_show()');
     // Downloads use the same rule (own folder free, elsewhere ask), only
     // http/https, and never leave a half file looking like a finished one.
@@ -1580,6 +1586,112 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     );
   });
 
+  it('files outside the workspace: asked on this PC every time, never "always", closed places checked after resolving', () => {
+    const outside = tauri('src/outside.rs');
+    // Every access asks, on this PC only (never a device), never "always".
+    expect(outside).toMatch(
+      /if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*audit\(&app, "model", action\.word\(\), "said no", &shown\);\s*return Err/,
+    );
+    expect(outside).not.toMatch(
+      /ask_with_always|Answer::Always|ALWAYS|ask_for\(|approval::ask\(|remember/,
+    );
+    // Shape first, then resolved by the system, then checked again, then
+    // the places never reachable: on the resolved path, never the name given.
+    expect(outside).toMatch(
+      /pub fn checked\(app: &AppHandle, path: &Path\) -> Result<PathBuf, String> \{\s*let named = check_absolute\(&path\.to_string_lossy\(\), Style::HERE\)\?;\s*let real = resolve\(Path::new\(&named\)\)\?;\s*let real = check_resolved\(&real\.to_string_lossy\(\), Style::HERE\)\?;\s*if guard\(app\)\.never_reachable\(&real\) \{\s*return Err\(NEVER\.into\(\)\);/,
+    );
+    expect(outside).toContain(
+      'pub const NEVER: &str = "That place is never reachable from the model.";',
+    );
+    // Re-checked after the answer: nothing moved while it was asked.
+    expect(outside).toMatch(
+      /let again = locate\(&app, place\.as_deref\(\), &path\);\s*if again\.as_ref\(\) != Ok\(&real\) \|\| stamp\(&real\) != was \{/,
+    );
+    for (const closed of [
+      '"/microsoft/windows/start menu"',
+      '"windows", "programdata"',
+      'top.starts_with("program files")',
+      '".ssh", ".gnupg", ".aws"',
+      '"login data"',
+      '"cookies"',
+      '"key4.db"',
+      '"logins.json"',
+      '".git-credentials"',
+      '".npmrc"',
+      '".bashrc"',
+      'name.ends_with("profile.ps1")',
+      '".config/autostart"',
+      '".config/systemd/user"',
+      '"etc", "usr", "bin", "sbin", "boot", "var"',
+      'crate::files::private_dir(app).ok()',
+    ]) {
+      expect([closed, outside.includes(closed)]).toEqual([closed, true]);
+    }
+    // UNC, device paths and streams are refused before anything else.
+    expect(outside).toMatch(/if p\.starts_with\("\\\\\\\\"\) \{\s*return Err/);
+    expect(outside).toMatch(/if part\.contains\(':'\) \{\s*return Err/);
+    // Every way out of the command is logged (no contents).
+    expect(
+      outside.match(/audit\(&app, "model", action\.word\(\)/g)?.length,
+    ).toBeGreaterThanOrEqual(5);
+    // Paired devices never reach it: their tool lists are unchanged and
+    // link.rs never calls it.
+    const link = tauri('src/link.rs');
+    expect(link).not.toMatch(/outside::|outside_files/);
+    expect(link).toMatch(
+      /pub const REMOTE_TOOLS: &\[&str\] = &\[\s*"pc_info",\s*"workspace_list",\s*"workspace_read",\s*"pc_open",\s*"pc_print",\s*"pc_media",\s*"pc_clipboard_read",\s*"pc_run_command",\s*"workspace_write",\s*"workspace_append",\s*"workspace_undo",\s*\];/,
+    );
+    expect(link).toContain(
+      'pub const ACT_TOOLS: &[&str] = &["pc_open", "pc_print", "pc_media", "pc_clipboard_read"];',
+    );
+    expect(link).toContain(
+      'pub const COMMAND_TOOLS: &[&str] = &["pc_run_command"];',
+    );
+    expect(link).toContain(
+      'pub const WRITE_TOOLS: &[&str] = &["workspace_write", "workspace_append", "workspace_undo"];',
+    );
+    expect(read('src/services/talents/PcToolsEngine.ts')).not.toContain(
+      'outside',
+    );
+    // The model's tool goes only to that native command; no question of
+    // its own in the app (the PC's native one is the question).
+    const desktop = read('src/services/talents/DesktopToolsEngine.ts');
+    expect(desktop).toMatch(/invoke<Outside>\('outside_files', \{/);
+    expect(desktop).not.toContain('requestFileApproval');
+  });
+
+  it('native questions: the facts first, the model\'s words under "The model says:"', () => {
+    const approval = tauri('src/approval.rs');
+    expect(approval).toContain(
+      'pub const MODEL_SAYS: &str = "The model says:";',
+    );
+    // Escaped (hidden characters, line breaks) and capped.
+    expect(approval).toMatch(
+      /pub fn model_words[\s\S]*?if i == MAX_MODEL_TEXT \{[\s\S]*?c if crate::remote_ask::hidden_char\(c\) =>/,
+    );
+    // Outside files: what, where, action and size, then the label, then
+    // the model's reason and text.
+    const outside = tauri('src/outside.rs');
+    const question = outside.slice(
+      outside.indexOf('pub fn question('),
+      outside.indexOf('/// One line of the log'),
+    );
+    const order = [
+      'Where: {path}\\nAction: {what}',
+      '\\nSize: ',
+      '{MODEL_SAYS}',
+      'model_words(reason)',
+      'change.view.join',
+    ].map(s => question.indexOf(s));
+    expect(order.every(i => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // A device's change in the workspace: the facts, then the label, then
+    // the text its model wants to write.
+    expect(tauri('src/pc_write.rs')).toMatch(
+      /"\\u\{201c\}\{device\}\{\}\\n\{\}\\n\\n\{\}\\n\{heading\}\\n\{\}",\s*crate::remote_ask::WRITE_ASK_DEVICE,\s*summary\(plan\),\s*crate::approval::MODEL_SAYS,/,
+    );
+  });
+
   it("pictures: made on this PC by sd-cli with the app's own models, capped, into the workspace", () => {
     const gen = tauri('src/image_gen.rs');
     // The one-shot maker, never sd-server (no password), from the app's
@@ -1856,6 +1968,13 @@ describe('security review 2 (2026-11-15), app code', () => {
     );
     const ask = read('src-tauri/src/remote_ask.rs');
     expect(ask).toContain('one_line(&loggable(question))');
-    expect(ask).toContain('rotate(&file, MAX_LOG_BYTES);');
+    // Kept to its size; the log of access outside the workspace sits
+    // next to it, rotated the same way.
+    expect(ask).toMatch(
+      /fn append_to\(file: &std::path::Path[\s\S]*?rotate\(file, MAX_LOG_BYTES\);/,
+    );
+    expect(ask).toMatch(
+      /pub fn log_outside[\s\S]*?log_file\(app\)\.map\(\|f\| f\.with_file_name\(OUTSIDE_LOG\)\)[\s\S]*?append_to\(&file, line\);/,
+    );
   });
 });
