@@ -20,11 +20,13 @@ import {Alert} from 'react-native';
 import {
   deletedBy,
   ID_PATTERN,
+  mirroredMetadata,
   versionOf,
   writeChats,
   type ChatRecord,
   type Tombstone,
 } from './chatSync';
+import {MAX_CLOCK_SKEW} from './promptSync';
 
 export const TOMBSTONES_KEY = '@pocketagent/sync/chat-tombstones/v1';
 export const RECENT_KEY = '@pocketagent/sync/chats-recently-deleted/v1';
@@ -47,6 +49,11 @@ export interface RecentlyDeleted {
   removedAt: number;
   /** Which device deleted it ("the PC", or the device's name). */
   from: string;
+  /**
+   * Not deleted: an earlier version of a chat that a mirrored copy replaced
+   * (it had messages the new copy doesn't). Restoring puts it back.
+   */
+  replaced?: boolean;
 }
 
 /** A deletion waiting for the user's answer (too many at once). */
@@ -78,7 +85,7 @@ export function cleanTombstones(raw: unknown, now = Date.now()): Tombstone[] {
       Number.isFinite(t.deletedAt) &&
       t.deletedAt > 0 &&
       // A clock far ahead would delete every later edit: not taken.
-      t.deletedAt <= now + DAY
+      t.deletedAt <= now + MAX_CLOCK_SKEW
     ) {
       latest.set(t.id, Math.max(latest.get(t.id) ?? 0, t.deletedAt));
     }
@@ -228,6 +235,71 @@ async function removeKept(
   return removed;
 }
 
+/** Messages of `here` that `next` drops or changes. */
+export function messagesLost(here: ChatRecord, next: ChatRecord): number {
+  const theirs = new Map(next.messages.map(m => [m.id, m] as const));
+  return here.messages.filter(m => {
+    const t = theirs.get(m.id);
+    return (
+      !t ||
+      t.text !== m.text ||
+      mirroredMetadata(t.metadata) !== mirroredMetadata(m.metadata)
+    );
+  }).length;
+}
+
+/**
+ * Mirrored copies about to replace chats here: a copy that drops or changes
+ * messages this device has keeps the chat as it is here under "Recently
+ * deleted" (as an earlier version, 30 days, restorable; one per chat). A
+ * copy whose earlier version can't be kept (no room left) and that drops
+ * messages is not taken. Returns the copies that may be written.
+ */
+export async function keepEarlierVersions(
+  local: Map<string, ChatRecord>,
+  incoming: ChatRecord[],
+  from: string,
+  store: DeleteStore = deviceStore,
+): Promise<ChatRecord[]> {
+  const replacing = incoming.filter(c => {
+    const here = local.get(c.session.id);
+    return here && here.messages.length && messagesLost(here, c) > 0;
+  });
+  if (!replacing.length) {
+    return incoming;
+  }
+  const now = store.now();
+  const ids = new Set(replacing.map(c => c.session.id));
+  const recent = pruneRecent(await store.loadRecent(), now).filter(
+    r => !ids.has(r.chat.session.id),
+  );
+  let used = JSON.stringify(recent).length;
+  const added: RecentlyDeleted[] = [];
+  const refused = new Set<string>();
+  for (const c of replacing) {
+    const here = local.get(c.session.id)!;
+    const entry: RecentlyDeleted = {
+      chat: here,
+      // When the copy that replaced it changed: a restore must be newer.
+      deletedAt: Math.max(now, versionOf(c).at),
+      removedAt: now,
+      from,
+      replaced: true,
+    };
+    const n = JSON.stringify(entry).length + 1;
+    if (used + n > RECENT_ROOM) {
+      refused.add(c.session.id);
+      continue;
+    }
+    added.push(entry);
+    used += n;
+  }
+  if (added.length) {
+    await store.saveRecent([...added, ...recent]);
+  }
+  return incoming.filter(c => !refused.has(c.session.id));
+}
+
 /**
  * Deletions from another device, against the chats here: a chat that has
  * not changed since it was deleted is removed (kept under Recently
@@ -283,7 +355,7 @@ export async function keepHeld(
   const now = store.now();
   const chats = held.map(h => ({
     ...h.chat,
-    session: {...h.chat.session, updated_at: now},
+    session: {...h.chat.session, updated_at: Math.max(now, h.deletedAt + 1)},
   }));
   await store.write(chats);
   const ids = chats.map(c => c.session.id);
@@ -318,7 +390,14 @@ export async function restoreDeleted(
     return false;
   }
   await store.write([
-    {...entry.chat, session: {...entry.chat.session, updated_at: store.now()}},
+    {
+      ...entry.chat,
+      session: {
+        ...entry.chat.session,
+        // Newer than the deletion, even within the same millisecond.
+        updated_at: Math.max(store.now(), entry.deletedAt + 1),
+      },
+    },
   ]);
   await forgetTombstones([id], store);
   await store.saveRecent(list.filter(r => r !== entry));

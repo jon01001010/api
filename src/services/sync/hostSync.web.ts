@@ -14,6 +14,7 @@ import {
   askAboutHeld,
   describeDeletes,
   forgetTombstones,
+  keepEarlierVersions,
   knownTombstones,
 } from './chatDeletes';
 import {mirrorOnPc, readAllChats, SYNC_ROOM, writeChats} from './chatSync';
@@ -121,6 +122,8 @@ export async function answerSync(
       {
         tombstones: known,
         hold: new Set(del.held.map(h => h.chat.session.id)),
+        // A copy that drops messages here: the earlier version is kept.
+        keep: (here, list) => keepEarlierVersions(here, list, from),
       },
     );
     await forgetTombstones(r.revived);

@@ -71,7 +71,15 @@ import {answerSync} from '../hostSync.web';
 const chat = (id: string, at: number): Chat => ({
   session: {id, title: id, pinned: false, updated_at: at},
   messages: [
-    {id: `${id}-m0`, session_id: id, text: 'hi', position: 0, created_at: at},
+    {
+      id: `${id}-m0`,
+      session_id: id,
+      author: 'y9d7f8pgn',
+      type: 'text',
+      text: 'hi',
+      position: 0,
+      created_at: at,
+    },
   ],
 });
 
@@ -148,6 +156,8 @@ it('a chat deleted on the PC goes on the phone, unless changed there since', asy
   replied.messages.push({
     id: 'b-m1',
     session_id: 'b',
+    author: 'h3o3lc5xj',
+    type: 'text',
     text: 'later reply',
     position: 1,
     created_at: Date.now() + 5000,
@@ -180,4 +190,61 @@ it('a restored chat comes back on the device that deleted it', async () => {
   await syncWithPc('pc1');
   expect([...mockDevices.phone.chats.keys()]).toEqual(['a']);
   expect([...mockDevices.pc.chats.keys()]).toEqual(['a']);
+});
+
+it('a forged copy from a device: no file paths or odd authors, the PC keeps its earlier version', async () => {
+  const t = Date.now() - 60_000;
+  const long = chat('a', t);
+  long.messages.push(
+    ...[1, 2, 3].map(i => ({
+      id: `a-m${i}`,
+      session_id: 'a',
+      author: 'h3o3lc5xj',
+      type: 'text',
+      text: `reply ${i}`,
+      position: i,
+      created_at: t + i,
+    })),
+  );
+  mockDevices.pc.chats.set('a', long);
+  const forged = {
+    session: {id: 'a', title: 'a', pinned: false, updated_at: 9e15},
+    messages: [
+      {
+        id: 'a-m0',
+        session_id: 'a',
+        author: 'y9d7f8pgn',
+        type: 'text',
+        text: 'look at this',
+        position: 0,
+        created_at: 9e15,
+        metadata: JSON.stringify({
+          imageUris: ['file:///pocketagent/link/client.key'],
+        }),
+      },
+      {id: 'z', session_id: 'a', author: 'evil', type: 'text', text: 'x'},
+    ],
+  };
+  mockOn.current = 'pc';
+  const reply = JSON.parse(
+    await answerSync(
+      JSON.stringify({
+        items: [],
+        chats: {versions: [], sessions: [forged], tombstones: []},
+      }),
+      'Pixel',
+    ),
+  );
+  expect(reply.ok).toBe(true);
+  const now = mockDevices.pc.chats.get('a')!;
+  expect(now.messages.map(m => m.id)).toEqual(['a-m0']);
+  expect(JSON.parse(now.messages[0].metadata)).toEqual({});
+  expect(now.session.updated_at).toBeLessThanOrEqual(Date.now() + 5 * 60_000);
+  const kept = await recentlyDeleted();
+  expect(kept).toHaveLength(1);
+  expect(kept[0]).toMatchObject({from: 'Pixel', replaced: true});
+  expect(kept[0].chat.messages).toHaveLength(4);
+  expect(await restoreDeleted('a')).toBe(true);
+  expect(mockDevices.pc.chats.get('a')!.messages).toHaveLength(4);
+  mockOn.current = 'phone';
 });

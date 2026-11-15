@@ -10,6 +10,7 @@ import {
   applyTombstones,
   askAboutHeld,
   forgetTombstones,
+  keepEarlierVersions,
   knownTombstones,
 } from './chatDeletes';
 import {
@@ -150,7 +151,7 @@ export async function syncWithPc(pc: string): Promise<SyncOutcome> {
       const gone = new Map(
         (await knownTombstones()).map(t => [t.id, t.deletedAt] as const),
       );
-      const incoming = cleanChats((answer as any).chats?.sessions).filter(c => {
+      const newer = cleanChats((answer as any).chats?.sessions).filter(c => {
         const v = versionOf(c);
         if (hold.has(c.session.id) || deletedBy(v, gone)) {
           return false;
@@ -158,6 +159,8 @@ export async function syncWithPc(pc: string): Promise<SyncOutcome> {
         const here = local.get(c.session.id);
         return !here || isNewer(v, versionOf(here));
       });
+      // A copy that drops messages here: the earlier version is kept.
+      const incoming = await keepEarlierVersions(local, newer, 'the PC');
       await writeChats(incoming);
       chatsReceived = incoming.length;
       // A chat deleted here but changed on the PC since: it is back.
