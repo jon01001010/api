@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Diagnostic APK: debug signing only; never a release or publishing command.
+# The test APK: the prodRelease variant (not debuggable, no dev support, the
+# JS bundle built in). Gradle signs it with React Native's public debug key
+# (no release keystore here); it never signs with the owner's key and
+# publishes nothing. The workflow re-signs it in a separate job when the
+# owner's key is set (SECURITY.md, rule 6).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${HEXAGON_SDK_ROOT:?Set HEXAGON_SDK_ROOT to the pinned SDK}"
@@ -21,7 +25,7 @@ echo "Disk before native build:"
 df -h .
 (
   cd android
-  exec setsid bash ./gradlew --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a assembleProdDebug
+  exec setsid bash ./gradlew --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a assembleProdRelease
 ) &
 build_pid=$!
 monitor_pid=''
@@ -82,6 +86,6 @@ payload_manifest=$(mktemp)
 node scripts/arm64-payload-manifest.cjs "$payload_manifest"
 node scripts/verify-android-payload.js \
   --manifest "$payload_manifest" \
-  --apk android/app/build/outputs/apk/prod/debug/app-prod-debug.apk \
+  --apk android/app/build/outputs/apk/prod/release/app-prod-release.apk \
   --report android/app/build/outputs/api-helper-npu-payload.txt
 printf '%s\n' 'Payload check passed. Installation and measured NPU offload still require device testing.'

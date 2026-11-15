@@ -135,10 +135,19 @@ android {
             buildConfigField "boolean", "USE_DEV_SUPPORT", "true"
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            // Never silently ship a release signed with the public debug key.
-            signingConfig signingConfigs.release
+            // The published test APK is this variant (prodRelease): not
+            // debuggable, no dev support, the JS bundle (Hermes) built in, so
+            // it never loads code from a "Metro" on the phone. With no release
+            // keystore configured (CI: always), it is signed with React
+            // Native's public debug key, the same key as the earlier prodDebug
+            // APKs, so it installs over them. CI then re-signs it in its own
+            // job with the owner's key when that key's secrets are set
+            // (SECURITY.md, rule 6; .github/workflows/pocketagent-integration-apk.yml),
+            // and the release notes say which key signed it.
+            signingConfig(signingConfigs.release.storeFile != null ? signingConfigs.release : signingConfigs.debug)
+            debuggable false
+            // R8/ProGuard stays off: release minify has never been exercised
+            // for this app (RN modules found by reflection would need keep rules).
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             buildConfigField "boolean", "USE_DEV_SUPPORT", "false"
