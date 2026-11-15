@@ -12,7 +12,6 @@
  * - print_file: a workspace document or picture printed. Asks.
  */
 import {TalentEngine, TalentResult, ToolDefinition} from './types';
-import {requestFileApproval} from './fileApprovalGate';
 
 export const DESKTOP_TOOL_NAMES = [
   'pc_info',
@@ -182,14 +181,8 @@ export class DesktopToolsEngine implements TalentEngine {
             `\`action\` must be one of: ${Object.keys(MEDIA_ACTIONS).join(', ')}.`,
           );
         }
-        const ok = await requestFileApproval({
-          action: 'phone_action',
-          filename: `On this PC: ${what}?`,
-          content: '',
-        });
-        if (!ok) {
-          throw new Error('The user said no.');
-        }
+        // The PC asks natively (src-tauri/src/pc_extra.rs, like the other
+        // desktop tools), so there is one question, not two.
         await invoke('media_key', {key: action});
         return {type: 'text', summary: `Done: ${what}. ${STOP}`};
       }

@@ -92,24 +92,25 @@ it('reads the clipboard only through the native dialog', async () => {
   expect(r.summary).toContain('meeting at 3');
 });
 
-it('media keys ask first; only known keys', async () => {
-  mockApprove.mockResolvedValueOnce(false);
+it('media keys: the native side asks (once); only known keys', async () => {
+  invoke.mockRejectedValueOnce(new Error('The user said no.'));
   const no = await new DesktopToolsEngine('media_control').execute({
     action: 'next',
   });
   expect(no.summary).toMatch(/said no/);
-  expect(invoke).not.toHaveBeenCalled();
-  mockApprove.mockResolvedValueOnce(true);
+  expect(mockApprove).not.toHaveBeenCalled();
   invoke.mockResolvedValueOnce(null);
   const yes = await new DesktopToolsEngine('media_control').execute({
     action: 'play_pause',
   });
   expect(invoke).toHaveBeenCalledWith('media_key', {key: 'play_pause'});
   expect(yes.summary).toMatch(/play or pause/);
+  invoke.mockClear();
   const bad = await new DesktopToolsEngine('media_control').execute({
     action: 'alt_f4',
   });
   expect(bad.type).toBe('error');
+  expect(invoke).not.toHaveBeenCalled();
 });
 
 it('prints through the native side, which asks', async () => {
