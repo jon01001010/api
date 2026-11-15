@@ -15,6 +15,7 @@ import {CustomToolEngine} from '../services/talents/customTools';
 import {CustomToolsSection} from './CustomToolsSection';
 import {LoopsSection} from './LoopsSection';
 import {ImageModelsSection} from './ImageModelsSection';
+import {HandoffLogSection} from './HandoffLogSection';
 import {useTheme} from '../hooks';
 import {useIsFocused} from '@react-navigation/native';
 import {MemorySection} from '../components/PalsSheets/MemorySection';
@@ -280,6 +281,8 @@ const ToolboxScreenBody: React.FC = () => {
             </Card.Content>
           </Card>
         ))}
+        {/* ask_other_model: the newest hand-offs, allowed or not. */}
+        <HandoffLogSection focused={isFocused} />
         {/* Test drafts are a developer setting (Settings → Show developer settings). */}
         {uiStore.showDevSettings && (
           <>

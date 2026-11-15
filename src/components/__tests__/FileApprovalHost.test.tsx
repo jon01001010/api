@@ -120,3 +120,64 @@ describe('FileApprovalHost: the chat guards', () => {
     await expect(answer).resolves.toBe(true);
   });
 });
+
+describe('FileApprovalHost: handing a task to another model', () => {
+  beforeAll(() => {
+    (AppState as any).currentState = 'active';
+  });
+  beforeEach(() => {
+    const {resetChatGuards} = require('../../services/agent/chatGuard');
+    resetChatGuards();
+  });
+
+  it('facts first, the red line, the exact text, then the model says and its thinking', async () => {
+    const {findByText, getByText, getByTestId} = render(<FileApprovalHost />);
+    let answer: Promise<boolean> | undefined;
+    act(() => {
+      answer = requestFileApproval({
+        action: 'ask_other_model',
+        filename:
+          'The model wants to hand a task to claude.\nWhere: sent to Claude with your key.',
+        content: 'Summarise this',
+        alert:
+          'Earlier in this chat the model read private data (clipboard_read).',
+        modelSays: 'it is better at this',
+        from: {thinking: 'ask claude', chat: 'h1'},
+      });
+    });
+    expect(await findByText('Hand this to another model?')).toBeTruthy();
+    expect(getByTestId('approval-alert').props.children).toMatch(
+      /private data/,
+    );
+    expect(getByTestId('approval-sent-text').props.children).toBe(
+      'Summarise this',
+    );
+    expect(getByText('The model says:')).toBeTruthy();
+    expect(getByTestId('approval-model-says').props.children).toBe(
+      'it is better at this',
+    );
+    expect(getByText('The model was thinking:')).toBeTruthy();
+    expect(getByTestId('approval-nothing-more')).toBeTruthy();
+    // Never "always".
+    expect(() => getByText(/always/i)).toThrow();
+    fireEvent.press(getByText('Allow once'));
+    await expect(answer).resolves.toBe(true);
+  });
+
+  it('the hand-off limit: Continue or Stop only', async () => {
+    const {findByText, getByText, queryByTestId} = render(<FileApprovalHost />);
+    let answer: Promise<boolean> | undefined;
+    act(() => {
+      answer = requestFileApproval({
+        action: 'handoff_cap',
+        filename: 'The model handed 5 tasks to other models in this chat.',
+        content: '',
+        chat: 'h2',
+      });
+    });
+    expect(await findByText('Hand-off limit reached')).toBeTruthy();
+    expect(queryByTestId('approval-nothing-more')).toBeNull();
+    fireEvent.press(getByText('Stop'));
+    await expect(answer).resolves.toBe(false);
+  });
+});

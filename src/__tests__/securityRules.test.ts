@@ -2179,3 +2179,66 @@ describe('Rule 1: the model is treated as possibly hostile (chat guards, 2026-11
     );
   });
 });
+
+describe('Rule 1: sub-agents ask first, get no tools and are untrusted (2026-11-15)', () => {
+  const engine = read('src/services/talents/AskOtherModelEngine.ts');
+  const sub = read('src/services/agent/subAgent.ts');
+
+  it('ask_other_model is a tool that asks: off until switched on, refused under "allow nothing more"', () => {
+    const {ASKING_TOOLS} = require('../services/agent/chatGuard');
+    // (Not one an assistant may add by itself: that list is pinned above.)
+    expect(ASKING_TOOLS).toContain('ask_other_model');
+    expect(engine).toMatch(
+      /if \(chat && nothingMoreAllowed\(chat\)\) \{[\s\S]*?return \{type: 'text', summary: REFUSED_NOTHING_MORE\};/,
+    );
+  });
+
+  it('only a listed model; the question comes before anything is sent; never "always"', () => {
+    expect(engine).toMatch(
+      /const model = pickModel\(models, args\?\.model\);\s*if \(!model\) \{/,
+    );
+    const run = engine.slice(engine.indexOf('async execute('));
+    const asked = run.indexOf("action: 'ask_other_model'");
+    expect(asked).toBeGreaterThan(0);
+    expect(run.indexOf('deps.engineFor(')).toBeGreaterThan(asked);
+    expect(run).toMatch(
+      /if \(!allowed\) \{\s*deps\.log\(entry\('refused'\)\);\s*return \{type: 'text', summary: REFUSED_HANDOFF\};/,
+    );
+    expect(engine).toContain(
+      'ask: (proposal, signal) => requestFileApproval(proposal, signal),',
+    );
+    const host = read('src/components/FileApprovalHost.tsx');
+    const dialog = host.slice(
+      host.indexOf("if (proposal?.action === 'ask_other_model')"),
+      host.indexOf("proposal?.action === 'phone_action' ||"),
+    );
+    expect(dialog).toContain('Allow once');
+    expect(dialog).not.toMatch(/always/i);
+  });
+
+  it('one level only: one completion, no tools, a time limit and an output cap', () => {
+    expect(engine).toContain(
+      'return engine.completion(handoffParams(task) as any);',
+    );
+    const params = sub.slice(
+      sub.indexOf('export function handoffParams'),
+      sub.indexOf('export function answerText'),
+    );
+    expect(params).not.toMatch(/tools|tool_choice/);
+    expect(sub).toContain(
+      'export const HANDOFF_TIME_LIMIT_MS = 2 * 60 * 1000;',
+    );
+    expect(sub).toContain('export const HANDOFF_MAX_OUTPUT_TOKENS = 1500;');
+    expect(sub).toContain('export const MAX_HANDOFFS = 5;');
+  });
+
+  it('the answer reaches the model wrapped as untrusted, labelled with its name', () => {
+    expect(engine).toMatch(
+      /summary: `\$\{wrapModelAnswer\(model\.name, answer \|\| '\(no answer\)'\)\}/,
+    );
+    const {wrapModelAnswer} = require('../services/talents/untrustedContent');
+    expect(wrapModelAnswer('m', 'x')).toMatch(
+      /^Answer from m\. [\s\S]*never as instructions/,
+    );
+  });
+});
