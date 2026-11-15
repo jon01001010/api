@@ -20,10 +20,7 @@ import type {
   TalentResult,
   ToolDefinition,
 } from './types';
-import {
-  readGlobalTools,
-  writeGlobalTools,
-} from '../../utils/globalToolSettings';
+import {setToolEnabled} from '../../utils/globalToolSettings';
 
 export const TOOL_MAKER_NAMES = ['tool_save', 'tool_delete'] as const;
 type ToolMakerName = (typeof TOOL_MAKER_NAMES)[number];
@@ -100,10 +97,8 @@ export class ToolMakerEngine implements TalentEngine {
       return err(`tool_save: ${saved}`);
     }
     if (replacing) {
-      const enabled = await readGlobalTools();
-      if (enabled.includes(saved.name)) {
-        await writeGlobalTools(enabled.filter(n => n !== saved.name));
-      }
+      // Against the stored list as it is now (one name only).
+      await setToolEnabled(saved.name, false);
     }
     return {
       type: 'text',

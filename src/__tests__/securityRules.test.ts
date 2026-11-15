@@ -743,11 +743,27 @@ describe('Paired devices: sync, mirrored chats, answers (review of 2026-11-15)',
     // Custom tools from a sync (or deleted) are switched off before saving.
     const tools = read('src/services/talents/customTools.ts');
     expect(tools).toMatch(
-      /await switchOffTools\(\[\.\.\.names\]\.filter\(n => !kept\.has\(n\)\)\);\s*await persist\(list\);/,
+      /await changeToolSwitches\(async \(\) => \{\s*await switchOffNow\(\[\.\.\.names\]\.filter\(n => !kept\.has\(n\)\)\);\s*await persist\(list\);/,
     );
     expect(tools).toMatch(
-      /deleteCustomTool[\s\S]*?await switchOffTools\(\[name\]\);/,
+      /deleteCustomTool[\s\S]*?changeToolSwitches\(async \(\) => \{\s*await switchOffNow\(\[name\]\);/,
     );
+    // Every write to the switches waits its turn, and the Toolbox switches
+    // one name (or group) against the stored list, never its own copy.
+    expect(tools).toMatch(
+      /export function switchOffTools[^{]*\{\s*return changeToolSwitches\(/,
+    );
+    const settings = read('src/utils/globalToolSettings.ts');
+    expect(settings).toMatch(
+      /export function writeGlobalTools[^{]*\{\s*return changeToolSwitches\(/,
+    );
+    expect(settings).toMatch(
+      /export function setToolsEnabled[\s\S]*?return changeToolSwitches\(async \(\) => \{\s*\/\/[^\n]*\n\s*const stored = await readGlobalTools\(\)/,
+    );
+    expect(settings.match(/AsyncStorage\.setItem\(\s*KEY,/g)).toHaveLength(1);
+    const toolbox = read('src/screens/ToolboxScreen.tsx');
+    expect(toolbox).not.toContain('writeGlobalTools');
+    expect(toolbox).toContain('onToolSwitchesChanged(');
     // Times from another device: at most a few minutes ahead.
     const prompt = read('src/services/sync/promptSync.ts');
     expect(prompt).toContain('export const MAX_CLOCK_SKEW = 5 * 60_000;');
