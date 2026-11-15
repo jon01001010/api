@@ -4,6 +4,13 @@ Every security fix in PocketAgent (Android) and DesktopAgent (Windows / Linux), 
 
 No release has been made to other people yet: all of these were found in our own reviews, before release. Credit for outside reports will be given here.
 
+## 2026-11-15: security review 2, builds
+
+- **The phone APK is a release build now, not a debug build.** The test APK was debuggable with React Native's dev support on: someone holding the unlocked phone could read the app's private files (its home link key, chats) over USB with `adb run-as`, and another app on the phone could pretend to be a "Metro" server and have its JavaScript run as PocketAgent at the next start. The published APK is now the release variant (not debuggable, no dev support, the JavaScript built in), and the build fails if it is debuggable. It is still signed with the same public debug key until the owner's key is added, so it installs over the current app.
+- **The APK is signed in its own job**, on a fresh runner that ran none of the build's code and has no repository rights, so nothing left behind by a build dependency can reach the signing key.
+- **Picture models are checked against their checksums** once the list has them (none yet): a mismatch is deleted; a set marked as checked without a checksum is refused; unchecked sets say "Not verified yet".
+- **The Linux picture maker (`sd-cli`) from the build cache must match the checksum recorded when it was built.**
+
 ## 2026-11-15: pre-release work
 
 - **Google Sign-In and Google Play billing are no longer built into the Android app.** They were PocketPal's (accounts and paid assistants) and never started in PocketAgent; now their native libraries aren't linked at all, and the code that would use them gets a stand-in that says "not available".
