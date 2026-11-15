@@ -43,6 +43,7 @@ import {
   THIS_PC,
 } from '../services/desktop/thisPc';
 import {routerStore} from './RouterStore';
+import {homeLinkReady} from '../services/homeLink/keepLink';
 import {chatSessionStore, setThinkingDefault} from './ChatSessionStore';
 import {isSmallModel} from '../utils/modelFit';
 import {GenerationSlot, type GenerationLease} from './generationLease';
@@ -3307,14 +3308,30 @@ class ModelStore {
         serverType: type,
       };
 
+      // Home PC: before each request, the link to the PC is checked when
+      // the app was away or it is a while since (services/homeLink/keepLink).
+      const linkReady = server.homeLinkPc
+        ? homeLinkReady(
+            model.serverId!,
+            endpoint,
+            link.ok,
+            () => this.activeRemoteBinding?.serverId === model.serverId,
+          )
+        : undefined;
       runInAction(() => {
         this.engine =
           type === 'Claude'
             ? new ClaudeCompletionEngine(endpoint)
-            : hasRouter
+            : hasRouter || linkReady
               ? new OpenAICompletionEngine(endpoint, {
-                  ensureReady: (signal, options) =>
-                    routerStore.ensureReady(binding, signal, options),
+                  ensureReady: async (signal, options) => {
+                    if (linkReady && !options?.reread) {
+                      await linkReady(signal);
+                    }
+                    return hasRouter
+                      ? routerStore.ensureReady(binding, signal, options)
+                      : undefined;
+                  },
                 })
               : new OpenAICompletionEngine(endpoint);
         this.activeRemoteBinding = binding;
