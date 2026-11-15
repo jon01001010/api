@@ -14,7 +14,6 @@
 //! - `quick_key_set`: a key combination (Ctrl+Shift+Space) that brings
 //!   DesktopAgent to the front from anywhere; off until switched on.
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
@@ -177,29 +176,12 @@ pub fn printable(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn workspace_file(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
-    if name.contains(['/', '\\', ':']) || name.contains("..") || name.trim().is_empty() {
-        return Err("Use a workspace file name (no folders)".into());
-    }
-    let path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("Documents/PocketAgentFiles")
-        .join(name);
-    if path.is_file() {
-        Ok(path)
-    } else {
-        Err(format!("No workspace file named {name}"))
-    }
-}
-
 #[tauri::command]
 pub async fn print_file(app: AppHandle, name: String) -> Result<(), String> {
     if !printable(&name) {
         return Err("Only documents, pictures and text files are printed".into());
     }
-    let path = workspace_file(&app, &name)?;
+    let path = crate::pc::workspace_file(&app, &name)?;
     let question = format!("DesktopAgent wants to print this workspace file (with your default printer and its app):\n\n{name}");
     if !crate::approval::ask(&app, &question).await {
         return Err("The user said no. Nothing was printed.".into());

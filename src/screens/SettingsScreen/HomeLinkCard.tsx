@@ -19,11 +19,13 @@ import {
   homeLinkAvailable,
   linkDeviceMayAnswer,
   linkDeviceMayPicture,
+  linkDeviceMayRead,
   linkForget,
   linkOff,
   linkOn,
   linkPair,
   linkPicturesAllow,
+  linkToolsAllow,
   linkStatus,
   LinkPairing,
   LinkStatus,
@@ -236,6 +238,19 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
             onValueChange={v => run(() => linkPicturesAllow(v))}
           />
         </View>
+        <View style={styles.syncRow}>
+          <Text variant="bodySmall" style={styles.syncText}>
+            Let paired devices use this PC's tools: this PC's information, and
+            the list and text of the files in its workspace (read only; reading
+            asks here once per chat, and this PC shows a notification for each
+            file read). Only devices you allow below (each asked here).
+          </Text>
+          <Switch
+            value={!!status.toolsAllowed}
+            testID="home-link-tools-allow"
+            onValueChange={v => run(() => linkToolsAllow(v))}
+          />
+        </View>
         {status.phones.length > 0 ? (
           <Text variant="labelMedium" style={styles.state}>
             Paired phones
@@ -271,6 +286,18 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
                   onValueChange={v =>
                     run(() => linkDeviceMayPicture(phone.id, v))
                   }
+                />
+              </>
+            ) : null}
+            {status.toolsAllowed ? (
+              <>
+                <Text variant="bodySmall">May read</Text>
+                <Switch
+                  value={!!phone.mayRead}
+                  disabled={busy}
+                  accessibilityLabel={`${phone.name} may use this PC's tools`}
+                  testID={`home-link-may-read-${phone.id}`}
+                  onValueChange={v => run(() => linkDeviceMayRead(phone.id, v))}
                 />
               </>
             ) : null}

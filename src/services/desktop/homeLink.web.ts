@@ -32,3 +32,11 @@ export const linkDeviceMayPicture = (
   id: string,
   allowed: boolean,
 ): Promise<void> => invoke('link_device_may_picture', {id, allowed});
+/** The PC's switch for device tools (kept natively; each device asked too). */
+export const linkToolsAllow = (allowed: boolean): Promise<void> =>
+  invoke('link_tools_allow', {allowed});
+/** Letting a device use this PC's tools is asked in a native dialog here. */
+export const linkDeviceMayRead = (
+  id: string,
+  allowed: boolean,
+): Promise<void> => invoke('link_device_may_read', {id, allowed});

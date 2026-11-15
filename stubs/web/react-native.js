@@ -48,6 +48,8 @@ const QUIET = {
         height: height || null,
         steps: steps || null,
       }),
+    tool: (pc, name, chat, args) =>
+      require('./tauri').invoke('homelink_tool', {pc, name, chat, args}),
     openTunnel: pc => require('./tauri').invoke('homelink_open_tunnel', {pc}),
     closeTunnel: () => require('./tauri').invoke('homelink_close_tunnel'),
   },

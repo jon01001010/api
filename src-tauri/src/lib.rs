@@ -22,6 +22,7 @@ mod net;
 mod open;
 mod pc;
 mod pc_extra;
+mod pc_files;
 mod preview;
 mod profile;
 mod remembered;
@@ -125,6 +126,8 @@ pub fn run() {
             link::link_device_may_answer,
             link::link_pictures_allow,
             link::link_device_may_picture,
+            link::link_tools_allow,
+            link::link_device_may_read,
             link_client::homelink_pair,
             link_client::homelink_status,
             link_client::homelink_start_model,
@@ -133,6 +136,7 @@ pub fn run() {
             link_client::homelink_questions,
             link_client::homelink_answer_question,
             link_client::homelink_picture,
+            link_client::homelink_tool,
             link_client::homelink_close_tunnel,
         ])
         .build(tauri::generate_context!())

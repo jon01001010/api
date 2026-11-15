@@ -9,6 +9,7 @@ import {PhoneActionsEngine, PHONE_TOOL_NAMES} from './PhoneActionsEngine';
 import {PhoneActionChainEngine} from './PhoneActionChain';
 import {DesktopToolsEngine, DESKTOP_TOOL_NAMES} from './DesktopToolsEngine';
 import {PcPictureEngine} from './PcPictureEngine';
+import {PcToolsEngine, PC_TOOL_NAMES} from './PcToolsEngine';
 import {ToolMakerEngine, TOOL_MAKER_NAMES} from './ToolMakerEngine';
 import {talentRegistry} from './TalentRegistry';
 import type {SearchAccess} from './searchAccess';
@@ -93,6 +94,11 @@ export function registerDefaultTalents(): void {
     // The phone: pictures are asked of the paired Home PC (off until
     // switched on here, and allowed on the PC for this device).
     talentRegistry.register(new PcPictureEngine());
+    // "On your PC": the Home PC's read-only tools (each off until switched
+    // on here, and allowed on the PC for this device).
+    for (const name of PC_TOOL_NAMES) {
+      talentRegistry.register(new PcToolsEngine(name));
+    }
   }
   // Custom tools: the model may propose one; the user approves; it starts off.
   for (const name of TOOL_MAKER_NAMES) {

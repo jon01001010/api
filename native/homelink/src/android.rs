@@ -230,6 +230,27 @@ pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_picture(
     answer(&mut env, value)
 }
 
+/// Asks the PC for one of its read-only tools (`args`: JSON; only a
+/// file's name is sent on). Answers {"ok": true, "result": …}.
+#[no_mangle]
+pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_tool(
+    mut env: JNIEnv,
+    _class: JClass,
+    key_file: JString,
+    pc: JString,
+    name: JString,
+    chat: JString,
+    args: JString,
+) -> jstring {
+    let (key_file, pc) = (text(&mut env, &key_file), text(&mut env, &pc));
+    let (name, chat, args) = (text(&mut env, &name), text(&mut env, &chat), text(&mut env, &args));
+    let value = guarded(|| match phone(&key_file).and_then(|p| p.tool(&pc, &name, &chat, &args)) {
+        Ok(answer) => answer,
+        Err(e) => fail(e),
+    });
+    answer(&mut env, value)
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_openTunnel(
     mut env: JNIEnv,

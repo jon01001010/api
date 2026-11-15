@@ -21,6 +21,8 @@ class HomeLinkModule(private val context: ReactApplicationContext) :
     private val worker = Executors.newSingleThreadExecutor()
     /** Pictures take minutes: their own thread, so chats and status go on meanwhile. */
     private val pictureWorker = Executors.newSingleThreadExecutor()
+    /** PC tools may wait on a question on the PC: their own thread too. */
+    private val toolWorker = Executors.newSingleThreadExecutor()
     @Volatile private var ready = false
 
     override fun getName() = "HomeLink"
@@ -100,6 +102,15 @@ class HomeLinkModule(private val context: ReactApplicationContext) :
                 keyFile(), pc, prompt, width.toInt(), height.toInt(), steps.toInt(), out
             )
         }
+
+    /**
+     * One of the PC's read-only tools (only while allowed on the PC for
+     * this phone; reading its workspace asks there once per chat, so this
+     * may wait minutes: its own thread, so chats and status go on).
+     */
+    @ReactMethod
+    fun tool(pc: String, name: String, chat: String, args: String, promise: Promise) =
+        call(promise, toolWorker) { HomeLinkNative.tool(keyFile(), pc, name, chat, args) }
 
     @ReactMethod
     fun openTunnel(pc: String, promise: Promise) =

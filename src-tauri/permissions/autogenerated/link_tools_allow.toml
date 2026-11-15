@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-link-tools-allow"
+description = "Enables the link_tools_allow command without any pre-configured scope."
+commands.allow = ["link_tools_allow"]
+
+[[permission]]
+identifier = "deny-link-tools-allow"
+description = "Denies the link_tools_allow command without any pre-configured scope."
+commands.deny = ["link_tools_allow"]

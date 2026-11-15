@@ -41,6 +41,16 @@ pub async fn link_pictures_allow(_allowed: bool) -> Result<(), String> {
     Err("The home link is not in this build".into())
 }
 
+#[tauri::command]
+pub async fn link_tools_allow(_allowed: bool) -> Result<(), String> {
+    Err("The home link is not in this build".into())
+}
+
+#[tauri::command]
+pub async fn link_device_may_read(_id: String, _allowed: bool) -> Result<(), String> {
+    Err("The home link is not in this build".into())
+}
+
 // PC to PC (link_client.rs): not in this build either.
 const OFF: &str = r#"{"ok":false,"error":"The home link is not in this build"}"#;
 
@@ -72,6 +82,11 @@ pub async fn homelink_picture(
     _height: Option<u32>,
     _steps: Option<u32>,
 ) -> String {
+    OFF.into()
+}
+
+#[tauri::command]
+pub async fn homelink_tool(_pc: String, _name: String, _chat: String, _args: String) -> String {
     OFF.into()
 }
 

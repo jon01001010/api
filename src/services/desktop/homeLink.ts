@@ -10,6 +10,8 @@ export interface LinkPhone {
   mayAnswer?: boolean;
   /** May ask this PC for pictures (missing: no). */
   mayPicture?: boolean;
+  /** May use this PC's read-only tools (missing: no). */
+  mayRead?: boolean;
 }
 
 export interface LinkEvent {
@@ -23,6 +25,8 @@ export interface LinkStatus {
   on: boolean;
   /** "Let paired devices make pictures on this PC" (missing: off). */
   picturesAllowed?: boolean;
+  /** "Let paired devices use this PC's tools" (missing: off). */
+  toolsAllowed?: boolean;
   pcId: string | null;
   phones: LinkPhone[];
   /** Pairing history: codes made, phones paired / removed. */
@@ -54,6 +58,11 @@ export async function linkDeviceMayAnswer(
 ): Promise<void> {}
 export async function linkPicturesAllow(_allowed: boolean): Promise<void> {}
 export async function linkDeviceMayPicture(
+  _id: string,
+  _allowed: boolean,
+): Promise<void> {}
+export async function linkToolsAllow(_allowed: boolean): Promise<void> {}
+export async function linkDeviceMayRead(
   _id: string,
   _allowed: boolean,
 ): Promise<void> {}
