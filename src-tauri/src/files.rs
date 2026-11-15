@@ -3,7 +3,10 @@
 //! app's AppData folder and need no prompt. Any other path is outside the
 //! app: every read, write, list or delete there asks the user first (the
 //! dialog is shown here on the native side, so the web screens can't skip
-//! it). Paths with `..` are refused everywhere.
+//! it). Paths with `..` are refused everywhere. Outside paths are resolved
+//! first and checked against the places never reachable (outside.rs), and
+//! each access is logged; a link inside the app's folder that leads out of
+//! it is refused.
 
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -83,15 +86,42 @@ pub async fn allowed_path(app: &AppHandle, input: &str, what: &str) -> Result<Pa
     allowed(app, input, what).await
 }
 
+/// Whether a path in the app's own folder stays in it once links are
+/// followed (a link placed there can't lead the screens out unasked).
+fn stays_inside(root: &Path, real: &Path) -> bool {
+    let Ok(root) = std::fs::canonicalize(root) else {
+        // No folder yet: nothing in it can lead out.
+        return true;
+    };
+    crate::outside::resolve(real).is_ok_and(|r| r.starts_with(&root))
+}
+
 async fn allowed(app: &AppHandle, input: &str, what: &str) -> Result<PathBuf, String> {
-    let located = locate(&app_root(app)?, input)?;
-    if !located.own {
-        let question = format!("DesktopAgent wants to {what}:\n\n{}", located.real.display());
-        if !ask(app, &question).await {
-            return Err("The user said no. Nothing was done.".into());
+    let root = app_root(app)?;
+    let located = locate(&root, input)?;
+    if located.own {
+        if !stays_inside(&root, &located.real) {
+            return Err("That is a link to somewhere outside the app's folder; it isn't followed".into());
         }
+        return Ok(located.real);
     }
-    Ok(located.real)
+    // Outside the app's folder: resolved (links, junctions, short names),
+    // refused if it doesn't resolve cleanly or is never reachable
+    // (outside.rs), then asked every time, and logged.
+    let real = match crate::outside::checked(app, &located.real) {
+        Ok(real) => real,
+        Err(e) => {
+            crate::outside::audit(app, "app", what, "refused", &located.real.to_string_lossy());
+            return Err(e);
+        }
+    };
+    let question = format!("DesktopAgent wants to {what}, outside its own folder:\n\n{}", real.display());
+    let yes = ask(app, &question).await;
+    crate::outside::audit(app, "app", what, if yes { "allowed" } else { "said no" }, &real.to_string_lossy());
+    if !yes {
+        return Err("The user said no. Nothing was done.".into());
+    }
+    Ok(real)
 }
 
 #[derive(Serialize)]

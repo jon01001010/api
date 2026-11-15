@@ -460,10 +460,13 @@ pub fn question(device: &str, plan: &Plan) -> String {
     } else {
         "Before and after (- before, + after):"
     };
+    // The facts (who, which file, the counts) first; the text the device's
+    // model wants to write after the label (escaped: shown_line).
     format!(
-        "\u{201c}{device}{}\n{}\n\n{heading}\n{}",
+        "\u{201c}{device}{}\n{}\n\n{}\n{heading}\n{}",
         crate::remote_ask::WRITE_ASK_DEVICE,
         summary(plan),
+        crate::approval::MODEL_SAYS,
         plan.change.view.join("\n")
     )
 }

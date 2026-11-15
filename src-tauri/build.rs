@@ -21,6 +21,7 @@ const COMMANDS: &[&str] = &[
     "open_external",
     "pc_info",
     "run_command",
+    "outside_files",
     "open_workspace_file",
     "clipboard_read",
     "notify",

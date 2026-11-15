@@ -362,6 +362,7 @@ const TOOL_WORDS: Record<string, string> = {
   print_file: 'print files',
   pc_info: 'PC info',
   run_command: 'run commands on the PC',
+  outside_files: 'files outside the workspace',
   tool_save: 'save tools',
   tool_delete: 'delete tools',
 };
