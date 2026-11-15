@@ -1,5 +1,6 @@
 import React from 'react';
-import {fireEvent, render, waitFor} from '@testing-library/react-native';
+import {Alert} from 'react-native';
+import {act, fireEvent, render, waitFor} from '@testing-library/react-native';
 import {Provider as PaperProvider} from 'react-native-paper';
 
 import {HomeLinkCard} from '../HomeLinkCard';
@@ -7,9 +8,13 @@ import {
   linkDeviceMayAnswer,
   linkDeviceMayCommand,
   linkDeviceMayPicture,
+  linkForget,
+  linkKeyMode,
   linkPicturesAllow,
   linkStatus,
+  linkUseOneKey,
 } from '../../../services/desktop/homeLink';
+import {serverStore} from '../../../store';
 
 let mockAnswers = false;
 jest.mock('../../../services/sync/hostSync', () => ({
@@ -34,7 +39,13 @@ jest.mock('../../../services/desktop/homeLink', () => ({
   linkPair: jest.fn(),
   linkOn: jest.fn(),
   linkOff: jest.fn(),
-  linkForget: jest.fn(),
+  linkForget: jest.fn(async () => {}),
+  linkKeyMode: jest.fn(async () => ({
+    oneKey: false,
+    linkKey: 'l'.repeat(64),
+    deviceKey: 'd'.repeat(64),
+  })),
+  linkUseOneKey: jest.fn(async () => {}),
   linkDeviceMayAnswer: jest.fn(async () => {}),
   linkDeviceMayPicture: jest.fn(async () => {}),
   linkDeviceMayRead: jest.fn(async () => {}),
@@ -58,7 +69,7 @@ describe('Home link card: which devices may answer', () => {
   it('shows no per-device switch while answering is off on this PC', async () => {
     mockAnswers = false;
     const {findByTestId, queryByTestId} = show();
-    await findByTestId('home-link-forget-aaaa');
+    await findByTestId('your-devices-remove-aaaa');
     expect(queryByTestId('home-link-may-answer-aaaa')).toBeNull();
   });
 
@@ -146,7 +157,85 @@ describe('Home link card: commands from paired devices', () => {
 
   it('shows no per-device switch while device tools are off on this PC', async () => {
     const {findByTestId, queryByTestId} = show();
-    await findByTestId('home-link-forget-aaaa');
+    await findByTestId('your-devices-remove-aaaa');
     expect(queryByTestId('home-link-may-command-aaaa')).toBeNull();
+  });
+});
+
+describe('Home link card: your devices', () => {
+  const pressAlert = (button: string) => {
+    const [, , buttons] = (Alert.alert as jest.Mock).mock.calls.at(-1);
+    return act(() =>
+      buttons.find((b: {text: string}) => b.text === button).onPress(),
+    );
+  };
+  beforeEach(() => {
+    serverStore.servers = [];
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    (Alert.alert as jest.Mock).mockRestore();
+  });
+
+  it('lists devices that use this PC and PCs it uses, with what each was given', async () => {
+    serverStore.servers = [
+      {id: 's1', name: 'Desktop', url: 'x', homeLinkPc: 'cccc'},
+    ];
+    const {findByTestId, getByTestId} = show();
+    await findByTestId('your-devices-aaaa');
+    expect(getByTestId('your-devices-cccc')).toBeTruthy();
+    expect(getByTestId('your-devices-rights-aaaa').props.children).toBe(
+      'May use here: Model, Answer questions',
+    );
+    expect(getByTestId('your-devices-rights-bbbb').props.children).toBe(
+      'May use here: Model',
+    );
+    expect(getByTestId('your-devices-rights-cccc').props.children).toMatch(
+      /^Given nothing by this device/,
+    );
+  });
+
+  it('removing asks first, then removes here only', async () => {
+    serverStore.servers = [
+      {id: 's1', name: 'Desktop', url: 'x', homeLinkPc: 'cccc'},
+    ];
+    const {findByTestId} = show();
+    fireEvent.press(await findByTestId('your-devices-remove-aaaa'));
+    expect(linkForget).not.toHaveBeenCalled();
+    expect((Alert.alert as jest.Mock).mock.calls.at(-1)[1]).toContain(
+      'Removed on this device only',
+    );
+    await pressAlert('Remove here');
+    expect(linkForget).toHaveBeenCalledWith('aaaa');
+    expect(serverStore.removeServer).not.toHaveBeenCalled();
+    fireEvent.press(await findByTestId('your-devices-remove-cccc'));
+    await pressAlert('Remove here');
+    expect(serverStore.removeServer).toHaveBeenCalledWith('s1');
+    expect(linkForget).not.toHaveBeenCalledWith('cccc');
+  });
+
+  it('a PC with two keys can move to one key, told to pair again by hand', async () => {
+    serverStore.servers = [
+      {id: 's1', name: 'Desktop', url: 'x', homeLinkPc: 'cccc'},
+    ];
+    const {findByTestId} = show();
+    fireEvent.press(await findByTestId('your-devices-use-one-key'));
+    expect(linkUseOneKey).not.toHaveBeenCalled();
+    expect((Alert.alert as jest.Mock).mock.calls.at(-1)[1]).toContain(
+      'pair with each one again by hand',
+    );
+    await pressAlert('Use one key');
+    expect(linkUseOneKey).toHaveBeenCalled();
+  });
+
+  it('a PC with one key offers no move', async () => {
+    (linkKeyMode as jest.Mock).mockResolvedValue({
+      oneKey: true,
+      linkKey: 'l'.repeat(64),
+      deviceKey: 'l'.repeat(64),
+    });
+    const {findByTestId, queryByTestId} = show();
+    await findByTestId('your-devices-key-mode');
+    expect(queryByTestId('your-devices-use-one-key')).toBeNull();
   });
 });

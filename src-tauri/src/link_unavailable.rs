@@ -127,3 +127,13 @@ pub async fn link_sync_allow(_allowed: bool) {}
 pub async fn link_sync_reply(_id: u64, _body: String) -> Result<(), String> {
     Err("The home link is not in this build".into())
 }
+
+#[tauri::command]
+pub async fn link_key_mode() -> Result<(), String> {
+    Err("The home link is not in this build".into())
+}
+
+#[tauri::command]
+pub async fn link_use_one_key() -> Result<(), String> {
+    Err("The home link is not in this build".into())
+}

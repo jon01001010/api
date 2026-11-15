@@ -16,6 +16,18 @@ export interface LinkPhone {
   mayAct?: boolean;
   /** May ask this PC to run commands, each asked there (missing: no). */
   mayCommand?: boolean;
+  /** When it was paired (seconds since 1970); missing on older records. */
+  pairedAt?: number;
+}
+
+/** Which keys this PC uses (device-circle stage 1: one key per PC). */
+export interface LinkKeyMode {
+  /** One key in both roles (new installs, or after "Use one key"). */
+  oneKey: boolean;
+  /** This PC's key as a home PC (what its devices paired with). */
+  linkKey: string;
+  /** This PC's key as a device of another PC. */
+  deviceKey: string;
 }
 
 export interface LinkEvent {
@@ -78,3 +90,9 @@ export async function linkDeviceMayCommand(
   _id: string,
   _allowed: boolean,
 ): Promise<void> {}
+export async function linkKeyMode(): Promise<LinkKeyMode> {
+  throw new Error('Only in the desktop app.');
+}
+export async function linkUseOneKey(): Promise<void> {
+  throw new Error('Only in the desktop app.');
+}

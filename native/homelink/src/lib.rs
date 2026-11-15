@@ -11,6 +11,7 @@
 //!   allowed pairing on the PC. Only the model server is reachable.
 //! - The local port answers this phone only (127.0.0.1), never the network.
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Mutex;
@@ -145,8 +146,10 @@ pub struct Phone {
     endpoint: Endpoint,
     /// TEST/LAN only: a direct address for the PC (a real phone dials by key).
     pc_addr_hint: Option<SocketAddr>,
-    connection: Mutex<Option<(EndpointId, Connection)>>,
-    tunnel: Mutex<Option<(u16, tokio::task::JoinHandle<()>)>>,
+    /// One open connection per PC (a device can use several Home PCs).
+    connection: Mutex<HashMap<EndpointId, Connection>>,
+    /// One local port per PC, each leading only to its own PC.
+    tunnel: Mutex<HashMap<EndpointId, (u16, tokio::task::JoinHandle<()>)>>,
 }
 
 fn load_or_make_key(key_file: &Path) -> Result<SecretKey, String> {
@@ -220,21 +223,38 @@ impl Phone {
     /// Windows' Credential Manager, out of the screens' reach).
     pub fn with_key(key: [u8; 32], pc_addr_hint: Option<SocketAddr>) -> Result<Phone, String> {
         let key = SecretKey::from_bytes(&key);
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .map_err(|e| e.to_string())?;
+        let runtime = Self::runtime()?;
         let endpoint = runtime
             .block_on(Endpoint::builder(presets::N0).secret_key(key).bind())
             .map_err(|e| e.to_string())?;
-        Ok(Phone {
+        Ok(Self::on(runtime, endpoint, pc_addr_hint))
+    }
+
+    /// On an endpoint the caller already runs (a PC with one key: its own
+    /// link endpoint, which also takes paired devices' connections), so
+    /// the PC is the same key in both roles. One endpoint per key: two
+    /// endpoints with one key would push each other off the relay. Closing
+    /// the endpoint stays the caller's job.
+    pub fn with_endpoint(endpoint: Endpoint, pc_addr_hint: Option<SocketAddr>) -> Result<Phone, String> {
+        Ok(Self::on(Self::runtime()?, endpoint, pc_addr_hint))
+    }
+
+    fn runtime() -> Result<tokio::runtime::Runtime, String> {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .map_err(|e| e.to_string())
+    }
+
+    fn on(runtime: tokio::runtime::Runtime, endpoint: Endpoint, pc_addr_hint: Option<SocketAddr>) -> Phone {
+        Phone {
             runtime,
             endpoint,
             pc_addr_hint,
-            connection: Mutex::new(None),
-            tunnel: Mutex::new(None),
-        })
+            connection: Mutex::new(HashMap::new()),
+            tunnel: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn id(&self) -> String {
@@ -251,8 +271,8 @@ impl Phone {
 
     /// The open connection to this PC, or a new one.
     async fn connection(&self, pc: EndpointId) -> Result<Connection, String> {
-        if let Some((id, conn)) = self.connection.lock().unwrap().as_ref() {
-            if *id == pc && conn.close_reason().is_none() {
+        if let Some(conn) = self.connection.lock().unwrap().get(&pc) {
+            if conn.close_reason().is_none() {
                 return Ok(conn.clone());
             }
         }
@@ -260,7 +280,7 @@ impl Phone {
             .await
             .map_err(|_| "Could not reach the PC (is the home link on?)".to_string())?
             .map_err(|e| format!("Could not reach the PC: {e}"))?;
-        *self.connection.lock().unwrap() = Some((pc, conn.clone()));
+        self.connection.lock().unwrap().insert(pc, conn.clone());
         Ok(conn)
     }
 
@@ -325,10 +345,10 @@ impl Phone {
     /// there is no open connection.
     fn route(&self, pc: EndpointId) -> String {
         let guard = self.connection.lock().unwrap();
-        let Some((id, conn)) = guard.as_ref() else {
+        let Some(conn) = guard.get(&pc) else {
             return "not connected".into();
         };
-        if *id != pc || conn.close_reason().is_some() {
+        if conn.close_reason().is_some() {
             return "not connected".into();
         }
         let paths = conn.paths();
@@ -484,7 +504,8 @@ impl Phone {
     /// PC's model server.
     pub fn open_tunnel(self: &std::sync::Arc<Self>, pc: &str) -> Result<u16, String> {
         let pc: EndpointId = pc.parse().map_err(|_| "Bad PC key".to_string())?;
-        if let Some((port, task)) = self.tunnel.lock().unwrap().as_ref() {
+        // This PC's own port only: another PC's port leads to that PC.
+        if let Some((port, task)) = self.tunnel.lock().unwrap().get(&pc) {
             if !task.is_finished() {
                 return Ok(*port);
             }
@@ -507,12 +528,14 @@ impl Phone {
                 });
             }
         });
-        *self.tunnel.lock().unwrap() = Some((port, task));
+        if let Some((_, old)) = self.tunnel.lock().unwrap().insert(pc, (port, task)) {
+            old.abort();
+        }
         Ok(port)
     }
 
     pub fn close_tunnel(&self) {
-        if let Some((_, task)) = self.tunnel.lock().unwrap().take() {
+        for (_, (_, task)) in self.tunnel.lock().unwrap().drain() {
             task.abort();
         }
     }
@@ -645,6 +668,100 @@ mod tests {
             assert_eq!(streams.load(std::sync::atomic::Ordering::SeqCst), round);
         }
         phone.close_tunnel();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Several Home PCs on one device (device-circle stage 1): each PC has
+    /// its own local port, which leads only to that PC.
+    #[test]
+    fn each_home_pc_gets_its_own_local_port() {
+        let other = SecretKey::generate().public().to_string();
+        let dir = std::env::temp_dir().join(format!("homelink-ports-{}", std::process::id()));
+        let phone = std::sync::Arc::new(Phone::new(&dir.join("key"), None).unwrap());
+        let first = phone.open_tunnel(PC).unwrap();
+        let second = phone.open_tunnel(&other).unwrap();
+        assert_ne!(first, second);
+        assert_eq!(phone.open_tunnel(PC).unwrap(), first);
+        assert_eq!(phone.open_tunnel(&other).unwrap(), second);
+        // Closing closes them all.
+        phone.close_tunnel();
+        assert!(phone.tunnel.lock().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A PC with one key (device-circle stage 1): its own endpoint takes a
+    /// paired device's connection and also dials another PC as a device.
+    /// The other PC sees the same key that the first PC's devices dial.
+    #[test]
+    fn one_endpoint_is_one_key_in_both_roles() {
+        // The other PC: says which key dialled it.
+        let (other_tx, other_rx) = std::sync::mpsc::channel();
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async move {
+                let pc = Endpoint::builder(presets::Minimal)
+                    .alpns(vec![ALPN.to_vec()])
+                    .bind_addr("127.0.0.1:0")
+                    .unwrap()
+                    .bind()
+                    .await
+                    .unwrap();
+                other_tx.send((pc.id(), pc.bound_sockets()[0])).unwrap();
+                while let Some(incoming) = pc.accept().await {
+                    let Ok(conn) = incoming.await else { continue };
+                    seen_tx.send(conn.remote_id()).unwrap();
+                    while let Ok((mut send, mut recv)) = conn.accept_bi().await {
+                        let _ = read_line(&mut recv).await;
+                        send.write_all(b"{\"ok\":true,\"running\":false}\n").await.unwrap();
+                        let _ = send.finish();
+                        let _ = send.stopped().await;
+                    }
+                }
+            });
+        });
+        let (other, other_addr) = other_rx.recv().unwrap();
+        // This PC: its link endpoint runs on a runtime of its own (the app's)
+        // and takes devices' connections.
+        let (this_tx, this_rx) = std::sync::mpsc::channel();
+        let (device_tx, device_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async move {
+                let pc = Endpoint::builder(presets::Minimal)
+                    .alpns(vec![ALPN.to_vec()])
+                    .bind_addr("127.0.0.1:0")
+                    .unwrap()
+                    .bind()
+                    .await
+                    .unwrap();
+                this_tx.send(pc.clone()).unwrap();
+                while let Some(incoming) = pc.accept().await {
+                    let Ok(conn) = incoming.await else { continue };
+                    device_tx.send(conn.remote_id()).unwrap();
+                    while let Ok((mut send, mut recv)) = conn.accept_bi().await {
+                        let _ = read_line(&mut recv).await;
+                        send.write_all(b"{\"ok\":true,\"running\":true}\n").await.unwrap();
+                        let _ = send.finish();
+                        let _ = send.stopped().await;
+                    }
+                }
+            });
+        });
+        let this_pc = this_rx.recv().unwrap();
+        let this_id = this_pc.id();
+        let this_addr = this_pc.bound_sockets()[0];
+        // As a device of the other PC, on the very same endpoint.
+        let as_device = Phone::with_endpoint(this_pc, Some(other_addr)).unwrap();
+        assert_eq!(as_device.id(), this_id.to_string());
+        assert!(!as_device.status(&other.to_string()).unwrap().running);
+        assert_eq!(seen_rx.recv().unwrap(), this_id);
+        // Meanwhile it still takes its own devices' connections.
+        let dir = std::env::temp_dir().join(format!("homelink-one-key-{}", std::process::id()));
+        let phone = Phone::new(&dir.join("key"), Some(this_addr)).unwrap();
+        assert!(phone.status(&this_id.to_string()).unwrap().running);
+        assert_eq!(device_rx.recv().unwrap().to_string(), phone.id());
+        drop(as_device);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

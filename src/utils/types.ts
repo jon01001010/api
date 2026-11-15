@@ -495,6 +495,9 @@ export interface ServerConfig {
   // Home link: this server is the home PC's model, reached through the
   // phone's local tunnel (src/services/homeLink). The PC's key.
   homeLinkPc?: string;
+  // Home link: when this device paired with that PC (ms since 1970), for
+  // "Your devices"; missing for pairings made before it was kept.
+  homeLinkPairedAt?: number;
 }
 
 /**

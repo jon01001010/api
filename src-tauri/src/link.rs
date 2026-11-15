@@ -136,6 +136,27 @@ pub struct Phone {
     /// this PC.
     #[serde(default, rename = "mayCommand", skip_serializing_if = "std::ops::Not::not")]
     pub may_command: bool,
+    /// When it was paired (seconds since 1970, this PC's clock), for "Your
+    /// devices". Records saved before this existed have none.
+    #[serde(default, rename = "pairedAt", skip_serializing_if = "Option::is_none")]
+    pub paired_at: Option<u64>,
+}
+
+impl Phone {
+    /// A newly paired device: the model only, every other right off until
+    /// switched on here (each asked on this PC).
+    pub fn new(id: String, name: String, paired_at: u64) -> Self {
+        Phone {
+            id,
+            name,
+            may_answer: false,
+            may_picture: false,
+            may_read: false,
+            may_act: false,
+            may_command: false,
+            paired_at: Some(paired_at),
+        }
+    }
 }
 
 /// Whether this paired device may ask this PC to run commands.
@@ -678,11 +699,15 @@ fn load_events(app: &AppHandle) -> Vec<LinkEvent> {
         .unwrap_or_default()
 }
 
-fn record(app: &AppHandle, kind: &str, name: Option<String>) {
-    let at = std::time::SystemTime::now()
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
-        .unwrap_or(0);
+        .unwrap_or(0)
+}
+
+fn record(app: &AppHandle, kind: &str, name: Option<String>) {
+    let at = now_secs();
     let mut events = load_events(app);
     add_event(&mut events, at, kind, name);
     if let Ok(json) = serde_json::to_string(&events) {
@@ -703,7 +728,15 @@ pub fn pc_build() -> String {
 
 #[derive(Default)]
 pub struct Link {
+    /// This PC's endpoint (its link key) and what takes devices'
+    /// connections on it. Kept while the link is off only when this PC uses
+    /// it as a device too (`shared`); devices are refused then.
     running: tokio::sync::Mutex<Option<iroh::protocol::Router>>,
+    /// The user's switch: the link is on (paired devices are let in).
+    on: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// This PC uses its link key as a device of another PC too (one key per
+    /// PC, link_client.rs): the endpoint stays while the link is off.
+    shared: std::sync::atomic::AtomicBool,
     pair_code: Mutex<Option<PairCode>>,
     /// Paired devices may keep the system prompt and memory in step (the
     /// user's switch on this PC; off by default).
@@ -738,6 +771,19 @@ impl Link {
         for connection in open.unwrap_or_default() {
             connection.close(0u32.into(), b"removed");
         }
+    }
+
+    /// Closes every device's open connections (the link was switched off
+    /// while the endpoint stays for this PC's own use as a device).
+    fn cut_off_all(&self) {
+        let open: Vec<_> = self.connections.lock().unwrap().drain().collect();
+        for connection in open.into_iter().flat_map(|(_, list)| list) {
+            connection.close(0u32.into(), b"off");
+        }
+    }
+
+    fn is_on(&self) -> bool {
+        self.on.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
@@ -1166,8 +1212,14 @@ impl iroh::protocol::ProtocolHandler for Handler {
         connection: iroh::endpoint::Connection,
     ) -> Result<(), iroh::protocol::AcceptError> {
         let remote = connection.remote_id().to_string();
-        // Kept so that removing this device closes it at once (link_forget).
         let link = self.app.state::<Link>();
+        // Switched off (the endpoint stays only for this PC's own use as a
+        // device): nobody comes in. The incoming filter refuses first.
+        if !link.is_on() {
+            connection.close(0u32.into(), b"off");
+            return Ok(());
+        }
+        // Kept so that removing this device closes it at once (link_forget).
         link.connections
             .lock()
             .unwrap()
@@ -1490,10 +1542,7 @@ async fn serve_stream(
                 );
                 if crate::approval::ask_on_this_pc(&app, &question).await {
                     let mut phones = load_phones(&app);
-                    add_phone(
-                        &mut phones,
-                        Phone { id: remote.clone(), name: name.clone(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false },
-                    );
+                    add_phone(&mut phones, Phone::new(remote.clone(), name.clone(), now_secs()));
                     let saved = save_phones(&app, &phones).is_ok();
                     if saved {
                         record(&app, "paired", Some(name));
@@ -1742,24 +1791,60 @@ async fn serve_stream(
     Ok(())
 }
 
-async fn start(app: &AppHandle) -> Result<String, String> {
-    let link = app.state::<Link>();
-    let mut running = link.running.lock().await;
+/// This PC's endpoint with its link key, made once. While the link is off,
+/// it takes no devices' connections (no protocol offered, and refused).
+async fn bind(app: &AppHandle, running: &mut Option<iroh::protocol::Router>) -> Result<iroh::Endpoint, String> {
     if let Some(router) = running.as_ref() {
-        return Ok(router.endpoint().id().to_string());
+        return Ok(router.endpoint().clone());
     }
+    let link = app.state::<Link>();
     let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
         .secret_key(secret_key(app)?)
         .alpns(vec![ALPN.to_vec()])
         .bind()
         .await
         .map_err(|e| e.to_string())?;
-    let id = endpoint.id().to_string();
-    let router = iroh::protocol::Router::builder(endpoint)
+    let on = link.on.clone();
+    let router = iroh::protocol::Router::builder(endpoint.clone())
+        .incoming_filter(std::sync::Arc::new(move |_| {
+            if on.load(std::sync::atomic::Ordering::SeqCst) {
+                iroh::protocol::IncomingFilterOutcome::Accept
+            } else {
+                iroh::protocol::IncomingFilterOutcome::Reject
+            }
+        }))
         .accept(ALPN, Handler { app: app.clone() })
         .spawn();
+    if !link.is_on() {
+        endpoint.set_alpns(Vec::new());
+    }
     *running = Some(router);
-    Ok(id)
+    Ok(endpoint)
+}
+
+async fn start(app: &AppHandle) -> Result<String, String> {
+    let link = app.state::<Link>();
+    let mut running = link.running.lock().await;
+    let endpoint = bind(app, &mut running).await?;
+    link.on.store(true, std::sync::atomic::Ordering::SeqCst);
+    endpoint.set_alpns(vec![ALPN.to_vec()]);
+    Ok(endpoint.id().to_string())
+}
+
+/// One key per PC (device-circle stage 1): this PC's own link endpoint, for
+/// use as a device of another PC (link_client.rs). Made if needed; while
+/// the link is off it still lets no device in.
+pub async fn device_endpoint(app: &AppHandle) -> Result<iroh::Endpoint, String> {
+    let link = app.state::<Link>();
+    let mut running = link.running.lock().await;
+    let endpoint = bind(app, &mut running).await?;
+    link.shared.store(true, std::sync::atomic::Ordering::SeqCst);
+    Ok(endpoint)
+}
+
+/// This PC's link key, public half (no endpoint needed).
+pub fn link_key_id(app: &AppHandle) -> Result<String, String> {
+    Ok(secret_key(app)?.public().to_string())
 }
 
 // ------------------------------------------------------------- commands
@@ -1810,7 +1895,16 @@ pub async fn link_on(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn link_off(link: State<'_, Link>) -> Result<(), String> {
     *link.pair_code.lock().unwrap() = None;
-    if let Some(router) = link.running.lock().await.take() {
+    let mut running = link.running.lock().await;
+    link.on.store(false, std::sync::atomic::Ordering::SeqCst);
+    if link.shared.load(std::sync::atomic::Ordering::SeqCst) {
+        // This PC uses the same endpoint as a device: it stays, but offers
+        // no protocol and refuses devices; what they have open ends now.
+        if let Some(router) = running.as_ref() {
+            router.endpoint().set_alpns(Vec::new());
+        }
+        link.cut_off_all();
+    } else if let Some(router) = running.take() {
         let _ = router.shutdown().await;
     }
     Ok(())
@@ -1819,11 +1913,12 @@ pub async fn link_off(link: State<'_, Link>) -> Result<(), String> {
 #[tauri::command]
 pub async fn link_status(app: AppHandle, link: State<'_, Link>) -> Result<LinkStatus, String> {
     let running = link.running.lock().await;
+    let on = running.is_some() && link.is_on();
     Ok(LinkStatus {
-        on: running.is_some(),
+        on,
         pictures_allowed: pictures_allowed(&app),
         tools_allowed: tools_allowed(&app),
-        pc_id: running.as_ref().map(|r| r.endpoint().id().to_string()),
+        pc_id: running.as_ref().filter(|_| on).map(|r| r.endpoint().id().to_string()),
         phones: load_phones(&app),
         events: load_events(&app),
     })
@@ -2354,10 +2449,10 @@ mod tests {
         assert_eq!(clean_name(&"x".repeat(100)).len(), 40);
         let mut phones = Vec::new();
         for i in 0..(MAX_PHONES + 3) {
-            add_phone(&mut phones, Phone { id: format!("{i}"), name: "p".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false });
+            add_phone(&mut phones, Phone { id: format!("{i}"), name: "p".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false, paired_at: None });
         }
         assert_eq!(phones.len(), MAX_PHONES);
-        add_phone(&mut phones, Phone { id: "5".into(), name: "again".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false });
+        add_phone(&mut phones, Phone { id: "5".into(), name: "again".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false, paired_at: None });
         assert_eq!(phones.iter().filter(|p| p.id == "5").count(), 1);
     }
 
@@ -2382,7 +2477,7 @@ mod tests {
         assert!(set_may_answer(&mut phones, "a", false));
         assert!(!may_answer(&phones, "a"));
         // Pairing again starts over (not allowed).
-        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false });
+        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false, paired_at: None });
         assert!(!may_answer(&phones, "a"));
     }
 
@@ -2406,7 +2501,7 @@ mod tests {
         let back: Vec<Phone> = serde_json::from_str(&json).unwrap();
         assert_eq!(back, phones);
         // Pairing again starts over (not allowed).
-        add_phone(&mut phones, Phone { id: "b".into(), name: "Laptop".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false });
+        add_phone(&mut phones, Phone { id: "b".into(), name: "Laptop".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false, paired_at: None });
         assert!(!may_picture(&phones, "b"));
     }
 
@@ -2578,7 +2673,7 @@ mod tests {
         assert!(!set_may_act(&mut phones, "b", true));
         assert!(serde_json::to_string(&phones).unwrap().contains(r#""mayAct":true"#));
         // Pairing anew starts with it off.
-        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false });
+        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false, paired_at: None });
         assert!(!may_act(&phones, "a"));
         let q = may_act_question("Pixel", "abcd");
         assert!(q.contains("\u{201c}Pixel\u{201d}") && q.contains("asks you every time") && q.ends_with("Device key: abcd"));
@@ -2603,7 +2698,7 @@ mod tests {
         assert!(!serde_json::to_string(&phones).unwrap().contains("mayCommand"));
         // Pairing anew starts with it off.
         assert!(set_may_command(&mut phones, "a", true));
-        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false });
+        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false, paired_at: None });
         assert!(!may_command(&phones, "a"));
         // Turning it on warns plainly.
         let q = may_command_question("Pixel", "abcd");
@@ -2683,7 +2778,7 @@ mod tests {
         assert!(!set_may_read(&mut phones, "b", true));
         assert!(serde_json::to_string(&phones).unwrap().contains(r#""mayRead":true"#));
         // Pairing anew starts with it off.
-        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false });
+        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false, may_act: false, may_command: false, paired_at: None });
         assert!(!may_read(&phones, "a"));
     }
 
@@ -2759,6 +2854,62 @@ mod tests {
         }
         assert_eq!(grants.count("a", start + Duration::from_secs(200)), MAX_CHAT_GRANTS_PER_DEVICE);
         assert_eq!(grants.count("b", start + Duration::from_secs(200)), 1);
+    }
+
+    /// Device-circle stage 1: every right but the model is off for every
+    /// record, old (saved before a flag existed) and new (just paired).
+    #[test]
+    fn rights_are_off_for_old_and_new_records() {
+        let off = |p: &Phone| !(p.may_answer || p.may_picture || p.may_read || p.may_act || p.may_command);
+        let old: Vec<Phone> = serde_json::from_str(r#"[{"id":"a","name":"Pixel"},{"id":"b","name":"Laptop","mayAnswer":false}]"#).unwrap();
+        assert!(old.iter().all(off));
+        assert!(old.iter().all(|p| p.paired_at.is_none()));
+        let new = Phone::new("c".into(), "Desktop".into(), 1_763_200_000);
+        assert!(off(&new));
+        assert_eq!(new.paired_at, Some(1_763_200_000));
+        // Off flags are not even written; the pairing time is.
+        let json = serde_json::to_value(&new).unwrap();
+        assert_eq!(json, serde_json::json!({"id": "c", "name": "Desktop", "pairedAt": 1_763_200_000u64}));
+        // Pairing again starts over: rights off, a new time.
+        let mut phones = vec![Phone { may_command: true, may_read: true, ..new.clone() }];
+        add_phone(&mut phones, Phone::new("c".into(), "Desktop".into(), 1_763_300_000));
+        assert_eq!(phones.len(), 1);
+        assert!(off(&phones[0]));
+        assert_eq!(phones[0].paired_at, Some(1_763_300_000));
+    }
+
+    /// Device-circle stage 1: a right is saved only after this PC's own
+    /// native dialog said yes (turning one off asks nothing); pairing saves
+    /// a device only after its dialog too, with every right off.
+    #[test]
+    fn rights_are_written_only_after_this_pcs_own_dialog() {
+        let source = include_str!("link.rs");
+        for (name, set) in [
+            ("answer", "set_may_answer"),
+            ("picture", "set_may_picture"),
+            ("read", "set_may_read"),
+            ("act", "set_may_act"),
+            ("command", "set_may_command"),
+        ] {
+            let start = source.find(&format!("pub async fn link_device_may_{name}(")).unwrap();
+            let body = &source[start..];
+            let body = &body[..body.find("#[tauri::command]").unwrap()];
+            let allowed = body.find("if allowed {").unwrap();
+            let ask = body.find("if !crate::approval::ask_on_this_pc(&app, &question).await {").unwrap();
+            let refuse = body.find("return Err(\"Not allowed on this PC\".into());").unwrap();
+            let set = body.find(&format!("{set}(&mut phones, &id, allowed)")).unwrap();
+            let save = body.find("save_phones(&app, &phones)").unwrap();
+            assert!(allowed < ask && ask < refuse && refuse < set && set < save, "{name}");
+            assert_eq!(body.matches("save_phones(").count(), 1, "{name}");
+        }
+        let pair = &source[source.find("Some(Request::Pair { code, name }) => {").unwrap()..];
+        let pair = &pair[..pair.find("Some(Request::Status) if paired").unwrap()];
+        let ask = pair.find("if crate::approval::ask_on_this_pc(&app, &question).await {").unwrap();
+        let add = pair.find("add_phone(&mut phones, Phone::new(").unwrap();
+        assert!(ask < add);
+        // Only these write the paired list: pairing, the five rights, removing.
+        let code = &source[..source.find("#[cfg(test)]").unwrap()];
+        assert_eq!(code.matches("save_phones(&app, &phones)").count(), 7);
     }
 
     #[test]

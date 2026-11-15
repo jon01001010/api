@@ -69,6 +69,8 @@
     "allow-homelink-answer-question",
     "allow-homelink-picture",
     "allow-homelink-tool",
-    "allow-homelink-close-tunnel"
+    "allow-homelink-close-tunnel",
+    "allow-link-key-mode",
+    "allow-link-use-one-key"
   ]
 }

@@ -64,6 +64,8 @@ const COMMANDS: &[&str] = &[
     "homelink_picture",
     "homelink_tool",
     "homelink_close_tunnel",
+    "link_key_mode",
+    "link_use_one_key",
 ];
 
 fn main() {
