@@ -17,6 +17,7 @@ import {
 } from '../../services/sync/hostSync';
 import {
   homeLinkAvailable,
+  linkDeviceMayAct,
   linkDeviceMayAnswer,
   linkDeviceMayPicture,
   linkDeviceMayRead,
@@ -243,7 +244,9 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
             Let paired devices use this PC's tools: this PC's information, and
             the list and text of the files in its workspace (read only; reading
             asks here once per chat, and this PC shows a notification for each
-            file read). Only devices you allow below (each asked here).
+            file read; May read), and opening or printing a workspace file,
+            media keys and the clipboard (asked here every time, naming the
+            device; May act). Only devices you allow below (each asked here).
           </Text>
           <Switch
             value={!!status.toolsAllowed}
@@ -298,6 +301,14 @@ export const HomeLinkCard: React.FC<{cardStyle?: object}> = ({cardStyle}) => {
                   accessibilityLabel={`${phone.name} may use this PC's tools`}
                   testID={`home-link-may-read-${phone.id}`}
                   onValueChange={v => run(() => linkDeviceMayRead(phone.id, v))}
+                />
+                <Text variant="bodySmall">May act</Text>
+                <Switch
+                  value={!!phone.mayAct}
+                  disabled={busy}
+                  accessibilityLabel={`${phone.name} may ask this PC to open, print, press media keys or read the clipboard`}
+                  testID={`home-link-may-act-${phone.id}`}
+                  onValueChange={v => run(() => linkDeviceMayAct(phone.id, v))}
                 />
               </>
             ) : null}

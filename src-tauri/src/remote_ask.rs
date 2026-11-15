@@ -11,8 +11,9 @@
 //!   and the whole question (one line, escaped), where the screens can't
 //!   edit it; and the PC user is told at once (a notification). The PC's
 //!   dialog, which can't be closed from here, then says it was answered.
-//!   A question that shows something private (the clipboard's text) is
-//!   logged without it ("clipboard (N characters)"). The log is kept to
+//!   A question that shows something private (the clipboard's text, whether
+//!   this PC's own tool or a paired device asked) is logged, and told in
+//!   the notification, without it ("clipboard (N characters)"). The log is kept to
 //!   about 2 MB: past 1 MB it moves to answers.log.1 (replacing the older
 //!   one) and a new one starts.
 
@@ -123,16 +124,24 @@ pub const CLIPBOARD_ASK: &str = "DesktopAgent wants to give the model the text o
 /// Past this size the log moves to answers.log.1 and a new one starts.
 pub const MAX_LOG_BYTES: u64 = 1024 * 1024;
 
+/// How the clipboard question's first line ends when a paired device asks
+/// (pc_extra::clipboard_question_for): `“<device>` comes before it.
+pub const CLIPBOARD_ASK_DEVICE: &str =
+    "\u{201d} asks for the text on your clipboard (it goes to that device's model):";
+
 /// A question as the log keeps it: the clipboard's text (often a password)
-/// replaced by its length; any other question as it is.
+/// replaced by its length, whether this PC's own tool or a paired device
+/// asked (the first line, with the device's name, is kept); any other
+/// question as it is. Every other question's first line is fixed text that
+/// ends otherwise, so nothing else can be cut short here.
 pub fn loggable(question: &str) -> String {
-    match question.strip_prefix(CLIPBOARD_ASK) {
-        Some(rest) => {
-            let shown = rest.trim_start_matches('\n');
-            format!("{CLIPBOARD_ASK} clipboard ({} characters, not logged)", shown.chars().count())
-        }
-        None => question.to_string(),
+    let first = question.split('\n').next().unwrap_or("");
+    let clipboard = first == CLIPBOARD_ASK || (first.starts_with('\u{201c}') && first.ends_with(CLIPBOARD_ASK_DEVICE));
+    if !clipboard {
+        return question.to_string();
     }
+    let shown = question[first.len()..].trim_start_matches('\n');
+    format!("{first} clipboard ({} characters, not logged)", shown.chars().count())
 }
 
 /// Characters that would let a question pretend to be more than one line,
@@ -252,6 +261,8 @@ pub fn rotate(file: &std::path::Path, max: u64) {
 /// <first line>", then the line that says what (the command, file or page),
 /// each cut short.
 pub fn answered_note(device: &str, yes: bool, question: &str) -> String {
+    // The clipboard's text stays out of notifications too.
+    let question = loggable(question);
     let mut lines = question.lines().map(str::trim).filter(|l| !l.is_empty());
     let first: String = lines.next().map(one_line).unwrap_or_default().chars().take(120).collect();
     let what: String = lines.next().map(one_line).unwrap_or_default().chars().take(120).collect();
@@ -332,6 +343,17 @@ mod tests {
         assert_eq!(line, format!("9\tPixel\tallowed\t{CLIPBOARD_ASK} clipboard (26 characters, not logged)"));
         // Other questions are kept whole.
         assert_eq!(loggable("Open notes.md?"), "Open notes.md?");
+        // Asked by a paired device: its name kept, the text never.
+        let asked = crate::pc_extra::clipboard_question_for("hunter2\nline 2", Some("Pixel"));
+        assert_eq!(
+            loggable(&asked),
+            format!("\u{201c}Pixel{CLIPBOARD_ASK_DEVICE} clipboard (14 characters, not logged)")
+        );
+        assert!(!answered_note("Pixel", true, &asked).contains("hunter2"));
+        assert!(!answered_note("Laptop", true, &question).contains("hunter2"));
+        // Another question naming a device is kept whole.
+        let open = crate::pc::open_question("notes.md", Some("Pixel"));
+        assert_eq!(loggable(&open), open);
     }
 
     #[test]

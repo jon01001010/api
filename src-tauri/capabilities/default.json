@@ -58,6 +58,7 @@
     "allow-link-device-may-picture",
     "allow-link-tools-allow",
     "allow-link-device-may-read",
+    "allow-link-device-may-act",
     "allow-homelink-pair",
     "allow-homelink-status",
     "allow-homelink-start-model",

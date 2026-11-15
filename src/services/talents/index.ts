@@ -94,7 +94,7 @@ export function registerDefaultTalents(): void {
     // The phone: pictures are asked of the paired Home PC (off until
     // switched on here, and allowed on the PC for this device).
     talentRegistry.register(new PcPictureEngine());
-    // "On your PC": the Home PC's read-only tools (each off until switched
+    // "On your PC": the Home PC's tools (each off until switched
     // on here, and allowed on the PC for this device).
     for (const name of PC_TOOL_NAMES) {
       talentRegistry.register(new PcToolsEngine(name));

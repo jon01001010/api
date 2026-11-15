@@ -245,12 +245,12 @@ const ToolboxScreenBody: React.FC = () => {
             ))}
           </Card.Content>
         </Card>
-        {/* Phone only: the paired Home PC's read-only tools, each off until switched on. */}
+        {/* Phone only: the paired Home PC's tools, each off until switched on. */}
         {onPc.length > 0 ? (
           <Card mode="outlined" testID="toolbox-on-your-pc">
             <Card.Content>
               <Text variant="titleMedium">On your PC ({onPc.length})</Text>
-              <Text variant="bodyMedium">Your paired Home PC's information and the files in its workspace (read only). The PC must allow this device first (on the PC: Settings, Use this PC's model from your phone); reading its workspace asks there once per chat.</Text>
+              <Text variant="bodyMedium">Your paired Home PC's information and the files in its workspace (May read on the PC; reading its workspace asks there once per chat), and opening or printing a workspace file, media keys and its clipboard (May act on the PC; each asks there every time). The PC must allow this device first (on the PC: Settings, Use this PC's model from your phone).</Text>
               {onPc.map(tool => (
                 <View key={tool.name} style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingVertical: 4}}>
                   <View style={{flex: 1}}>

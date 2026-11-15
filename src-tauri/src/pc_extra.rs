@@ -13,6 +13,11 @@
 //!   the user sees it attached and sends it or removes it. Windows only.
 //! - `quick_key_set`: a key combination (Ctrl+Shift+Space) that brings
 //!   DesktopAgent to the front from anywhere; off until switched on.
+//!
+//! A paired device's `pc_print`, `pc_media` and `pc_clipboard_read`
+//! (link.rs "tool", stage 2) go through the very same functions
+//! (`print_workspace_file`, `press_media_key`, `read_clipboard`): the same
+//! checks and the same native "Allow?" every time, naming the device.
 
 use std::time::Duration;
 
@@ -37,8 +42,28 @@ pub fn clipboard_question(text: &str) -> String {
     format!("{}\n\n{}", crate::remote_ask::CLIPBOARD_ASK, preview(text, 600))
 }
 
+/// The same, when a paired device asks: its name on the first line (which
+/// the answers log keeps; the text after it never is, remote_ask::loggable).
+pub fn clipboard_question_for(text: &str, by: Option<&str>) -> String {
+    match by {
+        None => clipboard_question(text),
+        Some(device) => format!(
+            "\u{201c}{device}{}\n\n{}",
+            crate::remote_ask::CLIPBOARD_ASK_DEVICE,
+            preview(text, 600)
+        ),
+    }
+}
+
 #[tauri::command]
 pub async fn clipboard_read(app: AppHandle) -> Result<String, String> {
+    read_clipboard(&app, None).await
+}
+
+/// The clipboard's text, after the native "Allow?" that shows it (every
+/// time). The one door for this PC's own tool and a paired device's
+/// `pc_clipboard_read` (link.rs; `by` names the device).
+pub async fn read_clipboard(app: &AppHandle, by: Option<&crate::approval::Device<'_>>) -> Result<String, String> {
     let text = tauri::async_runtime::spawn_blocking(|| {
         arboard::Clipboard::new()
             .and_then(|mut c| c.get_text())
@@ -49,7 +74,7 @@ pub async fn clipboard_read(app: AppHandle) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("There is no text on the clipboard".into());
     }
-    if !crate::approval::ask(&app, &clipboard_question(&text)).await {
+    if !crate::approval::ask_for(app, &clipboard_question_for(&text, by.map(|d| d.name)), by).await {
         return Err("The user said no. Nothing was read.".into());
     }
     let mut text = text;
@@ -91,9 +116,9 @@ pub fn media_vk(key: &str) -> Option<u16> {
     })
 }
 
-/// What the media key dialog says.
-pub fn media_question(key: &str) -> String {
-    let name = match key {
+/// The media key's name in plain words.
+pub fn media_name(key: &str) -> &'static str {
+    match key {
         "play_pause" => "Play / pause",
         "next" => "Next track",
         "previous" => "Previous track",
@@ -102,17 +127,33 @@ pub fn media_question(key: &str) -> String {
         "volume_down" => "Volume down",
         "mute" => "Mute",
         _ => "?",
-    };
-    format!("DesktopAgent wants to press this media key on your PC:\n\n{name}")
+    }
+}
+
+/// The media key question, naming who asks (this app or a paired device).
+pub fn media_question(key: &str, by: Option<&str>) -> String {
+    let name = media_name(key);
+    match by {
+        None => format!("DesktopAgent wants to press this media key on your PC:\n\n{name}"),
+        Some(device) => format!("\u{201c}{device}\u{201d} asks to press this media key on this PC:\n\n{name}"),
+    }
 }
 
 #[tauri::command]
 pub async fn media_key(app: AppHandle, key: String) -> Result<(), String> {
-    let vk = media_vk(&key).ok_or("Unknown media key")?;
+    press_media_key(&app, &key, None).await
+}
+
+/// Presses one media key, after the native "Allow?" (every time). The one
+/// door for this PC's own tool and a paired device's `pc_media` (link.rs;
+/// `by` names the device).
+pub async fn press_media_key(app: &AppHandle, key: &str, by: Option<&crate::approval::Device<'_>>) -> Result<(), String> {
+    let vk = media_vk(key).ok_or("Unknown media key")?;
     // Asked natively too, like every other door to the PC (rule 6).
-    if !crate::approval::ask(&app, &media_question(&key)).await {
+    if !crate::approval::ask_for(app, &media_question(key, by.map(|d| d.name)), by).await {
         return Err("The user said no. No key was pressed.".into());
     }
+    let key = key.to_string();
     tauri::async_runtime::spawn_blocking(move || press(vk, &key))
         .await
         .map_err(|e| e.to_string())?
@@ -173,17 +214,36 @@ pub fn printable(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// The print question, naming who asks (this app or a paired device).
+pub fn print_question(name: &str, by: Option<&str>) -> String {
+    match by {
+        None => format!("DesktopAgent wants to print this workspace file (with your default printer and its app):\n\n{name}"),
+        Some(device) => format!(
+            "\u{201c}{device}\u{201d} asks to print this workspace file on this PC (with your default printer and its app):\n\n{name}"
+        ),
+    }
+}
+
 #[tauri::command]
 pub async fn print_file(app: AppHandle, name: String) -> Result<(), String> {
-    if !printable(&name) {
+    print_workspace_file(&app, &name, None).await
+}
+
+/// Prints a workspace file with its app, after the native "Allow?" (every
+/// time). The one door for this PC's own tool and a paired device's
+/// `pc_print` (link.rs; `by` names the device).
+pub async fn print_workspace_file(app: &AppHandle, name: &str, by: Option<&crate::approval::Device<'_>>) -> Result<(), String> {
+    if !printable(name) {
         return Err("Only documents, pictures and text files are printed".into());
     }
-    let path = crate::pc::workspace_file(&app, &name)?;
-    let question = format!("DesktopAgent wants to print this workspace file (with your default printer and its app):\n\n{name}");
-    if !crate::approval::ask(&app, &question).await {
+    let path = crate::pc::workspace_file(app, name)?;
+    let question = print_question(name, by.map(|d| d.name));
+    if !crate::approval::ask_for(app, &question, by).await {
         return Err("The user said no. Nothing was printed.".into());
     }
-    print(&path)
+    tauri::async_runtime::spawn_blocking(move || print(&path))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[cfg(windows)]
@@ -418,8 +478,25 @@ mod tests {
         assert_eq!(media_vk("volume_up"), Some(0xAF));
         assert_eq!(media_vk("enter"), None);
         assert_eq!(media_vk("alt_f4"), None);
-        assert!(media_question("volume_up").ends_with("Volume up"));
-        assert!(media_question("next").contains("media key"));
+        assert!(media_question("volume_up", None).ends_with("Volume up"));
+        assert!(media_question("next", None).contains("media key"));
+    }
+
+    #[test]
+    fn a_device_is_named_in_each_question() {
+        assert!(media_question("mute", None).starts_with("DesktopAgent wants to press"));
+        let q = media_question("volume_up", Some("Pixel 8"));
+        assert!(q.starts_with("\u{201c}Pixel 8\u{201d} asks to press") && q.ends_with("Volume up"), "{q}");
+        let q = print_question("letter.docx", Some("Pixel 8"));
+        assert!(q.starts_with("\u{201c}Pixel 8\u{201d} asks to print") && q.ends_with("\n\nletter.docx"), "{q}");
+        assert!(print_question("letter.docx", None).starts_with("DesktopAgent wants to print"));
+        assert_eq!(clipboard_question_for("abc", None), clipboard_question("abc"));
+        let q = clipboard_question_for("hunter2", Some("Pixel 8"));
+        assert!(q.starts_with("\u{201c}Pixel 8\u{201d} asks") && q.ends_with("\n\nhunter2"), "{q}");
+        // Its text is never logged, whoever asked.
+        let line = crate::remote_ask::log_line(1, "Pixel 8", true, &q);
+        assert!(!line.contains("hunter2"), "{line}");
+        assert!(line.contains("Pixel 8") && line.contains("7 characters, not logged"), "{line}");
     }
 
     #[test]

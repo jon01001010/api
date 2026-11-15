@@ -446,12 +446,12 @@ impl Phone {
         })
     }
 
-    /// Asks the PC for one of its read-only tools (only while the user
+    /// Asks the PC for one of its tools (only while the user
     /// allows device tools on the PC, for this device; the PC refuses
     /// otherwise and checks everything itself). `chat`: this device's id
     /// for the chat asking (reading the workspace asks on the PC once per
-    /// chat). `args_json`: only the named fields the PC takes are sent (a
-    /// file's name). Waits up to 5 minutes (the PC may be asking its user).
+    /// chat; an action asks there every time). `args_json`: only the named fields the PC takes are sent (a
+    /// file's name, a media key). Waits up to 5 minutes (the PC may be asking its user).
     /// Answers {"ok": true, "result": …}.
     pub fn tool(&self, pc: &str, name: &str, chat: &str, args_json: &str) -> Result<serde_json::Value, String> {
         let pc: EndpointId = pc.parse().map_err(|_| "Bad PC key".to_string())?;
@@ -459,6 +459,9 @@ impl Phone {
         let mut args = serde_json::Map::new();
         if let Some(file) = given.get("file").and_then(|f| f.as_str()) {
             args.insert("file".into(), file.into());
+        }
+        if let Some(key) = given.get("key").and_then(|k| k.as_str()) {
+            args.insert("key".into(), key.into());
         }
         let request = serde_json::json!({"op": "tool", "name": name, "chat": chat, "args": args});
         let line = format!("{request}\n");
@@ -744,6 +747,18 @@ mod tests {
             );
             let _ = std::fs::remove_dir_all(&dir);
         }
+        // A media key goes on as its own named field, nothing else.
+        let (pc, addr, seen) = fake_picture_pc([b"{\"ok\":true,\"bytes\":13}\n".as_slice(), b"{\"done\":true}"].concat());
+        let dir = std::env::temp_dir().join(format!("homelink-tool-key-{}", std::process::id()));
+        let phone = Phone::new(&dir.join("key"), Some(addr)).unwrap();
+        let got = phone.tool(&pc.to_string(), "pc_media", "chat-0123456789abcdef", r#"{"key":"mute","command":"rm"}"#);
+        assert_eq!(got.unwrap(), serde_json::json!({"ok": true, "result": {"done": true}}));
+        let line: serde_json::Value = serde_json::from_str(&seen.recv().unwrap()).unwrap();
+        assert_eq!(
+            line,
+            serde_json::json!({"op": "tool", "name": "pc_media", "chat": "chat-0123456789abcdef", "args": {"key": "mute"}})
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

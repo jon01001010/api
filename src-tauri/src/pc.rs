@@ -8,7 +8,8 @@
 //!   workspace folder, stopped after 60 s; its output comes back (capped).
 //! - `open_workspace_file`: a workspace file opened in its app (asks).
 //!   Documents, pictures, text and media only: never programs or scripts,
-//!   which opening would run.
+//!   which opening would run. A paired device's `pc_open` (link.rs) goes
+//!   through the very same function (`open_file`), its question naming it.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -244,14 +245,30 @@ pub(crate) fn workspace_file(app: &AppHandle, name: &str) -> Result<PathBuf, Str
     Ok(path)
 }
 
+/// What the dialog asks before a workspace file is opened: who asks (this
+/// app, or a paired device by its name) and the file.
+pub fn open_question(name: &str, by: Option<&str>) -> String {
+    match by {
+        None => format!("DesktopAgent wants to open this workspace file in its app:\n\n{name}"),
+        Some(device) => format!("\u{201c}{device}\u{201d} asks to open this workspace file in its app on this PC:\n\n{name}"),
+    }
+}
+
 #[tauri::command]
 pub async fn open_workspace_file(app: AppHandle, name: String) -> Result<(), String> {
-    if !openable(&name) {
+    open_file(&app, &name, None).await
+}
+
+/// Opens a workspace file in its app, after the native "Allow?" (every
+/// time). The one door for this PC's own tool and a paired device's
+/// `pc_open` (link.rs; `by` names the device).
+pub async fn open_file(app: &AppHandle, name: &str, by: Option<&crate::approval::Device<'_>>) -> Result<(), String> {
+    if !openable(name) {
         return Err("Only documents, pictures, text and media files are opened (never programs or scripts)".into());
     }
-    let path = workspace_file(&app, &name)?;
-    let question = format!("DesktopAgent wants to open this workspace file in its app:\n\n{name}");
-    if !crate::approval::ask(&app, &question).await {
+    let path = workspace_file(app, name)?;
+    let question = open_question(name, by.map(|d| d.name));
+    if !crate::approval::ask_for(app, &question, by).await {
         return Err("The user said no. Nothing was opened.".into());
     }
     crate::open::launch(&path.to_string_lossy())
@@ -339,5 +356,16 @@ mod tests {
         for ok in ["report.docx", "photo.JPG", "notes.md", "song.mp3"] {
             assert!(openable(ok), "{ok}");
         }
+    }
+
+    #[test]
+    fn the_open_question_names_who_asks() {
+        assert_eq!(
+            open_question("notes.md", None),
+            "DesktopAgent wants to open this workspace file in its app:\n\nnotes.md"
+        );
+        let q = open_question("notes.md", Some("Pixel 8"));
+        assert!(q.starts_with("\u{201c}Pixel 8\u{201d} asks to open"), "{q}");
+        assert!(q.ends_with("\n\nnotes.md"));
     }
 }

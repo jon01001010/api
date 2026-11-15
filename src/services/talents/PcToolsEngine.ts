@@ -1,11 +1,12 @@
 /**
- * "On your PC" (phone only): the paired Home PC's read-only tools, asked
- * over the home link (request "tool", src-tauri/src/link.rs; design:
- * docs/design/phone-uses-pc-tools.md, stage 1). Each tool is off until
- * switched on in Toolbox, like every tool; the PC refuses unless its user
- * allows device tools there and this device "May read". The PC checks
- * everything itself (a fixed list, workspace file names only, caps) and
- * runs the same code as its own tools.
+ * "On your PC" (phone only): the paired Home PC's tools, asked over the
+ * home link (request "tool", src-tauri/src/link.rs; design:
+ * docs/design/phone-uses-pc-tools.md, stages 1 and 2). Each tool is off
+ * until switched on in Toolbox, like every tool; the PC refuses unless its
+ * user allows device tools there and this device "May read" (the reads) or
+ * "May act" (the actions). The PC checks everything itself (a fixed list,
+ * workspace file names only, a fixed list of media keys, caps) and runs
+ * the same code as its own tools.
  *
  * - pc_info: the PC's system, memory, disks and graphics.
  * - pc_workspace_list: the files in the PC's workspace folder.
@@ -13,15 +14,21 @@
  *   documents, at most 256 KB). Reading the workspace asks on the PC once
  *   per chat (this chat's random id is sent, never the chat itself); the
  *   PC shows a notification for each file read.
+ * - pc_open, pc_print: open or print one workspace file with its app on
+ *   the PC; pc_media: press a media key there; pc_clipboard_read: the
+ *   PC's clipboard text. Each asks on the PC every time ("“<this device>”
+ *   asks to …"; a device that may answer the PC's questions, this one
+ *   too, can answer it) and the PC shows a notification for each.
  *
- * What comes back is the PC's data, so it is wrapped as untrusted (a file
- * can hold instructions). The Home PC PIN, when set, is asked first.
+ * What comes back is the PC's data (a file's or the clipboard's text), so
+ * it is wrapped as untrusted (it can hold instructions). The Home PC PIN,
+ * when set, is asked first.
  */
 import {v4 as uuidv4} from 'uuid';
 
 import {askPcTool} from '../homeLink/homeLink';
 import {unlockHomePc} from '../homeLink/homePcLock';
-import {describePc} from './DesktopToolsEngine';
+import {describePc, MEDIA_ACTIONS} from './DesktopToolsEngine';
 import {pickHomePc} from './PcPictureEngine';
 import {wrapUntrusted} from './untrustedContent';
 import {
@@ -35,6 +42,10 @@ export const PC_TOOL_NAMES = [
   'pc_info',
   'pc_workspace_list',
   'pc_workspace_read',
+  'pc_open',
+  'pc_print',
+  'pc_media',
+  'pc_clipboard_read',
 ] as const;
 export type PcTool = (typeof PC_TOOL_NAMES)[number];
 
@@ -43,7 +54,25 @@ export const REMOTE_NAMES: Record<PcTool, string> = {
   pc_info: 'pc_info',
   pc_workspace_list: 'workspace_list',
   pc_workspace_read: 'workspace_read',
+  pc_open: 'pc_open',
+  pc_print: 'pc_print',
+  pc_media: 'pc_media',
+  pc_clipboard_read: 'pc_clipboard_read',
 };
+
+/** The tools that act on the PC (the PC's "May act"; each asks there). */
+export const PC_ACT_TOOLS: readonly PcTool[] = [
+  'pc_open',
+  'pc_print',
+  'pc_media',
+  'pc_clipboard_read',
+];
+
+const FILE_TOOLS: readonly PcTool[] = [
+  'pc_workspace_read',
+  'pc_open',
+  'pc_print',
+];
 
 const STOP =
   'Answer the user now; do not call this tool again unless they ask.';
@@ -75,6 +104,54 @@ const DEFINITIONS: Record<PcTool, ToolDefinition['function']> = {
       },
       required: ['filename'],
     },
+  },
+  pc_open: {
+    name: 'pc_open',
+    description:
+      "Open one file from the workspace folder on the user's paired Home PC in its app there (documents, pictures, text and media; never programs or scripts). Use the exact file name from pc_workspace_list. The PC asks its user every time.",
+    parameters: {
+      type: 'object',
+      properties: {
+        filename: {
+          type: 'string',
+          description: 'Exact workspace file name on the PC, e.g. report.docx.',
+        },
+      },
+      required: ['filename'],
+    },
+  },
+  pc_print: {
+    name: 'pc_print',
+    description:
+      "Print one document or picture from the workspace folder on the user's paired Home PC, with the PC's default printer (its own app prints it). Use the exact file name from pc_workspace_list. The PC asks its user every time.",
+    parameters: {
+      type: 'object',
+      properties: {
+        filename: {
+          type: 'string',
+          description: 'Exact workspace file name on the PC, e.g. letter.docx.',
+        },
+      },
+      required: ['filename'],
+    },
+  },
+  pc_media: {
+    name: 'pc_media',
+    description:
+      "Press a media key on the user's paired Home PC for whatever plays there (music, video): play_pause, next, previous, stop, volume_up, volume_down, mute. The PC asks its user every time.",
+    parameters: {
+      type: 'object',
+      properties: {
+        action: {type: 'string', enum: Object.keys(MEDIA_ACTIONS)},
+      },
+      required: ['action'],
+    },
+  },
+  pc_clipboard_read: {
+    name: 'pc_clipboard_read',
+    description:
+      "Read the text on the clipboard of the user's paired Home PC (what they copied there). The PC shows the text and asks its user every time.",
+    parameters: {type: 'object', properties: {}, required: []},
   },
 };
 
@@ -136,9 +213,40 @@ export function describeResult(tool: PcTool, result: any): string {
     ].join('\n');
   }
   const text = typeof result?.text === 'string' ? result.text : '';
+  if (tool === 'pc_clipboard_read') {
+    return text;
+  }
   return result?.cut
     ? `${text}\n[… cut: the file is longer than 256 KB]`
     : text;
+}
+
+/** What the model is told when the PC refused or couldn't be reached. */
+export function refusal(tool: PcTool, error: string): string {
+  if (/said no/i.test(error)) {
+    return `The Home PC's user said no to ${tool} (asked on the PC): ${error} Tell the user; don't ask again unless they want to. ${STOP}`;
+  }
+  const needs = PC_ACT_TOOLS.includes(tool)
+    ? `"Let paired devices use this PC's tools" and this device's "May act" allowed there; each action is asked on the PC`
+    : `"Let paired devices use this PC's tools" and this device's "May read" allowed there, and reading the workspace allowed for this chat`;
+  return `The Home PC did not answer ${tool}: ${error}. Tell the user (the PC must be on with the home link, ${needs}). ${STOP}`;
+}
+
+/** What the model is told after an action the PC did (not the PC's data). */
+export function doneText(
+  tool: PcTool,
+  args: {file?: string; key?: string},
+): string | undefined {
+  if (tool === 'pc_open') {
+    return `Opened ${args.file} on the PC (the user allowed it there).`;
+  }
+  if (tool === 'pc_print') {
+    return `Sent ${args.file} to the PC's printer (the user allowed it there; its app may show a print window).`;
+  }
+  if (tool === 'pc_media') {
+    return `Done on the PC: ${MEDIA_ACTIONS[args.key ?? ''] ?? args.key} (the user allowed it there).`;
+  }
+  return undefined;
 }
 
 export class PcToolsEngine implements TalentEngine {
@@ -148,8 +256,8 @@ export class PcToolsEngine implements TalentEngine {
     args: Record<string, any>,
     ctx?: TalentExecuteContext,
   ): Promise<TalentResult> {
-    const toolArgs: {file?: string} = {};
-    if (this.name === 'pc_workspace_read') {
+    const toolArgs: {file?: string; key?: string} = {};
+    if (FILE_TOOLS.includes(this.name)) {
       const file =
         typeof args.filename === 'string' ? args.filename.trim() : '';
       if (!file) {
@@ -161,6 +269,18 @@ export class PcToolsEngine implements TalentEngine {
         };
       }
       toolArgs.file = file;
+    }
+    if (this.name === 'pc_media') {
+      const key = String(args.action ?? '');
+      if (!MEDIA_ACTIONS[key]) {
+        const keys = Object.keys(MEDIA_ACTIONS).join(', ');
+        return {
+          type: 'error',
+          summary: `pc_media: \`action\` must be one of: ${keys}.`,
+          errorMessage: `\`action\` must be one of: ${keys}.`,
+        };
+      }
+      toolArgs.key = key;
     }
     const pc = homePc();
     if (!pc) {
@@ -194,10 +314,11 @@ export class PcToolsEngine implements TalentEngine {
       return {type: 'text', summary: `Stopped waiting for the PC. ${STOP}`};
     }
     if (!answer.ok) {
-      return {
-        type: 'text',
-        summary: `The Home PC did not answer ${this.name}: ${answer.error}. Tell the user (the PC must be on with the home link, "Let paired devices use this PC's tools" and this device's "May read" allowed there, and reading the workspace allowed for this chat). ${STOP}`,
-      };
+      return {type: 'text', summary: refusal(this.name, answer.error)};
+    }
+    const done = doneText(this.name, toolArgs);
+    if (done) {
+      return {type: 'text', summary: `${done} ${STOP}`};
     }
     return {
       type: 'text',
