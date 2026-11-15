@@ -9,7 +9,9 @@ let nextDownload = 1;
 
 /**
  * RNFS.downloadFile through the native side (src-tauri/src/download.rs):
- * streamed to disk, with begin / progress callbacks like on the phone.
+ * streamed to disk, with begin / progress callbacks like on the phone. Desktop
+ * extra: `sha256` (expected; a mismatch deletes the file) in, the file's
+ * `sha256` out.
  */
 function downloadFile(options) {
   const jobId = nextDownload++;
@@ -35,6 +37,8 @@ function downloadFile(options) {
           jobId,
           statusCode: event.statusCode,
           bytesWritten: event.bytesWritten,
+          // Worked out on the native side while the file streamed.
+          sha256: event.sha256,
         });
       } else if (event.type === 'error') {
         reject(new Error(event.message));
@@ -48,6 +52,8 @@ function downloadFile(options) {
         k,
         String(v),
       ]),
+      // Optional: a file with another SHA-256 is deleted, never kept.
+      sha256: options.sha256 || null,
       onEvent: channel,
     }).catch(error => reject(new Error(String(error))));
   });

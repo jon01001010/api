@@ -12,6 +12,7 @@ import {
   licenceSeen,
   markLicenceSeen,
   setBytes,
+  verifiedNote,
 } from '../services/imageGen/imageModels';
 
 const ask = (title: string, message: string, ok: string) =>
@@ -103,6 +104,13 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
               <Chip compact>about {formatGb(setBytes(set))}</Chip>
             </View>
             <Text variant="bodySmall">{set.licenceNote}</Text>
+            {verifiedNote(set) ? (
+              <Text
+                variant="bodySmall"
+                testID={'toolbox-image-model-unverified-' + set.id}>
+                {verifiedNote(set)}
+              </Text>
+            ) : null}
             {installed[set.id] ? (
               <Text variant="bodySmall">Downloaded.</Text>
             ) : (
