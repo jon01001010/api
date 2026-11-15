@@ -227,6 +227,8 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'pick_model_file',
         'model_server_start',
         'model_server_stop',
+        'image_generate',
+        'image_cancel',
         'system_info',
         'startup_timing',
         'preview_put',
@@ -694,6 +696,42 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(transfer).toMatch(
       /if !located\.own \|\| !located\.real\.is_file\(\) \{\s*return Err/,
     );
+  });
+
+  it("pictures: made on this PC by sd-cli with the app's own models, capped, into the workspace", () => {
+    const gen = tauri('src/image_gen.rs');
+    // The one-shot maker, never sd-server (no password), from the app's
+    // own folder; only files from the model list, in the app's folder.
+    expect(gen).toMatch(/"sd-cli\.exe"\s*\} else \{\s*"sd-cli"/);
+    expect(gen).not.toMatch(/sd-server"/);
+    expect(gen).toContain('let models = root.join(MODELS_DIR).join(&set.id);');
+    expect(gen).toContain(
+      'let dir = crate::pc::workspace(&app)?.join(IMAGES_DIR);',
+    );
+    // Caps: prompt length, fixed sizes, steps, one at a time, time limit.
+    expect(gen).toContain('pub const MAX_PROMPT: usize = 1000;');
+    expect(gen).toContain('pub const SIZES: [u32; 3] = [512, 768, 1024];');
+    expect(gen).toContain('pub const MAX_STEPS: u32 = 30;');
+    expect(gen).toContain(
+      'pub const TIME_LIMIT: Duration = Duration::from_secs(10 * 60);',
+    );
+    expect(gen).toMatch(/if job\.busy \{\s*return Err/);
+    // Checked and word-filtered before anything runs.
+    expect(gen).toMatch(
+      /let req = check_request\([^;]*\)\?;\s*if let Some\(why\) = refused\(&req\.prompt\) \{\s*return Err/,
+    );
+    // Not on ARM Linux; the workflow never ships sd-server.
+    expect(gen).toContain('target_arch = "aarch64"');
+    const win = read('.github/workflows/pocketagent-windows.yml');
+    expect(win).toMatch(
+      /echo "\$\{SD_SHA256\}  \$\{SD_ZIP\}" \| sha256sum -c -/,
+    );
+    expect(win).toContain('rm -f src-tauri/sd/sd-server.exe');
+    // Only commercially usable models are listed.
+    const models = read('src/services/imageGen/imageModels.json').toLowerCase();
+    for (const banned of ['flux.1-dev', 'klein-9b', 'sd-turbo', 'sdxl-turbo']) {
+      expect([banned, models.includes(`/${banned}`)]).toEqual([banned, false]);
+    }
   });
 
   it('opening things outside: pages, e-mail drafts, settings pages only, and it asks', () => {

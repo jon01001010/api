@@ -1,0 +1,65 @@
+{
+  "note": "Picture models the PC can download (stable-diffusion.cpp). Read by the app (src/services/imageGen) and the native side (src-tauri/src/image_gen.rs). Only models whose licence allows commercial use are listed; never FLUX.1 dev, FLUX.2 klein 9B, SD-Turbo or SDXL-Turbo (non-commercial). URLs and sizes were not checked against Hugging Face (unreachable when this list was made): approxBytes are estimates, verified stays false until someone checks the files and adds their sha256.",
+  "sets": [
+    {
+      "id": "flux2-klein-4b",
+      "name": "FLUX.2 klein 4B",
+      "kind": "flux2",
+      "licence": "Apache-2.0",
+      "licenceUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+      "licenceNote": "Apache-2.0 (FLUX.2 klein 4B, its Qwen3-4B text encoder and the FLUX.2 VAE): free to use, also commercially. You are responsible for what you make with it.",
+      "useRules": null,
+      "defaultSteps": 4,
+      "cfgScale": 1.0,
+      "offloadToCpu": true,
+      "recommendedVramGb": 6,
+      "verified": false,
+      "files": [
+        {
+          "role": "diffusion",
+          "name": "flux-2-klein-4b-Q4_K_M.gguf",
+          "url": "https://huggingface.co/unsloth/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q4_K_M.gguf",
+          "approxBytes": 2600000000,
+          "sha256": null
+        },
+        {
+          "role": "llm",
+          "name": "Qwen3-4B-Q4_K_M.gguf",
+          "url": "https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
+          "approxBytes": 2500000000,
+          "sha256": null
+        },
+        {
+          "role": "vae",
+          "name": "flux2-vae.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
+          "approxBytes": 336000000,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "sd15",
+      "name": "Stable Diffusion 1.5 (small, for weaker PCs)",
+      "kind": "sd",
+      "licence": "CreativeML OpenRAIL-M",
+      "licenceUrl": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/LICENSE.md",
+      "licenceNote": "CreativeML OpenRAIL-M: commercial use is allowed, but the model comes with use rules that bind you and anyone you pass the model or its pictures on to.",
+      "useRules": "You agree not to use the model or its pictures: to break any law; to exploit or harm minors in any way; to make or spread provably false information meant to harm others; to make or spread personal information that could be used to harm someone; to defame, disparage or harass people; for fully automated decisions that harm someone's legal rights or obligations; to discriminate against or harm people or groups based on social behaviour or known or predicted personal or personality traits; to exploit the weaknesses of a group (age, social, physical or mental traits) so as to harm them; to discriminate based on legally protected characteristics; to give medical advice or interpret medical results; or to make or spread information for the administration of justice, law enforcement, immigration or asylum processes. (Summary of Attachment A of the licence; the licence text is what counts.)",
+      "defaultSteps": 20,
+      "cfgScale": 7.0,
+      "offloadToCpu": false,
+      "recommendedVramGb": 4,
+      "verified": false,
+      "files": [
+        {
+          "role": "model",
+          "name": "v1-5-pruned-emaonly-fp16.safetensors",
+          "url": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly-fp16.safetensors",
+          "approxBytes": 2130000000,
+          "sha256": null
+        }
+      ]
+    }
+  ]
+}
