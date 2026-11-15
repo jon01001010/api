@@ -27,6 +27,10 @@ object HomeLinkNative {
         keyFile: String, pc: String, prompt: String,
         width: Int, height: Int, steps: Int, outFile: String
     ): String
+    /** One of the PC's read-only tools (args: JSON; only a file's name is sent on). */
+    @JvmStatic external fun tool(
+        keyFile: String, pc: String, name: String, chat: String, args: String
+    ): String
     @JvmStatic external fun openTunnel(keyFile: String, pc: String): String
     @JvmStatic external fun closeTunnel(): String
 }

@@ -21,6 +21,10 @@
 //!   this PC's questions ("questions" / "answer", remote_ask.rs) and ask
 //!   for a picture ("picture": made here by image_gen.rs with this PC's own
 //!   picture model, the same caps and word check; the PNG comes back).
+//!   And this PC's read-only tools ("tool": pc_info, the workspace's file
+//!   list and a workspace file's text, pc_files.rs), only while the user
+//!   allows device tools here and this device may read; reading the
+//!   workspace asks on this PC once per chat (see Request::Tool).
 //! - The PC's link key and the paired phones are kept where the screens
 //!   can't write: Windows Credential Manager, or on Linux a private file in
 //!   the app's settings folder (see read_entry).
@@ -42,6 +46,17 @@ const EVENTS_ENTRY: &str = "DesktopAgent-link:events";
 const PICTURES_ENTRY: &str = "DesktopAgent-link:pictures";
 /// Largest picture sent back to a device (a 1024 x 1024 PNG is 1-3 MB).
 pub const MAX_PICTURE: usize = 8 * 1024 * 1024;
+/// The PC's switch "Let paired devices use this PC's tools" ("on"); kept
+/// across restarts like the pictures switch.
+const TOOLS_ENTRY: &str = "DesktopAgent-link:tools";
+/// The only tools a device may ask for (stage 1: read only).
+pub const REMOTE_TOOLS: &[&str] = &["pc_info", "workspace_list", "workspace_read"];
+/// Largest tool answer sent (a file's text is at most 256 KB, escaped).
+pub const MAX_TOOL_ANSWER: usize = 2 * 1024 * 1024;
+/// How long "read the workspace for this chat" stays allowed.
+const READ_GRANT_TIME: Duration = Duration::from_secs(12 * 60 * 60);
+/// Most chats remembered as allowed at once (the oldest go first).
+const MAX_READ_GRANTS: usize = 200;
 /// Pairing history kept (paired phones see it, so they notice new codes).
 const MAX_EVENTS: usize = 30;
 const PAIR_CODE_LIFETIME: Duration = Duration::from_secs(10 * 60);
@@ -69,6 +84,27 @@ pub struct Phone {
     /// for each device until switched on here, which asks on this PC.
     #[serde(default, rename = "mayPicture", skip_serializing_if = "std::ops::Not::not")]
     pub may_picture: bool,
+    /// May use this PC's read-only tools (PC info, the workspace's files;
+    /// while the PC's tools switch is on too). Off for each device until
+    /// switched on here, which asks on this PC.
+    #[serde(default, rename = "mayRead", skip_serializing_if = "std::ops::Not::not")]
+    pub may_read: bool,
+}
+
+/// Whether this paired device may use this PC's read-only tools.
+pub fn may_read(phones: &[Phone], id: &str) -> bool {
+    phones.iter().any(|p| p.id == id && p.may_read)
+}
+
+/// Sets one device's "may read"; false if it isn't paired.
+pub fn set_may_read(phones: &mut [Phone], id: &str, allowed: bool) -> bool {
+    match phones.iter_mut().find(|p| p.id == id) {
+        Some(p) => {
+            p.may_read = allowed;
+            true
+        }
+        None => false,
+    }
 }
 
 /// Whether this paired device may ask this PC for pictures.
@@ -132,6 +168,18 @@ pub enum Request {
         #[serde(default)]
         steps: Option<u32>,
     },
+    /// One of this PC's read-only tools (only while the user allows device
+    /// tools here, for this device; only names on REMOTE_TOOLS). `chat`:
+    /// the device's own random id for the chat asking, so reading the
+    /// workspace is asked here once per chat. Arguments are named fields
+    /// only (anything else is ignored); a file is a workspace name, never
+    /// a path (pc_files::check_name).
+    Tool {
+        name: String,
+        chat: String,
+        #[serde(default)]
+        args: ToolArgs,
+    },
     Http,
 }
 
@@ -140,6 +188,93 @@ pub fn parse_request(line: &[u8]) -> Option<Request> {
         return None;
     }
     serde_json::from_slice(line).ok()
+}
+
+/// The only argument a device's tool request carries.
+#[derive(Debug, Default, PartialEq, Deserialize)]
+pub struct ToolArgs {
+    /// workspace_read: the file's name in the workspace.
+    #[serde(default)]
+    pub file: Option<String>,
+}
+
+/// A device's tool request, checked.
+#[derive(Debug, PartialEq)]
+pub enum RemoteCall {
+    PcInfo,
+    WorkspaceList,
+    WorkspaceRead(String),
+}
+
+const OFF_TOOLS: &str = "Using this PC's tools from paired devices is off on the PC (Settings → Use this PC's model from your phone → Let paired devices use this PC's tools)";
+const NOT_THIS_DEVICE_TOOLS: &str = "This device may not use this PC's tools; allow it on the PC (Settings → Use this PC's model from your phone → Paired phones → May read)";
+const NOT_A_REMOTE_TOOL: &str = "The PC offers only pc_info, workspace_list and workspace_read to paired devices";
+
+/// A chat id from a device: random, opaque, 16-64 letters, digits, `-`, `_`.
+pub fn check_chat(chat: &str) -> Result<&str, String> {
+    if (16..=64).contains(&chat.len()) && chat.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') {
+        Ok(chat)
+    } else {
+        Err("The request has no valid chat id".into())
+    }
+}
+
+/// Checks a device's tool request, in this order: the PC's switch, this
+/// device's "may read", the tool on REMOTE_TOOLS, then its arguments.
+/// (Only paired devices get here at all.)
+pub fn check_tool(tools_on: bool, device_may_read: bool, name: &str, chat: &str, args: &ToolArgs) -> Result<RemoteCall, String> {
+    if !tools_on {
+        return Err(OFF_TOOLS.into());
+    }
+    if !device_may_read {
+        return Err(NOT_THIS_DEVICE_TOOLS.into());
+    }
+    if !REMOTE_TOOLS.contains(&name) {
+        return Err(NOT_A_REMOTE_TOOL.into());
+    }
+    check_chat(chat)?;
+    match name {
+        "pc_info" => Ok(RemoteCall::PcInfo),
+        "workspace_list" => Ok(RemoteCall::WorkspaceList),
+        _ => {
+            let file = args.file.as_deref().ok_or("Give the file's name in the PC's workspace")?;
+            Ok(RemoteCall::WorkspaceRead(crate::pc_files::check_name(file)?.to_string()))
+        }
+    }
+}
+
+/// Chats allowed to read the workspace, by (device, chat id), and when.
+#[derive(Default)]
+pub struct ReadGrants {
+    map: std::collections::HashMap<(String, String), Instant>,
+}
+
+impl ReadGrants {
+    /// Allowed for this chat of this device within READ_GRANT_TIME.
+    pub fn has(&mut self, device: &str, chat: &str, now: Instant) -> bool {
+        self.map.retain(|_, at| now.saturating_duration_since(*at) < READ_GRANT_TIME);
+        self.map.contains_key(&(device.to_string(), chat.to_string()))
+    }
+
+    pub fn add(&mut self, device: &str, chat: &str, now: Instant) {
+        self.map.insert((device.to_string(), chat.to_string()), now);
+        while self.map.len() > MAX_READ_GRANTS {
+            let oldest = self.map.iter().min_by_key(|(_, at)| **at).map(|(k, _)| k.clone());
+            match oldest {
+                Some(k) => self.map.remove(&k),
+                None => break,
+            };
+        }
+    }
+
+    /// Forgets one device's chats (removed, or may no longer read).
+    pub fn forget_device(&mut self, device: &str) {
+        self.map.retain(|(d, _), _| d != device);
+    }
+
+    pub fn clear(&mut self) {
+        self.map.clear();
+    }
 }
 
 /// A phone's name as shown in the dialog: short, plain characters only.
@@ -345,6 +480,11 @@ pub struct Link {
     connections: Mutex<std::collections::HashMap<String, Vec<iroh::endpoint::Connection>>>,
     /// Devices removed lately, and when.
     removed: Mutex<std::collections::HashMap<String, Instant>>,
+    /// Chats allowed to read this PC's workspace (in memory only: asked
+    /// again after a restart).
+    read_grants: Mutex<ReadGrants>,
+    /// One "read the workspace?" question at a time.
+    read_asking: tokio::sync::Mutex<()>,
 }
 
 impl Link {
@@ -463,6 +603,97 @@ async fn picture_for(
     ))
 }
 
+/// The PC's switch for device tools (kept where the screens can't write).
+fn tools_allowed(app: &AppHandle) -> bool {
+    read_entry(app, TOOLS_ENTRY).as_deref() == Some("on")
+}
+
+/// The question asked on this PC (and, while allowed, on devices that may
+/// answer) before a device's chat reads the workspace.
+pub fn read_question(device: &str, chat: &str) -> String {
+    let short: String = chat.chars().take(8).collect();
+    format!(
+        "\u{201c}{device}\u{201d} asks to read files in your workspace for this chat.\n\nDuring this one chat on that device (12 hours at most) it may list the files in DesktopAgent's workspace folder and read text files and documents there. Nothing outside the workspace, and nothing is changed. This PC shows a notification for each file read.\n\nChat: {short}…"
+    )
+}
+
+/// What the PC user is told when a device read a workspace file.
+pub fn read_note(device: &str, file: &str) -> String {
+    format!("{device} read {file} from the workspace")
+}
+
+/// Whether this chat of this device may read the workspace: allowed
+/// before (within 12 hours), else asked now. Checked again after the
+/// question, as the switches may have changed meanwhile.
+async fn may_read_now(app: &AppHandle, remote: &str, device: &str, chat: &str) -> bool {
+    let link = app.state::<Link>();
+    if link.read_grants.lock().unwrap().has(remote, chat, Instant::now()) {
+        return true;
+    }
+    let _one = link.read_asking.lock().await;
+    if link.read_grants.lock().unwrap().has(remote, chat, Instant::now()) {
+        return true;
+    }
+    if !crate::approval::ask(app, &read_question(device, chat)).await {
+        return false;
+    }
+    if !tools_allowed(app) || !may_read(&load_phones(app), remote) {
+        return false;
+    }
+    link.read_grants.lock().unwrap().add(remote, chat, Instant::now());
+    true
+}
+
+/// Runs file and system reads off the async runtime.
+async fn blocking(
+    f: impl FnOnce() -> Result<serde_json::Value, String> + Send + 'static,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?
+}
+
+/// Runs a checked tool request for a paired device: the same functions as
+/// this PC's own tools (pc::pc_info, pc::workspace_file, docs.rs through
+/// pc_files::read). Each use is logged with the answers log.
+async fn tool_for(app: &AppHandle, remote: &str, device: &str, chat: &str, call: RemoteCall) -> Result<serde_json::Value, String> {
+    if call != RemoteCall::PcInfo && !may_read_now(app, remote, device, chat).await {
+        return Err("Not allowed on the PC: reading its workspace for this chat was refused".into());
+    }
+    match call {
+        RemoteCall::PcInfo => {
+            let a = app.clone();
+            let info = blocking(move || serde_json::to_value(crate::pc::pc_info(a)).map_err(|e| e.to_string())).await?;
+            crate::remote_ask::log_use(app, device, "pc_info");
+            Ok(info)
+        }
+        RemoteCall::WorkspaceList => {
+            let dir = crate::pc::workspace(app)?;
+            let listing = blocking(move || {
+                serde_json::to_value(crate::pc_files::list(&dir)?).map_err(|e| e.to_string())
+            })
+            .await?;
+            crate::remote_ask::log_use(app, device, "listed the workspace");
+            Ok(listing)
+        }
+        RemoteCall::WorkspaceRead(file) => {
+            let path = crate::pc::workspace_file(app, &file)?;
+            let name = file.clone();
+            let read = blocking(move || {
+                serde_json::to_value(crate::pc_files::read(&path, &name)?).map_err(|e| e.to_string())
+            })
+            .await?;
+            crate::remote_ask::log_use(app, device, &format!("read workspace file {file}"));
+            use tauri_plugin_notification::NotificationExt;
+            let _ = app
+                .notification()
+                .builder()
+                .title(format!("{device} read a file on this PC"))
+                .body(read_note(device, &file))
+                .show();
+            Ok(read)
+        }
+    }
+}
+
 /// Most bytes one sync may carry (the device library's own limit too).
 pub const MAX_SYNC: usize = 4 * 1024 * 1024;
 
@@ -472,6 +703,8 @@ pub struct LinkStatus {
     on: bool,
     /// "Let paired devices make pictures on this PC".
     pictures_allowed: bool,
+    /// "Let paired devices use this PC's tools".
+    tools_allowed: bool,
     pc_id: Option<String>,
     phones: Vec<Phone>,
     events: Vec<LinkEvent>,
@@ -849,7 +1082,7 @@ async fn serve_stream(
                     let mut phones = load_phones(&app);
                     add_phone(
                         &mut phones,
-                        Phone { id: remote.clone(), name: name.clone(), may_answer: false, may_picture: false },
+                        Phone { id: remote.clone(), name: name.clone(), may_answer: false, may_picture: false, may_read: false },
                     );
                     let saved = save_phones(&app, &phones).is_ok();
                     if saved {
@@ -1000,6 +1233,38 @@ async fn serve_stream(
                 }
             }
         }
+        Some(Request::Tool { name, chat, args }) if paired => {
+            let phones = load_phones(&app);
+            let checked = check_tool(tools_allowed(&app), may_read(&phones, &remote), &name, &chat, &args);
+            let answer = match checked {
+                Err(error) => Err(error),
+                Ok(call) => {
+                    let device = phones
+                        .into_iter()
+                        .find(|p| p.id == remote)
+                        .map(|p| p.name)
+                        .unwrap_or_else(|| "a device".into());
+                    // Nothing more is read from the device on this stream.
+                    let _ = recv.stop(0u32.into());
+                    tool_for(&app, &remote, &device, &chat, call).await
+                }
+            };
+            // A JSON line saying how long the answer is, then the answer.
+            match answer.and_then(|value| {
+                let body = value.to_string();
+                if body.len() > MAX_TOOL_ANSWER {
+                    Err("The answer is too large to send".to_string())
+                } else {
+                    Ok(body)
+                }
+            }) {
+                Ok(body) => {
+                    reply(&mut send, serde_json::json!({"ok": true, "bytes": body.len()})).await;
+                    let _ = send.write_all(body.as_bytes()).await;
+                }
+                Err(error) => reply(&mut send, serde_json::json!({"ok": false, "error": error})).await,
+            }
+        }
         Some(Request::Http) if paired => {
             let Some((port, _)) = app.state::<crate::model_server::ModelServer>().address() else {
                 reply(&mut send, serde_json::json!({"ok": false, "error": "no model running"})).await;
@@ -1136,6 +1401,7 @@ pub async fn link_status(app: AppHandle, link: State<'_, Link>) -> Result<LinkSt
     Ok(LinkStatus {
         on: running.is_some(),
         pictures_allowed: pictures_allowed(&app),
+        tools_allowed: tools_allowed(&app),
         pc_id: running.as_ref().map(|r| r.endpoint().id().to_string()),
         phones: load_phones(&app),
         events: load_events(&app),
@@ -1153,6 +1419,7 @@ pub async fn link_forget(app: AppHandle, id: String) -> Result<(), String> {
     let link = app.state::<Link>();
     link.removed.lock().unwrap().insert(id.clone(), Instant::now());
     link.cut_off(&id);
+    link.read_grants.lock().unwrap().forget_device(&id);
     record(&app, "removed", name);
     Ok(())
 }
@@ -1225,6 +1492,53 @@ pub async fn link_device_may_picture(app: AppHandle, id: String, allowed: bool) 
     save_phones(&app, &phones)?;
     if allowed {
         record(&app, "may-picture", Some(name));
+    }
+    Ok(())
+}
+
+/// The PC's switch: may paired devices use this PC's tools at all? (Each
+/// device must be allowed too: link_device_may_read, asked here.) Kept
+/// across restarts; switching it off forgets every chat allowed to read.
+#[tauri::command]
+pub async fn link_tools_allow(app: AppHandle, allowed: bool) -> Result<(), String> {
+    write_entry(&app, TOOLS_ENTRY, if allowed { "on" } else { "off" })?;
+    if !allowed {
+        app.state::<Link>().read_grants.lock().unwrap().clear();
+    }
+    Ok(())
+}
+
+/// Lets one paired device use this PC's read-only tools (PC info, the
+/// workspace's files), or stops it. Letting it is asked on this PC (a
+/// native dialog no device can answer); paired devices see it in the
+/// pairing history. Stopping it asks nothing and forgets its chats.
+#[tauri::command]
+pub async fn link_device_may_read(app: AppHandle, id: String, allowed: bool) -> Result<(), String> {
+    const NOT_PAIRED: &str = "That device is not paired with this PC";
+    let name = load_phones(&app)
+        .into_iter()
+        .find(|p| p.id == id)
+        .map(|p| p.name)
+        .ok_or(NOT_PAIRED)?;
+    if allowed {
+        let key: String = id.chars().take(16).collect();
+        let question = format!(
+            "Let \u{201c}{name}\u{201d} use this PC's tools?\n\nWhile this is on, it can ask for this PC's information (system, memory, disks, graphics) and, after this PC asks once per chat, list and read the text files and documents in DesktopAgent's workspace folder. Nothing outside the workspace, and nothing is changed or run. This PC shows a notification for each file read.\n\nDevice key: {key}"
+        );
+        if !crate::approval::ask_on_this_pc(&app, &question).await {
+            return Err("Not allowed on this PC".into());
+        }
+    }
+    // Read again after the dialog (the list may have changed meanwhile).
+    let mut phones = load_phones(&app);
+    if !set_may_read(&mut phones, &id, allowed) {
+        return Err(NOT_PAIRED.into());
+    }
+    save_phones(&app, &phones)?;
+    if allowed {
+        record(&app, "may-read", Some(name));
+    } else {
+        app.state::<Link>().read_grants.lock().unwrap().forget_device(&id);
     }
     Ok(())
 }
@@ -1508,10 +1822,10 @@ mod tests {
         assert_eq!(clean_name(&"x".repeat(100)).len(), 40);
         let mut phones = Vec::new();
         for i in 0..(MAX_PHONES + 3) {
-            add_phone(&mut phones, Phone { id: format!("{i}"), name: "p".into(), may_answer: false, may_picture: false });
+            add_phone(&mut phones, Phone { id: format!("{i}"), name: "p".into(), may_answer: false, may_picture: false, may_read: false });
         }
         assert_eq!(phones.len(), MAX_PHONES);
-        add_phone(&mut phones, Phone { id: "5".into(), name: "again".into(), may_answer: false, may_picture: false });
+        add_phone(&mut phones, Phone { id: "5".into(), name: "again".into(), may_answer: false, may_picture: false, may_read: false });
         assert_eq!(phones.iter().filter(|p| p.id == "5").count(), 1);
     }
 
@@ -1536,7 +1850,7 @@ mod tests {
         assert!(set_may_answer(&mut phones, "a", false));
         assert!(!may_answer(&phones, "a"));
         // Pairing again starts over (not allowed).
-        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false });
+        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false });
         assert!(!may_answer(&phones, "a"));
     }
 
@@ -1560,7 +1874,7 @@ mod tests {
         let back: Vec<Phone> = serde_json::from_str(&json).unwrap();
         assert_eq!(back, phones);
         // Pairing again starts over (not allowed).
-        add_phone(&mut phones, Phone { id: "b".into(), name: "Laptop".into(), may_answer: false, may_picture: false });
+        add_phone(&mut phones, Phone { id: "b".into(), name: "Laptop".into(), may_answer: false, may_picture: false, may_read: false });
         assert!(!may_picture(&phones, "b"));
     }
 
@@ -1599,5 +1913,107 @@ mod tests {
         assert_eq!(qr_text("pk", "c0de"), "PA1:P:pk:c0de");
         let image = qr_image(&qr_text(&"a".repeat(64), &"b".repeat(32))).unwrap();
         assert!(image.starts_with("data:image/svg+xml;base64,"));
+    }
+
+    const CHAT: &str = "c0ffee-chat_0123456789";
+
+    #[test]
+    fn a_tool_request_carries_a_name_a_chat_and_a_file_only() {
+        assert_eq!(
+            parse_request(br#"{"op":"tool","name":"workspace_read","chat":"c0ffee-chat_0123456789","args":{"file":"notes.md","path":"C:/x"}}"#),
+            Some(Request::Tool {
+                name: "workspace_read".into(),
+                chat: CHAT.into(),
+                args: ToolArgs { file: Some("notes.md".into()) },
+            })
+        );
+        assert_eq!(
+            parse_request(br#"{"op":"tool","name":"pc_info","chat":"c0ffee-chat_0123456789"}"#),
+            Some(Request::Tool { name: "pc_info".into(), chat: CHAT.into(), args: ToolArgs::default() })
+        );
+        assert_eq!(parse_request(br#"{"op":"tool","name":"pc_info"}"#), None);
+        assert_eq!(parse_request(br#"{"op":"tool","chat":"c0ffee-chat_0123456789"}"#), None);
+    }
+
+    #[test]
+    fn tool_checks_go_switch_then_device_then_list_then_arguments() {
+        let read = |file: &str| ToolArgs { file: Some(file.into()) };
+        // Each check wins over every later one, whatever else is wrong.
+        assert_eq!(check_tool(false, true, "pc_info", CHAT, &ToolArgs::default()), Err(OFF_TOOLS.into()));
+        assert_eq!(check_tool(false, false, "run_command", "x", &read("../x")), Err(OFF_TOOLS.into()));
+        assert_eq!(check_tool(true, false, "run_command", "x", &read("../x")), Err(NOT_THIS_DEVICE_TOOLS.into()));
+        assert_eq!(check_tool(true, true, "run_command", "x", &read("../x")), Err(NOT_A_REMOTE_TOOL.into()));
+        assert!(check_tool(true, true, "workspace_read", "x", &read("notes.md")).is_err());
+        // Only the fixed list, read only.
+        assert_eq!(REMOTE_TOOLS, ["pc_info", "workspace_list", "workspace_read"]);
+        for name in ["run_command", "open_file", "print_file", "clipboard_read", "fs_read", "", "PC_INFO"] {
+            assert_eq!(check_tool(true, true, name, CHAT, &ToolArgs::default()), Err(NOT_A_REMOTE_TOOL.into()), "{name}");
+        }
+        assert_eq!(check_tool(true, true, "pc_info", CHAT, &ToolArgs::default()), Ok(RemoteCall::PcInfo));
+        assert_eq!(check_tool(true, true, "workspace_list", CHAT, &read("x")), Ok(RemoteCall::WorkspaceList));
+        assert_eq!(
+            check_tool(true, true, "workspace_read", CHAT, &read("budget 2026.xlsx")),
+            Ok(RemoteCall::WorkspaceRead("budget 2026.xlsx".into()))
+        );
+        // A path, `..`, a folder, a hidden or system name: refused.
+        for bad in ["../secret.txt", "..", "a/b.txt", "a\\b.txt", "C:/Windows/win.ini", "/etc/passwd", ".env", "desktop.ini", "CON.txt"] {
+            assert!(check_tool(true, true, "workspace_read", CHAT, &read(bad)).is_err(), "{bad}");
+        }
+        assert!(check_tool(true, true, "workspace_read", CHAT, &ToolArgs::default()).is_err());
+    }
+
+    #[test]
+    fn chat_ids_are_random_looking_and_plain() {
+        assert!(check_chat(CHAT).is_ok());
+        assert!(check_chat(&"a".repeat(64)).is_ok());
+        for bad in ["", "short", &"a".repeat(65), "chat id with spaces!", "c0ffee-chat/0123456789", "c0ffee-chat\n0123456789"] {
+            assert!(check_chat(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn each_device_may_read_only_once_allowed() {
+        let old: Vec<Phone> = serde_json::from_str(r#"[{"id":"a","name":"Pixel","mayAnswer":true,"mayPicture":true}]"#).unwrap();
+        assert!(!may_read(&old, "a"));
+        let mut phones = old;
+        assert!(set_may_read(&mut phones, "a", true));
+        assert!(may_read(&phones, "a") && !may_read(&phones, "b"));
+        assert!(!set_may_read(&mut phones, "b", true));
+        assert!(serde_json::to_string(&phones).unwrap().contains(r#""mayRead":true"#));
+        // Pairing anew starts with it off.
+        add_phone(&mut phones, Phone { id: "a".into(), name: "Pixel".into(), may_answer: false, may_picture: false, may_read: false });
+        assert!(!may_read(&phones, "a"));
+    }
+
+    #[test]
+    fn reading_is_allowed_per_device_and_chat_for_12_hours() {
+        let mut grants = ReadGrants::default();
+        let start = Instant::now();
+        assert!(!grants.has("a", CHAT, start));
+        grants.add("a", CHAT, start);
+        assert!(grants.has("a", CHAT, start + Duration::from_secs(60)));
+        // Another chat, or another device: asked again.
+        assert!(!grants.has("a", "another-chat-0123456789", start));
+        assert!(!grants.has("b", CHAT, start));
+        assert!(!grants.has("a", CHAT, start + READ_GRANT_TIME));
+        grants.add("a", CHAT, start);
+        grants.add("b", CHAT, start);
+        grants.forget_device("a");
+        assert!(!grants.has("a", CHAT, start) && grants.has("b", CHAT, start));
+        grants.clear();
+        assert!(!grants.has("b", CHAT, start));
+        for i in 0..(MAX_READ_GRANTS + 10) {
+            grants.add("a", &format!("chat-{i:020}"), start + Duration::from_millis(i as u64));
+        }
+        assert_eq!(grants.map.len(), MAX_READ_GRANTS);
+        assert!(!grants.has("a", &format!("chat-{:020}", 0), start + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn the_pc_says_who_reads_what() {
+        let q = read_question("Pixel 8", CHAT);
+        assert!(q.starts_with("\u{201c}Pixel 8\u{201d} asks to read files in your workspace for this chat."));
+        assert!(q.contains("Chat: c0ffee-c…"));
+        assert_eq!(read_note("Pixel 8", "budget.xlsx"), "Pixel 8 read budget.xlsx from the workspace");
     }
 }

@@ -1,6 +1,6 @@
 # Design: the phone uses the PC's tools
 
-Status: **to decide** (written 2026-11-15). Nothing here is built. TODO.md items: "The phone uses the PC's tools", "Together with the phone (home link)".
+Status: **decided** (written 2026-11-15; owner decisions at the end). Stage 1 (read only) built 2026-11-15: tools `pc_info`, `workspace_list`, `workspace_read` (phone names `pc_info`, `pc_workspace_list`, `pc_workspace_read`); search, ranges and file info are not in stage 1. TODO.md items: "The phone uses the PC's tools", "Together with the phone (home link)".
 
 ## 1. The goal
 

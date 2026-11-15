@@ -56,6 +56,8 @@
     "allow-link-device-may-answer",
     "allow-link-pictures-allow",
     "allow-link-device-may-picture",
+    "allow-link-tools-allow",
+    "allow-link-device-may-read",
     "allow-homelink-pair",
     "allow-homelink-status",
     "allow-homelink-start-model",
@@ -64,6 +66,7 @@
     "allow-homelink-questions",
     "allow-homelink-answer-question",
     "allow-homelink-picture",
+    "allow-homelink-tool",
     "allow-homelink-close-tunnel"
   ]
 }

@@ -185,6 +185,7 @@ describe("PC to PC: the phone's HomeLink module on the desktop", () => {
     await link.questions('pc');
     await link.answerQuestion('pc', 3, false);
     await link.picture('pc', 'a cat', 512, 0, 0);
+    await link.tool('pc', 'workspace_read', 'chat-1', '{"file":"a.md"}');
     expect(JSON.parse(await link.openTunnel('pc'))).toEqual({
       ok: true,
       port: 5000,
@@ -198,6 +199,7 @@ describe("PC to PC: the phone's HomeLink module on the desktop", () => {
       'homelink_questions',
       'homelink_answer_question',
       'homelink_picture',
+      'homelink_tool',
       'homelink_open_tunnel',
       'homelink_close_tunnel',
     ]);
@@ -210,6 +212,12 @@ describe("PC to PC: the phone's HomeLink module on the desktop", () => {
       width: 512,
       height: null,
       steps: null,
+    });
+    expect(calls[7][1]).toEqual({
+      pc: 'pc',
+      name: 'workspace_read',
+      chat: 'chat-1',
+      args: '{"file":"a.md"}',
     });
   });
 });

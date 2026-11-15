@@ -8,6 +8,7 @@ import {
   DESKTOP_TOOL_NAMES,
 } from '../DesktopToolsEngine';
 import {PcPictureEngine} from '../PcPictureEngine';
+import {PcToolsEngine} from '../PcToolsEngine';
 import {registerDefaultTalents, resetRegisteredFlag} from '..';
 
 const mockApprove = jest.fn();
@@ -84,15 +85,16 @@ it('the PC tools exist only in the desktop app', () => {
   resetRegisteredFlag();
   registerDefaultTalents();
   expect(
-    DESKTOP_TOOL_NAMES.filter(n => n !== 'image_generate').some(n =>
-      talentRegistry.get(n),
-    ),
+    DESKTOP_TOOL_NAMES.filter(
+      n => n !== 'image_generate' && n !== 'pc_info',
+    ).some(n => talentRegistry.get(n)),
   ).toBe(false);
-  // On the phone, image_generate asks the paired Home PC instead.
+  // On the phone, image_generate and pc_info ask the paired Home PC instead.
   expect(talentRegistry.get('image_generate')).toBeInstanceOf(PcPictureEngine);
-  expect(talentRegistry.get('image_generate')).not.toBeInstanceOf(
-    DesktopToolsEngine,
-  );
+  expect(talentRegistry.get('pc_info')).toBeInstanceOf(PcToolsEngine);
+  for (const n of ['image_generate', 'pc_info']) {
+    expect(talentRegistry.get(n)).not.toBeInstanceOf(DesktopToolsEngine);
+  }
 });
 
 it('reads the clipboard only through the native dialog', async () => {

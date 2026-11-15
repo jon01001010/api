@@ -8,6 +8,7 @@ import {safeMath} from '../services/talents/safeMath';
 import {isBackgroundInferenceEnabled, setBackgroundInferenceEnabled} from '../utils/backgroundInference';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
 import {PHONE_TOOL_NAMES} from '../services/talents/PhoneActionsEngine';
+import {PC_TOOL_NAMES} from '../services/talents/PcToolsEngine';
 
 const MEMORY_TOOL_NAMES = ['memory_get', 'memory_replace', 'memory_history', 'memory_restore'];
 import {CustomToolEngine} from '../services/talents/customTools';
@@ -65,8 +66,10 @@ const ToolboxScreenBody: React.FC = () => {
   const [showPhoneTools, setShowPhoneTools] = useState(false);
   const phoneTools = tools.filter(t => PHONE_TOOL_NAMES.includes(t.name));
   const memoryTools = tools.filter(t => MEMORY_TOOL_NAMES.includes(t.name));
+  // Phone only: the Home PC's tools ("On your PC"); on the PC, pc_info is its own.
+  const onPc = (globalThis as any).__TAURI_INTERNALS__ ? [] : tools.filter(t => (PC_TOOL_NAMES as readonly string[]).includes(t.name));
   const otherTools = tools.filter(
-    t => !PHONE_TOOL_NAMES.includes(t.name) && !MEMORY_TOOL_NAMES.includes(t.name),
+    t => !PHONE_TOOL_NAMES.includes(t.name) && !MEMORY_TOOL_NAMES.includes(t.name) && !onPc.includes(t),
   );
   const toggleGroup = async (names: string[], enabled: boolean) => {
     if (!settingsLoaded || savingTool) return;
@@ -242,6 +245,24 @@ const ToolboxScreenBody: React.FC = () => {
             ))}
           </Card.Content>
         </Card>
+        {/* Phone only: the paired Home PC's read-only tools, each off until switched on. */}
+        {onPc.length > 0 ? (
+          <Card mode="outlined" testID="toolbox-on-your-pc">
+            <Card.Content>
+              <Text variant="titleMedium">On your PC ({onPc.length})</Text>
+              <Text variant="bodyMedium">Your paired Home PC's information and the files in its workspace (read only). The PC must allow this device first (on the PC: Settings, Use this PC's model from your phone); reading its workspace asks there once per chat.</Text>
+              {onPc.map(tool => (
+                <View key={tool.name} style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingVertical: 4}}>
+                  <View style={{flex: 1}}>
+                    <Text variant="bodyMedium">{tool.name}</Text>
+                    <Text variant="bodySmall">{tool.description}</Text>
+                  </View>
+                  <Switch testID={'toolbox-toggle-' + tool.name} disabled={!settingsLoaded || savingTool !== null} value={enabledTools.includes(tool.name)} onValueChange={enabled => toggleBuiltIn(tool.name, enabled)} />
+                </View>
+              ))}
+            </Card.Content>
+          </Card>
+        ) : null}
         {/* Desktop app only: picture models for image_generate. */}
         {(globalThis as any).__TAURI_INTERNALS__ ? (
           <ImageModelsSection errorColor={errorColor} />

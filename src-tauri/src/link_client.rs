@@ -197,6 +197,14 @@ pub async fn homelink_picture(
     .await
 }
 
+/// One of the other PC's read-only tools (only while allowed there for
+/// this PC; reading its workspace asks there once per chat). `args`: JSON;
+/// only the named fields the library sends are taken from it.
+#[tauri::command]
+pub async fn homelink_tool(app: AppHandle, pc: String, name: String, chat: String, args: String) -> String {
+    answer(app, move |p| p.tool(&pc, &name, &chat, &args)).await
+}
+
 #[tauri::command]
 pub async fn homelink_open_tunnel(app: AppHandle, pc: String) -> String {
     answer(app, move |p| {

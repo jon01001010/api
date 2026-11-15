@@ -230,18 +230,26 @@ pub fn openable(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-#[tauri::command]
-pub async fn open_workspace_file(app: AppHandle, name: String) -> Result<(), String> {
+/// A file in the workspace, by its name only (never a folder or a path):
+/// the one check the PC's own file tools (open, print) and a paired
+/// device's reads (link.rs) share.
+pub(crate) fn workspace_file(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
     if name.contains(['/', '\\', ':']) || name.contains("..") || name.trim().is_empty() {
         return Err("Use a workspace file name (no folders)".into());
     }
-    if !openable(&name) {
-        return Err("Only documents, pictures, text and media files are opened (never programs or scripts)".into());
-    }
-    let path = workspace(&app)?.join(&name);
+    let path = workspace(app)?.join(name);
     if !path.is_file() {
         return Err(format!("No workspace file named {name}"));
     }
+    Ok(path)
+}
+
+#[tauri::command]
+pub async fn open_workspace_file(app: AppHandle, name: String) -> Result<(), String> {
+    if !openable(&name) {
+        return Err("Only documents, pictures, text and media files are opened (never programs or scripts)".into());
+    }
+    let path = workspace_file(&app, &name)?;
     let question = format!("DesktopAgent wants to open this workspace file in its app:\n\n{name}");
     if !crate::approval::ask(&app, &question).await {
         return Err("The user said no. Nothing was opened.".into());

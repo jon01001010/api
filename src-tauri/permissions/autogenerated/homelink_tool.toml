@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-homelink-tool"
+description = "Enables the homelink_tool command without any pre-configured scope."
+commands.allow = ["homelink_tool"]
+
+[[permission]]
+identifier = "deny-homelink-tool"
+description = "Denies the homelink_tool command without any pre-configured scope."
+commands.deny = ["homelink_tool"]

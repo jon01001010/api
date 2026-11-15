@@ -2,6 +2,7 @@ import {NativeModules} from 'react-native';
 
 import {
   askPcForPicture,
+  askPcTool,
   describeEvent,
   isPairingCode,
   openTunnel,
@@ -67,6 +68,32 @@ describe('home link (phone side)', () => {
       file: '/cache/pc-pictures/picture-1.png',
     });
     expect(picture).toHaveBeenCalledWith(PC, 'a cat', 512, 0, 0);
+  });
+
+  it('asks the PC for one of its tools: the name, a chat id and a file name only', async () => {
+    const tool = jest.fn(async (..._args: unknown[]) =>
+      JSON.stringify({ok: true, result: {files: []}}),
+    );
+    (NativeModules as any).HomeLink = {tool};
+    await expect(
+      askPcTool(PC, 'workspace_list', 'chat-0123456789abcdef'),
+    ).resolves.toEqual({ok: true, result: {files: []}});
+    expect(tool).toHaveBeenCalledWith(
+      PC,
+      'workspace_list',
+      'chat-0123456789abcdef',
+      '{}',
+    );
+    await askPcTool(PC, 'workspace_read', 'c', {file: 'a.md'});
+    expect(tool).toHaveBeenLastCalledWith(
+      PC,
+      'workspace_read',
+      'c',
+      '{"file":"a.md"}',
+    );
+    expect(
+      describeEvent({n: 2, at: 0, kind: 'may-read', name: 'Pixel'}),
+    ).toContain("“Pixel” may now use the PC's tools");
   });
 
   it('names a device allowed to make pictures in the pairing history', () => {

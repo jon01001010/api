@@ -70,6 +70,33 @@ async fn read_picture(recv: &mut iroh::endpoint::RecvStream) -> Result<Picture, 
     })
 }
 
+/// Largest tool answer taken from the PC (the PC's own limit too).
+pub const MAX_TOOL_ANSWER: usize = 2 * 1024 * 1024;
+/// How long a tool may take (the PC may ask its user first).
+const TOOL_TIME: Duration = Duration::from_secs(5 * 60);
+
+/// Reads the PC's answer to "tool": a JSON line, then exactly the
+/// announced bytes (at most MAX_TOOL_ANSWER), which must be JSON.
+async fn read_tool_answer(recv: &mut iroh::endpoint::RecvStream) -> Result<serde_json::Value, String> {
+    let line = read_line(recv).await.ok_or("The PC did not answer")?;
+    let answer: serde_json::Value = serde_json::from_str(&line).map_err(|e| e.to_string())?;
+    if !answer_ok(&answer) {
+        return Err(error_of(&answer, "The PC refused"));
+    }
+    let size = answer
+        .get("bytes")
+        .and_then(|b| b.as_u64())
+        .ok_or("The PC's answer was not readable")?;
+    if size == 0 || size > MAX_TOOL_ANSWER as u64 {
+        return Err("The PC's answer is too large".into());
+    }
+    let mut body = vec![0u8; size as usize];
+    recv.read_exact(&mut body)
+        .await
+        .map_err(|_| "The PC's answer ended early".to_string())?;
+    serde_json::from_slice(&body).map_err(|_| "The PC's answer was not readable".to_string())
+}
+
 /// What a pairing QR code holds.
 #[derive(Debug, PartialEq)]
 pub struct PairingCode {
@@ -419,6 +446,37 @@ impl Phone {
         })
     }
 
+    /// Asks the PC for one of its read-only tools (only while the user
+    /// allows device tools on the PC, for this device; the PC refuses
+    /// otherwise and checks everything itself). `chat`: this device's id
+    /// for the chat asking (reading the workspace asks on the PC once per
+    /// chat). `args_json`: only the named fields the PC takes are sent (a
+    /// file's name). Waits up to 5 minutes (the PC may be asking its user).
+    /// Answers {"ok": true, "result": …}.
+    pub fn tool(&self, pc: &str, name: &str, chat: &str, args_json: &str) -> Result<serde_json::Value, String> {
+        let pc: EndpointId = pc.parse().map_err(|_| "Bad PC key".to_string())?;
+        let given: serde_json::Value = serde_json::from_str(args_json).unwrap_or(serde_json::json!({}));
+        let mut args = serde_json::Map::new();
+        if let Some(file) = given.get("file").and_then(|f| f.as_str()) {
+            args.insert("file".into(), file.into());
+        }
+        let request = serde_json::json!({"op": "tool", "name": name, "chat": chat, "args": args});
+        let line = format!("{request}\n");
+        if line.len() > MAX_LINE {
+            return Err("The request is too long".into());
+        }
+        let result = self.runtime.block_on(async {
+            let conn = self.connection(pc).await?;
+            let (mut send, mut recv) = conn.open_bi().await.map_err(|e| e.to_string())?;
+            send.write_all(line.as_bytes()).await.map_err(|e| e.to_string())?;
+            let _ = send.finish();
+            tokio::time::timeout(TOOL_TIME, read_tool_answer(&mut recv))
+                .await
+                .map_err(|_| "The PC did not answer in time".to_string())?
+        })?;
+        Ok(serde_json::json!({"ok": true, "result": result}))
+    }
+
     /// Opens (or returns) the local port on 127.0.0.1 that leads to the
     /// PC's model server.
     pub fn open_tunnel(self: &std::sync::Arc<Self>, pc: &str) -> Result<u16, String> {
@@ -652,6 +710,37 @@ mod tests {
             assert_eq!(
                 line,
                 serde_json::json!({"op": "picture", "prompt": "a cat", "width": 512, "height": null, "steps": 4})
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
+    fn a_tool_answer_comes_back_whole_and_only_as_json() {
+        let body = br#"{"name":"notes.md","text":"hello","cut":false}"#;
+        let mut ok = format!("{{\"ok\":true,\"bytes\":{}}}\n", body.len()).into_bytes();
+        ok.extend_from_slice(body);
+        let cases: Vec<(Vec<u8>, Result<serde_json::Value, &str>)> = vec![
+            (ok, Ok(serde_json::json!({"ok": true, "result": {"name": "notes.md", "text": "hello", "cut": false}}))),
+            (b"{\"ok\":false,\"error\":\"Using this PC's tools from paired devices is off on the PC\"}\n".to_vec(), Err("Using this PC's tools from paired devices is off on the PC")),
+            (format!("{{\"ok\":true,\"bytes\":{}}}\n", MAX_TOOL_ANSWER + 1).into_bytes(), Err("The PC's answer is too large")),
+            ([b"{\"ok\":true,\"bytes\":3}\n".as_slice(), b"<x>"].concat(), Err("The PC's answer was not readable")),
+            ([b"{\"ok\":true,\"bytes\":50}\n".as_slice(), b"{}"].concat(), Err("The PC's answer ended early")),
+        ];
+        for (i, (answer, expected)) in cases.into_iter().enumerate() {
+            let (pc, addr, seen) = fake_picture_pc(answer);
+            let dir = std::env::temp_dir().join(format!("homelink-tool-{}-{i}", std::process::id()));
+            let phone = Phone::new(&dir.join("key"), Some(addr)).unwrap();
+            let got = phone.tool(&pc.to_string(), "workspace_read", "chat-0123456789abcdef", r#"{"file":"notes.md","path":"C:/x","command":"rm"}"#);
+            match expected {
+                Ok(value) => assert_eq!(got.unwrap(), value),
+                Err(message) => assert_eq!(got.unwrap_err(), message),
+            }
+            // Only the tool's name, the chat and a file name are sent.
+            let line: serde_json::Value = serde_json::from_str(&seen.recv().unwrap()).unwrap();
+            assert_eq!(
+                line,
+                serde_json::json!({"op": "tool", "name": "workspace_read", "chat": "chat-0123456789abcdef", "args": {"file": "notes.md"}})
             );
             let _ = std::fs::remove_dir_all(&dir);
         }

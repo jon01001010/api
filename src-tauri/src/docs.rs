@@ -245,20 +245,25 @@ pub async fn doc_to_text(app: tauri::AppHandle, path: String) -> Result<String, 
         return Err("Only documents in the workspace can be read".into());
     }
     let real = located.real;
-    tauri::async_runtime::spawn_blocking(move || {
-        let size = std::fs::metadata(&real).map_err(|e| e.to_string())?.len();
-        if size > MAX_FILE {
-            return Err("The document is too big (over 64 MB)".to_string());
-        }
-        let bytes = std::fs::read(&real).map_err(|e| e.to_string())?;
-        let name = Path::new(&real)
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        to_text(&name, bytes)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || read_document(&real))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// A document file's text, with the size cap: the PC's own tool and a
+/// paired device's read (pc_files.rs) both come here. Blocks: call it off
+/// the async runtime.
+pub fn read_document(real: &Path) -> Result<String, String> {
+    let size = std::fs::metadata(real).map_err(|e| e.to_string())?.len();
+    if size > MAX_FILE {
+        return Err("The document is too big (over 64 MB)".to_string());
+    }
+    let bytes = std::fs::read(real).map_err(|e| e.to_string())?;
+    let name = real
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    to_text(&name, bytes)
 }
 
 #[cfg(test)]

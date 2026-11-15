@@ -182,6 +182,22 @@ fn log_file(app: &AppHandle) -> Option<std::path::PathBuf> {
 
 /// Writes one line to this PC's log of answers given on devices.
 pub fn log_answer(app: &AppHandle, device: &str, yes: bool, question: &str) {
+    append(app, |when| log_line(when, device, yes, question));
+}
+
+/// One line of the log for something a device did with this PC's tools
+/// (link.rs "tool"): when, which device, "used", what (escaped, one line).
+pub fn use_line(when: u64, device: &str, what: &str) -> String {
+    format!("{when}\t{}\tused\t{}", one_line(device), one_line(what))
+}
+
+/// Writes one line to the same log: a device used one of this PC's tools.
+#[cfg_attr(not(feature = "link"), allow(dead_code))]
+pub fn log_use(app: &AppHandle, device: &str, what: &str) {
+    append(app, |when| use_line(when, device, what));
+}
+
+fn append(app: &AppHandle, line: impl FnOnce(u64) -> String) {
     let Some(file) = log_file(app) else { return };
     let when = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -192,7 +208,7 @@ pub fn log_answer(app: &AppHandle, device: &str, yes: bool, question: &str) {
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     if let Ok(mut f) = options.open(file) {
-        let _ = writeln!(f, "{}", log_line(when, device, yes, question));
+        let _ = writeln!(f, "{}", line(when));
     }
 }
 
@@ -269,6 +285,13 @@ mod tests {
             assert!(hidden_char(c), "{c:?}");
         }
         assert!(!hidden_char('é') && !hidden_char(' '));
+    }
+
+    #[test]
+    fn what_a_device_used_is_logged_on_one_line() {
+        let line = use_line(7, "Pixel\n8", "read notes.md\n\u{202e}x");
+        assert_eq!(line, "7\tPixel\\n8\tused\tread notes.md\\n\\u{202e}x");
+        assert_eq!(line.lines().count(), 1);
     }
 
     #[test]

@@ -363,6 +363,8 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'link_device_may_answer',
         'link_pictures_allow',
         'link_device_may_picture',
+        'link_tools_allow',
+        'link_device_may_read',
         'homelink_pair',
         'homelink_status',
         'homelink_start_model',
@@ -371,6 +373,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'homelink_questions',
         'homelink_answer_question',
         'homelink_picture',
+        'homelink_tool',
         'homelink_close_tunnel',
       ].sort(),
     );
@@ -542,6 +545,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'Start',
       'Status',
       'Sync',
+      'Tool',
     ]);
     // "questions" / "answer" (the PC asks, a device can answer): paired
     // devices only, only while the user allows it here; an answer is yes or
@@ -560,7 +564,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /#\[serde\(default, rename = "mayAnswer"[^\n]*\]\s*pub may_answer: bool,/,
     );
     expect(link).toMatch(
-      /Phone \{ id: remote\.clone\(\), name: name\.clone\(\), may_answer: false, may_picture: false \}/,
+      /Phone \{ id: remote\.clone\(\), name: name\.clone\(\), may_answer: false, may_picture: false, may_read: false \}/,
     );
     expect(link).toMatch(
       /pub async fn link_device_may_answer[\s\S]*?if allowed \{[\s\S]*?if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*return Err[\s\S]*?let mut phones = load_phones\(&app\);[\s\S]*?save_phones/,
@@ -578,10 +582,16 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(link).toMatch(
       /Some\(Request::Picture \{ prompt, width, height, steps \}\) if paired => \{\s*let phones = load_phones\(&app\);\s*if !pictures_allowed\(&app\) \{\s*reply\(&mut send, serde_json::json!\(\{"ok": false, "error": OFF_PICTURES\}\)\)\.await;\s*\} else if !may_picture\(&phones, &remote\) \{\s*reply\(&mut send, serde_json::json!\(\{"ok": false, "error": NOT_THIS_DEVICE_PICTURES\}\)\)\.await;\s*\} else \{[\s\S]*?picture_for\(/,
     );
-    const picture = ops.slice(ops.indexOf('Picture {'), ops.indexOf('Http,'));
+    const picture = ops.slice(ops.indexOf('Picture {'), ops.indexOf('Tool {'));
     expect(
       [...picture.matchAll(/^\s+(\w+): /gm)].map(m => m[1]).sort(),
     ).toEqual(['height', 'prompt', 'steps', 'width']);
+    const tool = ops.slice(ops.indexOf('Tool {'), ops.indexOf('Http,'));
+    expect([...tool.matchAll(/^\s+(\w+): /gm)].map(m => m[1]).sort()).toEqual([
+      'args',
+      'chat',
+      'name',
+    ]);
     expect(link).toMatch(
       /async fn picture_for[\s\S]*?crate::image_gen::first_downloaded_set\(app\)\?[\s\S]*?crate::image_gen::make\([\s\S]*?notification\(\)[\s\S]*?picture_note\([\s\S]*?if size > MAX_PICTURE as u64 \{\s*return Err/,
     );
@@ -597,6 +607,85 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     );
     expect(link).toMatch(
       /fn pictures_allowed\(app: &AppHandle\) -> bool \{\s*read_entry\(app, PICTURES_ENTRY\)\.as_deref\(\) == Some\("on"\)/,
+    );
+    // "tool" (stage 1 of "the phone uses the PC's tools", read only):
+    // paired devices only; then the PC's switch (kept natively, across
+    // restarts, like pictures), this device's "may read" (off by default,
+    // again after pairing anew, turned on only after the PC's own dialog),
+    // a fixed list of three tools, then the arguments (a chat id, and a
+    // workspace file name, never a path). Same functions and caps as the
+    // PC's own tools; reading asks once per chat, natively (approval::ask,
+    // which a device that may answer can answer); each read notifies.
+    expect(link).toMatch(
+      /Some\(Request::Tool \{ name, chat, args \}\) if paired => \{\s*let phones = load_phones\(&app\);\s*let checked = check_tool\(tools_allowed\(&app\), may_read\(&phones, &remote\), &name, &chat, &args\);/,
+    );
+    expect(link).toMatch(
+      /pub fn check_tool[^{]*\{\s*if !tools_on \{\s*return Err\(OFF_TOOLS\.into\(\)\);\s*\}\s*if !device_may_read \{\s*return Err\(NOT_THIS_DEVICE_TOOLS\.into\(\)\);\s*\}\s*if !REMOTE_TOOLS\.contains\(&name\) \{\s*return Err\(NOT_A_REMOTE_TOOL\.into\(\)\);\s*\}\s*check_chat\(chat\)\?;[\s\S]*?crate::pc_files::check_name\(file\)\?/,
+    );
+    expect(link).toContain(
+      'pub const REMOTE_TOOLS: &[&str] = &["pc_info", "workspace_list", "workspace_read"];',
+    );
+    const toolArgs = link.slice(
+      link.indexOf('pub struct ToolArgs'),
+      link.indexOf('pub enum RemoteCall'),
+    );
+    expect([...toolArgs.matchAll(/pub (\w+): /g)].map(m => m[1])).toEqual([
+      'file',
+    ]);
+    expect(link).toMatch(
+      /#\[serde\(default, rename = "mayRead"[^\n]*\]\s*pub may_read: bool,/,
+    );
+    expect(link).toMatch(
+      /pub async fn link_device_may_read[\s\S]*?if allowed \{[\s\S]*?if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*return Err[\s\S]*?let mut phones = load_phones\(&app\);[\s\S]*?save_phones[\s\S]*?record\(&app, "may-read"/,
+    );
+    expect(link).toContain(
+      'const TOOLS_ENTRY: &str = "DesktopAgent-link:tools";',
+    );
+    expect(link).toMatch(
+      /fn tools_allowed\(app: &AppHandle\) -> bool \{\s*read_entry\(app, TOOLS_ENTRY\)\.as_deref\(\) == Some\("on"\)/,
+    );
+    expect(link).toMatch(
+      /async fn may_read_now[\s\S]*?read_grants[\s\S]*?crate::approval::ask\(app, &read_question\(device, chat\)\)\.await[\s\S]*?if !tools_allowed\(app\) \|\| !may_read\(&load_phones\(app\), remote\) \{\s*return false;/,
+    );
+    expect(link).toContain(
+      'const READ_GRANT_TIME: Duration = Duration::from_secs(12 * 60 * 60);',
+    );
+    expect(link).toMatch(
+      /async fn tool_for[\s\S]*?if call != RemoteCall::PcInfo && !may_read_now\(app, remote, device, chat\)\.await \{\s*return Err[\s\S]*?crate::pc::pc_info\(a\)[\s\S]*?crate::pc_files::list\(&dir\)[\s\S]*?crate::pc::workspace_file\(app, &file\)\?[\s\S]*?crate::pc_files::read\(&path, &name\)[\s\S]*?log_use[\s\S]*?notification\(\)[\s\S]*?read_note\(/,
+    );
+    expect(link).toMatch(
+      /pub async fn link_forget[\s\S]*?read_grants\.lock\(\)\.unwrap\(\)\.forget_device\(&id\)/,
+    );
+    expect(link).toMatch(
+      /pub async fn link_tools_allow[\s\S]*?if !allowed \{\s*app\.state::<Link>\(\)\.read_grants\.lock\(\)\.unwrap\(\)\.clear\(\);/,
+    );
+    // Workspace file names only (the screens' own rule), no hidden or
+    // system files, no links out; at most 256 KB of text; documents through
+    // the PC's own reader; the same name check as open and print.
+    const pcFiles = tauri('src/pc_files.rs');
+    expect(pcFiles).toContain('pub const MAX_TEXT: usize = 256 * 1024;');
+    expect(pcFiles).toMatch(
+      /pub fn check_name[\s\S]*?name\.contains\("\.\."\)[\s\S]*?is_ascii_alphanumeric\(\)[\s\S]*?SYSTEM_NAMES/,
+    );
+    expect(pcFiles).toMatch(
+      /fn plain_file[\s\S]*?std::fs::symlink_metadata\(path\)/,
+    );
+    expect(pcFiles).toContain('crate::docs::read_document(path)?');
+    expect(tauri('src/docs.rs')).toMatch(
+      /pub async fn doc_to_text[\s\S]*?spawn_blocking\(move \|\| read_document\(&real\)\)/,
+    );
+    const pcRs = tauri('src/pc.rs');
+    expect(pcRs).toMatch(
+      /pub\(crate\) fn workspace_file[\s\S]*?name\.contains\(\['\/', '\\\\', ':'\]\) \|\| name\.contains\("\.\."\)/,
+    );
+    expect(pcRs).toMatch(
+      /pub async fn open_workspace_file[\s\S]*?workspace_file\(&app, &name\)\?/,
+    );
+    expect(tauri('src/pc_extra.rs')).toContain(
+      'let path = crate::pc::workspace_file(&app, &name)?;',
+    );
+    expect(tauri('src/remote_ask.rs')).toMatch(
+      /pub fn use_line[\s\S]*?one_line\(device\), one_line\(what\)/,
     );
     // The PC's own tool and a device's picture share one checked maker.
     const imageGen = tauri('src/image_gen.rs');
@@ -737,6 +826,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'start',
       'status',
       'sync',
+      'tool',
     ]);
     // Key kept out of cloud backups.
     expect(
@@ -746,6 +836,38 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     ).toContain('context.noBackupFilesDir');
   });
 
+  it("the phone's PC tools: their own names, off by default, results untrusted, behind the PIN", () => {
+    const engine = read('src/services/talents/PcToolsEngine.ts');
+    expect(engine).toMatch(
+      /export const PC_TOOL_NAMES = \[\s*'pc_info',\s*'pc_workspace_list',\s*'pc_workspace_read',\s*\] as const;/,
+    );
+    // What the PC sends back is its data: wrapped as untrusted.
+    expect(engine).toMatch(
+      /summary: wrapUntrusted\(describeResult\(this\.name, answer\.result\)\)/,
+    );
+    // Only a file's name goes to the PC, through the one gated ask().
+    expect(engine).toMatch(
+      /askPcTool\(\s*pc,\s*REMOTE_NAMES\[this\.name\],\s*chatIdFor\(activeChat\(\)\),\s*toolArgs,\s*\)/,
+    );
+    expect(engine).toContain('if (!(await unlockHomePc(pc))) {');
+    const link = read('src/services/homeLink/homeLink.ts');
+    expect(link).toMatch(
+      /if \(method !== 'pair' && method !== 'closeTunnel'\) \{\s*const gate = await homePcGate/,
+    );
+    expect(link).toMatch(
+      /'tool',\s*pc,\s*name,\s*chat,\s*JSON\.stringify\(args\.file !== undefined \? \{file: args\.file\} : \{\}\)/,
+    );
+    // Registered on the phone only (the PC has its own pc_info), and no
+    // tool is switched on by default.
+    const index = read('src/services/talents/index.ts');
+    expect(index).toMatch(
+      /\} else \{[\s\S]*?new PcPictureEngine\(\)[\s\S]*?for \(const name of PC_TOOL_NAMES\) \{\s*talentRegistry\.register\(new PcToolsEngine\(name\)\);/,
+    );
+    expect(read('src/utils/globalToolSettings.ts')).toMatch(
+      /const raw = await AsyncStorage\.getItem\(KEY\);\s*if \(!raw\) return \[\];/,
+    );
+  });
+
   it('the home link can never crash the app: failures come back as errors', () => {
     expect(read('native/homelink/Cargo.toml')).toMatch(/^panic = "unwind"$/m);
     expect(read('src-tauri/Cargo.toml')).toMatch(/^panic = "unwind"$/m);
@@ -753,7 +875,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // Every door from Android goes through guarded(), and iroh gets the
     // app context first (it needs it to read the network settings).
     const doors = android.match(/pub extern "system" fn Java_\w+/g) || [];
-    expect(doors.length).toBe(10);
+    expect(doors.length).toBe(11);
     for (const door of doors) {
       const body = android.slice(android.indexOf(door));
       const next = body.indexOf('pub extern "system"', 10);
