@@ -299,6 +299,16 @@ function extras() {
     ),
     entry(
       'native',
+      'stable-diffusion.cpp (picture maker, desktop)',
+      'master-1039-290148d',
+      'MIT',
+      [asset('native', 'stable-diffusion.cpp-LICENSE.txt')],
+      {
+        u: 'https://github.com/leejet/stable-diffusion.cpp',
+      },
+    ),
+    entry(
+      'native',
       'LLVM OpenMP runtime (in the Windows model runner)',
       '',
       'Apache-2.0 WITH LLVM-exception',
