@@ -19,3 +19,8 @@ export const linkOn = (): Promise<void> => invoke('link_on');
 export const linkOff = (): Promise<void> => invoke('link_off');
 export const linkForget = (id: string): Promise<void> =>
   invoke('link_forget', {id});
+/** Letting a device answer is asked in a native dialog on this PC. */
+export const linkDeviceMayAnswer = (
+  id: string,
+  allowed: boolean,
+): Promise<void> => invoke('link_device_may_answer', {id, allowed});

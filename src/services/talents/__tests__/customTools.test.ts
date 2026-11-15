@@ -33,6 +33,11 @@ jest.mock('../../../utils/globalToolSettings', () => ({
   writeGlobalTools: jest.fn(async (names: string[]) => {
     mockEnabled.splice(0, mockEnabled.length, ...names);
   }),
+  setToolEnabled: jest.fn(async (name: string, on: boolean) => {
+    const rest = mockEnabled.filter(n => n !== name);
+    mockEnabled.splice(0, mockEnabled.length, ...rest, ...(on ? [name] : []));
+    return [...mockEnabled];
+  }),
 }));
 
 const approve = requestFileApproval as jest.Mock;

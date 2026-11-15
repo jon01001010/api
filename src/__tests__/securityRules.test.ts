@@ -238,6 +238,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'link_sync_allow',
         'link_sync_reply',
         'link_answers_allow',
+        'link_device_may_answer',
         'homelink_pair',
         'homelink_status',
         'homelink_start_model',
@@ -411,10 +412,25 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // no to one question; a device's yes allows once, never "always"; and
     // pairing a new device is asked on this PC only.
     expect(link).toMatch(
-      /Some\(Request::Questions\) if paired =>[\s\S]*?if questions\.allowed\(\)/,
+      /Some\(Request::Questions\) if paired =>[\s\S]*?if !questions\.allowed\(\) \{\s*serde_json::json!\(\{"ok": false, "error": OFF_ANSWERS\}\)\s*\} else if !may_answer\(&load_phones\(&app\), &remote\) \{\s*serde_json::json!\(\{"ok": false, "error": NOT_THIS_DEVICE\}\)\s*\} else \{\s*serde_json::json!\(\{"ok": true, "questions": questions\.list\(\)\}\)/,
     );
     expect(link).toMatch(
-      /Some\(Request::Answer \{ id, yes \}\) if paired =>[\s\S]*?if !questions\.allowed\(\)/,
+      /Some\(Request::Answer \{ id, yes \}\) if paired =>[\s\S]*?if !questions\.allowed\(\) \{\s*serde_json::json!\(\{"ok": false, "error": OFF_ANSWERS\}\)\s*\} else if !may_answer\(&phones, &remote\) \{\s*serde_json::json!\(\{"ok": false, "error": NOT_THIS_DEVICE\}\)\s*\} else \{[\s\S]*?questions\.answer\(id, yes, &name\)/,
+    );
+    // Which devices may answer: each one allowed on its own, off by
+    // default (old records without the field too, and again after pairing
+    // anew); allowing one asks in the PC's own dialog (never a device).
+    expect(link).toMatch(
+      /#\[serde\(default, rename = "mayAnswer"[^\n]*\]\s*pub may_answer: bool,/,
+    );
+    expect(link).toMatch(
+      /Phone \{ id: remote\.clone\(\), name: name\.clone\(\), may_answer: false \}/,
+    );
+    expect(link).toMatch(
+      /pub async fn link_device_may_answer[\s\S]*?if allowed \{[\s\S]*?if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*return Err[\s\S]*?let mut phones = load_phones\(&app\);[\s\S]*?save_phones/,
+    );
+    expect(link).toContain(
+      "This device may not answer this PC's questions; allow it on the PC",
     );
     expect(ops).toMatch(/^\s{4}Answer \{ id: u64, yes: bool \},$/m);
     const approval = tauri('src/approval.rs');
@@ -727,11 +743,27 @@ describe('Paired devices: sync, mirrored chats, answers (review of 2026-11-15)',
     // Custom tools from a sync (or deleted) are switched off before saving.
     const tools = read('src/services/talents/customTools.ts');
     expect(tools).toMatch(
-      /await switchOffTools\(\[\.\.\.names\]\.filter\(n => !kept\.has\(n\)\)\);\s*await persist\(list\);/,
+      /await changeToolSwitches\(async \(\) => \{\s*await switchOffNow\(\[\.\.\.names\]\.filter\(n => !kept\.has\(n\)\)\);\s*await persist\(list\);/,
     );
     expect(tools).toMatch(
-      /deleteCustomTool[\s\S]*?await switchOffTools\(\[name\]\);/,
+      /deleteCustomTool[\s\S]*?changeToolSwitches\(async \(\) => \{\s*await switchOffNow\(\[name\]\);/,
     );
+    // Every write to the switches waits its turn, and the Toolbox switches
+    // one name (or group) against the stored list, never its own copy.
+    expect(tools).toMatch(
+      /export function switchOffTools[^{]*\{\s*return changeToolSwitches\(/,
+    );
+    const settings = read('src/utils/globalToolSettings.ts');
+    expect(settings).toMatch(
+      /export function writeGlobalTools[^{]*\{\s*return changeToolSwitches\(/,
+    );
+    expect(settings).toMatch(
+      /export function setToolsEnabled[\s\S]*?return changeToolSwitches\(async \(\) => \{\s*\/\/[^\n]*\n\s*const stored = await readGlobalTools\(\)/,
+    );
+    expect(settings.match(/AsyncStorage\.setItem\(\s*KEY,/g)).toHaveLength(1);
+    const toolbox = read('src/screens/ToolboxScreen.tsx');
+    expect(toolbox).not.toContain('writeGlobalTools');
+    expect(toolbox).toContain('onToolSwitchesChanged(');
     // Times from another device: at most a few minutes ahead.
     const prompt = read('src/services/sync/promptSync.ts');
     expect(prompt).toContain('export const MAX_CLOCK_SKEW = 5 * 60_000;');

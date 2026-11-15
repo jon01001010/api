@@ -116,6 +116,7 @@ pub fn run() {
             link::link_sync_allow,
             link::link_sync_reply,
             remote_ask::link_answers_allow,
+            link::link_device_may_answer,
             link_client::homelink_pair,
             link_client::homelink_status,
             link_client::homelink_start_model,

@@ -45,6 +45,36 @@ export type CustomTool =
 const STORAGE_KEY = '@pocketagent/custom-tools/v1';
 /** Toolbox switches (names of switched-on tools); read in globalToolSettings. */
 export const GLOBAL_TOOLS_KEY = '@pocketagent/global-tools/v1';
+
+// Every change to the stored switches goes through this queue, one at a
+// time, so a change based on an older read (an open Toolbox, a sync) can't
+// write that older list back over a newer one.
+let switchesQueue: Promise<unknown> = Promise.resolve();
+const switchesListeners = new Set<() => void>();
+
+/** Runs `change` after every earlier change to the Toolbox switches. */
+export function changeToolSwitches<T>(change: () => Promise<T>): Promise<T> {
+  const run = switchesQueue.then(change, change);
+  switchesQueue = run.catch(() => undefined);
+  return run;
+}
+
+/** Tells listeners (an open Toolbox) that the stored switches changed. */
+export function toolSwitchesChanged(): void {
+  for (const listener of [...switchesListeners]) {
+    try {
+      listener();
+    } catch {}
+  }
+}
+
+/** Called after each change to the stored switches; returns an unsubscribe. */
+export function onToolSwitchesChanged(listener: () => void): () => void {
+  switchesListeners.add(listener);
+  return () => {
+    switchesListeners.delete(listener);
+  };
+}
 export const MAX_STEPS = 8;
 const MAX_INSTRUCTIONS = 8000;
 
@@ -397,7 +427,12 @@ export async function saveCustomTool(
  * now are removed too, so a deleted name can't come back switched on.
  * Missing or malformed settings already mean "no tools" and are left alone.
  */
-export async function switchOffTools(names: string[]): Promise<void> {
+export function switchOffTools(names: string[]): Promise<void> {
+  return changeToolSwitches(() => switchOffNow(names));
+}
+
+/** switchOffTools, for code already inside changeToolSwitches. */
+async function switchOffNow(names: string[]): Promise<void> {
   if (!names.length) {
     return;
   }
@@ -418,6 +453,7 @@ export async function switchOffTools(names: string[]): Promise<void> {
   const next = parsed.filter(n => !off.has(n));
   if (next.length !== parsed.length) {
     await AsyncStorage.setItem(GLOBAL_TOOLS_KEY, JSON.stringify(next));
+    toolSwitchesChanged();
   }
 }
 
@@ -448,19 +484,24 @@ export async function replaceCustomTools(input: unknown[]): Promise<void> {
       .map(t => t.name),
   );
   const names = new Set([...before.keys(), ...list.map(t => t.name)]);
-  await switchOffTools([...names].filter(n => !kept.has(n)));
-  await persist(list);
+  // Switched off and saved in one turn: no switch can be turned on between.
+  await changeToolSwitches(async () => {
+    await switchOffNow([...names].filter(n => !kept.has(n)));
+    await persist(list);
+  });
 }
 
 /** Removes a tool and always turns its Toolbox switch off. */
 export async function deleteCustomTool(name: string): Promise<boolean> {
   await ensureCustomToolsLoaded();
-  await switchOffTools([name]);
-  if (!tools.some(t => t.name === name)) {
-    return false;
-  }
-  await persist(tools.filter(t => t.name !== name));
-  return true;
+  return changeToolSwitches(async () => {
+    await switchOffNow([name]);
+    if (!tools.some(t => t.name === name)) {
+      return false;
+    }
+    await persist(tools.filter(t => t.name !== name));
+    return true;
+  });
 }
 
 /** Test helper. */

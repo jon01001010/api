@@ -44,6 +44,7 @@ const COMMANDS: &[&str] = &[
     "link_sync_allow",
     "link_sync_reply",
     "link_answers_allow",
+    "link_device_may_answer",
     "homelink_pair",
     "homelink_status",
     "homelink_start_model",

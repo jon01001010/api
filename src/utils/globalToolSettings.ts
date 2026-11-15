@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {deriveToolSchemas} from '../services/talents';
-import {ensureCustomToolsLoaded} from '../services/talents/customTools';
+import {
+  changeToolSwitches,
+  ensureCustomToolsLoaded,
+  toolSwitchesChanged,
+} from '../services/talents/customTools';
+
+export {onToolSwitchesChanged} from '../services/talents/customTools';
 
 // Same key as GLOBAL_TOOLS_KEY in customTools.ts (which switches tools off).
 const KEY = '@pocketagent/global-tools/v1';
@@ -37,7 +43,12 @@ export function assistantOnlyTools(talents: {name: string}[]): string[] {
     .filter(name => ASSISTANT_ONLY_TOOLS.includes(name));
 }
 
-export async function writeGlobalTools(names: string[]): Promise<void> {
+/** Replaces the whole list. To switch some tools, use setToolsEnabled. */
+export function writeGlobalTools(names: string[]): Promise<void> {
+  return changeToolSwitches(() => writeNow(names));
+}
+
+async function writeNow(names: string[]): Promise<void> {
   deriveToolSchemas();
   await ensureCustomToolsLoaded();
   const known = new Set(deriveToolSchemas().map(t => t.function.name));
@@ -45,7 +56,30 @@ export async function writeGlobalTools(names: string[]): Promise<void> {
     KEY,
     JSON.stringify([...new Set(names.filter(n => known.has(n)))]),
   );
+  toolSwitchesChanged();
 }
+
+/**
+ * Switches only these tools on or off, against the list as stored now (not a
+ * copy a screen read earlier, which a sync may have changed since). Returns
+ * the new list.
+ */
+export function setToolsEnabled(
+  names: string[],
+  on: boolean,
+): Promise<string[]> {
+  return changeToolSwitches(async () => {
+    // Unreadable means no tools on (fail-closed), so start from none.
+    const stored = await readGlobalTools().catch(() => [] as string[]);
+    const rest = stored.filter(n => !names.includes(n));
+    await writeNow(on ? [...rest, ...names] : rest);
+    return readGlobalTools();
+  });
+}
+
+/** Switches one tool on or off (see setToolsEnabled). */
+export const setToolEnabled = (name: string, on: boolean) =>
+  setToolsEnabled([name], on);
 
 export async function readGlobalPrompt(): Promise<string> {
   return (await AsyncStorage.getItem(PROMPT_KEY)) ?? '';

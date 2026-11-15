@@ -73,6 +73,9 @@ describe('pairing activity on the PC reaches the phone', () => {
     expect(
       describeEvent({n: 1, at: 0, kind: 'removed', name: 'Old'}),
     ).toContain('was removed');
+    expect(
+      describeEvent({n: 1, at: 0, kind: 'may-answer', name: 'Pixel'}),
+    ).toContain("“Pixel” may now answer the PC's “Allow?” questions");
   });
 
   it('checking the Home PC before use passes the history on', async () => {

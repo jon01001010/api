@@ -144,6 +144,9 @@ export function describeEvent(e: PairingEvent): string {
   if (e.kind === 'removed') {
     return `${when}: phone \u201c${e.name || 'a phone'}\u201d was removed`;
   }
+  if (e.kind === 'may-answer') {
+    return `${when}: \u201c${e.name || 'a device'}\u201d may now answer the PC's \u201cAllow?\u201d questions`;
+  }
   return `${when}: ${e.kind}`;
 }
 

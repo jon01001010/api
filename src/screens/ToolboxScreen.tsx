@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ScrollView, View} from 'react-native';
 import Slider from '@react-native-community/slider';
 import {Button, Card, Chip, Dialog, Portal, Text, TextInput, Switch} from 'react-native-paper';
-import {readGlobalTools, writeGlobalTools, readGlobalPrompt, writeGlobalPrompt, generatedToolPrompt, readAgentMaxTurns, writeAgentMaxTurns} from '../utils/globalToolSettings';
+import {readGlobalTools, setToolsEnabled, onToolSwitchesChanged, readGlobalPrompt, writeGlobalPrompt, generatedToolPrompt, readAgentMaxTurns, writeAgentMaxTurns} from '../utils/globalToolSettings';
 import {safeMath} from '../services/talents/safeMath';
 import {isBackgroundInferenceEnabled, setBackgroundInferenceEnabled} from '../utils/backgroundInference';
 import {registerDefaultTalents, talentRegistry} from '../services/talents';
@@ -58,6 +58,8 @@ const ToolboxScreenBody: React.FC = () => {
       .catch(e => {if (mounted) setToggleError('Could not load global settings: ' + String(e));});
     return () => {mounted = false;};
   }, []);
+  // A sync or a model may change the switches while this screen is open.
+  useEffect(() => onToolSwitchesChanged(() => {readGlobalTools().then(setEnabledTools).catch(() => {});}), []);
   useEffect(() => {isBackgroundInferenceEnabled().then(setBackgroundEnabled).catch(() => {});}, []);
   const [showPhoneTools, setShowPhoneTools] = useState(false);
   const phoneTools = tools.filter(t => PHONE_TOOL_NAMES.includes(t.name));
@@ -67,13 +69,10 @@ const ToolboxScreenBody: React.FC = () => {
   );
   const toggleGroup = async (names: string[], enabled: boolean) => {
     if (!settingsLoaded || savingTool) return;
-    const rest = enabledTools.filter(n => !names.includes(n));
-    const next = enabled ? [...rest, ...names] : rest;
     setSavingTool(names[0]);
     setToggleError('');
     try {
-      await writeGlobalTools(next);
-      setEnabledTools(next);
+      setEnabledTools(await setToolsEnabled(names, enabled));
     } catch (e) {
       setToggleError('Could not save tool setting: ' + String(e));
     } finally {
@@ -82,12 +81,10 @@ const ToolboxScreenBody: React.FC = () => {
   };
   const toggleBuiltIn = async (name: string, enabled: boolean) => {
     if (!settingsLoaded || savingTool) return;
-    const next = enabled ? [...enabledTools.filter(n => n !== name), name] : enabledTools.filter(n => n !== name);
     setSavingTool(name);
     setToggleError('');
     try {
-      await writeGlobalTools(next);
-      setEnabledTools(next);
+      setEnabledTools(await setToolsEnabled([name], enabled));
     } catch (e) {
       setToggleError('Could not save tool setting: ' + String(e));
     } finally {
