@@ -106,6 +106,7 @@ pub fn run() {
             model_server::pick_model_file,
             model_server::model_server_start,
             model_server::model_server_stop,
+            model_server::model_server_problem,
             image_gen::image_generate,
             image_gen::image_cancel,
             system::system_info,

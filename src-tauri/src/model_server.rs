@@ -4,10 +4,12 @@
 //! and other computers can't use it. The app then talks to it like any
 //! llama.cpp server. One model at a time.
 
+use std::collections::VecDeque;
+use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::process::{Child, Command};
-use std::sync::Mutex;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -22,6 +24,45 @@ pub struct Running {
     pub child: Child,
     pub port: u16,
     pub key: String,
+    /// The server's last log lines, kept in memory only, to say why it
+    /// stopped while loading (`start_problem`). Never shown as they are.
+    pub log: Arc<Mutex<VecDeque<String>>>,
+}
+
+/// The llama.cpp build that comes with the app (LLAMA_TAG in the build files).
+pub const LLAMA_CPP_BUILD: &str = "b11662";
+
+/// How many of the server's last log lines are kept.
+const LOG_LINES: usize = 40;
+
+/// The model type llama.cpp didn't know, from its own words when loading
+/// fails: `unknown model architecture: 'qwen9'` (llama-model.cpp).
+pub fn unknown_architecture(log: &str) -> Option<String> {
+    const SAID: &str = "unknown model architecture: '";
+    let start = log.find(SAID)? + SAID.len();
+    let rest = &log[start..];
+    let name: String = rest[..rest.find('\'')?]
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        .take(40)
+        .collect();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
+}
+
+/// Why the server stopped while loading, in plain words, from its last log
+/// lines. Only known reasons; anything else gets the general message.
+pub fn start_problem(lines: &[String]) -> String {
+    let log = lines.join("\n");
+    match unknown_architecture(&log) {
+        Some(arch) => format!(
+            "This model ({arch}) needs a newer llama.cpp than the one bundled ({LLAMA_CPP_BUILD}). Try another model, or a newer DesktopAgent when there is one."
+        ),
+        None => "The model did not start. Is it a valid .gguf file?".into(),
+    }
 }
 
 impl ModelServer {
@@ -34,6 +75,19 @@ impl ModelServer {
         }
         Some((running.port, running.key.clone()))
     }
+}
+
+/// Why the model server stopped while loading, or None while it is still
+/// running (or none was started). The screens ask while they wait.
+#[tauri::command(async)]
+pub fn model_server_problem(server: State<'_, ModelServer>) -> Option<String> {
+    let mut guard = server.0.lock().unwrap();
+    let running = guard.as_mut()?;
+    if !matches!(running.child.try_wait(), Ok(Some(_))) {
+        return None;
+    }
+    let lines: Vec<String> = running.log.lock().unwrap().iter().cloned().collect();
+    Some(start_problem(&lines))
 }
 
 #[derive(Serialize)]
@@ -268,11 +322,32 @@ pub async fn start_model(
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         command.creation_flags(CREATE_NO_WINDOW);
     }
-    let child = command.spawn().map_err(|e| e.to_string())?;
+    // Its log is read so a failed start can say why (start_problem); read
+    // to the end so the server never waits on a full pipe.
+    command.stderr(Stdio::piped());
+    let mut child = command.spawn().map_err(|e| e.to_string())?;
+    let log = Arc::new(Mutex::new(VecDeque::new()));
+    if let Some(stderr) = child.stderr.take() {
+        let log = log.clone();
+        std::thread::spawn(move || {
+            let mut reader = BufReader::new(stderr);
+            let mut line = Vec::new();
+            while matches!(reader.read_until(b'\n', &mut line), Ok(n) if n > 0) {
+                let mut kept = log.lock().unwrap();
+                if kept.len() == LOG_LINES {
+                    kept.pop_front();
+                }
+                kept.push_back(String::from_utf8_lossy(&line).trim_end().chars().take(400).collect());
+                drop(kept);
+                line.clear();
+            }
+        });
+    }
     *server.0.lock().unwrap() = Some(Running {
         child,
         port,
         key: key.clone(),
+        log,
     });
     save_last_model(
         app,
@@ -366,6 +441,34 @@ mod tests {
         assert_eq!(serde_json::from_str::<LastModel>(&text).unwrap(), last);
         // A phone never gets a dialog: refused instead (see start_model).
         assert_ne!(StartedBy::Phone, StartedBy::User);
+    }
+
+    #[test]
+    fn a_model_type_llama_cpp_does_not_know_says_it_needs_a_newer_one() {
+        let lines: Vec<String> = [
+            "llama_model_loader: loaded meta data with 30 key-value pairs",
+            "llama_model_load: error loading model: error loading model architecture: unknown model architecture: 'qwen9moe'",
+            "llama_model_load_from_file_impl: failed to load model",
+            "main: exiting due to model loading error",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(unknown_architecture(&lines.join("\n")).as_deref(), Some("qwen9moe"));
+        let said = start_problem(&lines);
+        assert!(said.starts_with("This model (qwen9moe) needs a newer llama.cpp"));
+        assert!(said.contains("(b11662)"));
+        // Anything else: the general message, never the raw log.
+        let other = start_problem(&["error loading model: failed to open file".to_string()]);
+        assert_eq!(other, "The model did not start. Is it a valid .gguf file?");
+        assert_eq!(start_problem(&[]), other);
+        // Only a plain name is repeated back.
+        assert_eq!(
+            unknown_architecture("unknown model architecture: 'a<b>/c d'").as_deref(),
+            Some("abcd")
+        );
+        assert_eq!(unknown_architecture("unknown model architecture: ''"), None);
+        assert_eq!(unknown_architecture("unknown model architecture: 'open"), None);
     }
 
     #[test]

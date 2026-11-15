@@ -30,7 +30,7 @@ jest.mock('../../../store/ServerStore', () => ({
   },
 }));
 
-import {prepareThisPcModel, startOnThisPc} from '../thisPc.web';
+import {prepareThisPcModel, startOnThisPc, waitUntilReady} from '../thisPc.web';
 
 const MODEL = 'C:\\Users\\me\\Downloads\\qwen-1b.gguf';
 
@@ -126,4 +126,40 @@ it('a downloaded model starts with its vision part, also after a restart', async
     'model_server_start',
     expect.objectContaining({modelPath: OWN, projectionPath: VISION}),
   );
+});
+
+it('a model type the bundled llama.cpp does not know: says so at once, stops the server', async () => {
+  (globalThis as any).fetch = jest.fn(async () => {
+    throw new TypeError('connection refused'); // never listens: it stopped
+  });
+  const said =
+    'This model (qwen9) needs a newer llama.cpp than the one bundled (b11662). Try another model, or a newer DesktopAgent when there is one.';
+  mockInvoke.mockImplementation(async (command: string) => {
+    if (command === 'model_server_start') {
+      return {url: 'http://127.0.0.1:4444', apiKey: 'k'};
+    }
+    if (command === 'model_server_problem') {
+      return said;
+    }
+    return undefined;
+  });
+  await expect(startOnThisPc(MODEL)).rejects.toThrow(said);
+  expect(mockInvoke).toHaveBeenCalledWith('model_server_stop');
+  // Asked once, not after two minutes of waiting.
+  expect((globalThis as any).fetch).toHaveBeenCalledTimes(1);
+  expect(mockSelected).toEqual([]);
+});
+
+it('keeps waiting while the server is still loading', async () => {
+  let calls = 0;
+  (globalThis as any).fetch = jest.fn(async () => {
+    calls++;
+    return calls < 2
+      ? {ok: false, status: 503} // loading
+      : {ok: true, json: async () => ({status: 'ok'})};
+  });
+  // model_server_problem: null while it still runs.
+  mockInvoke.mockResolvedValue(null);
+  expect(await waitUntilReady('http://127.0.0.1:5555', 'k')).toBe(true);
+  expect(mockInvoke).toHaveBeenCalledWith('model_server_problem');
 });

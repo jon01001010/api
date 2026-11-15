@@ -16,8 +16,27 @@ export const isDesktopApp = (): boolean =>
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-/** Waits until the server has loaded the model (it answers /health). */
-async function waitUntilReady(url: string, apiKey: string): Promise<boolean> {
+const NOT_STARTED = 'The model did not start. Is it a valid .gguf file?';
+
+/** Why the server stopped while loading (model_server.rs), if it did. */
+async function startProblem(): Promise<string | null> {
+  try {
+    const said = await invoke<unknown>('model_server_problem');
+    return typeof said === 'string' && said ? said : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Waits until the server has loaded the model (it answers /health). Stops
+ * waiting as soon as the server has stopped, and says why: e.g. "This model
+ * (qwen9) needs a newer llama.cpp than the one bundled (b11662)".
+ */
+export async function waitUntilReady(
+  url: string,
+  apiKey: string,
+): Promise<true | string> {
   for (let i = 0; i < 240; i++) {
     try {
       const r = await fetch(`${url}/health`, {
@@ -29,9 +48,13 @@ async function waitUntilReady(url: string, apiKey: string): Promise<boolean> {
     } catch {
       // Not listening yet.
     }
+    const problem = await startProblem();
+    if (problem) {
+      return problem;
+    }
     await sleep(500);
   }
-  return false;
+  return NOT_STARTED;
 }
 
 /**
@@ -73,9 +96,10 @@ export async function startOnThisPc(
     'model_server_start',
     {modelPath, context: 8192, projectionPath: projectionPath ?? null},
   );
-  if (!(await waitUntilReady(url, apiKey))) {
+  const ready = await waitUntilReady(url, apiKey);
+  if (ready !== true) {
     await stopModelOnThisPc();
-    throw new Error('The model did not start. Is it a valid .gguf file?');
+    throw new Error(ready);
   }
   rememberProjection(modelPath, projectionPath);
   // A model on this PC reads the whole prompt before it starts answering;
@@ -177,9 +201,10 @@ export async function prepareThisPcModel(
       projectionPath: projectionFor(modelPath) ?? null,
     },
   );
-  if (!(await waitUntilReady(url, apiKey))) {
+  const ready = await waitUntilReady(url, apiKey);
+  if (ready !== true) {
     await stopModelOnThisPc();
-    throw new Error('The model did not start. Is it a valid .gguf file?');
+    throw new Error(ready);
   }
   serverStore.updateServer(serverId, {url});
   await serverStore.setApiKey(serverId, apiKey);

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-model-server-problem"
+description = "Enables the model_server_problem command without any pre-configured scope."
+commands.allow = ["model_server_problem"]
+
+[[permission]]
+identifier = "deny-model-server-problem"
+description = "Denies the model_server_problem command without any pre-configured scope."
+commands.deny = ["model_server_problem"]

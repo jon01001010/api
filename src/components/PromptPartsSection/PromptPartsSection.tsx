@@ -14,14 +14,11 @@ import {
   writePromptPartSettings,
 } from '../../utils/promptParts';
 import {
-  generatedToolPrompt,
   readGlobalPrompt,
   readGlobalTools,
+  toolPromptPieces,
 } from '../../utils/globalToolSettings';
-import {
-  collectSystemPromptFragments,
-  deriveToolSchemas,
-} from '../../services/talents';
+import {deriveToolSchemas} from '../../services/talents';
 import {buildMemoryContext} from '../../services/talents/agentMemory';
 import {
   DEFAULT_THINKING_LENGTH,
@@ -70,18 +67,17 @@ export const PromptPartsSection: React.FC = () => {
     try {
       memoryContext = await buildMemoryContext();
     } catch {}
+    // Same pieces as sending: nothing about tools when none are on.
+    const toolPieces = toolPromptPieces(names, settings, 5);
     const parts = buildPromptPreview({
       now: new Date(),
       settings,
       modelDefaultPrompt:
         modelStore.activeModel?.chatTemplate?.systemPrompt ?? '',
-      toolGuidance: collectSystemPromptFragments(names, {
-        now: new Date(),
-        maxToolTurns: 5,
-      }),
+      toolGuidance: toolPieces.guidance,
       globalInstructions,
       memoryContext,
-      toolLine: generatedToolPrompt(names),
+      toolLine: toolPieces.toolLine,
     });
     const tools = deriveToolSchemas(names).map(t => ({
       name: t.function.name,

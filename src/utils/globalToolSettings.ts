@@ -1,5 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {deriveToolSchemas} from '../services/talents';
+import {
+  collectSystemPromptFragments,
+  deriveToolSchemas,
+} from '../services/talents';
 import {
   changeToolSwitches,
   ensureCustomToolsLoaded,
@@ -111,6 +114,28 @@ export function generatedToolPrompt(names: string[]): string {
     tools.map(t => t.function.name).join(', ') +
     '.'
   );
+}
+
+/**
+ * Everything about tools that goes into the system prompt for one turn, from
+ * the tools actually sent that turn (never from an older list). No tools on:
+ * no tool line and no tool guidance, so a plain chat gets a short prompt.
+ */
+export function toolPromptPieces(
+  names: string[],
+  settings: {toolGuidance: boolean},
+  maxToolTurns: number,
+  now: Date = new Date(),
+): {guidance: string[]; toolLine: string} {
+  if (!deriveToolSchemas(names).length) {
+    return {guidance: [], toolLine: ''};
+  }
+  return {
+    guidance: settings.toolGuidance
+      ? collectSystemPromptFragments(names, {now, maxToolTurns})
+      : [],
+    toolLine: generatedToolPrompt(names),
+  };
 }
 
 // Agent iteration ceiling; independent of model and enforced by the runner.

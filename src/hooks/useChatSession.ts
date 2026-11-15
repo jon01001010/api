@@ -55,11 +55,7 @@ import {
   CompletionResult,
   CompletionResultSnapshot,
 } from '../utils/completionTypes';
-import {
-  collectSystemPromptFragments,
-  seedReadUrlAllowlist,
-  talentRegistry,
-} from '../services/talents';
+import {seedReadUrlAllowlist, talentRegistry} from '../services/talents';
 import type {ToolDefinition} from '../services/talents/types';
 import {deriveToolSchemas} from '../services/talents';
 import {withChainOnlyIfUsable} from '../services/talents/PhoneActionChain';
@@ -67,9 +63,8 @@ import {
   buildBackgroundParts,
   joinParts,
   readPromptPartSettings,
-  type PromptPartSettings,
 } from '../utils/promptParts';
-import {readGlobalTools, readGlobalPrompt, generatedToolPrompt, readAgentMaxTurns, assistantOnlyTools} from '../utils/globalToolSettings';
+import {readGlobalTools, readGlobalPrompt, toolPromptPieces, readAgentMaxTurns, assistantOnlyTools} from '../utils/globalToolSettings';
 import {
   agentStateReducer,
   createTriggerMarkerCache,
@@ -94,9 +89,10 @@ const prepareCompletion = async ({
   isMultimodalEnabled,
   l10n,
   currentMessages,
-  promptParts,
+  toolGuidance,
 }: {
-  promptParts: PromptPartSettings;
+  /** Guidance from the tools sent this turn (none when no tools are on). */
+  toolGuidance: string[];
   imageUris: string[];
   message: MessageType.PartialText;
   systemMessages: Array<{role: 'system'; content: string}>;
@@ -171,20 +167,10 @@ const prepareCompletion = async ({
     });
   }
 
-  // Talent-contributed system-prompt fragments (e.g. search grounding). Kept on
-  // the initial messages array so they persist across every follow-up tool turn.
-  const sessionToolNames = (
-    (sessionCompletionSettings?.tools as ToolDefinition[] | undefined) ?? []
-  ).map(tool => tool.function?.name ?? '');
-  // (switch: Toolbox → What the model sees → Tool guidance)
-  const systemPromptFragments = promptParts.toolGuidance
-    ? collectSystemPromptFragments(sessionToolNames, {
-        now: new Date(),
-        maxToolTurns: DEFAULT_MAX_TURNS,
-      })
-    : [];
-
-  const messages = assembleMessages(systemMessages, systemPromptFragments, [
+  // Talent-contributed system-prompt fragments (e.g. search grounding), from
+  // the tools actually sent this turn. Kept on the initial messages array so
+  // they persist across every follow-up tool turn.
+  const messages = assembleMessages(systemMessages, toolGuidance, [
     ...chatMessages,
     {role: 'user', content: userMessageContent},
   ]);
@@ -804,26 +790,6 @@ export const useChatSession = (
           : undefined,
     });
 
-    const {cleanCompletionParams, messageInfo} = await prepareCompletion({
-      imageUris: imageUris || [],
-      message,
-      systemMessages,
-      contextId,
-      assistant,
-      conversationIdRef: conversationIdRef.current,
-      isMultimodalEnabled,
-      l10n,
-      currentMessages,
-      promptParts,
-    });
-    // How long the model may think before it must answer (Toolbox).
-    applyThinkingBudget(
-      cleanCompletionParams as ApiCompletionParams,
-      await readThinkingLength(),
-    );
-
-    currentMessageInfo.current = messageInfo;
-
     // Global tool selection applies to plain chats as well as named assistants.
     // Fail closed if storage cannot be read; never advertise unavailable tools.
     let globalNames: string[] = [];
@@ -846,7 +812,37 @@ export const useChatSession = (
       // A chain of phone actions only next to a phone action that is on.
       ...withChainOnlyIfUsable(globalNames),
     ])];
-    cleanCompletionParams.tools = deriveToolSchemas(palTalents);
+    // Tool line and guidance come only from the tools sent this turn.
+    const toolPieces = toolPromptPieces(
+      palTalents,
+      promptParts,
+      DEFAULT_MAX_TURNS,
+    );
+
+    const {cleanCompletionParams, messageInfo} = await prepareCompletion({
+      imageUris: imageUris || [],
+      message,
+      systemMessages,
+      contextId,
+      assistant,
+      conversationIdRef: conversationIdRef.current,
+      isMultimodalEnabled,
+      l10n,
+      currentMessages,
+      toolGuidance: toolPieces.guidance,
+    });
+    // How long the model may think before it must answer (Toolbox).
+    applyThinkingBudget(
+      cleanCompletionParams as ApiCompletionParams,
+      await readThinkingLength(),
+    );
+
+    currentMessageInfo.current = messageInfo;
+
+    // No tools on: none sent at all (an empty list still makes some chat
+    // templates write their tool boilerplate).
+    const toolSchemas = deriveToolSchemas(palTalents);
+    cleanCompletionParams.tools = toolSchemas.length ? toolSchemas : undefined;
     let memoryContext = '';
     try {
       memoryContext = await buildMemoryContext();
@@ -866,7 +862,7 @@ export const useChatSession = (
         globalInstructions,
         memoryContext,
         summaryContext,
-        toolLine: generatedToolPrompt(palTalents),
+        toolLine: toolPieces.toolLine,
       }),
     );
     if (globalText) {

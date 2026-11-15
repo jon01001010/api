@@ -31,6 +31,7 @@ const COMMANDS: &[&str] = &[
     "pick_model_file",
     "model_server_start",
     "model_server_stop",
+    "model_server_problem",
     "image_generate",
     "image_cancel",
     "system_info",

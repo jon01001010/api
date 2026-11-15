@@ -266,6 +266,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'pick_model_file',
         'model_server_start',
         'model_server_stop',
+        'model_server_problem',
         'image_generate',
         'image_cancel',
         'system_info',
