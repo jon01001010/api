@@ -11,8 +11,9 @@
  * A loop that arrives from another device is installed paused and not
  * started (as from a shared code): nothing runs on two devices at once
  * unless the user presses Start on each. A changed definition updates the
- * loop here and keeps its runs, chat and log (a running loop keeps running
- * with the new definition, as after Edit).
+ * loop here and keeps its runs, chat and log; a running loop is paused
+ * ("Changed on <device>; press Resume to run the new version"), so another
+ * device can't quietly change what runs here (security review 2).
  *
  * Loops travel as one item (a JSON list) merged one by one, like assistants
  * (assistantDeletes.ts): each loop carries `editedAt`, when its definition
@@ -537,7 +538,14 @@ function installedFrom(
   };
 }
 
-/** A loop here with a changed definition: its runs, chat and log kept. */
+/** The log line when a running loop was changed on another device. */
+export const changedWhileRunning = (from: string) =>
+  `Changed on ${from}; press Resume to run the new version`;
+
+/**
+ * A loop here with a changed definition: its runs, chat and log kept; a
+ * running one paused (the user resumes it after seeing the change).
+ */
 function updatedFrom(
   here: Loop,
   e: LoopEntry,
@@ -564,7 +572,15 @@ function updatedFrom(
       now,
     );
     if (r.ok) {
-      return addLog(r.loop, `Changed on ${from}`, now);
+      if (r.loop.paused) {
+        return addLog(r.loop, `Changed on ${from}`, now);
+      }
+      // Running: paused until the user has seen the new version.
+      return addLog(
+        {...r.loop, paused: true, pausedWhy: `changed on ${from}`},
+        changedWhileRunning(from),
+        now,
+      );
     }
   }
   // Not started here, or the change doesn't fit what ran here (its end
