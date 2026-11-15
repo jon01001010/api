@@ -1,5 +1,6 @@
 import {buildMemoryContext} from '../services/talents/agentMemory';
 import {applyThinkingBudget, readThinkingLength} from '../utils/thinkingBudget';
+import {guardThinkingLoops} from '../api/loopGuardEngine';
 import {mirrorAfterReply} from '../services/sync/deviceSync';
 import {messagesForModel} from '../services/chatSummary';
 import React, {useRef} from 'react';
@@ -933,7 +934,8 @@ export const useChatSession = (
     try {
       const agentMaxTurns = await readAgentMaxTurns();
       const events = runAgent({
-        engine,
+        // Thinking that goes round in circles ends early (api/loopGuardEngine).
+        engine: guardThinkingLoops(engine),
         maxTurns: agentMaxTurns,
         initialParams: cleanCompletionParams as ApiCompletionParams,
         allowedTalentNames: palTalents,

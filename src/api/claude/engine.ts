@@ -139,6 +139,8 @@ export function buildClaudeRequest(
 }
 
 export class ClaudeCompletionEngine implements CompletionEngine {
+  /** Thinking is Claude's own (no loop guard: api/loopGuardEngine). */
+  readonly managesThinking = true;
   private abortController: AbortController | null = null;
   private cache: RawTurnCache = new Map();
   /** Output cap from the Models API (null = couldn't read it). */
