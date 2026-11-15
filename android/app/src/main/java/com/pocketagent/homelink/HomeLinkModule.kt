@@ -112,6 +112,15 @@ class HomeLinkModule(private val context: ReactApplicationContext) :
     fun tool(pc: String, name: String, chat: String, args: String, promise: Promise) =
         call(promise, toolWorker) { HomeLinkNative.tool(keyFile(), pc, name, chat, args) }
 
+    /**
+     * Device circle (stage 2): "remove" signs a removal notice with this
+     * phone's key (it goes to the Home PCs with the next status); "news"
+     * gives the removals applied here since last asked. Only removes.
+     */
+    @ReactMethod
+    fun circle(request: String, promise: Promise) =
+        call(promise) { HomeLinkNative.circle(keyFile(), request) }
+
     @ReactMethod
     fun openTunnel(pc: String, promise: Promise) =
         call(promise) { HomeLinkNative.openTunnel(keyFile(), pc) }

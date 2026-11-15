@@ -107,6 +107,9 @@ describe('home link (phone side)', () => {
     expect(
       describeEvent({n: 4, at: 0, kind: 'may-command', name: 'Pixel'}),
     ).toContain('“Pixel” may now ask the PC to run commands');
+    expect(
+      describeEvent({n: 5, at: 0, kind: 'removed-by-notice', name: 'Pixel'}),
+    ).toContain('“Pixel” was removed on another of your devices');
     await askPcTool(PC, 'pc_run_command', 'c', {command: 'Get-Date'});
     expect(tool).toHaveBeenLastCalledWith(
       PC,

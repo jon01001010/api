@@ -399,6 +399,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'homelink_close_tunnel',
         'link_key_mode',
         'link_use_one_key',
+        'link_circle',
       ].sort(),
     );
     // The window is allowed exactly those, plus Tauri's core basics.
@@ -548,6 +549,88 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     }
   });
 
+  it('device circle stage 2: signed removal notices only remove, and are checked', () => {
+    const circle = read('native/homelink/src/circle.rs');
+    // A fixed label first, then every field: no other signature passes.
+    expect(circle).toContain(
+      'pub const REMOVAL_LABEL: &str = "PA circle remove v1";',
+    );
+    expect(circle).toContain(
+      'format!("{REMOVAL_LABEL}\\n{removed}\\n{by}\\n{n}\\n{at}")',
+    );
+    // A notice is a key to remove and nothing else (no device to add, no
+    // right); anything more is not a notice.
+    expect(circle).toMatch(
+      /#\[serde\(deny_unknown_fields\)\]\s*pub struct Removal \{\s*\/\/\/[^\n]*\n\s*pub removed: String,\s*\/\/\/[^\n]*\n\s*pub by: String,\s*\/\/\/[^\n]*\n\s*pub n: u64,\s*\/\/\/[^\n]*\n\s*pub at: u64,\s*\/\/\/[^\n]*\n\s*pub sig: String,\s*\}/,
+    );
+    // Checked: a key this device trusts, its signature (iroh's strict
+    // Ed25519 check), at most 5 minutes ahead, at most 30 days old, a new
+    // number, never about this device.
+    const check = circle.slice(
+      circle.indexOf('pub fn check_removal'),
+      circle.indexOf('/// A notice to pass on'),
+    );
+    for (const step of [
+      'if !trusted.iter().any(|k| *k == r.by)',
+      'by.verify(signed_text(&r.removed, &r.by, r.n, r.at).as_bytes(), &sig).is_err()',
+      'r.at > now.saturating_add(MAX_AHEAD_SECS)',
+      'r.at.saturating_add(MAX_AGE_SECS) < now',
+      'last_seen.is_some_and(|seen| r.n <= seen)',
+      'me.iter().any(|k| *k == r.removed)',
+    ]) {
+      expect(check).toContain(step);
+    }
+    expect(check.trim().endsWith('Verdict::Apply\n}')).toBe(true);
+    expect(circle).toContain('pub const MAX_AHEAD_SECS: u64 = 5 * 60;');
+    // On the PC, a notice removes exactly as "Remove here" does and goes
+    // through nothing that adds a device or sets a right; paired devices
+    // only.
+    const link = tauri('src/link.rs');
+    const pcCircle = link.slice(
+      link.indexOf(
+        '// ------------------------------------------------- device circle, stage 2',
+      ),
+      link.indexOf('/// Which commit this PC app was built from'),
+    );
+    expect(pcCircle).not.toMatch(
+      /add_phone\(|Phone::new\(|set_may_|ask_on_this_pc|PICTURES_ENTRY|TOOLS_ENTRY|sync_allowed/,
+    );
+    expect(pcCircle).toContain(
+      'forget_here(app, &notice.removed, "removed-by-notice")',
+    );
+    expect(link).toMatch(
+      /Some\(Request::Removal \{ notices \}\) if paired => \{[\s\S]*?take_removals\(&app, &remote, false, &notices\);/,
+    );
+    // Its state is kept where the screens can't write (the credential
+    // store on the PC; the phone's no-backup folder, owner only).
+    expect(link).toContain(
+      'const CIRCLE_ENTRY: &str = "DesktopAgent-link:circle";',
+    );
+    expect(circle).toContain('key_file.with_file_name("circle.json")');
+    expect(circle).toContain('crate::write_private(&tmp,');
+    // The screens can only ask to remove, or read what was removed.
+    const phoneLib = read('native/homelink/src/lib.rs');
+    const call = phoneLib.slice(
+      phoneLib.indexOf('pub fn circle_call'),
+      phoneLib.indexOf('\n    }\n', phoneLib.indexOf('pub fn circle_call')),
+    );
+    expect([...call.matchAll(/Some\("(\w+)"\)/g)].map(m => m[1])).toEqual([
+      'remove',
+      'news',
+    ]);
+    expect(
+      [...pcCircle.matchAll(/Some\("(\w+)"\) =>/g)].map(m => m[1]),
+    ).toEqual(['remove', 'news']);
+    // In the screens: a received removal removes the Home PC entry and
+    // tells the user, never asks, never adds; only "Remove here" signs one.
+    const js = read('src/services/homeLink/circle.ts');
+    expect(js).not.toMatch(/addServer|linkDeviceMay|link_device_may|pair/i);
+    const signers = sourceFiles(SRC)
+      .filter(f => /tellRemoval\(/.test(fs.readFileSync(f, 'utf8')))
+      .map(rel);
+    expect(signers).toEqual(['src/components/YourDevices/YourDevices.tsx']);
+  });
+
   it('device circle stage 1: one key only by the user\'s choice, and "Your devices" gives no rights', () => {
     // Moving a PC to one key is only the user's button, after a question
     // that says its pairings as a device must be made again by hand.
@@ -599,6 +682,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'Pair',
       'Picture',
       'Questions',
+      'Removal',
       'Start',
       'Status',
       'Sync',
@@ -646,12 +730,18 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(
       [...picture.matchAll(/^\s+(\w+): /gm)].map(m => m[1]).sort(),
     ).toEqual(['height', 'prompt', 'steps', 'width']);
-    const tool = ops.slice(ops.indexOf('Tool {'), ops.indexOf('Http,'));
+    const tool = ops.slice(ops.indexOf('Tool {'), ops.indexOf('Removal {'));
     expect([...tool.matchAll(/^\s+(\w+): /gm)].map(m => m[1]).sort()).toEqual([
       'args',
       'chat',
       'name',
     ]);
+    // "removal" (device circle stage 2): notices only.
+    const removal = ops.slice(ops.indexOf('Removal {'), ops.indexOf('Http,'));
+    expect([...removal.matchAll(/^\s+(\w+): /gm)].map(m => m[1])).toEqual([
+      'notices',
+    ]);
+    expect(removal).toContain('notices: Vec<homelink::circle::Removal>,');
     expect(link).toMatch(
       /async fn picture_for[\s\S]*?crate::image_gen::first_downloaded_set\(app\)\?[\s\S]*?crate::image_gen::make\([\s\S]*?notification\(\)[\s\S]*?picture_note\([\s\S]*?if size > MAX_PICTURE as u64 \{\s*return Err/,
     );
@@ -820,7 +910,10 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /async fn tool_for[\s\S]*?\}\s*if call != RemoteCall::PcInfo && !may_read_now\(app, remote, device, chat\)\.await \{\s*return Err[\s\S]*?crate::pc::pc_info\(a\)[\s\S]*?crate::pc_files::list\(&dir\)[\s\S]*?crate::pc::workspace_file\(app, &file\)\?[\s\S]*?crate::pc_files::read_for_device\(&path, &name, crate::pc_files::DEVICE_READ_TIME\)[\s\S]*?log_use[\s\S]*?notification\(\)[\s\S]*?read_note\(/,
     );
     expect(link).toMatch(
-      /pub async fn link_forget[\s\S]*?read_grants\.lock\(\)\.unwrap\(\)\.forget_device\(&id\)/,
+      /pub async fn link_forget\(app: AppHandle, id: String\) -> Result<\(\), String> \{\s*forget_here\(&app, &id, "removed"\)\s*\}/,
+    );
+    expect(link).toMatch(
+      /fn forget_here[\s\S]*?read_grants\.lock\(\)\.unwrap\(\)\.forget_device\(id\)/,
     );
     expect(link).toMatch(
       /pub async fn link_tools_allow[\s\S]*?if !allowed \{\s*app\.state::<Link>\(\)\.read_grants\.lock\(\)\.unwrap\(\)\.clear\(\);/,
@@ -934,7 +1027,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // can't use up a pairing code; one sync at a time per device; the
     // request line must come quickly.
     expect(link).toMatch(
-      /pub async fn link_forget[\s\S]*?save_phones[\s\S]*?link\.removed[\s\S]*?link\.cut_off\(&id\)/,
+      /fn forget_here\(app: &AppHandle, id: &str, kind: &str\)[\s\S]*?save_phones[\s\S]*?link\.removed[\s\S]*?link\.cut_off\(id\)/,
     );
     expect(link).toMatch(
       /Some\(Request::Pair \{ \.\. \}\) if paired \|\| app\.state::<Link>\(\)\.recently_removed\(&remote\) =>[\s\S]*?Some\(Request::Pair \{ code, name \}\) =>\s*\{\s*let link = app\.state::<Link>\(\);\s*let code_ok = try_code/,
@@ -982,13 +1075,22 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // The phone only ever asks for status, pairing, the PC's questions
     // and its answer to one, starting the PC's own
     // last model, a picture, or the model server.
-    const ops = [...phone.matchAll(/"op\\?":\s*\\?"(\w+)/g)].map(m => m[1]);
+    // (The library's own code; the screens' circle calls never reach a PC.)
+    const code = phone.slice(0, phone.indexOf('#[cfg(test)]'));
+    const requests =
+      code.slice(
+        0,
+        code.indexOf("/// The screens' circle calls on the phone"),
+      ) +
+      code.slice(code.indexOf('/// How the open connection to this PC goes'));
+    const ops = [...requests.matchAll(/"op\\?":\s*\\?"(\w+)/g)].map(m => m[1]);
     expect([...new Set(ops)].sort()).toEqual([
       'answer',
       'http',
       'pair',
       'picture',
       'questions',
+      'removal',
       'start',
       'status',
       'sync',
@@ -1053,7 +1155,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // Every door from Android goes through guarded(), and iroh gets the
     // app context first (it needs it to read the network settings).
     const doors = android.match(/pub extern "system" fn Java_\w+/g) || [];
-    expect(doors.length).toBe(11);
+    expect(doors.length).toBe(12);
     for (const door of doors) {
       const body = android.slice(android.indexOf(door));
       const next = body.indexOf('pub extern "system"', 10);

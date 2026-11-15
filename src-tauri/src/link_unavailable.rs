@@ -137,3 +137,8 @@ pub async fn link_key_mode() -> Result<(), String> {
 pub async fn link_use_one_key() -> Result<(), String> {
     Err("The home link is not in this build".into())
 }
+
+#[tauri::command]
+pub async fn link_circle(_request: String) -> String {
+    OFF.into()
+}

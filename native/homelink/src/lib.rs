@@ -10,6 +10,11 @@
 //! - The phone has its own key; the PC lets it in only after the user
 //!   allowed pairing on the PC. Only the model server is reachable.
 //! - The local port answers this phone only (127.0.0.1), never the network.
+//! - Removal notices (device circle stage 2, circle.rs): signed by the
+//!   device that removed a device, passed on to the other paired devices
+//!   with the status round trip; they can only remove.
+
+pub mod circle;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -139,6 +144,10 @@ pub struct Status {
     /// How this phone reaches the PC right now: "direct", "relay", "mixed"
     /// or "unknown".
     pub route: String,
+    /// Removal notices the PC passes on (circle.rs; checked by the caller
+    /// before anything is removed).
+    #[serde(skip)]
+    pub removals: Vec<circle::Removal>,
 }
 
 pub struct Phone {
@@ -336,7 +345,100 @@ impl Phone {
             build: answer.get("build").and_then(|v| v.as_str()).map(String::from),
             last_model: answer.get("lastModel").and_then(|v| v.as_str()).map(String::from),
             route: self.route(pc),
+            removals: circle::notices_in(answer.get("removals")),
         })
+    }
+
+    /// This device's own key, for signing removal notices (circle.rs).
+    pub fn secret_key(&self) -> iroh::SecretKey {
+        self.endpoint.secret_key().clone()
+    }
+
+    /// Hands removal notices to the PC ("removal"; the PC checks each one
+    /// itself and takes only good ones). At most circle::MAX_NOTICES.
+    pub fn send_removals(&self, pc: &str, notices: &[circle::Removal]) -> Result<(), String> {
+        let pc: EndpointId = pc.parse().map_err(|_| "Bad PC key".to_string())?;
+        let notices = &notices[..notices.len().min(circle::MAX_NOTICES)];
+        let request = serde_json::json!({"op": "removal", "notices": notices});
+        if request.to_string().len() + 1 > MAX_LINE {
+            return Err("Too many notices at once".into());
+        }
+        let answer = self.runtime.block_on(self.ask(pc, request))?;
+        if answer_ok(&answer) {
+            Ok(())
+        } else {
+            Err(error_of(&answer, "The PC did not take the notices"))
+        }
+    }
+
+    /// The phone's part of a status round trip for the circle: takes the
+    /// notices the PC passed on (`removals`, from status), checked against
+    /// the Home PCs this phone uses (the screens' list, and this PC), and
+    /// hands this phone's waiting notices to the PC. Applied removals wait
+    /// in the state for the screens (news), which remove the Home PC entry
+    /// and tell the user. State: `file` (circle::state_file).
+    pub fn circle_round(&self, pc: &str, removals: &[circle::Removal], file: &Path, now: u64) -> Result<(), String> {
+        let mut state = circle::load(file);
+        state.prune(now);
+        let me = [self.id()];
+        let mut trusted = state.uses.clone();
+        trusted.push(pc.to_string());
+        for notice in removals {
+            if state.take(notice, &me, &trusted, Some(pc), now) == circle::Verdict::Apply {
+                state.forget_used(&notice.removed);
+                state.add_news(circle::News {
+                    removed: notice.removed.clone(),
+                    by: notice.by.clone(),
+                    at: notice.at,
+                    removed_name: None,
+                    by_name: None,
+                    told: false,
+                });
+            }
+        }
+        let out = state.outgoing_for(pc, now);
+        if !out.is_empty() && self.send_removals(pc, &out).is_ok() {
+            state.mark_sent(pc, &out);
+        }
+        circle::save(file, &state)
+    }
+
+    /// The screens' circle calls on the phone (JSON in, JSON out):
+    /// - {"op":"remove","key":K,"homePcs":[...]}: the user removed K here;
+    ///   a notice signed with this phone's key waits to be passed on.
+    /// - {"op":"news","homePcs":[...]}: removals applied here since last
+    ///   asked (once each).
+    ///
+    /// `homePcs`: the Home PCs this phone uses now (the only devices whose
+    /// notices it takes). Nothing here adds a device or a right.
+    pub fn circle_call(&self, request: &str, file: &Path, now: u64) -> serde_json::Value {
+        let fail = |e: &str| serde_json::json!({"ok": false, "error": e});
+        let Ok(request) = serde_json::from_str::<serde_json::Value>(request) else {
+            return fail("Not a circle request");
+        };
+        let home_pcs: Vec<String> = request
+            .get("homePcs")
+            .and_then(|v| v.as_array())
+            .map(|list| list.iter().filter_map(|k| k.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let mut state = circle::load(file);
+        state.prune(now);
+        state.set_uses(&home_pcs);
+        let answer = match request.get("op").and_then(|o| o.as_str()) {
+            Some("remove") => {
+                let key = request.get("key").and_then(|k| k.as_str()).unwrap_or("");
+                match state.sign(&self.secret_key(), key, now) {
+                    Ok(_) => serde_json::json!({"ok": true}),
+                    Err(e) => return fail(&e),
+                }
+            }
+            Some("news") => serde_json::json!({"ok": true, "news": state.take_news()}),
+            _ => return fail("Not a circle request"),
+        };
+        match circle::save(file, &state) {
+            Ok(()) => answer,
+            Err(e) => fail(&e),
+        }
     }
 
     /// How the open connection to this PC goes right now: "direct" (straight
@@ -888,6 +990,98 @@ mod tests {
             line,
             serde_json::json!({"op": "tool", "name": "pc_run_command", "chat": "chat-0123456789abcdef", "args": {"command": "Get-Date"}})
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Device circle stage 2: the phone takes good notices from the PC's
+    /// status (as news for the screens), ignores ones about itself or from
+    /// keys it doesn't trust, and hands its own notices to the PC once.
+    #[test]
+    fn removal_notices_go_both_ways_with_the_status_round_trip() {
+        let pc_key = SecretKey::from_bytes(&[42; 32]);
+        let other = SecretKey::from_bytes(&[43; 32]).public().to_string();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel::<String>();
+        let (notices_tx, notices_rx) = std::sync::mpsc::channel::<serde_json::Value>();
+        let key = pc_key.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async move {
+                let pc = Endpoint::builder(presets::Minimal)
+                    .secret_key(key)
+                    .alpns(vec![ALPN.to_vec()])
+                    .bind_addr("127.0.0.1:0")
+                    .unwrap()
+                    .bind()
+                    .await
+                    .unwrap();
+                tx.send((pc.id(), pc.bound_sockets()[0])).unwrap();
+                while let Some(incoming) = pc.accept().await {
+                    let Ok(conn) = incoming.await else { continue };
+                    while let Ok((mut send, mut recv)) = conn.accept_bi().await {
+                        let line = read_line(&mut recv).await.unwrap();
+                        seen_tx.send(line.clone()).unwrap();
+                        let answer = if line.contains("\"status\"") {
+                            let notices = notices_rx.recv().unwrap_or(serde_json::json!([]));
+                            serde_json::json!({"ok": true, "running": false, "removals": notices})
+                        } else {
+                            serde_json::json!({"ok": true})
+                        };
+                        send.write_all(format!("{answer}\n").as_bytes()).await.unwrap();
+                        let _ = send.finish();
+                        let _ = send.stopped().await;
+                    }
+                }
+            });
+        });
+        let (pc, addr) = rx.recv().unwrap();
+        let pc_id = pc.to_string();
+        let dir = std::env::temp_dir().join(format!("homelink-circle-round-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let phone = Phone::new(&dir.join("phone.key"), Some(addr)).unwrap();
+        let file = circle::state_file(&dir.join("phone.key"));
+        let now = circle::now();
+        // The user removes a device on the phone: a notice signed by the phone.
+        let removed_here = SecretKey::from_bytes(&[44; 32]).public().to_string();
+        let answer = phone.circle_call(
+            &serde_json::json!({"op": "remove", "key": removed_here, "homePcs": [pc_id]}).to_string(),
+            &file,
+            now,
+        );
+        assert_eq!(answer["ok"], true, "{answer}");
+        // The PC passes on: a good one, one about this phone, one from a
+        // key the phone doesn't trust.
+        let good = circle::sign_removal(&pc_key, &other, now, now).unwrap();
+        let about_me = circle::sign_removal(&pc_key, &phone.id(), now + 1, now).unwrap();
+        let stranger = circle::sign_removal(&SecretKey::from_bytes(&[45; 32]), &other, now, now).unwrap();
+        notices_tx.send(serde_json::json!([good, about_me, stranger])).unwrap();
+        let status = phone.status(&pc_id).unwrap();
+        assert_eq!(status.removals.len(), 3);
+        phone.circle_round(&pc_id, &status.removals, &file, now).unwrap();
+        assert_eq!(seen_rx.recv().unwrap(), r#"{"op":"status"}"#);
+        let pushed: serde_json::Value = serde_json::from_str(&seen_rx.recv().unwrap()).unwrap();
+        assert_eq!(pushed["op"], "removal");
+        let pushed = circle::notices_in(pushed.get("notices"));
+        assert_eq!(pushed.len(), 1);
+        assert_eq!(pushed[0].removed, removed_here);
+        assert_eq!(pushed[0].by, phone.id());
+        // Only the good one is news, once.
+        let news = phone.circle_call(&serde_json::json!({"op": "news", "homePcs": [pc_id]}).to_string(), &file, now);
+        let list = news["news"].as_array().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0]["removed"], other);
+        assert_eq!(list[0]["by"], pc_id);
+        let again = phone.circle_call(&serde_json::json!({"op": "news", "homePcs": [pc_id]}).to_string(), &file, now);
+        assert!(again["news"].as_array().unwrap().is_empty());
+        // Next round: nothing sent twice, the same notices not taken twice.
+        phone.circle_round(&pc_id, &[good], &file, now).unwrap();
+        let news = phone.circle_call(&serde_json::json!({"op": "news", "homePcs": [pc_id]}).to_string(), &file, now);
+        assert!(news["news"].as_array().unwrap().is_empty());
+        assert!(seen_rx.try_recv().is_err());
+        // Anything else is not a circle call; a device can't remove itself.
+        assert_eq!(phone.circle_call(r#"{"op":"add","key":"x"}"#, &file, now)["ok"], false);
+        let me = phone.id();
+        assert_eq!(phone.circle_call(&serde_json::json!({"op": "remove", "key": me}).to_string(), &file, now)["ok"], false);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

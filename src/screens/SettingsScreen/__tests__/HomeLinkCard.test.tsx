@@ -1,5 +1,5 @@
 import React from 'react';
-import {Alert} from 'react-native';
+import {Alert, NativeModules} from 'react-native';
 import {act, fireEvent, render, waitFor} from '@testing-library/react-native';
 import {Provider as PaperProvider} from 'react-native-paper';
 
@@ -195,23 +195,40 @@ describe('Home link card: your devices', () => {
     );
   });
 
-  it('removing asks first, then removes here only', async () => {
+  it('removing asks first, removes here, then tells the other devices', async () => {
     serverStore.servers = [
       {id: 's1', name: 'Desktop', url: 'x', homeLinkPc: 'cccc'},
     ];
+    const circle = jest.fn(async () => JSON.stringify({ok: true}));
+    (NativeModules as any).HomeLink = {circle};
     const {findByTestId} = show();
     fireEvent.press(await findByTestId('your-devices-remove-aaaa'));
     expect(linkForget).not.toHaveBeenCalled();
+    expect(circle).not.toHaveBeenCalled();
     expect((Alert.alert as jest.Mock).mock.calls.at(-1)[1]).toContain(
-      'Removed on this device only',
+      'Your other devices are told too',
     );
     await pressAlert('Remove here');
     expect(linkForget).toHaveBeenCalledWith('aaaa');
     expect(serverStore.removeServer).not.toHaveBeenCalled();
+    // A removal notice signed by this device (only ever a removal).
+    expect(JSON.parse((circle.mock.calls[0] as any)[0])).toEqual({
+      op: 'remove',
+      key: 'aaaa',
+      homePcs: ['cccc'],
+    });
+    expect((await findByTestId('your-devices-message')).props.children).toBe(
+      'Removed "Pixel" here. Your other devices are told the next time they talk to this one.',
+    );
     fireEvent.press(await findByTestId('your-devices-remove-cccc'));
     await pressAlert('Remove here');
     expect(serverStore.removeServer).toHaveBeenCalledWith('s1');
     expect(linkForget).not.toHaveBeenCalledWith('cccc');
+    const removals = circle.mock.calls
+      .map((c: any) => JSON.parse(c[0]))
+      .filter(r => r.op === 'remove');
+    expect(removals.map(r => r.key)).toEqual(['aaaa', 'cccc']);
+    delete (NativeModules as any).HomeLink;
   });
 
   it('a PC with two keys can move to one key, told to pair again by hand', async () => {

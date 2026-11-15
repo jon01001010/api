@@ -31,6 +31,11 @@ object HomeLinkNative {
     @JvmStatic external fun tool(
         keyFile: String, pc: String, name: String, chat: String, args: String
     ): String
+    /**
+     * Device circle (stage 2): "remove" (a signed removal notice waits to be
+     * passed on) or "news" (removals applied here). JSON in and out; no network.
+     */
+    @JvmStatic external fun circle(keyFile: String, request: String): String
     @JvmStatic external fun openTunnel(keyFile: String, pc: String): String
     @JvmStatic external fun closeTunnel(): String
 }

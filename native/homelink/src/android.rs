@@ -112,8 +112,13 @@ pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_status(
     pc: JString,
 ) -> jstring {
     let (key_file, pc) = (text(&mut env, &key_file), text(&mut env, &pc));
-    let value = guarded(|| match phone(&key_file).and_then(|p| p.status(&pc)) {
-        Ok(s) => serde_json::json!({
+    let value = guarded(|| match phone(&key_file).and_then(|p| p.status(&pc).map(|s| (p, s))) {
+        Ok((p, s)) => {
+            // Removal notices both ways (device circle stage 2): what the PC
+            // passed on is checked here; the screens see it as "news".
+            let file = crate::circle::state_file(std::path::Path::new(&key_file));
+            let _ = p.circle_round(&pc, &s.removals, &file, crate::circle::now());
+            serde_json::json!({
             "ok": true,
             "running": s.running,
             "apiKey": s.api_key,
@@ -121,7 +126,30 @@ pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_status(
             "build": s.build,
             "lastModel": s.last_model,
             "route": s.route,
-        }),
+            })
+        }
+        Err(e) => fail(e),
+    });
+    answer(&mut env, value)
+}
+
+/// The screens' circle calls (device circle stage 2, lib.rs circle_call):
+/// "remove" (the user removed a device here: a signed notice waits to be
+/// passed on) and "news" (removals applied here since last asked). Nothing
+/// here adds a device or a right. No network.
+#[no_mangle]
+pub extern "system" fn Java_com_pocketagent_homelink_HomeLinkNative_circle(
+    mut env: JNIEnv,
+    _class: JClass,
+    key_file: JString,
+    request: JString,
+) -> jstring {
+    let (key_file, request) = (text(&mut env, &key_file), text(&mut env, &request));
+    let value = guarded(|| match phone(&key_file) {
+        Ok(p) => {
+            let file = crate::circle::state_file(std::path::Path::new(&key_file));
+            p.circle_call(&request, &file, crate::circle::now())
+        }
         Err(e) => fail(e),
     });
     answer(&mut env, value)

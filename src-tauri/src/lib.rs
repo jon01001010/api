@@ -142,6 +142,7 @@ pub fn run() {
             link_client::homelink_close_tunnel,
             link_client::link_key_mode,
             link_client::link_use_one_key,
+            link::link_circle,
         ])
         .build(tauri::generate_context!())
         .expect("error while building PocketAgent");

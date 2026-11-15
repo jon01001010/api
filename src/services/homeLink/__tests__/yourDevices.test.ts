@@ -79,12 +79,13 @@ describe('Your devices: one list, either way', () => {
     expect(describeRights(desktop)).toMatch(/^Given nothing by this device/);
   });
 
-  it('says removing is on this device only for now', () => {
+  it('says removing here tells the other devices too', () => {
     const [both] = listYourDevices([{id: B, name: 'Laptop'}], [server('s', B)]);
     const q = removeQuestion(both);
     expect(q).toContain('can no longer use this device');
     expect(q).toContain('stops using "Laptop"');
-    expect(q).toContain('Removed on this device only');
+    expect(q).toContain('Your other devices are told too');
+    expect(q).not.toContain('Removed on this device only');
     const [usedOnly] = listYourDevices([], [server('s', C)]);
     expect(removeQuestion(usedOnly)).not.toContain('can no longer use');
   });
