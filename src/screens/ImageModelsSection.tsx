@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {Alert, View} from 'react-native';
 import {Button, Card, Chip, Text} from 'react-native-paper';
+import {usePcHardware} from '../services/desktop/pcHardware';
 
 import {
   IMAGE_MODEL_SETS,
@@ -13,6 +14,7 @@ import {
   markLicenceSeen,
   setBytes,
   verifiedNote,
+  fitForCard,
 } from '../services/imageGen/imageModels';
 
 const ask = (title: string, message: string, ok: string) =>
@@ -35,6 +37,7 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
+  const hardware = usePcHardware();
 
   const refresh = useCallback(async () => {
     const next: Record<string, boolean> = {};
@@ -102,6 +105,13 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
               </Text>
               <Chip compact>{set.licence}</Chip>
               <Chip compact>about {formatGb(setBytes(set))}</Chip>
+              {fitForCard(set, hardware?.gpus) !== 'unknown' ? (
+                <Chip compact testID={'toolbox-image-model-fit-' + set.id}>
+                  {fitForCard(set, hardware?.gpus) === 'fits'
+                    ? 'Fits your graphics card'
+                    : 'Too big for your graphics card (very slow)'}
+                </Chip>
+              ) : null}
             </View>
             <Text variant="bodySmall">{set.licenceNote}</Text>
             {verifiedNote(set) ? (

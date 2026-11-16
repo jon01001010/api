@@ -242,3 +242,20 @@ export async function downloadSet(
   }
   onProgress(total, total);
 }
+
+/**
+ * Does this set suit the PC's graphics card? From the largest card's memory
+ * (read fresh each start). Not a hard limit: a set too big still runs,
+ * partly in memory and much slower.
+ */
+export function fitForCard(
+  set: ImageModelSet,
+  gpus: {totalMemory: number; shared: boolean}[] | undefined,
+): 'fits' | 'too-big' | 'unknown' {
+  const dedicated = (gpus ?? []).filter(g => !g.shared);
+  if (!dedicated.length) {
+    return 'unknown';
+  }
+  const gb = Math.max(...dedicated.map(g => g.totalMemory)) / 1e9;
+  return gb + 0.25 >= set.recommendedVramGb ? 'fits' : 'too-big';
+}

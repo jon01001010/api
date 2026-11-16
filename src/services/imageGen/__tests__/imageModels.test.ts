@@ -57,3 +57,20 @@ it('the chat shows only pictures from the app’s own images folder', () => {
     expect([bad, isOwnPicture(bad)]).toEqual([bad, false]);
   }
 });
+
+describe('fitForCard', () => {
+  const {fitForCard, IMAGE_MODEL_SETS} = require('../imageModels');
+  const flux = IMAGE_MODEL_SETS.find((s: any) => s.id === 'flux2-klein-4b');
+  const sd15 = IMAGE_MODEL_SETS.find((s: any) => s.id === 'sd15');
+  const gtx745 = [{totalMemory: 4e9, shared: false}];
+  it('says what suits a 4 GB card', () => {
+    expect(fitForCard(sd15, gtx745)).toBe('fits');
+    expect(fitForCard(flux, gtx745)).toBe('too-big');
+  });
+  it('is unknown without a dedicated card', () => {
+    expect(fitForCard(sd15, undefined)).toBe('unknown');
+    expect(fitForCard(sd15, [{totalMemory: 8e9, shared: true}])).toBe(
+      'unknown',
+    );
+  });
+});
