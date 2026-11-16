@@ -1,5 +1,5 @@
 {
-  "note": "Picture models the PC can download (stable-diffusion.cpp). Read by the app (src/services/imageGen) and the native side (src-tauri/src/image_gen.rs). Only models whose licence allows commercial use are listed; never FLUX.1 dev, FLUX.2 klein 9B, SD-Turbo or SDXL-Turbo (non-commercial). URLs and sizes were not checked against Hugging Face (unreachable when this list was made): approxBytes are estimates, verified stays false until someone checks the files and adds their sha256.",
+  "note": "Picture models the PC can download (stable-diffusion.cpp). Read by the app (src/services/imageGen) and the native side (src-tauri/src/image_gen.rs). Only models whose licence allows commercial use are listed; never FLUX.1 dev, FLUX.2 klein 9B, SD-Turbo or SDXL-Turbo (non-commercial). Files, sizes and SHA-256 checked against Hugging Face on 2026-11-16 (all links answer, none gated).",
   "sets": [
     {
       "id": "flux2-klein-4b",
@@ -13,28 +13,28 @@
       "cfgScale": 1.0,
       "offloadToCpu": true,
       "recommendedVramGb": 6,
-      "verified": false,
+      "verified": true,
       "files": [
         {
           "role": "diffusion",
           "name": "flux-2-klein-4b-Q4_K_M.gguf",
           "url": "https://huggingface.co/unsloth/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q4_K_M.gguf",
-          "approxBytes": 2600000000,
-          "sha256": null
+          "approxBytes": 2604311104,
+          "sha256": "0b25d143c8469b342bc5af3bce92b783bf6b0636d285f7b2f75e38af63af9a15"
         },
         {
           "role": "llm",
           "name": "Qwen3-4B-Q4_K_M.gguf",
           "url": "https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
-          "approxBytes": 2500000000,
-          "sha256": null
+          "approxBytes": 2497281312,
+          "sha256": "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a"
         },
         {
           "role": "vae",
           "name": "flux2-vae.safetensors",
-          "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
-          "approxBytes": 336000000,
-          "sha256": null
+          "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4B/resolve/main/vae/diffusion_pytorch_model.safetensors",
+          "approxBytes": 168120878,
+          "sha256": "ca70d2202afe6415bdbcb8793ba8cd99fd159cfe6192381504d6c4d3036e0f04"
         }
       ]
     },
@@ -50,14 +50,14 @@
       "cfgScale": 7.0,
       "offloadToCpu": false,
       "recommendedVramGb": 4,
-      "verified": false,
+      "verified": true,
       "files": [
         {
           "role": "model",
-          "name": "v1-5-pruned-emaonly-fp16.safetensors",
-          "url": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly-fp16.safetensors",
-          "approxBytes": 2130000000,
-          "sha256": null
+          "name": "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
+          "url": "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF/resolve/main/stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
+          "approxBytes": 1566768416,
+          "sha256": "b8944e9fe0b69b36ae1b5bb0185b3a7b8ef14347fe0fa9af6c64c4829022261f"
         }
       ]
     }

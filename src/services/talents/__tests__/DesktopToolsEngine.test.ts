@@ -214,8 +214,22 @@ describe('outside_files', () => {
 
 describe('image_generate', () => {
   const RNFS = require('@dr.pogodin/react-native-fs');
-  const installed = (yes: boolean) =>
+  // A downloaded set: every file there, with its checked-sha256 note
+  // (the list's sets are verified, so a file counts only with its note).
+  const installed = (yes: boolean) => {
     RNFS.exists.mockImplementation(async () => yes);
+    const {IMAGE_MODEL_SETS} = require('../../imageGen/imageModels');
+    RNFS.readFile = jest.fn(async (path: string) => {
+      for (const set of IMAGE_MODEL_SETS) {
+        for (const f of set.files) {
+          if (path.endsWith(`/${f.name}.sha256`)) {
+            return f.sha256 ?? '';
+          }
+        }
+      }
+      return '';
+    });
+  };
   afterEach(() => RNFS.exists.mockReset());
 
   it('says how to get a model when none is downloaded; runs nothing', async () => {
