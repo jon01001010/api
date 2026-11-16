@@ -15,7 +15,11 @@ export type HandoffOutcome =
   | 'refused'
   | 'stopped'
   | 'failed'
-  | 'timed_out';
+  | 'timed_out'
+  // A fallback chain moved on from this model (ask_model_chain).
+  | 'ran_out'
+  // Unticked in the question of ask_models: nothing sent to it.
+  | 'unticked';
 
 export interface HandoffLogEntry {
   at: number;

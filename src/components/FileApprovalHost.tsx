@@ -1,6 +1,6 @@
 import * as React from 'react';
 import {ScrollView, StyleSheet, View} from 'react-native';
-import {Button, Dialog, Portal, Text} from 'react-native-paper';
+import {Button, Checkbox, Dialog, Portal, Text} from 'react-native-paper';
 import {
   FileProposal,
   subscribeFileApprovals,
@@ -21,6 +21,8 @@ const ACTION_LABEL: Record<FileProposal['action'], string> = {
   too_many: 'questions',
   ask_other_model: 'hand-off',
   handoff_cap: 'hand-offs',
+  ask_models: 'hand-offs',
+  ask_model_chain: 'hand-offs',
 };
 
 /** An app-written warning, in red, with the facts. */
@@ -89,6 +91,97 @@ function NothingMore({proposal}: {proposal: FileProposal}) {
   );
 }
 
+/**
+ * Several models (ask_models, ask_model_chain): facts first, then every
+ * target (for ask_models with a box each, ticked to start; Allow sends to
+ * the ticked ones only), the exact text, then the model's words.
+ */
+function ManyModelsDialog({proposal}: {proposal: FileProposal}) {
+  const targets = proposal.targets ?? [];
+  const boxes = proposal.action === 'ask_models';
+  const [ticked, setTicked] = React.useState<string[]>(() =>
+    targets.map(t => t.id),
+  );
+  const toggle = (id: string) =>
+    setTicked(now =>
+      now.includes(id) ? now.filter(x => x !== id) : [...now, id],
+    );
+  return (
+    <Portal>
+      <Dialog visible dismissable={false} testID="ask-models-approval">
+        <Dialog.Title>
+          {boxes
+            ? 'Hand this to several models?'
+            : 'Hand this to a chain of models?'}
+        </Dialog.Title>
+        <Dialog.Content>
+          <ScrollView style={styles.scroll} nestedScrollEnabled>
+            <RedAlert proposal={proposal} />
+            <Text variant="bodyMedium" selectable>
+              {proposal.filename}
+            </Text>
+            <Text variant="labelMedium" style={styles.thinking}>
+              {boxes ? 'Send to:' : 'In this order:'}
+            </Text>
+            {targets.map((t, i) =>
+              boxes ? (
+                <View key={t.id}>
+                  <Checkbox.Item
+                    testID={`approval-target-${t.id}`}
+                    label={t.label}
+                    status={ticked.includes(t.id) ? 'checked' : 'unchecked'}
+                    onPress={() => toggle(t.id)}
+                    position="leading"
+                  />
+                  <Text variant="bodySmall" style={styles.detail}>
+                    {t.detail}
+                  </Text>
+                </View>
+              ) : (
+                <View key={t.id} testID={`approval-target-${t.id}`}>
+                  <Text variant="bodyMedium">
+                    {i + 1}. {t.label}
+                  </Text>
+                  <Text variant="bodySmall" style={styles.detail}>
+                    {t.detail}
+                  </Text>
+                </View>
+              ),
+            )}
+            <Text variant="labelMedium" style={styles.thinking}>
+              Exactly this text will be sent:
+            </Text>
+            <Text
+              variant="bodySmall"
+              selectable
+              style={styles.sent}
+              testID="approval-sent-text">
+              {proposal.content}
+            </Text>
+            <ModelSays proposal={proposal} />
+            <Thinking proposal={proposal} />
+          </ScrollView>
+        </Dialog.Content>
+        <Dialog.Actions style={styles.actions}>
+          <NothingMore proposal={proposal} />
+          <Button onPress={() => decideFileApproval(false)}>Deny</Button>
+          <Button
+            mode="contained"
+            testID="approval-allow"
+            disabled={boxes && !ticked.length}
+            onPress={() =>
+              decideFileApproval(true, false, boxes ? ticked : undefined)
+            }>
+            {boxes && ticked.length < targets.length
+              ? `Allow once (${ticked.length} of ${targets.length})`
+              : 'Allow once'}
+          </Button>
+        </Dialog.Actions>
+      </Dialog>
+    </Portal>
+  );
+}
+
 /** Shows the line changes and the complete proposed content, never a truncated approval summary. */
 export function FileApprovalHost(): React.JSX.Element {
   const [proposal, setProposal] = React.useState<FileProposal | null>(null);
@@ -114,6 +207,15 @@ export function FileApprovalHost(): React.JSX.Element {
           </Dialog.Actions>
         </Dialog>
       </Portal>
+    );
+  }
+  if (
+    proposal?.action === 'ask_models' ||
+    proposal?.action === 'ask_model_chain'
+  ) {
+    // A new question starts with every box ticked.
+    return (
+      <ManyModelsDialog key={JSON.stringify(proposal)} proposal={proposal} />
     );
   }
   if (proposal?.action === 'ask_other_model') {
@@ -246,6 +348,7 @@ export function FileApprovalHost(): React.JSX.Element {
 const styles = StyleSheet.create({
   diff: {fontFamily: 'JetBrainsMono-Regular', marginBottom: 12},
   scroll: {maxHeight: 420},
+  detail: {opacity: 0.7, marginLeft: 8, marginBottom: 4},
   sent: {fontFamily: 'JetBrainsMono-Regular', marginTop: 4},
   thinking: {marginTop: 12},
   warning: {color: '#C62828', fontWeight: 'bold', marginBottom: 6},

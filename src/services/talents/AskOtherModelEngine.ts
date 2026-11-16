@@ -80,7 +80,7 @@ const plain = (value: unknown): string =>
   typeof value === 'string' ? value.trim() : '';
 
 /** Waits for the work, at most `ms`; Stop or the time limit stop it. */
-async function limited<T>(
+export async function limited<T>(
   work: () => Promise<T>,
   ms: number,
   signal: AbortSignal | undefined,

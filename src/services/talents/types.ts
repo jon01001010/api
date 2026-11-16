@@ -14,6 +14,9 @@ export interface WebSearchResultItem {
  *   /pocketagent/…; shown in the chat, can be saved with Save a copy).
  * - `type: 'audio'` means an audio file was produced (future TTS support).
  * - `type: 'model_answer'` is another model's answer (ask_other_model).
+ * - `type: 'model_answers'` is several models' answers side by side
+ *   (ask_models), or a fallback chain's answer with its "ran out" lines
+ *   (ask_model_chain).
  * - `type: 'error'` means the engine failed; errorMessage describes what went wrong.
  * `summary` is always present and is what gets fed back to the model as the
  * `{role: 'tool', content}` payload on subsequent turns.
@@ -38,7 +41,28 @@ export type TalentResult =
       answer: string;
       summary: string;
     }
+  // Several models (ask_models, ask_model_chain): each answer labelled
+  // with its model; `lines` are the app's own (where answers differ, "<model>
+  // ran out (<why>): continuing with <next>"). The model reads `summary`
+  // (every answer wrapped untrusted).
+  | {
+      type: 'model_answers';
+      mode: 'and' | 'or';
+      answers: ModelAnswerItem[];
+      lines: string[];
+      summary: string;
+    }
   | {type: 'error'; summary: string; errorMessage: string};
+
+/** One model's part of a `model_answers` result. */
+export interface ModelAnswerItem {
+  model: string;
+  where: string;
+  /** The answer, or empty when there is none. */
+  answer: string;
+  /** Why there is no (whole) answer: "did not answer within 120 seconds". */
+  problem?: string;
+}
 
 /** OpenAI function-calling tool schema shape. */
 export interface ToolDefinition {

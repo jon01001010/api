@@ -118,8 +118,14 @@ describe('what reads private data and what goes out (explicit lists)', () => {
     const {PC_TOOL_NAMES} = require('../../talents/PcToolsEngine');
     const {FILE_OPERATIONS} = require('../../talents/FileToolsEngine');
     const {ASK_OTHER_MODEL} = require('../../talents/AskOtherModelEngine');
+    const {
+      ASK_MODELS,
+      ASK_MODEL_CHAIN,
+    } = require('../../talents/AskModelsEngine');
     const known = new Set<string>([
       ASK_OTHER_MODEL,
+      ASK_MODELS,
+      ASK_MODEL_CHAIN,
       ...PHONE_TOOL_NAMES,
       ...DESKTOP_TOOL_NAMES,
       ...PC_TOOL_NAMES,

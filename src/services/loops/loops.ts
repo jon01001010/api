@@ -366,6 +366,8 @@ const TOOL_WORDS: Record<string, string> = {
   tool_save: 'save tools',
   tool_delete: 'delete tools',
   ask_other_model: 'ask another model',
+  ask_models: 'ask several models at once',
+  ask_model_chain: 'ask models in turn',
 };
 
 export function toolWords(names: string[]): string[] {

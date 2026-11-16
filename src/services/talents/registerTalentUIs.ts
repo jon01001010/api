@@ -3,6 +3,7 @@ import {RenderHtmlTalentUI} from './RenderHtmlTalentUI';
 import {WebSearchTalentUI} from './WebSearchTalentUI';
 import {ImageTalentUI} from './ImageTalentUI';
 import {ModelAnswerTalentUI} from './ModelAnswerTalentUI';
+import {ModelAnswersTalentUI} from './ModelAnswersTalentUI';
 
 let registered = false;
 
@@ -16,6 +17,8 @@ export function registerDefaultTalentUIs(): void {
   talentUIRegistry.register(new WebSearchTalentUI());
   talentUIRegistry.register(new ImageTalentUI());
   talentUIRegistry.register(new ModelAnswerTalentUI());
+  talentUIRegistry.register(new ModelAnswersTalentUI('ask_models'));
+  talentUIRegistry.register(new ModelAnswersTalentUI('ask_model_chain'));
   registered = true;
 }
 
