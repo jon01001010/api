@@ -48,6 +48,15 @@ export const CLOUD_PRESETS: CloudPreset[] = [
     free: true,
   },
   {
+    // Meta Model API (Muse Spark): OpenAI-compatible, paid, may be limited
+    // by country; check dev.meta.ai for current terms.
+    id: 'meta',
+    label: 'Meta (Muse)',
+    url: 'https://api.meta.ai/v1',
+    serverType: 'OpenAI',
+    keyUrl: 'https://dev.meta.ai',
+  },
+  {
     id: 'groq',
     label: 'Groq',
     url: 'https://api.groq.com/openai/v1',
