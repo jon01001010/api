@@ -4,6 +4,8 @@
 
 Updated: 2026-11-03. This document tracks planned work. Items marked done are done in code (with tests) on the open PR stack (#3 → #4 → #5 → todo-batch); anything that still needs checking on the phone is listed under **Phone checks**.
 
+**Owner's PC (corrected 2026-11-16):** Intel Core i5-6400 (4 cores, 2015, no NPU), NVIDIA GeForce GTX 745 (old Maxwell card, usually 4 GB), 12 GB RAM (earlier notes saying 16 GB RAM / 8 GB card were wrong). So: chat models 3–4B run well, 7–8B partly in memory and slow, 70B not on this PC (use a bigger machine or a cloud model via sub-agents); pictures: SD 1.5 at 512 is the realistic set (FLUX.2 klein 4B too big for 4 GB); overnight training not realistic on this card (too old for current training software, too little memory); the NPU step doesn't apply to this PC.
+
 ## Pre-release: can't release until (decided 2026-11-12)
 
 Tidied 2026-11-15: done items ticked; device checks remain.
