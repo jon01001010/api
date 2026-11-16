@@ -43,3 +43,28 @@ it('no .web file imports its own base name', () => {
   }
   expect(bad).toEqual([]);
 });
+
+it('no .json shares its name with a code file (the desktop bundle picks the .json)', () => {
+  // e.g. imageModels.json next to imageModels.ts: "import './imageModels'"
+  // got the bare list on the desktop and the Toolbox crashed (2026-11-16).
+  const clashes: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== 'node_modules') {
+          walk(full);
+        }
+      } else if (entry.name.endsWith('.json')) {
+        const base = full.slice(0, -'.json'.length);
+        for (const ext of ['.ts', '.tsx', '.js', '.web.ts', '.web.tsx']) {
+          if (fs.existsSync(base + ext)) {
+            clashes.push(path.relative(SRC, full));
+          }
+        }
+      }
+    }
+  };
+  walk(SRC);
+  expect(clashes).toEqual([]);
+});

@@ -1737,7 +1737,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /if \(set\.verified && file\.sha256 === null\) \{\s*return/,
     );
     // Only commercially usable models are listed.
-    const models = read('src/services/imageGen/imageModels.json').toLowerCase();
+    const models = read('src/services/imageGen/imageModelCatalog.json').toLowerCase();
     for (const banned of ['flux.1-dev', 'klein-9b', 'sd-turbo', 'sdxl-turbo']) {
       expect([banned, models.includes(`/${banned}`)]).toEqual([banned, false]);
     }

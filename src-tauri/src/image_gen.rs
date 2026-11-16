@@ -2,7 +2,7 @@
 //! the app's `sd` folder, pinned and checksum-checked like llama.cpp) runs
 //! once per picture with a model set the app downloaded itself
 //! (`Documents/image-models/<set>`, listed in
-//! src/services/imageGen/imageModels.json). It opens no port and fetches
+//! src/services/imageGen/imageModelCatalog.json). It opens no port and fetches
 //! nothing (not `sd-server`: that has no password, so any program on the PC
 //! could use it). The picture goes into the workspace's `images` folder,
 //! inside the app's own folder, so no question is needed; the chat shows the
@@ -31,7 +31,7 @@ pub const TIME_LIMIT: Duration = Duration::from_secs(10 * 60);
 /// The end of the picture maker's output kept for an error message.
 const MAX_LOG: usize = 4 * 1024;
 /// The model list, shared with the screens.
-const CATALOG: &str = include_str!("../../src/services/imageGen/imageModels.json");
+const CATALOG: &str = include_str!("../../src/services/imageGen/imageModelCatalog.json");
 /// Where the app downloads picture models (its own folder).
 pub const MODELS_DIR: &str = "Documents/image-models";
 /// Pictures go here, inside the workspace.

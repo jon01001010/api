@@ -1,6 +1,6 @@
 /**
  * Picture models for the PC (desktop app only). The list is data
- * (imageModels.json, also read by src-tauri/src/image_gen.rs); each set is
+ * (imageModelCatalog.json, also read by src-tauri/src/image_gen.rs); each set is
  * downloaded with the app's own downloader into its own folder
  * (`Documents/image-models/<set>`), size and licence shown first. The native
  * side runs only these files.
@@ -14,7 +14,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as RNFS from '@dr.pogodin/react-native-fs';
 
-import catalog from './imageModels.json';
+import catalog from './imageModelCatalog.json';
 
 export type ImageModelFile = {
   role: string;
