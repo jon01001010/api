@@ -1189,6 +1189,8 @@ async fn picture_for(
             "name": made.name,
             "seed": made.seed,
             "seconds": made.seconds,
+            "width": made.width,
+            "height": made.height,
         }),
         bytes,
     ))

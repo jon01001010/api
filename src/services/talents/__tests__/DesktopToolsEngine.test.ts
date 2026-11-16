@@ -267,6 +267,41 @@ describe('image_generate', () => {
     expect(r.summary).toContain('images/picture-20261115-101530-ab12.png');
   });
 
+  it('Stable Diffusion 1.5 makes 512 x 512 with at most 25 steps, and says the size used', async () => {
+    const models = require('../../imageGen/imageModels');
+    const sd = models.IMAGE_MODEL_SETS.find((s: any) => s.id === 'sd15');
+    const spy = jest.spyOn(models, 'installedSet').mockResolvedValue(sd);
+    invoke.mockResolvedValueOnce({
+      name: 'p.png',
+      path: '/pocketagent/Documents/PocketAgentFiles/images/p.png',
+      seed: 1,
+      seconds: 40,
+      width: 512,
+      height: 512,
+    });
+    const r = await new DesktopToolsEngine('image_generate').execute({
+      prompt: 'a cat',
+      width: 1024,
+      height: 768,
+      steps: 30,
+    });
+    expect(invoke).toHaveBeenCalledWith(
+      'image_generate',
+      expect.objectContaining({
+        model: 'sd15',
+        width: 512,
+        height: 512,
+        steps: 25,
+      }),
+    );
+    expect(r.summary).toContain('512x512');
+    const def = new DesktopToolsEngine('image_generate').toToolDefinition();
+    expect(def.function.parameters.properties.width.description).toMatch(
+      /Stable Diffusion 1\.5 makes 512 x 512 only/,
+    );
+    spy.mockRestore();
+  });
+
   it('a refused prompt comes back as the native side says it', async () => {
     installed(true);
     invoke.mockRejectedValueOnce(

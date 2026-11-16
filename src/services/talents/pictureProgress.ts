@@ -16,6 +16,8 @@ export type PictureProgress = {
   steps: number;
   /** About how many seconds of sampling are left; null until known. */
   seconds: number | null;
+  /** The chat model is loaded on the same graphics card. */
+  chatOnCard?: boolean;
 };
 
 const count = (value: unknown) =>
@@ -34,10 +36,26 @@ function timeLeft(seconds: number): string {
   return `about ${Math.round(seconds / 60)} min left`;
 }
 
-/** The line shown for one event; null for anything malformed. */
+/** A hint only: the chat model is never unloaded for a picture. */
+export const CHAT_ON_CARD_HINT =
+  'The chat model is also on the graphics card; pictures are slower. Unloading it makes pictures faster.';
+
+/**
+ * The line shown for one event; null for anything malformed. The hint
+ * about the chat model shows once, until the first step.
+ */
 export function pictureProgressText(
   p: Partial<PictureProgress>,
 ): string | null {
+  const line = phaseText(p);
+  const early =
+    p?.phase === 'loading' || (p?.phase === 'sampling' && !count(p.step));
+  return line && p?.chatOnCard === true && early
+    ? `${line} ${CHAT_ON_CARD_HINT}`
+    : line;
+}
+
+function phaseText(p: Partial<PictureProgress>): string | null {
   switch (p?.phase) {
     case 'loading':
       return 'Loading the model…';

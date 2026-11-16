@@ -2,7 +2,7 @@
  * The line shown while the PC makes a picture (image-progress events from
  * src-tauri/src/image_gen.rs).
  */
-import {pictureProgressText} from '../pictureProgress';
+import {CHAT_ON_CARD_HINT, pictureProgressText} from '../pictureProgress';
 
 const at = (p: object) =>
   pictureProgressText({id: 'x', step: 0, steps: 20, seconds: null, ...p});
@@ -27,6 +27,20 @@ it('says what the picture maker is doing, step by step', () => {
   );
   expect(at({phase: 'decoding', step: 20})).toBe('Finishing…');
   expect(at({phase: 'saving', step: 20})).toBe('Finishing…');
+});
+
+it('hints once, until the first step, that the chat model shares the card', () => {
+  expect(at({phase: 'loading', chatOnCard: true})).toBe(
+    `Loading the model… ${CHAT_ON_CARD_HINT}`,
+  );
+  expect(at({phase: 'sampling', chatOnCard: true})).toBe(
+    `Making the picture… ${CHAT_ON_CARD_HINT}`,
+  );
+  expect(at({phase: 'sampling', step: 1, chatOnCard: true})).toBe(
+    'Making the picture… step 1 of 20',
+  );
+  expect(at({phase: 'loading', chatOnCard: false})).toBe('Loading the model…');
+  expect(CHAT_ON_CARD_HINT).toMatch(/Unloading it makes pictures faster/);
 });
 
 it('ignores anything malformed', () => {

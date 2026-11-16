@@ -18,6 +18,8 @@ import {
 } from './types';
 
 export const PC_PICTURE_SIZES = [512, 768, 1024];
+const PC_SD15_NOTE =
+  'A PC using Stable Diffusion 1.5 makes 512 x 512 only (at most 25 steps).';
 
 const STOP =
   'Answer the user now; do not call this tool again unless they ask.';
@@ -36,12 +38,12 @@ const DEFINITION: ToolDefinition['function'] = {
       width: {
         type: 'integer',
         enum: PC_PICTURE_SIZES,
-        description: "Pixels; leave out for the PC's default.",
+        description: `Pixels; leave out for the PC's default. ${PC_SD15_NOTE}`,
       },
       height: {
         type: 'integer',
         enum: PC_PICTURE_SIZES,
-        description: "Pixels; leave out for the PC's default.",
+        description: `Pixels; leave out for the PC's default. ${PC_SD15_NOTE}`,
       },
       steps: {
         type: 'integer',

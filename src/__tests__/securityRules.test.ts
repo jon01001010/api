@@ -1055,7 +1055,16 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'step: u32',
       'steps: u32',
       'seconds: Option<u64>',
+      'chat_on_card: bool',
     ]);
+    // The chat model is never unloaded for a picture (a hint only).
+    expect(imageGen).not.toMatch(
+      /model_server_stop|ModelServer>\(\)[\s\S]{0,80}kill/,
+    );
+    // SD 1.5 is clamped to 512 px for the PC's tool and for devices alike.
+    expect(imageGen).toMatch(
+      /pub async fn make\([\s\S]*?let \(width, height, steps\) = fit_request\(&set, width, height, steps\);\s*let req = check_request\(prompt, width, height, steps\)\?;/,
+    );
     expect([...imageGen.matchAll(/\.emit\(/g)]).toHaveLength(1);
     expect(imageGen).toContain('let _ = app.emit(PROGRESS_EVENT, event);');
     expect(imageGen).toMatch(
