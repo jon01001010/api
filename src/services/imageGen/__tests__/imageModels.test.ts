@@ -31,7 +31,7 @@ it('every file is a plain name from https', () => {
 it('shows size and licence (and use rules) before downloading', () => {
   const sd = IMAGE_MODEL_SETS.find(s => s.id === 'sd15')!;
   const q = downloadQuestion(sd);
-  expect(q).toContain('about 2.1 GB');
+  expect(q).toContain('about 1.6 GB');
   expect(q).toContain('OpenRAIL-M');
   expect(q).toContain('Use rules:');
   expect(q).toContain('minors');
