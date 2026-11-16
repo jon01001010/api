@@ -12,8 +12,13 @@ import {uiStore} from '../../store';
  * Screens that used to sit in the side menu, now reached from Settings so
  * the side menu keeps just Chat, Assistants, Models and Settings.
  */
-export const SettingsLinks: React.FC<{cardStyle?: object}> = observer(
-  ({cardStyle}) => {
+/**
+ * `devOnly`: just the developer links (Hardware, Benchmark), shown inside
+ * the developer settings where people look for them; the top card then
+ * shows only the everyday links.
+ */
+export const SettingsLinks: React.FC<{cardStyle?: object; devOnly?: boolean}> =
+  observer(({cardStyle, devOnly}) => {
     const navigation = useNavigation<any>();
     const l10n = useContext(L10nContext);
     const menu = l10n.components.sidebarContent.menuItems;
@@ -44,7 +49,9 @@ export const SettingsLinks: React.FC<{cardStyle?: object}> = observer(
         description: 'Version, licences, links',
         icon: 'information-outline',
       },
-    ].filter(link => !link.dev || uiStore.showDevSettings);
+    ].filter(link =>
+      devOnly ? link.dev && uiStore.showDevSettings : !link.dev,
+    );
     // Android's own page for choosing the assistant (PocketAgent is listed
     // there); the app can't pick itself.
     const openAssistantSettings = () =>
@@ -55,8 +62,11 @@ export const SettingsLinks: React.FC<{cardStyle?: object}> = observer(
           ),
       );
     return (
-      <Card elevation={0} style={cardStyle} testID="settings-links">
-        {Platform.OS === 'android' && (
+      <Card
+        elevation={0}
+        style={cardStyle}
+        testID={devOnly ? 'settings-links-dev' : 'settings-links'}>
+        {Platform.OS === 'android' && !devOnly && (
           <List.Item
             testID="settings-link-assistant"
             title="Use as your phone's assistant"
@@ -79,5 +89,4 @@ export const SettingsLinks: React.FC<{cardStyle?: object}> = observer(
         ))}
       </Card>
     );
-  },
-);
+  });

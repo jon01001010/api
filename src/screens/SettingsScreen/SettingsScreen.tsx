@@ -969,6 +969,7 @@ export const SettingsScreen: React.FC = observer(() => {
           </Card>
           {uiStore.showDevSettings && (
             <>
+              <SettingsLinks cardStyle={styles.card} devOnly />
               <LocalApiCard />
               {/* Model Initialization Settings */}
               <Card elevation={0} style={styles.card}>
