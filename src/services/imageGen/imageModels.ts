@@ -15,6 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as RNFS from '@dr.pogodin/react-native-fs';
 
 import catalog from './imageModelCatalog.json';
+import {isPictureModel, isSd15SingleFile} from '../../utils/pictureModel';
 
 export type ImageModelFile = {
   role: string;
@@ -126,14 +127,226 @@ export async function isInstalled(set: ImageModelSet): Promise<boolean> {
   return true;
 }
 
-/** The first downloaded set, in the list's order (FLUX.2 klein first). */
-export async function installedSet(): Promise<ImageModelSet | null> {
+type Gpus = {totalMemory: number; shared: boolean}[] | undefined;
+
+/**
+ * The downloaded set to use: the list's sets (FLUX.2 klein first), then
+ * picture files picked from the models folder; the first that fits the
+ * graphics card, else the first (the native side picks the same way for a
+ * paired device).
+ */
+export async function installedSet(gpus?: Gpus): Promise<ImageModelSet | null> {
+  const installed: ImageModelSet[] = [];
   for (const set of IMAGE_MODEL_SETS) {
     if (await isInstalled(set)) {
-      return set;
+      installed.push(set);
     }
   }
-  return null;
+  installed.push(...(await localSets()));
+  return (
+    installed.find(set => fitForCard(set, gpus) === 'fits') ??
+    installed[0] ??
+    null
+  );
+}
+
+/*
+ * Picture-model files the user downloaded through the Models screen (e.g.
+ * stable-diffusion-v1-5-…-Q4_0.gguf from a Hugging Face search). Stable
+ * Diffusion 1.5 runs from one such file, so it can be used for pictures:
+ * "Use this file for pictures" keeps a small record (an id, the file's
+ * place inside the models folder, kind "sd15-single") in
+ * LOCAL_SETS_FILE. The native side (src-tauri/src/image_gen.rs) gets only
+ * the id, reads that record itself and checks the file (inside the app's
+ * models folder, a regular .gguf file, no links) before it runs it.
+ */
+
+/** Where the Models screen keeps its downloads. */
+export const chatModelsDir = () => `${RNFS.DocumentDirectoryPath}/models`;
+export const localSetsFile = () =>
+  `${RNFS.DocumentDirectoryPath}/image-models/local-sets.json`;
+export const LOCAL_KIND_SD15 = 'sd15-single';
+/** Their licence is SD 1.5's: its note is shown the first time, once. */
+export const SD15_LICENCE_ID = 'sd15';
+
+export type LocalRecord = {id: string; file: string; kind: string};
+export type PictureFile = {
+  /** Its place inside the models folder, parts joined with "/". */
+  file: string;
+  name: string;
+  size: number;
+  /** Stable Diffusion 1.5 in one file: the PC can run it. */
+  usable: boolean;
+  /** Its record's id once picked ("Use this file for pictures"). */
+  id: string | null;
+};
+
+const PLAIN_PART = /^[^/\\:\0]+$/;
+const plainPlace = (file: string) =>
+  file
+    .split('/')
+    .every(part => part !== '.' && part !== '..' && PLAIN_PART.test(part));
+
+/** A record's id: "local-" and lower-case letters, digits and "-". */
+export function localId(file: string): string {
+  const slug = file
+    .toLowerCase()
+    .replace(/\.gguf$/, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(-80)
+    .replace(/^-+/, '');
+  return `local-${slug || 'model'}`;
+}
+
+export async function readLocalRecords(): Promise<LocalRecord[]> {
+  try {
+    if (!(await RNFS.exists(localSetsFile()))) {
+      return [];
+    }
+    const parsed: unknown = JSON.parse(
+      await RNFS.readFile(localSetsFile(), 'utf8'),
+    );
+    const sets = (parsed as {sets?: unknown})?.sets;
+    return Array.isArray(sets)
+      ? sets.filter(
+          (r): r is LocalRecord =>
+            !!r &&
+            typeof r.id === 'string' &&
+            typeof r.file === 'string' &&
+            typeof r.kind === 'string',
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** A picked file as a set, shown and chosen like the list's own. */
+export function localSetFor(record: LocalRecord, size: number): ImageModelSet {
+  const sd15 = IMAGE_MODEL_SETS.find(s => s.id === SD15_LICENCE_ID)!;
+  const name = record.file.split('/').pop() ?? record.file;
+  return {
+    ...sd15,
+    id: record.id,
+    name: `${name} (your file, Stable Diffusion 1.5)`,
+    kind: 'sd',
+    defaultSteps: 20,
+    cfgScale: 7,
+    offloadToCpu: false,
+    recommendedVramGb: 4,
+    verified: false,
+    files: [{role: 'model', name, url: '', approxBytes: size, sha256: null}],
+  };
+}
+
+/** The picked files that are still there, as sets. */
+export async function localSets(): Promise<ImageModelSet[]> {
+  const out: ImageModelSet[] = [];
+  for (const record of await readLocalRecords()) {
+    if (record.kind !== LOCAL_KIND_SD15 || !plainPlace(record.file)) {
+      continue;
+    }
+    try {
+      const stat = await RNFS.stat(`${chatModelsDir()}/${record.file}`);
+      if (stat.isFile()) {
+        out.push(localSetFor(record, Number(stat.size)));
+      }
+    } catch {}
+  }
+  return out;
+}
+
+/**
+ * Picture-model GGUFs in the models folder (a few levels deep:
+ * hf/<author>/<repo>/<file>), with whether the PC can run each and its
+ * record if picked.
+ */
+export async function findPictureFiles(): Promise<PictureFile[]> {
+  const records = await readLocalRecords();
+  const found: PictureFile[] = [];
+  const walk = async (dir: string, place: string[], depth: number) => {
+    let entries: Awaited<ReturnType<typeof RNFS.readDir>>;
+    try {
+      entries = await RNFS.readDir(dir);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const parts = [...place, entry.name];
+      if (entry.isDirectory()) {
+        if (depth < 4) {
+          await walk(`${dir}/${entry.name}`, parts, depth + 1);
+        }
+        continue;
+      }
+      if (!entry.isFile() || !/\.gguf$/i.test(entry.name)) {
+        continue;
+      }
+      if (!isPictureModel({filename: entry.name, repo: place.join('/')})) {
+        continue;
+      }
+      const file = parts.join('/');
+      if (!plainPlace(file)) {
+        continue;
+      }
+      found.push({
+        file,
+        name: entry.name,
+        size: Number(entry.size),
+        usable: isSd15SingleFile(entry.name),
+        id:
+          records.find(r => r.file === file && r.kind === LOCAL_KIND_SD15)
+            ?.id ?? null,
+      });
+    }
+  };
+  if (await RNFS.exists(chatModelsDir()).catch(() => false)) {
+    await walk(chatModelsDir(), [], 0);
+  }
+  return found.sort((a, b) => a.file.localeCompare(b.file));
+}
+
+/**
+ * "Use this file for pictures": keeps its record (SD 1.5 in one file only).
+ * Returns the record's id.
+ */
+export async function registerPictureFile(picked: PictureFile): Promise<string> {
+  if (!picked.usable || !isSd15SingleFile(picked.name)) {
+    throw new Error(
+      'Only a Stable Diffusion 1.5 file (one .gguf) can be used for pictures for now.',
+    );
+  }
+  if (!plainPlace(picked.file)) {
+    throw new Error('That file is not inside the models folder.');
+  }
+  const records = await readLocalRecords();
+  const existing = records.find(r => r.file === picked.file);
+  if (existing) {
+    return existing.id;
+  }
+  let id = localId(picked.file);
+  for (let n = 2; records.some(r => r.id === id); n++) {
+    id = `${localId(picked.file)}-${n}`;
+  }
+  const next = [...records, {id, file: picked.file, kind: LOCAL_KIND_SD15}];
+  await RNFS.mkdir(`${RNFS.DocumentDirectoryPath}/image-models`);
+  await RNFS.writeFile(
+    localSetsFile(),
+    JSON.stringify({sets: next}, null, 2),
+    'utf8',
+  );
+  return id;
+}
+
+/** Stops using a picked file for pictures (the file itself stays). */
+export async function stopUsingFile(id: string): Promise<void> {
+  const records = await readLocalRecords();
+  await RNFS.writeFile(
+    localSetsFile(),
+    JSON.stringify({sets: records.filter(r => r.id !== id)}, null, 2),
+    'utf8',
+  );
 }
 
 /** What the user reads before downloading (and agrees to by downloading). */
@@ -250,7 +463,7 @@ export async function downloadSet(
  */
 export function fitForCard(
   set: ImageModelSet,
-  gpus: {totalMemory: number; shared: boolean}[] | undefined,
+  gpus: Gpus,
 ): 'fits' | 'too-big' | 'unknown' {
   const dedicated = (gpus ?? []).filter(g => !g.shared);
   if (!dedicated.length) {

@@ -13,7 +13,8 @@ export {FIT_TEXT, npuText} from './pcHardwareShared';
 export type {PcFit, PcHardware, PcNpu} from './pcHardwareShared';
 
 let reading: Promise<PcHardware | null> | null = null;
-function read(): Promise<PcHardware | null> {
+/** The hardware, read once per app start (null if it can't be read). */
+export function read(): Promise<PcHardware | null> {
   if (!reading) {
     reading = native.systemInfo().catch(() => null);
   }

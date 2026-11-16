@@ -21,6 +21,7 @@
  *   path, the action and the size; some places are never reachable.
  */
 import {installedSet} from '../imageGen/imageModels';
+import {read as readPcHardware} from '../desktop/pcHardware';
 import {getWorkspaceLimits} from './fileWorkspace';
 import {
   TalentEngine,
@@ -242,7 +243,9 @@ async function makePicture(
   if (!prompt) {
     throw new Error('Give the `prompt`: what the picture shows.');
   }
-  const set = await installedSet();
+  // Several downloaded: the one that fits the graphics card.
+  const hardware = await readPcHardware().catch(() => null);
+  const set = await installedSet(hardware?.gpus);
   if (!set) {
     return {
       type: 'text',
