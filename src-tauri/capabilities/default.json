@@ -16,6 +16,7 @@
     "allow-fs-remove",
     "allow-fs-copy",
     "allow-fs-move",
+    "allow-fs-hash",
     "allow-doc-to-text",
     "allow-fs-download",
     "allow-fs-download-cancel",

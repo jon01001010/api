@@ -33,6 +33,11 @@ import {
 } from '../../../../../utils/types';
 import {VisionDownloadSheet} from '../../../../../components';
 import {FitLabel} from '../../../../../components/FitLabel';
+import {
+  PICTURE_MODEL_LABEL,
+  isPictureModel,
+  repoPictureHints,
+} from '../../../../../utils/pictureModel';
 import {ChevronRightIcon} from '../../../../../assets/icons';
 import {themeColor} from '../../../../../theme/phosphor';
 
@@ -331,6 +336,17 @@ export const ModelFileCard: FC<ModelFileCardProps> = observer(
                       </Text>
                     </View>
                   </Pressable>
+                )}
+                {isPictureModel(
+                  repoPictureHints(hfModel, modelFile.rfilename),
+                ) && (
+                  <View
+                    style={styles.warningChip}
+                    testID={`picture-model-label-${modelFile.rfilename}`}>
+                    <Text style={styles.warningText}>
+                      {PICTURE_MODEL_LABEL}
+                    </Text>
+                  </View>
                 )}
                 {Boolean(hfModel.gated) && (
                   <View style={styles.warningChip}>

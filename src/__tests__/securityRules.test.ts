@@ -343,6 +343,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'fs_remove',
         'fs_copy',
         'fs_move',
+        'fs_hash',
         'fs_download',
         'fs_download_cancel',
         'secret_get',
@@ -428,6 +429,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(fns.map(m => m[1]).sort()).toEqual([
       'fs_copy',
       'fs_exists',
+      'fs_hash',
       'fs_list',
       'fs_mkdir',
       'fs_move',
@@ -437,8 +439,16 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'fs_write',
     ]);
     for (const [, name, body] of fns) {
-      expect([name, body.includes('allowed(&app')]).toEqual([name, true]);
+      // fs_hash: the app's own files only, never outside (nothing to ask).
+      const rule = name === 'fs_hash' ? 'own_file(&app' : 'allowed(&app';
+      expect([name, body.includes(rule)]).toEqual([name, true]);
     }
+    expect(files).toMatch(
+      /fn own_file\([\s\S]*?if !located\.own \{\s*return Err[\s\S]*?if !stays_inside\(&root, &located\.real\) \{\s*return Err/,
+    );
+    expect(files).toMatch(
+      /if !algorithm\.eq_ignore_ascii_case\("sha256"\) \{\s*return Err/,
+    );
     // Outside the app's folder: resolved and checked against the places
     // never reachable first, then asked, then logged. A link in the app's
     // own folder that leads out is refused.
@@ -1700,7 +1710,23 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // own folder; only files from the model list, in the app's folder.
     expect(gen).toMatch(/"sd-cli\.exe"\s*\} else \{\s*"sd-cli"/);
     expect(gen).not.toMatch(/sd-server"/);
-    expect(gen).toContain('let models = root.join(MODELS_DIR).join(&set.id);');
+    expect(gen).toContain('let models = set_dir(&root, &set);');
+    expect(gen).toContain(
+      '.unwrap_or_else(|| root.join(MODELS_DIR).join(&set.id))',
+    );
+    // A picture file picked from the models folder: the screens name only
+    // its id; this side reads the record itself and checks the file again
+    // right before it runs (inside the models folder, .gguf, no links).
+    expect(gen).toMatch(
+      /if set\.dir\.is_some\(\) \{[\s\S]*?find_set\(&root, &set\.id\)\?;/,
+    );
+    expect(gen).toContain('let set = find_set(&root, &model)?;');
+    expect(gen).toMatch(
+      /pub fn local_set\([\s\S]*?\*p != "\.\."[\s\S]*?ends_with\("\.gguf"\)[\s\S]*?is_symlink\(\)[\s\S]*?\.map\(\|r\| r\.starts_with\(root\)\)/,
+    );
+    expect(gen).toContain(
+      'pub const CHAT_MODELS_DIR: &str = "Documents/models";',
+    );
     expect(gen).toContain(
       'let dir = crate::pc::workspace(&app)?.join(IMAGES_DIR);',
     );
@@ -1737,7 +1763,9 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /if \(set\.verified && file\.sha256 === null\) \{\s*return/,
     );
     // Only commercially usable models are listed.
-    const models = read('src/services/imageGen/imageModelCatalog.json').toLowerCase();
+    const models = read(
+      'src/services/imageGen/imageModelCatalog.json',
+    ).toLowerCase();
     for (const banned of ['flux.1-dev', 'klein-9b', 'sd-turbo', 'sdxl-turbo']) {
       expect([banned, models.includes(`/${banned}`)]).toEqual([banned, false]);
     }

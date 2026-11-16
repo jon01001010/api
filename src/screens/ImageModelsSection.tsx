@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Alert, View} from 'react-native';
+import {Alert, StyleSheet, View} from 'react-native';
 import {Button, Card, Chip, Text} from 'react-native-paper';
 import {usePcHardware} from '../services/desktop/pcHardware';
 
@@ -15,7 +15,19 @@ import {
   setBytes,
   verifiedNote,
   fitForCard,
+  PictureFile,
+  SD15_LICENCE_ID,
+  findPictureFiles,
+  adoptAsListSet,
+  localSetFor,
+  stopUsingFile,
+  registerPictureFile,
 } from '../services/imageGen/imageModels';
+
+const FIT_TEXT = {
+  fits: 'Fits your graphics card',
+  'too-big': 'Too big for your graphics card (very slow)',
+} as const;
 
 const ask = (title: string, message: string, ok: string) =>
   new Promise<boolean>(resolve =>
@@ -28,7 +40,9 @@ const ask = (title: string, message: string, ok: string) =>
 /**
  * Toolbox, desktop app only: the picture models for image_generate. Size,
  * licence (and use rules) are shown before anything is downloaded; the
- * licence note the first time with its own question.
+ * licence note the first time with its own question. Below them, picture
+ * models already downloaded through the Models screen (a Stable Diffusion
+ * 1.5 .gguf can be used as it is: "Use this file for pictures").
  */
 export const ImageModelsSection: React.FC<{errorColor: string}> = ({
   errorColor,
@@ -37,6 +51,7 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
+  const [files, setFiles] = useState<PictureFile[]>([]);
   const hardware = usePcHardware();
 
   const refresh = useCallback(async () => {
@@ -45,23 +60,80 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
       next[set.id] = await isInstalled(set).catch(() => false);
     }
     setInstalled(next);
+    setFiles(await findPictureFiles().catch(() => []));
   }, []);
   useEffect(() => {
     refresh();
   }, [refresh]);
 
+  /** The licence note (and use rules) the first time; false if declined. */
+  const licenceAgreed = async (set: ImageModelSet, id: string) => {
+    if (await licenceSeen(id)) {
+      return true;
+    }
+    const agreed = await ask(
+      `${set.name}: licence`,
+      `${set.licenceNote}${set.useRules ? `\n\nUse rules: ${set.useRules}` : ''}\n\nFull text: ${set.licenceUrl}`,
+      'I understand',
+    );
+    if (agreed) {
+      await markLicenceSeen(id);
+    }
+    return agreed;
+  };
+
+  const pickFile = async (file: PictureFile) => {
+    setError('');
+    const listed = IMAGE_MODEL_SETS.find(s => s.id === file.listSet);
+    const set =
+      listed ?? localSetFor({id: 'local-x', file: file.file, kind: ''}, 0);
+    if (!(await licenceAgreed(set, listed ? listed.id : SD15_LICENCE_ID))) {
+      return;
+    }
+    if (
+      listed &&
+      !(await ask(
+        'Use this file for pictures?',
+        `This is the ${listed.name} file from the picture model list. Its SHA-256 is checked first; then it moves to Image models (no second copy, nothing downloaded again) and is no longer in your chat model list.`,
+        'Check and use',
+      ))
+    ) {
+      return;
+    }
+    setBusy(file.file);
+    try {
+      if (listed) {
+        await adoptAsListSet(file);
+      } else {
+        await registerPictureFile(file);
+      }
+    } catch (e) {
+      setError(`${file.name}: ${String(e instanceof Error ? e.message : e)}`);
+    } finally {
+      setBusy(null);
+    }
+    refresh();
+  };
+
+  const stopUsing = async (id: string) => {
+    setError('');
+    await stopUsingFile(id).catch(e => setError(String(e)));
+    refresh();
+  };
+
+  const fitChip = (set: ImageModelSet, testID: string) => {
+    const fit = fitForCard(set, hardware?.gpus);
+    return fit === 'unknown' ? null : (
+      <Chip compact testID={testID}>
+        {FIT_TEXT[fit]}
+      </Chip>
+    );
+  };
+
   const download = async (set: ImageModelSet) => {
     setError('');
-    if (!(await licenceSeen(set.id))) {
-      const agreed = await ask(
-        `${set.name}: licence`,
-        `${set.licenceNote}${set.useRules ? `\n\nUse rules: ${set.useRules}` : ''}\n\nFull text: ${set.licenceUrl}`,
-        'I understand',
-      );
-      if (!agreed) {
-        return;
-      }
-      await markLicenceSeen(set.id);
+    if (!(await licenceAgreed(set, set.id))) {
+      return;
     }
     if (
       !(await ask('Download picture model?', downloadQuestion(set), 'Download'))
@@ -84,7 +156,7 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
 
   return (
     <Card mode="outlined" testID="toolbox-image-models">
-      <Card.Content style={{gap: 6}}>
+      <Card.Content style={styles.content}>
         <Text variant="titleMedium">Image models (for image_generate)</Text>
         <Text variant="bodyMedium">
           Pictures are made on this PC with stable-diffusion.cpp; nothing is
@@ -92,26 +164,14 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
           on ARM Linux (far too slow there).
         </Text>
         {IMAGE_MODEL_SETS.map(set => (
-          <View key={set.id} style={{gap: 4, paddingVertical: 4}}>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
-                flexWrap: 'wrap',
-              }}>
-              <Text variant="titleSmall" style={{flex: 1}}>
+          <View key={set.id} style={styles.item}>
+            <View style={styles.row}>
+              <Text variant="titleSmall" style={styles.grow}>
                 {set.name}
               </Text>
               <Chip compact>{set.licence}</Chip>
               <Chip compact>about {formatGb(setBytes(set))}</Chip>
-              {fitForCard(set, hardware?.gpus) !== 'unknown' ? (
-                <Chip compact testID={'toolbox-image-model-fit-' + set.id}>
-                  {fitForCard(set, hardware?.gpus) === 'fits'
-                    ? 'Fits your graphics card'
-                    : 'Too big for your graphics card (very slow)'}
-                </Chip>
-              ) : null}
+              {fitChip(set, 'toolbox-image-model-fit-' + set.id)}
             </View>
             <Text variant="bodySmall">{set.licenceNote}</Text>
             {verifiedNote(set) ? (
@@ -134,8 +194,78 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
             )}
           </View>
         ))}
+        {files.length ? (
+          <View style={styles.files} testID="toolbox-picture-files">
+            <Text variant="titleSmall">
+              Picture models you already downloaded
+            </Text>
+            <Text variant="bodySmall">
+              Found in the app's models folder (downloaded in Models). A Stable
+              Diffusion 1.5 file can be used as it is.
+            </Text>
+            {files.map(file => {
+              const set = localSetFor(
+                {id: file.id ?? 'local-x', file: file.file, kind: ''},
+                file.size,
+              );
+              return (
+                <View
+                  key={file.file}
+                  style={styles.item}
+                  testID={'toolbox-picture-file-' + file.name}>
+                  <View style={styles.row}>
+                    <Text variant="bodyMedium" style={styles.grow}>
+                      {file.name}
+                    </Text>
+                    <Chip compact>{formatGb(file.size)}</Chip>
+                    {file.usable
+                      ? fitChip(set, 'toolbox-picture-file-fit-' + file.name)
+                      : null}
+                  </View>
+                  {!file.usable ? (
+                    <Text variant="bodySmall">
+                      Only Stable Diffusion 1.5 files (one .gguf) can be used
+                      for pictures for now.
+                    </Text>
+                  ) : file.id ? (
+                    <View style={styles.used}>
+                      <Text variant="bodySmall" style={styles.grow}>
+                        Used for pictures (licence: {set.licence}).
+                      </Text>
+                      <Button
+                        compact
+                        testID={'toolbox-picture-file-stop-' + file.name}
+                        onPress={() => stopUsing(file.id!)}>
+                        Stop using
+                      </Button>
+                    </View>
+                  ) : (
+                    <Button
+                      testID={'toolbox-picture-file-use-' + file.name}
+                      mode="outlined"
+                      disabled={busy !== null}
+                      onPress={() => pickFile(file)}>
+                      {busy === file.file
+                        ? 'Checking…'
+                        : 'Use this file for pictures'}
+                    </Button>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
         {error ? <Text style={{color: errorColor}}>{error}</Text> : null}
       </Card.Content>
     </Card>
   );
 };
+
+const styles = StyleSheet.create({
+  content: {gap: 6},
+  item: {gap: 4, paddingVertical: 4},
+  row: {flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap'},
+  grow: {flex: 1},
+  files: {gap: 4, paddingTop: 8},
+  used: {flexDirection: 'row', alignItems: 'center', gap: 8},
+});

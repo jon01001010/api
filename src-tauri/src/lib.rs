@@ -89,6 +89,7 @@ pub fn run() {
             files::fs_remove,
             files::fs_copy,
             files::fs_move,
+            files::fs_hash,
             docs::doc_to_text,
             download::fs_download,
             download::fs_download_cancel,

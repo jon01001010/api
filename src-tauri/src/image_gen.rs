@@ -8,6 +8,14 @@
 //! inside the app's own folder, so no question is needed; the chat shows the
 //! prompt as the tool call, like every tool.
 //!
+//! A picture model the user already downloaded through the Models screen
+//! (Stable Diffusion 1.5 in one GGUF) can be used too: the screens keep a
+//! small record of it (`Documents/image-models/local-sets.json`: an id, the
+//! file's place inside the app's `Documents/models` folder, kind
+//! "sd15-single") and name only its id here. This side reads the record
+//! itself and runs the file only if it is a plain `.gguf` file inside that
+//! folder, reached without links (local_set).
+//!
 //! Limits: prompt up to 1000 characters (no control or invisible
 //! characters), sizes 512 / 768 / 1024, at most 30 steps, one picture at a
 //! time, stopped after 10 minutes, and `image_cancel` stops it at once.
@@ -36,6 +44,12 @@ const CATALOG: &str = include_str!("../../src/services/imageGen/imageModelCatalo
 pub const MODELS_DIR: &str = "Documents/image-models";
 /// Pictures go here, inside the workspace.
 pub const IMAGES_DIR: &str = "images";
+/// Where the Models screen downloads models (its own folder).
+pub const CHAT_MODELS_DIR: &str = "Documents/models";
+/// The screens' record of picture-model files picked from CHAT_MODELS_DIR.
+pub const LOCAL_SETS: &str = "Documents/image-models/local-sets.json";
+/// The one kind of picked file that runs from one file: SD 1.5.
+pub const LOCAL_KIND_SD15: &str = "sd15-single";
 
 #[derive(Deserialize)]
 struct Catalog {
@@ -51,7 +65,14 @@ pub struct ModelSet {
     pub default_steps: u32,
     pub cfg_scale: f32,
     pub offload_to_cpu: bool,
+    /// The graphics card memory it runs well with.
+    #[serde(default)]
+    pub recommended_vram_gb: f64,
     pub files: Vec<ModelFile>,
+    /// A picked file's folder (checked by local_set); None for the list's
+    /// own sets (`Documents/image-models/<id>`).
+    #[serde(skip)]
+    pub dir: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -64,6 +85,163 @@ pub fn catalog() -> Result<Vec<ModelSet>, String> {
     serde_json::from_str::<Catalog>(CATALOG)
         .map(|c| c.sets)
         .map_err(|e| format!("The picture model list is damaged: {e}"))
+}
+
+/// One record the screens keep for a picked picture-model file.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct LocalRecord {
+    pub id: String,
+    /// The file's place inside `Documents/models`, parts joined with "/".
+    pub file: String,
+    pub kind: String,
+}
+
+#[derive(Deserialize)]
+struct LocalRecords {
+    sets: Vec<LocalRecord>,
+}
+
+/// The screens' records (none when the file is missing or damaged).
+pub fn parse_local_records(text: &str) -> Vec<LocalRecord> {
+    serde_json::from_str::<LocalRecords>(text)
+        .map(|r| r.sets)
+        .unwrap_or_default()
+}
+
+/// A picked file's id: "local-" and lower-case letters, digits and "-".
+pub fn is_local_id(id: &str) -> bool {
+    id.strip_prefix("local-").is_some_and(|rest| {
+        !rest.is_empty()
+            && id.len() <= 100
+            && rest
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    })
+}
+
+/// Checks a record and finds its file (pure but for reading the disk, so it
+/// can be tested with a temporary folder): the kind is SD 1.5 in one file,
+/// the place is plain parts (no "..", drive, "\\" or empty part) inside
+/// `models`, the name ends in ".gguf", nothing on the way is a link (or a
+/// junction), the file is a regular GGUF file and, once resolved, it is
+/// still inside `models`.
+pub fn local_set(models: &Path, record: &LocalRecord) -> Result<ModelSet, String> {
+    if !is_local_id(&record.id) {
+        return Err("That picture model's record is damaged (its id)".into());
+    }
+    if record.kind != LOCAL_KIND_SD15 {
+        return Err(format!(
+            "Only Stable Diffusion 1.5 files can be used for pictures for now, not \"{}\"",
+            record.kind
+        ));
+    }
+    let parts: Vec<&str> = record.file.split('/').collect();
+    let plain = |p: &&str| {
+        !p.is_empty()
+            && *p != "."
+            && *p != ".."
+            && !p.contains(['\\', ':', '\0'])
+            && !p.chars().any(|c| c.is_control())
+    };
+    if parts.len() > 8 || !parts.iter().all(plain) {
+        return Err("That picture model's place is not allowed".into());
+    }
+    let name = parts[parts.len() - 1];
+    if !name.to_ascii_lowercase().ends_with(".gguf") {
+        return Err("Only .gguf picture model files can be used".into());
+    }
+    let mut real = models.to_path_buf();
+    for part in &parts {
+        real.push(part);
+        let meta = std::fs::symlink_metadata(&real)
+            .map_err(|_| format!("The picture model file is not there any more ({})", record.file))?;
+        if meta.file_type().is_symlink() {
+            return Err("That picture model is behind a link; links aren't followed".into());
+        }
+    }
+    let meta = std::fs::symlink_metadata(&real).map_err(|e| e.to_string())?;
+    if !meta.file_type().is_file() {
+        return Err("That picture model is not a regular file".into());
+    }
+    let inside = std::fs::canonicalize(models)
+        .and_then(|root| std::fs::canonicalize(&real).map(|r| r.starts_with(root)))
+        .unwrap_or(false);
+    if !inside {
+        return Err("That picture model is outside the app's models folder".into());
+    }
+    let mut magic = [0u8; 4];
+    std::fs::File::open(&real)
+        .and_then(|mut f| f.read_exact(&mut magic))
+        .map_err(|e| e.to_string())?;
+    if &magic != b"GGUF" {
+        return Err("That file is not a GGUF model".into());
+    }
+    Ok(ModelSet {
+        id: record.id.clone(),
+        kind: "sd".into(),
+        default_steps: 20,
+        cfg_scale: 7.0,
+        offload_to_cpu: false,
+        recommended_vram_gb: 4.0,
+        files: vec![ModelFile {
+            role: "model".into(),
+            name: name.to_string(),
+        }],
+        dir: real.parent().map(Path::to_path_buf),
+    })
+}
+
+/// The picked files' sets that check out, in the records' order.
+fn local_sets(root: &Path) -> Vec<ModelSet> {
+    let text = std::fs::read_to_string(root.join(LOCAL_SETS)).unwrap_or_default();
+    let models = root.join(CHAT_MODELS_DIR);
+    parse_local_records(&text)
+        .iter()
+        .filter_map(|r| local_set(&models, r).ok())
+        .collect()
+}
+
+/// A set by its id: the list's own, or a picked file (checked again now).
+pub fn find_set(root: &Path, id: &str) -> Result<ModelSet, String> {
+    if is_local_id(id) {
+        let text = std::fs::read_to_string(root.join(LOCAL_SETS)).unwrap_or_default();
+        let record = parse_local_records(&text)
+            .into_iter()
+            .find(|r| r.id == id)
+            .ok_or_else(|| format!("Unknown picture model: {id}"))?;
+        return local_set(&root.join(CHAT_MODELS_DIR), &record);
+    }
+    catalog()?
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or_else(|| format!("Unknown picture model: {id}"))
+}
+
+/// The folder a set's files are in.
+fn set_dir(root: &Path, set: &ModelSet) -> PathBuf {
+    set.dir
+        .clone()
+        .unwrap_or_else(|| root.join(MODELS_DIR).join(&set.id))
+}
+
+/// Of the downloaded sets (in order), the first that suits the largest
+/// graphics card with its own memory, else the first (as the screens'
+/// fitForCard). Pure, so it can be tested.
+pub fn pick_set(installed: Vec<ModelSet>, gpus: &[crate::system::Gpu]) -> Option<ModelSet> {
+    let card_gb = gpus
+        .iter()
+        .filter(|g| !g.shared)
+        .map(|g| g.total_memory as f64 / 1e9)
+        .fold(None, |best: Option<f64>, gb| Some(best.map_or(gb, |b| b.max(gb))));
+    if let Some(gb) = card_gb {
+        if let Some(fits) = installed
+            .iter()
+            .find(|s| gb + 0.25 >= s.recommended_vram_gb)
+        {
+            return Some(fits.clone());
+        }
+    }
+    installed.into_iter().next()
 }
 
 /// A checked request.
@@ -488,17 +666,21 @@ pub struct Generated {
     pub file: PathBuf,
 }
 
-/// The first downloaded set, in the list's order (as the screens'
-/// installedSet): what a paired device's picture uses (it names none).
+/// The downloaded set to use, as the screens' installedSet: the list's sets
+/// then picked files, the first that suits the graphics card, else the
+/// first. What a paired device's picture uses (it names none).
 #[cfg_attr(not(feature = "link"), allow(dead_code))]
 pub fn first_downloaded_set(app: &AppHandle) -> Result<ModelSet, String> {
     let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    catalog()?
+    let mut installed: Vec<ModelSet> = catalog()?
         .into_iter()
-        .find(|set| {
-            let dir = root.join(MODELS_DIR).join(&set.id);
+        .filter(|set| {
+            let dir = set_dir(&root, set);
             set.files.iter().all(|f| dir.join(&f.name).is_file())
         })
+        .collect();
+    installed.extend(local_sets(&root));
+    pick_set(installed, &crate::system::gpus(app))
         .ok_or_else(|| "No picture model is downloaded on the PC yet (Toolbox, Image models).".into())
 }
 
@@ -526,10 +708,8 @@ pub async fn image_generate(
     if let Some(why) = not_on_this_pc() {
         return Err(why.into());
     }
-    let set = catalog()?
-        .into_iter()
-        .find(|s| s.id == model)
-        .ok_or_else(|| format!("Unknown picture model: {model}"))?;
+    let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let set = find_set(&root, &model)?;
     make(app, set, &prompt, width, height, steps, seed, |_| {}).await
 }
 
@@ -556,7 +736,11 @@ pub async fn make(
     }
     let exe = sd_exe(&app)?;
     let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let models = root.join(MODELS_DIR).join(&set.id);
+    let models = set_dir(&root, &set);
+    if set.dir.is_some() {
+        // A picked file: checked again right before it runs.
+        find_set(&root, &set.id)?;
+    }
     for file in &set.files {
         if !models.join(&file.name).is_file() {
             return Err(format!(
@@ -809,6 +993,125 @@ mod tests {
         let args = sd_args(sd, dir, &req, 1, Path::new("o.png")).join(" ");
         assert!(args.contains("--model /app/"));
         assert!(!args.contains("--offload-to-cpu"));
+    }
+
+    /// A temporary app folder with a models folder.
+    fn temp_models(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("pa-img-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join(CHAT_MODELS_DIR).join("hf").join("a").join("r")).unwrap();
+        std::fs::create_dir_all(root.join("Documents").join("image-models")).unwrap();
+        root
+    }
+
+    fn record(id: &str, file: &str, kind: &str) -> LocalRecord {
+        LocalRecord {
+            id: id.into(),
+            file: file.into(),
+            kind: kind.into(),
+        }
+    }
+
+    #[test]
+    fn a_picked_sd15_file_runs_from_one_file_inside_the_models_folder() {
+        let root = temp_models("ok");
+        let models = root.join(CHAT_MODELS_DIR);
+        let rel = "hf/a/r/stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf";
+        std::fs::write(models.join(rel), b"GGUF\x03\x00\x00\x00rest").unwrap();
+        let rec = record("local-sd15-a", rel, LOCAL_KIND_SD15);
+        let set = local_set(&models, &rec).unwrap();
+        assert_eq!(set.kind, "sd");
+        assert_eq!(set.recommended_vram_gb, 4.0);
+        assert_eq!(set.files[0].name, "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf");
+        assert_eq!(set_dir(&root, &set), models.join("hf").join("a").join("r"));
+        // The arguments: `--model <file>`, as for the list's SD 1.5.
+        let req = check_request("a cat", 512, 512, 20).unwrap();
+        let args = sd_args(&set, &set_dir(&root, &set), &req, 7, Path::new("o.png"));
+        let m = args.iter().position(|a| a == "--model").unwrap();
+        assert_eq!(PathBuf::from(&args[m + 1]), models.join(rel));
+        assert!(!args.iter().any(|a| a == "--diffusion-model" || a == "--offload-to-cpu"));
+        assert_eq!(default_size(&set), 512);
+        // Found by its id through the screens' record.
+        std::fs::write(
+            root.join(LOCAL_SETS),
+            serde_json::json!({"sets": [{"id": "local-sd15-a", "file": rel, "kind": LOCAL_KIND_SD15}]})
+                .to_string(),
+        )
+        .unwrap();
+        assert_eq!(find_set(&root, "local-sd15-a").unwrap().files[0].name, set.files[0].name);
+        assert!(find_set(&root, "local-other").is_err());
+        assert_eq!(local_sets(&root).len(), 1);
+        // The list's own sets are still found by id.
+        assert_eq!(find_set(&root, "sd15").unwrap().id, "sd15");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_picked_file_must_be_a_plain_gguf_in_the_models_folder() {
+        let root = temp_models("bad");
+        let models = root.join(CHAT_MODELS_DIR);
+        std::fs::write(models.join("hf/a/r/m.gguf"), b"GGUFxxxx").unwrap();
+        std::fs::write(models.join("hf/a/r/m.safetensors"), b"GGUFxxxx").unwrap();
+        std::fs::write(models.join("hf/a/r/fake.gguf"), b"PK\x03\x04").unwrap();
+        std::fs::write(root.join("Documents").join("secret.gguf"), b"GGUFxxxx").unwrap();
+        let ok = |file: &str| local_set(&models, &record("local-x", file, LOCAL_KIND_SD15));
+        assert!(ok("hf/a/r/m.gguf").is_ok());
+        for bad in [
+            "../secret.gguf",
+            "hf/../../secret.gguf",
+            "hf/a/r/../../../../secret.gguf",
+            "/etc/m.gguf",
+            "hf\\a\\r\\m.gguf",
+            "C:/m.gguf",
+            "hf//a/r/m.gguf",
+            "./hf/a/r/m.gguf",
+            "hf/a/r/m.safetensors",
+            "hf/a/r/fake.gguf",
+            "hf/a/r/missing.gguf",
+            "hf/a/r",
+            "",
+        ] {
+            assert!(ok(bad).is_err(), "{bad}");
+        }
+        // Only SD 1.5 in one file, and only well-formed ids.
+        assert!(local_set(&models, &record("local-x", "hf/a/r/m.gguf", "sdxl")).is_err());
+        for id in ["sd15", "local-", "local-X", "local-a/b", "local-a b"] {
+            assert!(local_set(&models, &record(id, "hf/a/r/m.gguf", LOCAL_KIND_SD15)).is_err(), "{id}");
+        }
+        #[cfg(unix)]
+        {
+            // A link (to a file or a folder) is never followed.
+            std::os::unix::fs::symlink(root.join("Documents").join("secret.gguf"), models.join("link.gguf")).unwrap();
+            assert!(ok("link.gguf").is_err());
+            std::os::unix::fs::symlink(root.join("Documents"), models.join("out")).unwrap();
+            assert!(ok("out/secret.gguf").is_err());
+        }
+        // Damaged records read as none.
+        assert!(parse_local_records("not json").is_empty());
+        assert!(parse_local_records("{\"sets\": 3}").is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_set_that_fits_the_graphics_card_is_preferred() {
+        let sets = catalog().unwrap();
+        let flux = sets[0].clone();
+        let sd = sets.iter().find(|s| s.id == "sd15").unwrap().clone();
+        assert_eq!(flux.recommended_vram_gb, 6.0);
+        let card = |gb: u64, shared: bool| crate::system::Gpu {
+            name: "card".into(),
+            total_memory: gb * 1_000_000_000,
+            free_memory: 0,
+            shared,
+        };
+        let both = || vec![flux.clone(), sd.clone()];
+        assert_eq!(pick_set(both(), &[card(8, false)]).unwrap().id, flux.id);
+        assert_eq!(pick_set(both(), &[card(4, false)]).unwrap().id, "sd15");
+        // Nothing fits, or no card of its own: the first, as before.
+        assert_eq!(pick_set(both(), &[card(2, false)]).unwrap().id, flux.id);
+        assert_eq!(pick_set(both(), &[card(16, true)]).unwrap().id, flux.id);
+        assert_eq!(pick_set(both(), &[]).unwrap().id, flux.id);
+        assert!(pick_set(Vec::new(), &[card(8, false)]).is_none());
     }
 
     #[test]

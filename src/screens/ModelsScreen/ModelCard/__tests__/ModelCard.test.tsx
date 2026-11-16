@@ -186,6 +186,24 @@ describe('ModelCard', () => {
     });
   });
 
+  it('a downloaded picture model gets a clear note instead of Load', async () => {
+    const picture = {
+      ...downloadedModel,
+      id: 'second-state/stable-diffusion-v1-5-GGUF/sd.gguf',
+      name: 'stable-diffusion-v1-5-pruned-emaonly-Q4_0',
+      filename: 'stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf',
+      repo: 'stable-diffusion-v1-5-GGUF',
+    };
+    const {getByTestId, queryByTestId} = customRender(
+      <ModelCard model={picture} />,
+    );
+    expect(queryByTestId('load-button')).toBeNull();
+    expect(getByTestId('picture-model-load-disabled')).toBeTruthy();
+    expect(getByTestId('picture-model-note').props.children).toContain(
+      'picture model, not a chat model',
+    );
+  });
+
   it('handles model offload', async () => {
     const {getByTestId} = customRender(
       <ModelCard model={downloadedModel} activeModelId={downloadedModel.id} />,

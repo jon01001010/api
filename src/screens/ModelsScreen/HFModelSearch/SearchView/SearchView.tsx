@@ -1,4 +1,9 @@
 import React, {useState, useContext, useCallback, useRef} from 'react';
+import {
+  PICTURE_MODEL_LABEL,
+  isPictureModel,
+  repoPictureHints,
+} from '../../../../utils/pictureModel';
 import {TouchableOpacity, View} from 'react-native';
 
 import {observer} from 'mobx-react';
@@ -92,6 +97,14 @@ export const SearchView = observer(
           <View style={styles.statsContainer}>
             {isVision && (
               <ModelTypeTag type="vision" label={l10n.models.vision} />
+            )}
+            {isPictureModel(repoPictureHints(item)) && (
+              <Text
+                variant="labelSmall"
+                style={styles.statText}
+                testID={`picture-model-label-${item.id}`}>
+                {PICTURE_MODEL_LABEL}
+              </Text>
             )}
             <View style={styles.statItem}>
               <Icon
