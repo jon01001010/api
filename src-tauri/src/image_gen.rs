@@ -1540,6 +1540,15 @@ mod tests {
         assert_eq!((n, m), (3, 20));
         assert!((rate.unwrap() - 0.4).abs() < 1e-9);
         assert_eq!(parse_bar("|=| 1/4 - 2.0 s/it"), Some((1, 4, Some(2.0))));
+        // sd-cli's real line (util.cpp): speed padded to 10, then an ETA.
+        assert_eq!(
+            parse_bar("\r|====>     |  5/20 -   1.23s/it - ETA 00:18\x1b[K"),
+            Some((5, 20, Some(1.23)))
+        );
+        assert_eq!(
+            parse_bar("|==> | 12/25 -    2.00it/s - ETA 00:06\x1b[K\n"),
+            Some((12, 25, Some(0.5)))
+        );
         assert_eq!(parse_bar("  |=====| 20/20"), Some((20, 20, None)));
         // Not bars.
         assert_eq!(parse_bar("[INFO ] stable-diffusion.cpp:2350 - generating image: 1/1 - seed 42"), None);
