@@ -2,4 +2,4 @@ Change this file on the windows branch to build the phone app (APK) and the
 desktop apps (Windows, Linux) together, from the same commit, so they match.
 Each app shows its build in App Info; the home link says when phone and PC
 differ.
-Requested: 2026-11-16T00:20:37Z (pc tools stage 4, outside files, model guards, thinking at approvals, sub-agents, todo tidy)
+Requested: 2026-11-16T01:27:14Z (fix: desktop settings crash on the npu line; document reader self-import)
