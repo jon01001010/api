@@ -10,6 +10,7 @@ const COMMANDS: &[&str] = &[
     "fs_remove",
     "fs_copy",
     "fs_move",
+    "fs_hash",
     "doc_to_text",
     "fs_download",
     "fs_download_cancel",

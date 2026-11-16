@@ -259,9 +259,82 @@ pub async fn fs_move(app: AppHandle, from: String, to: String) -> Result<(), Str
     std::fs::rename(source, target).map_err(|e| e.to_string())
 }
 
+/// A file's SHA-256 (lower-case hex), read in pieces so a model of many
+/// gigabytes never sits in memory.
+pub fn sha256_file(path: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1024 * 1024];
+    loop {
+        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(crate::download::hex(&hasher.finalize()))
+}
+
+/// Only the app's own files (its downloaded models), with no prompt: a
+/// path outside the app's folder, or a link leading out of it, is refused
+/// rather than asked about (a file's SHA-256 is only ever checked for the
+/// app's own downloads).
+fn own_file(app: &AppHandle, input: &str) -> Result<PathBuf, String> {
+    let root = app_root(app)?;
+    let located = locate(&root, input)?;
+    if !located.own {
+        return Err("Only the app's own files can be checked".into());
+    }
+    if !stays_inside(&root, &located.real) {
+        return Err("That is a link to somewhere outside the app's folder; it isn't followed".into());
+    }
+    if !located.real.is_file() {
+        return Err("Not a file".into());
+    }
+    Ok(located.real)
+}
+
+/// RNFS.hash on the desktop: SHA-256 only, of a file in the app's folder.
+#[tauri::command]
+pub async fn fs_hash(app: AppHandle, path: String, algorithm: String) -> Result<String, String> {
+    if !algorithm.eq_ignore_ascii_case("sha256") {
+        return Err(format!("Only sha256 is supported, not {algorithm}"));
+    }
+    let real = own_file(&app, &path)?;
+    tauri::async_runtime::spawn_blocking(move || sha256_file(&real))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_files_sha256_is_read_in_pieces() {
+        let dir = std::env::temp_dir().join(format!("pa-hash-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.txt");
+        std::fs::write(&file, b"abc").unwrap();
+        assert_eq!(
+            sha256_file(&file).unwrap(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        std::fs::write(&file, b"").unwrap();
+        assert_eq!(
+            sha256_file(&file).unwrap(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        // Bigger than one piece: the same as hashing it at once.
+        let big: Vec<u8> = (0..3 * 1024 * 1024 + 7).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&file, &big).unwrap();
+        use sha2::{Digest, Sha256};
+        assert_eq!(sha256_file(&file).unwrap(), crate::download::hex(&Sha256::digest(&big)));
+        assert!(sha256_file(&dir.join("missing")).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn private_records_stay_out_of_the_screens_folder() {

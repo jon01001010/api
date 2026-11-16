@@ -101,6 +101,12 @@ const native = {
   unlink: path => invoke('fs_remove', {path}),
   copyFile: (from, to) => invoke('fs_copy', {from, to}),
   moveFile: (from, to) => invoke('fs_move', {from, to}),
+  // SHA-256 only, of the app's own files (its downloaded models), worked out
+  // on the native side in pieces; anything else is refused there.
+  hash: (path, algorithm) =>
+    String(algorithm).toLowerCase() === 'sha256'
+      ? invoke('fs_hash', {path, algorithm: 'sha256'})
+      : Promise.reject(new Error(`Only sha256 is supported, not ${algorithm}`)),
   downloadFile,
   stopDownload: jobId => {
     invoke('fs_download_cancel', {id: jobId}).catch(() => {});

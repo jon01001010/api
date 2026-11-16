@@ -343,6 +343,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'fs_remove',
         'fs_copy',
         'fs_move',
+        'fs_hash',
         'fs_download',
         'fs_download_cancel',
         'secret_get',
@@ -428,6 +429,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(fns.map(m => m[1]).sort()).toEqual([
       'fs_copy',
       'fs_exists',
+      'fs_hash',
       'fs_list',
       'fs_mkdir',
       'fs_move',
@@ -437,8 +439,16 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'fs_write',
     ]);
     for (const [, name, body] of fns) {
-      expect([name, body.includes('allowed(&app')]).toEqual([name, true]);
+      // fs_hash: the app's own files only, never outside (nothing to ask).
+      const rule = name === 'fs_hash' ? 'own_file(&app' : 'allowed(&app';
+      expect([name, body.includes(rule)]).toEqual([name, true]);
     }
+    expect(files).toMatch(
+      /fn own_file\([\s\S]*?if !located\.own \{\s*return Err[\s\S]*?if !stays_inside\(&root, &located\.real\) \{\s*return Err/,
+    );
+    expect(files).toMatch(
+      /if !algorithm\.eq_ignore_ascii_case\("sha256"\) \{\s*return Err/,
+    );
     // Outside the app's folder: resolved and checked against the places
     // never reachable first, then asked, then logged. A link in the app's
     // own folder that leads out is refused.

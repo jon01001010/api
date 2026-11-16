@@ -121,6 +121,36 @@ describe('downloads in the desktop app', () => {
   });
 });
 
+describe('file checksums in the desktop app', () => {
+  it('hash passes SHA-256 through to the native side, nothing else', async () => {
+    jest.resetModules();
+    const calls = [];
+    jest.doMock('../tauri', () => ({
+      isTauri: () => true,
+      Channel: class {},
+      invoke: async (cmd, args) => {
+        calls.push([cmd, args]);
+        return 'a'.repeat(64);
+      },
+    }));
+    const fsModule = jest.requireActual('../fs.js').default;
+    await expect(
+      fsModule.hash('/pocketagent/Documents/models/m.gguf', 'sha256'),
+    ).resolves.toBe('a'.repeat(64));
+    expect(calls).toEqual([
+      [
+        'fs_hash',
+        {path: '/pocketagent/Documents/models/m.gguf', algorithm: 'sha256'},
+      ],
+    ]);
+    await expect(fsModule.hash('/pocketagent/x', 'md5')).rejects.toThrow(
+      'Only sha256',
+    );
+    expect(calls).toHaveLength(1);
+    jest.dontMock('../tauri');
+  });
+});
+
 describe('model memory on a PC', () => {
   const {modelMemoryLimit} = require('../systemInfo');
   const GB = 1e9;
