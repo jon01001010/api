@@ -4,7 +4,7 @@
  */
 import {invoke} from '@tauri-apps/api/core';
 
-export {DOCUMENT_EXTENSIONS, isDocumentName} from './documentText';
+export {DOCUMENT_EXTENSIONS, isDocumentName} from './documentTypes';
 
 export async function readDocumentText(path: string): Promise<string> {
   return invoke<string>('doc_to_text', {path});

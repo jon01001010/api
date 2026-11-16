@@ -8,9 +8,9 @@ import {useEffect, useState} from 'react';
 
 const native = require('../../../stubs/web/systemInfo');
 
-import type {PcFit, PcHardware} from './pcHardware';
-export {FIT_TEXT, npuText} from './pcHardware';
-export type {PcFit, PcHardware, PcNpu} from './pcHardware';
+import type {PcFit, PcHardware} from './pcHardwareShared';
+export {FIT_TEXT, npuText} from './pcHardwareShared';
+export type {PcFit, PcHardware, PcNpu} from './pcHardwareShared';
 
 let reading: Promise<PcHardware | null> | null = null;
 function read(): Promise<PcHardware | null> {
