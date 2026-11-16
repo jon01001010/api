@@ -2,4 +2,4 @@ Change this file on the windows branch to build the phone app (APK) and the
 desktop apps (Windows, Linux) together, from the same commit, so they match.
 Each app shows its build in App Info; the home link says when phone and PC
 differ.
-Requested: 2026-11-16T21:01:34Z (picture model files: desktop sha-256, picture models labelled, use a downloaded sd 1.5; verified model links)
+Requested: 2026-11-16T23:37:33Z (picture progress, 512 px and small-card flags on weak cards; several models and/or; Meta Muse preset)
