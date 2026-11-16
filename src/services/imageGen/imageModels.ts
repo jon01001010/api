@@ -177,6 +177,12 @@ export type PictureFile = {
   size: number;
   /** Stable Diffusion 1.5 in one file: the PC can run it. */
   usable: boolean;
+  /**
+   * The id of the list's set whose one file this is (same name and size,
+   * e.g. SD 1.5's stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf): it is
+   * taken over as that set (adoptAsListSet) rather than kept as a record.
+   */
+  listSet: string | null;
   /** Its record's id once picked ("Use this file for pictures"). */
   id: string | null;
 };
@@ -295,6 +301,7 @@ export async function findPictureFiles(): Promise<PictureFile[]> {
         name: entry.name,
         size: Number(entry.size),
         usable: isSd15SingleFile(entry.name),
+        listSet: listSetFor(entry.name, Number(entry.size))?.id ?? null,
         id:
           records.find(r => r.file === file && r.kind === LOCAL_KIND_SD15)
             ?.id ?? null,
@@ -307,11 +314,57 @@ export async function findPictureFiles(): Promise<PictureFile[]> {
   return found.sort((a, b) => a.file.localeCompare(b.file));
 }
 
+/** The list's one-file set this file is exactly (name and size), if any. */
+export function listSetFor(name: string, size: number): ImageModelSet | null {
+  return (
+    IMAGE_MODEL_SETS.find(
+      set =>
+        set.files.length === 1 &&
+        set.files[0].name === name &&
+        set.files[0].approxBytes === size,
+    ) ?? null
+  );
+}
+
+/**
+ * "Use this file for pictures" for a file that is exactly one of the list's
+ * sets (e.g. SD 1.5 downloaded through a Hugging Face search): its SHA-256
+ * is checked against the list first, then the file moves (no second copy)
+ * into that set's folder with its checked note, so it counts as that set
+ * downloaded. A file with another SHA-256 stays where it is.
+ */
+export async function adoptAsListSet(picked: PictureFile): Promise<void> {
+  const set = listSetFor(picked.name, picked.size);
+  const expected = set?.files[0].sha256;
+  if (!set || !expected || checksumProblem(set) || !plainPlace(picked.file)) {
+    throw new Error('This file is not one of the listed picture models.');
+  }
+  const from = `${chatModelsDir()}/${picked.file}`;
+  const actual = (await RNFS.hash(from, 'sha256')).toLowerCase();
+  if (actual !== expected) {
+    throw new Error(
+      "This file's SHA-256 is not the one in the picture model list, so it was not used (it stays in Models).",
+    );
+  }
+  const dir = imageModelDir(set);
+  const target = `${dir}/${set.files[0].name}`;
+  await RNFS.mkdir(dir);
+  if (await RNFS.exists(target)) {
+    // An unchecked leftover there: the checked file takes its place.
+    await RNFS.unlink(checkedNote(target)).catch(() => {});
+    await RNFS.unlink(target);
+  }
+  await RNFS.moveFile(from, target);
+  await RNFS.writeFile(checkedNote(target), expected, 'utf8');
+}
+
 /**
  * "Use this file for pictures": keeps its record (SD 1.5 in one file only).
  * Returns the record's id.
  */
-export async function registerPictureFile(picked: PictureFile): Promise<string> {
+export async function registerPictureFile(
+  picked: PictureFile,
+): Promise<string> {
   if (!picked.usable || !isSd15SingleFile(picked.name)) {
     throw new Error(
       'Only a Stable Diffusion 1.5 file (one .gguf) can be used for pictures for now.',

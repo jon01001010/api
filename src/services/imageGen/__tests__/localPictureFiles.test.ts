@@ -3,6 +3,9 @@ import {
   LOCAL_KIND_SD15,
   findPictureFiles,
   installedSet,
+  isInstalled,
+  listSetFor,
+  adoptAsListSet,
   localId,
   localSets,
   readLocalRecords,
@@ -55,12 +58,30 @@ jest.mock('@dr.pogodin/react-native-fs', () => ({
       ? Promise.resolve(mockEntry(p))
       : Promise.reject(new Error('no file')),
   ),
+  hash: jest.fn((p: string, algorithm: string) => {
+    mockHashed.push([p, algorithm]);
+    return Promise.resolve(mockHash);
+  }),
+  moveFile: jest.fn((from: string, to: string) => {
+    mockTree.set(to, mockTree.get(from)!);
+    mockTree.delete(from);
+    return Promise.resolve();
+  }),
+  unlink: jest.fn((p: string) => {
+    mockTree.delete(p);
+    mockText.delete(p);
+    return Promise.resolve();
+  }),
 }));
+const mockHashed: [string, string][] = [];
+let mockHash = '';
 
 const SD = 'stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf';
 const SETS = '/docs/image-models/local-sets.json';
 
 beforeEach(() => {
+  mockHashed.length = 0;
+  mockHash = '';
   mockTree.clear();
   mockText.clear();
   for (const dir of [
@@ -163,6 +184,34 @@ describe('picture models already downloaded (desktop Toolbox)', () => {
     expect(await localSets()).toEqual([]);
     mockText.set(SETS, 'not json');
     expect(await readLocalRecords()).toEqual([]);
+  });
+
+  it("the list's own SD 1.5 file, downloaded in Models, is checked and taken over as that set", async () => {
+    const sd15 = IMAGE_MODEL_SETS.find(s => s.id === 'sd15')!;
+    const from = `/docs/models/hf/second-state/stable-diffusion-v1-5-GGUF/${SD}`;
+    mockTree.set(from, sd15.files[0].approxBytes);
+    const [, file] = await findPictureFiles();
+    expect(file.listSet).toBe('sd15');
+    expect(listSetFor(SD, 1)).toBeNull();
+
+    // Another SHA-256: refused, the file stays in Models.
+    mockHash = 'c'.repeat(64);
+    await expect(adoptAsListSet(file)).rejects.toThrow('SHA-256');
+    expect(mockHashed).toEqual([[from, 'sha256']]);
+    expect(mockTree.has(from)).toBe(true);
+    expect(await isInstalled(sd15)).toBe(false);
+
+    // The listed one: moved (no second copy) with its checked note.
+    mockHash = sd15.files[0].sha256!.toUpperCase();
+    await adoptAsListSet(file);
+    const target = `/docs/image-models/sd15/${SD}`;
+    expect(mockTree.has(from)).toBe(false);
+    expect(mockTree.has(target)).toBe(true);
+    expect(mockText.get(`${target}.sha256`)).toBe(sd15.files[0].sha256);
+    expect(await isInstalled(sd15)).toBe(true);
+    expect((await installedSet())?.id).toBe('sd15');
+    // No separate record was made.
+    expect(mockText.has(SETS)).toBe(false);
   });
 
   it('ids are plain', () => {

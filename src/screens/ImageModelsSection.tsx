@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Alert, View} from 'react-native';
+import {Alert, StyleSheet, View} from 'react-native';
 import {Button, Card, Chip, Text} from 'react-native-paper';
 import {usePcHardware} from '../services/desktop/pcHardware';
 
@@ -18,6 +18,7 @@ import {
   PictureFile,
   SD15_LICENCE_ID,
   findPictureFiles,
+  adoptAsListSet,
   localSetFor,
   stopUsingFile,
   registerPictureFile,
@@ -83,14 +84,33 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
 
   const pickFile = async (file: PictureFile) => {
     setError('');
-    const set = localSetFor({id: 'local-x', file: file.file, kind: ''}, 0);
-    if (!(await licenceAgreed(set, SD15_LICENCE_ID))) {
+    const listed = IMAGE_MODEL_SETS.find(s => s.id === file.listSet);
+    const set =
+      listed ?? localSetFor({id: 'local-x', file: file.file, kind: ''}, 0);
+    if (!(await licenceAgreed(set, listed ? listed.id : SD15_LICENCE_ID))) {
       return;
     }
+    if (
+      listed &&
+      !(await ask(
+        'Use this file for pictures?',
+        `This is the ${listed.name} file from the picture model list. Its SHA-256 is checked first; then it moves to Image models (no second copy, nothing downloaded again) and is no longer in your chat model list.`,
+        'Check and use',
+      ))
+    ) {
+      return;
+    }
+    setBusy(file.file);
     try {
-      await registerPictureFile(file);
+      if (listed) {
+        await adoptAsListSet(file);
+      } else {
+        await registerPictureFile(file);
+      }
     } catch (e) {
       setError(`${file.name}: ${String(e instanceof Error ? e.message : e)}`);
+    } finally {
+      setBusy(null);
     }
     refresh();
   };
@@ -136,7 +156,7 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
 
   return (
     <Card mode="outlined" testID="toolbox-image-models">
-      <Card.Content style={{gap: 6}}>
+      <Card.Content style={styles.content}>
         <Text variant="titleMedium">Image models (for image_generate)</Text>
         <Text variant="bodyMedium">
           Pictures are made on this PC with stable-diffusion.cpp; nothing is
@@ -144,15 +164,9 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
           on ARM Linux (far too slow there).
         </Text>
         {IMAGE_MODEL_SETS.map(set => (
-          <View key={set.id} style={{gap: 4, paddingVertical: 4}}>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
-                flexWrap: 'wrap',
-              }}>
-              <Text variant="titleSmall" style={{flex: 1}}>
+          <View key={set.id} style={styles.item}>
+            <View style={styles.row}>
+              <Text variant="titleSmall" style={styles.grow}>
                 {set.name}
               </Text>
               <Chip compact>{set.licence}</Chip>
@@ -181,7 +195,7 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
           </View>
         ))}
         {files.length ? (
-          <View style={{gap: 4, paddingTop: 8}} testID="toolbox-picture-files">
+          <View style={styles.files} testID="toolbox-picture-files">
             <Text variant="titleSmall">
               Picture models you already downloaded
             </Text>
@@ -197,16 +211,10 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
               return (
                 <View
                   key={file.file}
-                  style={{gap: 4, paddingVertical: 4}}
+                  style={styles.item}
                   testID={'toolbox-picture-file-' + file.name}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 8,
-                      flexWrap: 'wrap',
-                    }}>
-                    <Text variant="bodyMedium" style={{flex: 1}}>
+                  <View style={styles.row}>
+                    <Text variant="bodyMedium" style={styles.grow}>
                       {file.name}
                     </Text>
                     <Chip compact>{formatGb(file.size)}</Chip>
@@ -220,13 +228,8 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
                       for pictures for now.
                     </Text>
                   ) : file.id ? (
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                      }}>
-                      <Text variant="bodySmall" style={{flex: 1}}>
+                    <View style={styles.used}>
+                      <Text variant="bodySmall" style={styles.grow}>
                         Used for pictures (licence: {set.licence}).
                       </Text>
                       <Button
@@ -242,7 +245,9 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
                       mode="outlined"
                       disabled={busy !== null}
                       onPress={() => pickFile(file)}>
-                      Use this file for pictures
+                      {busy === file.file
+                        ? 'Checking…'
+                        : 'Use this file for pictures'}
                     </Button>
                   )}
                 </View>
@@ -255,3 +260,12 @@ export const ImageModelsSection: React.FC<{errorColor: string}> = ({
     </Card>
   );
 };
+
+const styles = StyleSheet.create({
+  content: {gap: 6},
+  item: {gap: 4, paddingVertical: 4},
+  row: {flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap'},
+  grow: {flex: 1},
+  files: {gap: 4, paddingTop: 8},
+  used: {flexDirection: 'row', alignItems: 'center', gap: 8},
+});
