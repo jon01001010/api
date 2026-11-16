@@ -52,6 +52,12 @@ import {
   isMTPCapable,
   isDraftOnlyModel,
 } from '../../../utils';
+import {
+  PICTURE_MODEL_LABEL,
+  PICTURE_MODEL_NO_LOAD,
+  isPictureModel,
+  modelPictureHints,
+} from '../../../utils/pictureModel';
 
 import {
   LinkExternalIcon,
@@ -125,6 +131,10 @@ export const ModelCard: React.FC<ModelCardProps> = observer(
 
     const isActiveModel = activeModelId === model.id;
     const isDraftOnly = isDraftOnlyModel(model);
+    // A Stable Diffusion / FLUX GGUF: not a chat model, never loaded here.
+    const isPicture =
+      model.origin !== ModelOrigin.REMOTE &&
+      isPictureModel(modelPictureHints(model));
     const isDownloaded = model.isDownloaded;
     const isDownloading = modelStore.isDownloading(model.id);
     const isHfModel = model.origin === ModelOrigin.HF;
@@ -595,6 +605,11 @@ export const ModelCard: React.FC<ModelCardProps> = observer(
               {l10n.models.modelCard.labels.draftOnlyReason}
             </Text>
           )}
+          {isPicture && (
+            <Text style={styles.draftOnlyHint} testID="picture-model-note">
+              {PICTURE_MODEL_NO_LOAD}
+            </Text>
+          )}
         </>
       );
     };
@@ -663,6 +678,20 @@ export const ModelCard: React.FC<ModelCardProps> = observer(
         }
         return theme.colors.btnPrimaryText;
       };
+
+      // A picture model can't be a chat model: no Load, the note says why.
+      if (isPicture) {
+        return (
+          <Button
+            testID="picture-model-load-disabled"
+            accessibilityLabel={PICTURE_MODEL_NO_LOAD}
+            icon="image-outline"
+            disabled
+            style={[styles.primaryActionButton, getButtonStyle()]}>
+            {PICTURE_MODEL_LABEL.split(' (')[0]}
+          </Button>
+        );
+      }
 
       // llama.rn cannot open a draft as a context; loading one only ever fails.
       if (isDraftOnly) {

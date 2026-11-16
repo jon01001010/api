@@ -143,6 +143,11 @@ import {
   stateCacheBudgetMb,
 } from '../utils/memoryEstimator';
 import {loadLlamaModelInfo} from 'llama.rn';
+import {
+  PICTURE_MODEL_NO_LOAD,
+  isPictureModel,
+  modelPictureHints,
+} from '../utils/pictureModel';
 
 /**
  * Factory function to create a Model object for a remote model from an OpenAI-compatible server.
@@ -3468,6 +3473,13 @@ class ModelStore {
    * - Local models: calls initContext()
    */
   selectModel = async (model: Model): Promise<void> => {
+    if (
+      model.origin !== ModelOrigin.REMOTE &&
+      isPictureModel(modelPictureHints(model))
+    ) {
+      // Stable Diffusion / FLUX files: never loaded as a chat model.
+      throw new Error(PICTURE_MODEL_NO_LOAD);
+    }
     if (model.origin === ModelOrigin.REMOTE) {
       await this.setRemoteModel(model);
     } else {
