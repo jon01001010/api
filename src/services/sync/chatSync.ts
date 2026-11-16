@@ -22,7 +22,7 @@ import {Q} from '@nozbe/watermelondb';
 import {database} from '../../database';
 import {assistantId, userId} from '../../utils/chat';
 import {isMirrored, withMirrorMark} from './mirrorMark';
-import {clampTime, fingerprint} from './promptSync';
+import {clampTime, fingerprint, MAX_CLOCK_SKEW} from './promptSync';
 
 const SESSION_FIELDS = [
   'title',
@@ -595,7 +595,14 @@ export async function mirrorOnPc(
       theirs.set(v.id, v as ChatVersion);
     }
   }
-  const send: ChatRecord[] = [];
+  // The device's copy dated more than a few minutes ahead of this clock:
+  // its clock is ahead. Taken here as at most that far ahead (cleanChats),
+  // so this copy is sent back and the device takes these times; otherwise
+  // its copy would stay "newest" there until its time came, and no reply
+  // from another device would ever reach it.
+  const limit = Date.now() + MAX_CLOCK_SKEW;
+  const ahead = (id: string) => (theirs.get(id)?.at ?? 0) > limit;
+  const send: ChatRecord[] = taken.filter(c => ahead(c.session.id));
   for (const chat of local.values()) {
     if (takenIds.has(chat.session.id) || known.hold?.has(chat.session.id)) {
       continue;
@@ -605,7 +612,11 @@ export async function mirrorOnPc(
       continue;
     }
     const their = theirs.get(chat.session.id);
-    if (!their || (their.print !== mine.print && isNewer(mine, their))) {
+    if (
+      !their ||
+      (their.print !== mine.print && isNewer(mine, their)) ||
+      ahead(chat.session.id)
+    ) {
       send.push(chat);
     }
   }

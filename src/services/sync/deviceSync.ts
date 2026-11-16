@@ -16,6 +16,8 @@ import {
 import {
   cleanChats,
   deletedBy,
+  type ChatVersion,
+  type Tombstone,
   isNewer,
   readAllChats,
   SYNC_ROOM,
@@ -162,16 +164,40 @@ export async function syncWithPc(pc: string): Promise<SyncOutcome> {
         local = await readAllChats();
       }
       const hold = new Set(del.held.map(h => h.chat.session.id));
+      // What this device told the PC in this sync.
+      const told = new Map(
+        (chats.versions as ChatVersion[]).map(v => [v.id, v.print] as const),
+      );
+      const toldGone = new Map(
+        (chats.tombstones as Tombstone[]).map(
+          t => [t.id, t.deletedAt] as const,
+        ),
+      );
       const gone = new Map(
         (await knownTombstones()).map(t => [t.id, t.deletedAt] as const),
       );
       const newer = cleanChats((answer as any).chats?.sessions).filter(c => {
         const v = versionOf(c);
-        if (hold.has(c.session.id) || deletedBy(v, gone)) {
+        if (
+          hold.has(c.session.id) ||
+          // Deleted here, unless the PC was told of that deletion and still
+          // sends the chat: it didn't take it (dated beyond the clamp, or no
+          // room to keep it there), so it comes back here, as an assistant
+          // or a loop does.
+          (deletedBy(v, gone) &&
+            toldGone.get(c.session.id) !== gone.get(c.session.id))
+        ) {
           return false;
         }
         const here = local.get(c.session.id);
-        return !here || isNewer(v, versionOf(here));
+        if (!here) {
+          return true;
+        }
+        const mine = versionOf(here);
+        // Newer, or the PC chose its copy over the one this device told it
+        // of (unchanged here since): this device's copy was dated beyond the
+        // clamp, and the PC's has the times it took (chatSync mirrorOnPc).
+        return isNewer(v, mine) || told.get(c.session.id) === mine.print;
       });
       // A copy that drops messages here: the earlier version is kept.
       const incoming = await keepEarlierVersions(local, newer, 'the PC');
