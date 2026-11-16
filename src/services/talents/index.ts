@@ -12,6 +12,7 @@ import {PcPictureEngine} from './PcPictureEngine';
 import {PcToolsEngine, PC_TOOL_NAMES} from './PcToolsEngine';
 import {ToolMakerEngine, TOOL_MAKER_NAMES} from './ToolMakerEngine';
 import {AskOtherModelEngine} from './AskOtherModelEngine';
+import {AskModelChainEngine, AskModelsEngine} from './AskModelsEngine';
 import {talentRegistry} from './TalentRegistry';
 import type {SearchAccess} from './searchAccess';
 import type {ToolDefinition, SystemPromptContext} from './types';
@@ -108,6 +109,10 @@ export function registerDefaultTalents(): void {
   // Hand a task to another model the user set up (off until switched on;
   // asks every time; the other model gets no tools).
   talentRegistry.register(new AskOtherModelEngine());
+  // Several models: at once ("and") or in turn when one runs out ("or");
+  // off until switched on; one question lists every model.
+  talentRegistry.register(new AskModelsEngine());
+  talentRegistry.register(new AskModelChainEngine());
   const searchAccess = createSearchAccess();
   talentRegistry.register(new WebSearchEngine(searchAccess));
   talentRegistry.register(new ReadUrlEngine(searchAccess));

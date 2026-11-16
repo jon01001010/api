@@ -218,8 +218,11 @@ export const ASKING_TOOLS: readonly string[] = [
   'pc_workspace_write',
   'pc_workspace_append',
   'pc_workspace_undo',
-  // Handing a task to another model (asks in the app every time).
+  // Handing a task to another model (asks in the app every time), to
+  // several at once, or to a fallback chain.
   'ask_other_model',
+  'ask_models',
+  'ask_model_chain',
 ];
 /** Tools that may ask once per chat (the paired PC's workspace reads). */
 const ASKS_ONCE = ['pc_workspace_list', 'pc_workspace_read'];

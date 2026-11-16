@@ -3,7 +3,10 @@ import {AppState} from 'react-native';
 import {act, fireEvent, render} from '../../../jest/test-utils';
 
 import {FileApprovalHost} from '../FileApprovalHost';
-import {requestFileApproval} from '../../services/talents/fileApprovalGate';
+import {
+  requestChoices,
+  requestFileApproval,
+} from '../../services/talents/fileApprovalGate';
 
 describe('FileApprovalHost: phone actions', () => {
   beforeAll(() => {
@@ -179,5 +182,86 @@ describe('FileApprovalHost: handing a task to another model', () => {
     expect(queryByTestId('approval-nothing-more')).toBeNull();
     fireEvent.press(getByText('Stop'));
     await expect(answer).resolves.toBe(false);
+  });
+});
+
+describe('FileApprovalHost: several models', () => {
+  const targets = [
+    {
+      id: 'a',
+      label: 'sonnet: sent to Claude with your key',
+      detail: 'Cost: not known here',
+      cloud: true,
+    },
+    {
+      id: 'b',
+      label: 'gpt: sent to OpenAI with your key',
+      detail: 'Cost: not known here',
+      cloud: true,
+    },
+  ];
+
+  it('a box per target: Allow sends to the ticked ones only', async () => {
+    const {findByText, getByText, getByTestId} = render(<FileApprovalHost />);
+    let answer: Promise<string[] | null> | undefined;
+    act(() => {
+      answer = requestChoices({
+        action: 'ask_models',
+        filename: 'The same text goes to 2 companies: Claude, OpenAI.',
+        content: 'Compare these',
+        targets,
+        alert:
+          'Earlier in this chat the model read private data (clipboard_read).',
+        from: {chat: 'm1'},
+      });
+    });
+    expect(await findByText('Hand this to several models?')).toBeTruthy();
+    expect(getByTestId('approval-alert')).toBeTruthy();
+    expect(getByTestId('approval-sent-text').props.children).toBe(
+      'Compare these',
+    );
+    expect(getByTestId('approval-nothing-more')).toBeTruthy();
+    fireEvent.press(getByTestId('approval-target-a'));
+    expect(getByText('Allow once (1 of 2)')).toBeTruthy();
+    expect(() => getByText(/always/i)).toThrow();
+    fireEvent.press(getByTestId('approval-allow'));
+    await expect(answer).resolves.toEqual(['b']);
+  });
+
+  it('nothing ticked: Allow is off; Deny is null', async () => {
+    const {findByText, getByText, getByTestId} = render(<FileApprovalHost />);
+    let answer: Promise<string[] | null> | undefined;
+    act(() => {
+      answer = requestChoices({
+        action: 'ask_models',
+        filename: 'x',
+        content: 'y',
+        targets,
+      });
+    });
+    expect(await findByText('Hand this to several models?')).toBeTruthy();
+    fireEvent.press(getByTestId('approval-target-a'));
+    fireEvent.press(getByTestId('approval-target-b'));
+    expect(getByTestId('approval-allow')).toBeDisabled();
+    fireEvent.press(getByText('Deny'));
+    await expect(answer).resolves.toBeNull();
+  });
+
+  it('a chain is listed in order, without boxes', async () => {
+    const {findByText, getByTestId, getByText} = render(<FileApprovalHost />);
+    let answer: Promise<boolean> | undefined;
+    act(() => {
+      answer = requestFileApproval({
+        action: 'ask_model_chain',
+        filename: 'Cap: at most 2 models',
+        content: 'T',
+        targets,
+      });
+    });
+    expect(await findByText('Hand this to a chain of models?')).toBeTruthy();
+    expect(getByText(/1\. sonnet/)).toBeTruthy();
+    expect(getByTestId('approval-target-b')).toBeTruthy();
+    fireEvent.press(getByTestId('approval-allow'));
+    await expect(answer).resolves.toBe(true);
   });
 });

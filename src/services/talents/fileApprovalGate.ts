@@ -30,7 +30,13 @@ export type FileProposal = {
     // facts, `content` exactly the text that goes.
     | 'ask_other_model'
     // A chat's hand-off limit reached: Continue / Stop (subAgent.ts).
-    | 'handoff_cap';
+    | 'handoff_cap'
+    // The same task to several models at once (ask_models): `filename`
+    // the facts, `content` the exact text, `targets` one box each.
+    | 'ask_models'
+    // A fallback chain (ask_model_chain): `filename` the facts, `content`
+    // the exact text, `targets` the chain in order (no boxes).
+    | 'ask_model_chain';
   filename: string;
   content: string;
   previous?: string;
@@ -49,12 +55,17 @@ export type FileProposal = {
   modelSays?: string;
   /** The chat asking: offers "Don't allow anything more in this chat". */
   chat?: string;
+  /** ask_models / ask_model_chain: the models, in order, as listed. For
+   *  ask_models each has a box, ticked to start; Allow sends to the ticked
+   *  ones only (requestChoices). */
+  targets?: {id: string; label: string; detail: string; cloud: boolean}[];
   /** The tool's context (fromContext): the raw thinking and the chat,
    *  turned into `thinking`, `warning` and `chat` when asked. */
   from?: ApprovalFrom;
 };
 
-type Active = {proposal: FileProposal; resolve: (approved: boolean) => void};
+type Answer = {approved: boolean; chosen?: string[]};
+type Active = {proposal: FileProposal; resolve: (answer: Answer) => void};
 let active: Active | null = null;
 const listeners = new Set<(proposal: FileProposal | null) => void>();
 let uiMounted = 0;
@@ -62,7 +73,9 @@ let uiMounted = 0;
 function notify() {
   for (const fn of listeners) fn(active?.proposal ?? null);
 }
-export function subscribeFileApprovals(fn: (value: FileProposal | null) => void): () => void {
+export function subscribeFileApprovals(
+  fn: (value: FileProposal | null) => void,
+): () => void {
   uiMounted++;
   listeners.add(fn);
   fn(active?.proposal ?? null);
@@ -77,7 +90,7 @@ export function rejectFileApproval(): void {
   const old = active;
   active = null;
   notify();
-  old.resolve(false);
+  old.resolve({approved: false});
 }
 /**
  * The user's answer. `nothingMore`: "Don't allow anything more in this
@@ -86,6 +99,7 @@ export function rejectFileApproval(): void {
 export function decideFileApproval(
   approved: boolean,
   nothingMore = false,
+  chosen?: string[],
 ): void {
   if (!active) return;
   const old = active;
@@ -95,21 +109,45 @@ export function decideFileApproval(
   }
   active = null;
   notify();
-  old.resolve(approved);
+  old.resolve({approved, ...(chosen ? {chosen} : {})});
 }
 export function requestFileApproval(
   proposal: FileProposal,
   signal?: AbortSignal,
 ): Promise<boolean> {
+  return ask(proposal, signal).then(a => a.approved);
+}
+/**
+ * A question with a box per target (ask_models): the ids the user left
+ * ticked, in the question's order, or null for no (or none ticked). Only
+ * ids from the question count.
+ */
+export function requestChoices(
+  proposal: FileProposal,
+  signal?: AbortSignal,
+): Promise<string[] | null> {
+  const ids = (proposal.targets ?? []).map(t => t.id);
+  return ask(proposal, signal).then(a => {
+    if (!a.approved) return null;
+    const chosen = a.chosen ? ids.filter(id => a.chosen!.includes(id)) : ids;
+    return chosen.length ? chosen : null;
+  });
+}
+function ask(proposal: FileProposal, signal?: AbortSignal): Promise<Answer> {
   const {from, ...rest} = proposal;
   proposal = rest;
-  if (active || !uiMounted || signal?.aborted || AppState.currentState !== 'active') {
-    return Promise.resolve(false);
+  if (
+    active ||
+    !uiMounted ||
+    signal?.aborted ||
+    AppState.currentState !== 'active'
+  ) {
+    return Promise.resolve({approved: false});
   }
   const chat = proposal.chat ?? from?.chat;
   // "Don't allow anything more in this chat": no more questions there.
   if (chat && nothingMoreAllowed(chat)) {
-    return Promise.resolve(false);
+    return Promise.resolve({approved: false});
   }
   if (from?.thinking !== undefined && proposal.thinking === undefined) {
     proposal = {
@@ -121,7 +159,7 @@ export function requestFileApproval(
   if (chat) {
     proposal = {...proposal, chat};
   }
-  return new Promise(resolve => {
+  return new Promise<Answer>(resolve => {
     active = {proposal, resolve};
     const abort = () => rejectFileApproval();
     signal?.addEventListener('abort', abort, {once: true});

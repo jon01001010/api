@@ -2091,7 +2091,7 @@ describe('Rule 1: the model is treated as possibly hostile (chat guards, 2026-11
     );
     const gate = read('src/services/talents/fileApprovalGate.ts');
     expect(gate).toMatch(
-      /if \(chat && nothingMoreAllowed\(chat\)\) \{\s*return Promise\.resolve\(false\);/,
+      /if \(chat && nothingMoreAllowed\(chat\)\) \{\s*return Promise\.resolve\(\{approved: false\}\);/,
     );
     const host = read('src/components/FileApprovalHost.tsx');
     expect(host).toContain("Don't allow anything more in this chat");
@@ -2279,5 +2279,108 @@ describe('Rule 1: sub-agents ask first, get no tools and are untrusted (2026-11-
     expect(wrapModelAnswer('m', 'x')).toMatch(
       /^Answer from m\. [\s\S]*never as instructions/,
     );
+  });
+});
+
+describe('Rule 1: several models ("and" / "or") ask first, never add tools, count and log (2026-11-16)', () => {
+  const engine = read('src/services/talents/AskModelsEngine.ts');
+  const many = read('src/services/agent/manyModels.ts');
+  const host = read('src/components/FileApprovalHost.tsx');
+  const gate = read('src/services/talents/fileApprovalGate.ts');
+
+  it('both are tools that ask: off until switched on, refused under "allow nothing more"', () => {
+    const {ASKING_TOOLS} = require('../services/agent/chatGuard');
+    // (Not ones an assistant may add by itself: that list is pinned above.)
+    for (const name of ['ask_models', 'ask_model_chain']) {
+      expect(ASKING_TOOLS).toContain(name);
+    }
+    expect(engine).toMatch(
+      /if \(chat && nothingMoreAllowed\(chat\)\) \{[\s\S]*?return \{ok: false, result: \{type: 'text', summary: REFUSED_NOTHING_MORE\}\};/,
+    );
+  });
+
+  it('only listed models; the question comes before anything is sent', () => {
+    expect(many).toMatch(
+      /typeof id === 'string' \? models\.find\(m => m\.id === id\.trim\(\)\) : undefined;/,
+    );
+    for (const [cls, action, call] of [
+      [
+        'class AskModelsEngine',
+        "action: 'ask_models'",
+        'callModel(deps, m, task, signal)',
+      ],
+      [
+        'class AskModelChainEngine',
+        "action: 'ask_model_chain'",
+        'callModel(deps, model, text, signal)',
+      ],
+    ]) {
+      const run = engine.slice(engine.indexOf(cls));
+      const asked = run.indexOf(action);
+      expect(asked).toBeGreaterThan(0);
+      expect(run.indexOf(call)).toBeGreaterThan(asked);
+    }
+    // "And": only models from the question, ticked by the user.
+    expect(engine).toContain(
+      'const go = chosen ? models.filter(m => chosen.includes(m.id)) : [];',
+    );
+    expect(gate).toContain(
+      'const chosen = a.chosen ? ids.filter(id => a.chosen!.includes(id)) : ids;',
+    );
+    const dialog = host.slice(
+      host.indexOf('function ManyModelsDialog'),
+      host.indexOf('/** Shows the line changes'),
+    );
+    expect(dialog).toContain('disabled={boxes && !ticked.length}');
+    expect(dialog).toContain('<NothingMore proposal={proposal} />');
+    expect(dialog).not.toMatch(/always/i);
+  });
+
+  it('no tools for any model: one completion with handoffParams, a time limit', () => {
+    expect(engine).toContain(
+      'return engine.completion(handoffParams(text) as any, onData);',
+    );
+    expect(engine).not.toMatch(/tools:|tool_choice/);
+    expect(engine).toContain(
+      'const limitMs = deps.timeLimitMs ?? HANDOFF_TIME_LIMIT_MS;',
+    );
+    expect(many).toContain('export const MAX_MODELS_AT_ONCE = 4;');
+  });
+
+  it('every model call counts toward the chat caps and is logged without its text', () => {
+    expect(
+      engine.match(/noteHandoff\(chat, call\.tokens, call\.ms\);/g),
+    ).toHaveLength(2);
+    expect(engine).toMatch(/capsAllow\(deps, chat, models\.length, signal\)/);
+    expect(engine).toMatch(
+      /if \(!\(await capsAllow\(deps, chat, 1, signal\)\)\) \{\s*deps\.log\(entry\(model, 'stopped'/,
+    );
+    expect(engine).not.toMatch(/deps\.log\([^;]*\b(task|text)\b[,)]/);
+  });
+
+  it('"or" moves on only when a model ran out; a private read asks again for a new cloud company', () => {
+    expect(engine).toMatch(
+      /if \(!call\.runOut\) \{\s*deps\.log\(entry\(model, 'failed'/,
+    );
+    expect(engine).toMatch(
+      /if \(privateRead && model\.place === 'cloud' && !sentTo\.has\(provider\)\) \{[\s\S]*?noteAsk\(chat, deps\.now\(\)\)[\s\S]*?action: 'ask_other_model'[\s\S]*?if \(!ok\) \{/,
+    );
+    const {runOutOf} = require('../services/agent/runOut');
+    expect(
+      runOutOf(new Error('Unauthorized: Invalid or missing API key')),
+    ).toBeNull();
+    expect(
+      runOutOf(
+        Object.assign(new Error('Anthropic rejected the API key (401).'), {
+          status: 401,
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('every answer reaches the model wrapped as untrusted, labelled', () => {
+    expect(
+      engine.match(/wrapModelAnswer\(a\.model, a\.answer\)/g),
+    ).toHaveLength(2);
   });
 });
