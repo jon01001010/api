@@ -9,6 +9,7 @@
  */
 import {askPcForPicture} from '../homeLink/homeLink';
 import {unlockHomePc} from '../homeLink/homePcLock';
+import {PC_MAKING_PICTURE, toolProgress} from './pictureProgress';
 import {
   TalentEngine,
   TalentExecuteContext,
@@ -122,7 +123,10 @@ export class PcPictureEngine implements TalentEngine {
       }
       ctx?.signal?.addEventListener('abort', () => resolve('stopped'));
     });
-    const made = await Promise.race([asked, stopped]);
+    toolProgress.set(PC_MAKING_PICTURE);
+    const made = await Promise.race([asked, stopped]).finally(() =>
+      toolProgress.set(null),
+    );
     if (made === 'stopped') {
       return {
         type: 'text',

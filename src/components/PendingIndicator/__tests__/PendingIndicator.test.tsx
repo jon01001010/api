@@ -11,6 +11,21 @@ describe('PendingIndicator', () => {
     expect(getByTestId('pending-indicator')).toBeTruthy();
   });
 
+  it("shows a running tool's progress line, and Stopping… over it", () => {
+    const {getByTestId, rerender} = render(
+      <PendingIndicator progressText="Making the picture… step 7 of 20" />,
+    );
+    expect(getByTestId('pending-indicator-suffix').props.children).toBe(
+      'Making the picture… step 7 of 20',
+    );
+    rerender(
+      <PendingIndicator progressText="Making the picture…" isStopping />,
+    );
+    expect(getByTestId('pending-indicator-suffix').props.children).toBe(
+      l10n.en.components.pendingIndicator.stopping,
+    );
+  });
+
   it('renders no suffix when no tool call is in progress', () => {
     const {queryByTestId} = render(<PendingIndicator />);
     expect(queryByTestId('pending-indicator-suffix')).toBeNull();

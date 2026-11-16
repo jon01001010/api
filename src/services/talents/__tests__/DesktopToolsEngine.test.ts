@@ -261,6 +261,7 @@ describe('image_generate', () => {
       height: 768,
       steps: null,
       seed: null,
+      job: expect.stringMatching(/^pic-[a-z0-9]+-[a-z0-9]*$/),
     });
     expect(r.type).toBe('image');
     expect(r.summary).toContain('images/picture-20261115-101530-ab12.png');
@@ -298,5 +299,47 @@ describe('image_generate', () => {
     expect(invoke).toHaveBeenCalledWith('image_cancel', undefined);
     finish({name: 'p.png', path: 'p', seed: 1, seconds: 1});
     await running;
+  });
+
+  it('shows the maker’s progress for its own picture while it runs, then clears it', async () => {
+    installed(true);
+    const events = require('../pictureEvents');
+    const {toolProgress} = require('../pictureProgress');
+    let send: (p: unknown) => void = () => {};
+    const unlisten = jest.fn();
+    const spy = jest
+      .spyOn(events, 'onPictureProgress')
+      .mockImplementation(async (handler: any) => {
+        send = handler;
+        return unlisten;
+      });
+    let finish: (v: unknown) => void = () => {};
+    invoke.mockImplementation((cmd: string) =>
+      cmd === 'image_generate'
+        ? new Promise(resolve => {
+            finish = resolve;
+          })
+        : Promise.resolve(null),
+    );
+    const running = new DesktopToolsEngine('image_generate').execute({
+      prompt: 'a cat',
+    });
+    await new Promise(r => setTimeout(r, 0));
+    expect(toolProgress.text).toBe('Loading the model…');
+    const job = invoke.mock.calls.find(c => c[0] === 'image_generate')![1].job;
+    send({id: job, phase: 'sampling', step: 7, steps: 20, seconds: 39});
+    expect(toolProgress.text).toBe(
+      'Making the picture… step 7 of 20, about 40 s left',
+    );
+    // Another picture's events (a paired device's) are not shown here.
+    send({id: 'other', phase: 'saving', step: 20, steps: 20, seconds: null});
+    expect(toolProgress.text).toMatch(/step 7 of 20/);
+    send({id: job, phase: 'decoding', step: 20, steps: 20, seconds: null});
+    expect(toolProgress.text).toBe('Finishing…');
+    finish({name: 'p.png', path: 'p', seed: 1, seconds: 1});
+    await running;
+    expect(toolProgress.text).toBeNull();
+    expect(unlisten).toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

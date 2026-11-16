@@ -22,6 +22,11 @@
 //! A small word check refuses clearly illegal requests (sexual content with
 //! minors) before anything runs; it is a basic filter, not a guarantee.
 //! ARM Linux (e.g. a PineTab 2) has no picture maker: far too slow there.
+//!
+//! Progress: sd-cli's output is read as it comes (lines and "\r" bar
+//! updates) and turned into `image-progress` events (Progress: a phase
+//! word, step N of M, seconds left), a few a second at most. Its own text
+//! never goes to the screens (it names files on this PC).
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -627,28 +632,261 @@ impl Drop for Slot<'_> {
     }
 }
 
-/// Keeps the end of a pipe's output (read on its own thread, so the picture
-/// maker never stalls on a full pipe).
-fn drain(pipe: Option<impl Read + Send + 'static>) -> Arc<Mutex<Vec<u8>>> {
+/// What the picture maker is doing, read from its output.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Phase {
+    Loading,
+    Sampling,
+    Decoding,
+    Saving,
+}
+
+/// The `image-progress` event: numbers and a phase word only, never the
+/// maker's own text (it names files and folders on this PC).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Progress {
+    /// The screens' id for this picture (image_generate's `job`), else the
+    /// picture's file name.
+    pub id: String,
+    pub phase: Phase,
+    /// Step N of M while sampling (0 before the first step).
+    pub step: u32,
+    pub steps: u32,
+    /// About how many seconds of sampling are left; None until known.
+    pub seconds: Option<u64>,
+}
+
+/// The event's name.
+pub const PROGRESS_EVENT: &str = "image-progress";
+/// Steps are sent at most this often (a new phase, and the last step, at
+/// once).
+const PROGRESS_EVERY: Duration = Duration::from_millis(300);
+
+/// One step bar of sd-cli (`pretty_progress`), e.g.
+/// `  |=====>     | 5/20 - 1.23s/it` or `... | 3/20 - 2.50it/s`, written
+/// after a "\r" and sometimes ending in an erase code: (N, M, seconds a
+/// step). Text without a bar (`|`) is not one, so "generating image: 1/1 -
+/// seed 42" is not taken for a step.
+pub fn parse_bar(line: &str) -> Option<(u32, u32, Option<f64>)> {
+    let line = plain(line);
+    let after =&line[line.rfind('|')? + 1..];
+    let words: Vec<&str> = after.split_whitespace().collect();
+    let (n, m) = words.first()?.split_once('/')?;
+    let (n, m) = (n.parse::<u32>().ok()?, m.parse::<u32>().ok()?);
+    if m == 0 || n > m {
+        return None;
+    }
+    let rate = |text: &str| -> Option<f64> {
+        let (num, per_step) = if let Some(num) = text.strip_suffix("s/it") {
+            (num, true)
+        } else {
+            (text.strip_suffix("it/s")?, false)
+        };
+        let v = num
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite() && *v > 0.0)?;
+        Some(if per_step { v } else { 1.0 / v })
+    };
+    let per_step = words.iter().enumerate().skip(1).find_map(|(i, w)| {
+        rate(w).or_else(|| {
+            // "1.23 s/it" in two words.
+            words.get(i + 1).and_then(|unit| rate(&format!("{w}{unit}")))
+        })
+    });
+    Some((n, m, per_step))
+}
+
+/// The phase a log line tells of, if any.
+pub fn parse_phase(line: &str) -> Option<Phase> {
+    let l = line.to_ascii_lowercase();
+    let any = |words: &[&str]| words.iter().any(|w| l.contains(w));
+    if any(&["save result", "saving", "save image"]) {
+        Some(Phase::Saving)
+    } else if any(&[
+        "sampling completed",
+        "decoding",
+        "decode_first_stage",
+        "latents decoded",
+        "decoded,",
+    ]) {
+        Some(Phase::Decoding)
+    } else if any(&["sampling", "generating image"]) {
+        Some(Phase::Sampling)
+    } else if any(&["loading", "load "]) {
+        Some(Phase::Loading)
+    } else {
+        None
+    }
+}
+
+/// Text without terminal codes ("\x1b[K", colours).
+fn plain(piece: &str) -> String {
+    let mut out = String::with_capacity(piece.len());
+    let mut chars = piece.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            if chars.next() == Some('[') {
+                for c in chars.by_ref() {
+                    if c.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Follows the maker's output. Phases only move forward. A bar counts as
+/// sampling when it has the asked number of steps (or, once sampling
+/// began, when it is short), so the model-loading bar (hundreds of
+/// tensors) and the decoder's tiles are not taken for steps.
+pub struct Tracker {
+    steps: u32,
+    phase: Phase,
+    step: u32,
+    per_step: Option<f64>,
+    sent: Option<(Instant, Phase)>,
+}
+
+impl Tracker {
+    pub fn new(steps: u32) -> Self {
+        Tracker {
+            steps,
+            phase: Phase::Loading,
+            step: 0,
+            per_step: None,
+            sent: None,
+        }
+    }
+
+    /// Reads one line or "\r" update; true when the phase or step changed.
+    pub fn feed(&mut self, piece: &str) -> bool {
+        let before = (self.phase, self.step);
+        if let Some((n, m, per_step)) = parse_bar(piece) {
+            let sampling = self.phase <= Phase::Sampling
+                && (m == self.steps || (self.phase == Phase::Sampling && m <= 2 * MAX_STEPS));
+            if sampling {
+                self.phase = Phase::Sampling;
+                self.steps = m;
+                self.step = n;
+                if per_step.is_some() {
+                    self.per_step = per_step;
+                }
+            }
+        } else if let Some(phase) = parse_phase(piece) {
+            self.phase = self.phase.max(phase);
+        }
+        (self.phase, self.step) != before
+    }
+
+    /// About how many seconds of sampling are left.
+    pub fn seconds_left(&self) -> Option<u64> {
+        if self.phase != Phase::Sampling {
+            return None;
+        }
+        let per_step = self.per_step?;
+        Some((per_step * self.steps.saturating_sub(self.step) as f64).round() as u64)
+    }
+
+    /// The event to send now, if one is due: the first, a new phase and the
+    /// last step at once, other steps at most every PROGRESS_EVERY.
+    pub fn due(&mut self, id: &str, now: Instant) -> Option<Progress> {
+        let due = match self.sent {
+            None => true,
+            Some((at, phase)) => {
+                phase != self.phase
+                    || self.step == self.steps
+                    || now.duration_since(at) >= PROGRESS_EVERY
+            }
+        };
+        if !due {
+            return None;
+        }
+        self.sent = Some((now, self.phase));
+        Some(Progress {
+            id: id.to_string(),
+            phase: self.phase,
+            step: self.step,
+            steps: self.steps,
+            seconds: self.seconds_left(),
+        })
+    }
+}
+
+/// Splits output into lines and "\r" updates as it comes; an unfinished
+/// part waits in `pending` for the next read.
+fn pieces(pending: &mut Vec<u8>, data: &[u8]) -> Vec<String> {
+    pending.extend_from_slice(data);
+    let mut out = Vec::new();
+    while let Some(at) = pending.iter().position(|b| *b == b'\n' || *b == b'\r') {
+        let piece: Vec<u8> = pending.drain(..=at).collect();
+        let text = String::from_utf8_lossy(&piece[..piece.len() - 1]).into_owned();
+        if !text.trim().is_empty() {
+            out.push(text);
+        }
+    }
+    // A very long line with no end yet: only its end is kept.
+    if pending.len() > MAX_LOG {
+        let cut = pending.len() - MAX_LOG;
+        pending.drain(..cut);
+    }
+    out
+}
+
+type Report = Arc<dyn Fn(&str) + Send + Sync>;
+
+fn send_progress(app: &AppHandle, event: Option<Progress>) {
+    if let Some(event) = event {
+        use tauri::Emitter;
+        let _ = app.emit(PROGRESS_EVENT, event);
+    }
+}
+
+/// Keeps the end of a pipe's output and hands each line or "\r" update to
+/// `report` as it comes (read on its own thread, so the picture maker
+/// never stalls on a full pipe).
+fn drain(pipe: Option<impl Read + Send + 'static>, report: Report) -> Arc<Mutex<Vec<u8>>> {
     let log = Arc::new(Mutex::new(Vec::new()));
     if let Some(mut pipe) = pipe {
         let log = log.clone();
         std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
+            let mut pending = Vec::new();
             while let Ok(n) = pipe.read(&mut buf) {
                 if n == 0 {
                     break;
                 }
-                let mut log = log.lock().unwrap();
-                log.extend_from_slice(&buf[..n]);
-                if log.len() > MAX_LOG {
-                    let cut = log.len() - MAX_LOG;
-                    log.drain(..cut);
+                {
+                    let mut log = log.lock().unwrap();
+                    log.extend_from_slice(&buf[..n]);
+                    if log.len() > MAX_LOG {
+                        let cut = log.len() - MAX_LOG;
+                        log.drain(..cut);
+                    }
+                }
+                for piece in pieces(&mut pending, &buf[..n]) {
+                    report(&piece);
                 }
             }
         });
     }
     log
+}
+
+/// The screens' id for a picture: short, letters, digits, "-" and "_".
+fn job_id(job: Option<&str>) -> Option<String> {
+    job.filter(|j| {
+        !j.is_empty()
+            && j.len() <= 64
+            && j.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    })
+    .map(str::to_string)
 }
 
 #[derive(Serialize)]
@@ -704,18 +942,21 @@ pub async fn image_generate(
     height: u32,
     steps: Option<u32>,
     seed: Option<i64>,
+    job: Option<String>,
 ) -> Result<Generated, String> {
     if let Some(why) = not_on_this_pc() {
         return Err(why.into());
     }
     let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let set = find_set(&root, &model)?;
-    make(app, set, &prompt, width, height, steps, seed, |_| {}).await
+    make(app, set, &prompt, width, height, steps, seed, job.as_deref(), |_| {}).await
 }
 
 /// Makes one picture: the same checks, caps, word filter and one-at-a-time
 /// slot for the PC's own tool and for a paired device (link.rs "picture").
 /// `started` runs once everything is checked, just before the maker starts.
+/// While it runs, `image-progress` events (Progress) tell the screens the
+/// phase and step, named by `job` (else the picture's file name).
 #[allow(clippy::too_many_arguments)]
 pub async fn make(
     app: AppHandle,
@@ -725,6 +966,7 @@ pub async fn make(
     height: u32,
     steps: Option<u32>,
     seed: Option<i64>,
+    job: Option<&str>,
     started: impl FnOnce(&Request),
 ) -> Result<Generated, String> {
     if let Some(why) = not_on_this_pc() {
@@ -789,8 +1031,26 @@ pub async fn make(
     let mut child = command
         .spawn()
         .map_err(|e| format!("The picture maker did not start: {e}"))?;
-    let out_log = drain(child.stdout.take());
-    let err_log = drain(child.stderr.take());
+    let id = job_id(job).unwrap_or_else(|| name.clone());
+    let tracker = Arc::new(Mutex::new(Tracker::new(req.steps)));
+    // "Loading the model…" straight away.
+    send_progress(&app, tracker.lock().unwrap().due(&id, Instant::now()));
+    let report: Report = {
+        let app = app.clone();
+        let tracker = tracker.clone();
+        Arc::new(move |piece: &str| {
+            let event = {
+                let mut tracker = tracker.lock().unwrap();
+                if !tracker.feed(piece) {
+                    return;
+                }
+                tracker.due(&id, Instant::now())
+            };
+            send_progress(&app, event);
+        })
+    };
+    let out_log = drain(child.stdout.take(), report.clone());
+    let err_log = drain(child.stderr.take(), report);
     state.0.lock().unwrap().child = Some(child);
 
     let begun = Instant::now();
@@ -1137,5 +1397,105 @@ mod tests {
             let _slot = Slot(&gen);
         }
         assert!(!gen.0.lock().unwrap().busy);
+    }
+
+    #[test]
+    fn step_bars_are_read_and_other_text_is_not() {
+        assert_eq!(
+            parse_bar("  |=====>                     | 5/20 - 1.23s/it"),
+            Some((5, 20, Some(1.23)))
+        );
+        let (n, m, rate) = parse_bar("  |==>   | 3/20 - 2.50it/s\x1b[K").unwrap();
+        assert_eq!((n, m), (3, 20));
+        assert!((rate.unwrap() - 0.4).abs() < 1e-9);
+        assert_eq!(parse_bar("|=| 1/4 - 2.0 s/it"), Some((1, 4, Some(2.0))));
+        assert_eq!(parse_bar("  |=====| 20/20"), Some((20, 20, None)));
+        // Not bars.
+        assert_eq!(parse_bar("[INFO ] stable-diffusion.cpp:2350 - generating image: 1/1 - seed 42"), None);
+        assert_eq!(parse_bar("  |===| 21/20 - 1s/it"), None);
+        assert_eq!(parse_bar("  |===| 0/0 - 1s/it"), None);
+        assert_eq!(parse_bar("  |===| a/b"), None);
+        assert_eq!(parse_bar(""), None);
+        assert_eq!(parse_phase("[INFO ] stable-diffusion.cpp:212 - loading model from 'x.gguf'"), Some(Phase::Loading));
+        assert_eq!(parse_phase("[INFO ] stable-diffusion.cpp:1390 - sampling using Euler A method"), Some(Phase::Sampling));
+        assert_eq!(parse_phase("[INFO ] stable-diffusion.cpp:2385 - sampling completed, taking 61.20s"), Some(Phase::Decoding));
+        assert_eq!(parse_phase("[INFO ] stable-diffusion.cpp:2403 - decoding 1 latents"), Some(Phase::Decoding));
+        assert_eq!(parse_phase("[INFO ] main.cpp:780 - save result image 0 to 'out.png' (success)"), Some(Phase::Saving));
+        assert_eq!(parse_phase("[INFO ] stable-diffusion.cpp:303 - Version: SD 1.x"), None);
+    }
+
+    /// A whole run as sd-cli prints it (log lines end in "\n", the bar
+    /// redraws with "\r"), cut into odd-sized reads.
+    #[test]
+    fn a_whole_run_is_followed_phase_by_phase() {
+        let mut run = String::new();
+        run.push_str("[INFO ] stable-diffusion.cpp:212  - loading model from 'C:\\Users\\Owner\\AppData\\Roaming\\pocketagent\\Documents\\image-models\\sd15\\v1-5.gguf'\n");
+        run.push_str("[INFO ] model.cpp:1095 - load C:\\Users\\Owner\\v1-5.gguf using gguf format\n");
+        run.push_str("[INFO ] stable-diffusion.cpp:303  - Version: SD 1.x\n");
+        for i in (0..=1130).step_by(113) {
+            run.push_str(&format!("\r  |=====>     | {i}/1130 - 500.00it/s\x1b[K"));
+        }
+        run.push('\n');
+        run.push_str("[INFO ] model.cpp:2150 - loading tensors completed, taking 2.35s\n");
+        run.push_str("[INFO ] stable-diffusion.cpp:2350 - generating image: 1/1 - seed 42\n");
+        run.push_str("[INFO ] stable-diffusion.cpp:1390 - sampling using Euler A method\n");
+        for i in 1..=20 {
+            run.push_str(&format!("\r  |{}>   | {i}/20 - 3.00s/it\x1b[K", "=".repeat(i)));
+        }
+        run.push('\n');
+        run.push_str("[INFO ] stable-diffusion.cpp:2385 - sampling completed, taking 61.20s\n");
+        run.push_str("[INFO ] stable-diffusion.cpp:2403 - decoding 1 latents\n");
+        run.push_str("\r  |====| 2/4 - 1.00s/it\r  |=====| 4/4 - 1.00s/it\n");
+        run.push_str("[INFO ] stable-diffusion.cpp:2413 - latent 1 decoded, taking 4.12s\n");
+        run.push_str("[INFO ] main.cpp:780 - save result image 0 to 'C:\\Users\\Owner\\picture.png' (success)\n");
+
+        let mut tracker = Tracker::new(20);
+        let mut pending = Vec::new();
+        let mut seen: Vec<(Phase, u32, Option<u64>)> = Vec::new();
+        for chunk in run.as_bytes().chunks(37) {
+            for piece in pieces(&mut pending, chunk) {
+                if tracker.feed(&piece) {
+                    seen.push((tracker.phase, tracker.step, tracker.seconds_left()));
+                }
+            }
+        }
+        // The loading bar is not taken for steps.
+        assert!(seen.iter().all(|(p, s, _)| *p != Phase::Loading || *s == 0));
+        assert_eq!(seen[0], (Phase::Sampling, 0, None));
+        assert_eq!(seen[1], (Phase::Sampling, 1, Some(57)));
+        assert!(seen.contains(&(Phase::Sampling, 7, Some(39))));
+        assert!(seen.contains(&(Phase::Sampling, 20, Some(0))));
+        // The decoder's tiles are not steps; phases end with saving.
+        let after: Vec<_> = seen.iter().skip_while(|(p, _, _)| *p == Phase::Sampling).collect();
+        assert_eq!(after, vec![&(Phase::Decoding, 20, None), &(Phase::Saving, 20, None)]);
+    }
+
+    #[test]
+    fn progress_is_sent_a_few_times_a_second_and_names_no_files() {
+        let mut tracker = Tracker::new(20);
+        let start = Instant::now();
+        let first = tracker.due("job-1", start).unwrap();
+        assert_eq!((first.phase, first.step, first.steps, first.seconds), (Phase::Loading, 0, 20, None));
+        tracker.feed("  |=>  | 1/20 - 2.00s/it");
+        // A new phase at once.
+        let next = tracker.due("job-1", start + Duration::from_millis(10)).unwrap();
+        assert_eq!((next.phase, next.step, next.seconds), (Phase::Sampling, 1, Some(38)));
+        tracker.feed("  |=>  | 2/20 - 2.00s/it");
+        assert!(tracker.due("job-1", start + Duration::from_millis(100)).is_none());
+        assert_eq!(tracker.due("job-1", start + Duration::from_millis(400)).unwrap().step, 2);
+        tracker.feed("  |=>  | 20/20 - 2.00s/it");
+        // The last step at once.
+        assert_eq!(tracker.due("job-1", start + Duration::from_millis(410)).unwrap().step, 20);
+        let json = serde_json::to_value(&next).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"id": "job-1", "phase": "sampling", "step": 1, "steps": 20, "seconds": 38})
+        );
+        // Ids from the screens are plain.
+        assert_eq!(job_id(Some("pic-123_a")).as_deref(), Some("pic-123_a"));
+        assert_eq!(job_id(Some("../x")), None);
+        assert_eq!(job_id(Some("")), None);
+        assert_eq!(job_id(Some(&"a".repeat(65))), None);
+        assert_eq!(job_id(None), None);
     }
 }

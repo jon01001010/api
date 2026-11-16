@@ -23,6 +23,8 @@
 import {installedSet} from '../imageGen/imageModels';
 import {read as readPcHardware} from '../desktop/pcHardware';
 import {getWorkspaceLimits} from './fileWorkspace';
+import {onPictureProgress} from './pictureEvents';
+import {pictureProgressText, toolProgress} from './pictureProgress';
 import {
   TalentEngine,
   TalentExecuteContext,
@@ -259,6 +261,17 @@ async function makePicture(
     invoke('image_cancel').catch(() => {});
   };
   signal?.addEventListener('abort', cancel);
+  // Progress in the chat while it runs (the PC may take minutes).
+  const job = `pic-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+  toolProgress.set('Loading the model…');
+  const unlisten = await onPictureProgress(p => {
+    const text = p?.id === job ? pictureProgressText(p) : null;
+    if (text) {
+      toolProgress.set(text);
+    }
+  });
   try {
     const made = await invoke<{
       name: string;
@@ -272,6 +285,7 @@ async function makePicture(
       height,
       steps: intOr(args.steps) ?? null,
       seed: intOr(args.seed) ?? null,
+      job,
     });
     return {
       type: 'image',
@@ -281,6 +295,8 @@ async function makePicture(
     };
   } finally {
     signal?.removeEventListener('abort', cancel);
+    unlisten();
+    toolProgress.set(null);
   }
 }
 

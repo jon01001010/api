@@ -1037,7 +1037,29 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // The PC's own tool and a device's picture share one checked maker.
     const imageGen = tauri('src/image_gen.rs');
     expect(imageGen).toMatch(
-      /pub async fn image_generate[\s\S]*?make\(app, set, &prompt, width, height, steps, seed, \|_\| \{\}\)\.await/,
+      /pub async fn image_generate[\s\S]*?make\(app, set, &prompt, width, height, steps, seed, job\.as_deref\(\), \|_\| \{\}\)\.await/,
+    );
+    // Progress to the screens: a phase word and numbers, never sd-cli's own
+    // text (it names files on the PC).
+    const progress = imageGen.slice(
+      imageGen.indexOf('pub struct Progress {'),
+      imageGen.indexOf('pub const PROGRESS_EVENT'),
+    );
+    expect(
+      [...progress.matchAll(/^\s+pub (\w+): (.+),$/gm)].map(
+        m => `${m[1]}: ${m[2]}`,
+      ),
+    ).toEqual([
+      'id: String',
+      'phase: Phase',
+      'step: u32',
+      'steps: u32',
+      'seconds: Option<u64>',
+    ]);
+    expect([...imageGen.matchAll(/\.emit\(/g)]).toHaveLength(1);
+    expect(imageGen).toContain('let _ = app.emit(PROGRESS_EVENT, event);');
+    expect(imageGen).toMatch(
+      /fn send_progress\(app: &AppHandle, event: Option<Progress>\)/,
     );
     const approval = tauri('src/approval.rs');
     expect(approval).toMatch(

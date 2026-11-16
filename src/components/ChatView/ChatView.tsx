@@ -51,6 +51,7 @@ import {
 } from '../../services/chatSummary';
 import {useAutoSummary} from './useAutoSummary';
 import {RouterLoadStatus, boundRouterLoad} from '../RouterLoadStatus';
+import {toolProgress} from '../../services/talents/pictureProgress';
 import {createStyles} from './styles';
 
 import {IncreaseContextSheet} from '../IncreaseContextSheet';
@@ -217,6 +218,7 @@ const PendingIndicatorView: React.FC = observer(() =>
       pendingTalentNames={chatSessionStore.agentUiState.pendingTalentNames}
       toolCallTokenCount={chatSessionStore.toolCallTokenCount}
       isStopping={chatSessionStore.isStopping}
+      progressText={toolProgress.text}
     />
   ),
 );
