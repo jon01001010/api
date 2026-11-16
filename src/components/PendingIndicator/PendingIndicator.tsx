@@ -85,6 +85,11 @@ interface PendingIndicatorProps {
   toolCallTokenCount?: number;
   /** Shows "Stopping…" in place of any label. */
   isStopping?: boolean;
+  /**
+   * The running tool's own progress line (e.g. "Making the picture… step
+   * 7 of 20"), shown while it runs (services/talents/pictureProgress.ts).
+   */
+  progressText?: string | null;
 }
 
 /**
@@ -101,6 +106,7 @@ export const PendingIndicator: React.FC<PendingIndicatorProps> = ({
   pendingTalentNames,
   toolCallTokenCount = 0,
   isStopping = false,
+  progressText = null,
 }) => {
   const theme = useTheme();
   const l10n = useContext(L10nContext);
@@ -151,6 +157,8 @@ export const PendingIndicator: React.FC<PendingIndicatorProps> = ({
       parts.push(t(l10n.components.toolMetrics.elapsed, {seconds: elapsedSec}));
     }
     suffix = parts.join(' · ');
+  } else if (progressText) {
+    suffix = progressText;
   }
 
   return (

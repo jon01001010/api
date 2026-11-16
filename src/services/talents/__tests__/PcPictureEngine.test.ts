@@ -61,6 +61,25 @@ describe('image_generate on the phone (asks the Home PC)', () => {
     expect(result.summary).toContain('12 s');
   });
 
+  it('says the PC is making the picture while it waits, then clears it', async () => {
+    const {toolProgress} = require('../pictureProgress');
+    let answer: (v: string) => void = () => {};
+    (NativeModules as any).HomeLink = {
+      picture: jest.fn(
+        () =>
+          new Promise<string>(resolve => {
+            answer = resolve;
+          }),
+      ),
+    };
+    const running = new PcPictureEngine().execute({prompt: 'a cat'});
+    await new Promise(r => setTimeout(r, 0));
+    expect(toolProgress.text).toBe('Your PC is making the picture…');
+    answer(JSON.stringify({ok: false, error: 'Pictures are off'}));
+    await running;
+    expect(toolProgress.text).toBeNull();
+  });
+
   it("says clearly when the PC doesn't allow it or can't be reached", async () => {
     (NativeModules as any).HomeLink = {
       picture: jest.fn(async () =>

@@ -18,10 +18,18 @@
 //!
 //! Limits: prompt up to 1000 characters (no control or invisible
 //! characters), sizes 512 / 768 / 1024, at most 30 steps, one picture at a
-//! time, stopped after 10 minutes, and `image_cancel` stops it at once.
+//! time, stopped after 10 minutes (saying how far it got), and
+//! `image_cancel` stops it at once. SD 1.5 always makes 512 x 512 with at
+//! most 25 steps (fit_request). Cards with 6 GB or less of their own (or
+//! none) get `--vae-tiling` and `--clip-on-cpu` (low_vram).
 //! A small word check refuses clearly illegal requests (sexual content with
 //! minors) before anything runs; it is a basic filter, not a guarantee.
 //! ARM Linux (e.g. a PineTab 2) has no picture maker: far too slow there.
+//!
+//! Progress: sd-cli's output is read as it comes (lines and "\r" bar
+//! updates) and turned into `image-progress` events (Progress: a phase
+//! word, step N of M, seconds left), a few a second at most. Its own text
+//! never goes to the screens (it names files on this PC).
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -242,6 +250,31 @@ pub fn pick_set(installed: Vec<ModelSet>, gpus: &[crate::system::Gpu]) -> Option
         }
     }
     installed.into_iter().next()
+}
+
+/// Steps at most for SD 1.5 sets (kind "sd"): more adds little and a slow
+/// card runs past the time limit.
+pub const MAX_SD_STEPS: u32 = 25;
+/// SD 1.5 is made for this size; larger takes far longer and looks worse.
+pub const SD_SIZE: u32 = 512;
+/// Cards with at most this much memory of their own get the low-memory
+/// options (VAE in tiles, text encoder on the processor).
+pub const LOW_VRAM_BYTES: u64 = 6 * 1024 * 1024 * 1024;
+
+/// The size and steps a set really makes: SD 1.5 always 512 x 512 and at
+/// most MAX_SD_STEPS steps; others as asked. Pure, so it can be tested.
+pub fn fit_request(set: &ModelSet, width: u32, height: u32, steps: Option<u32>) -> (u32, u32, u32) {
+    let steps = steps.unwrap_or(set.default_steps);
+    if set.kind == "sd" {
+        (SD_SIZE, SD_SIZE, steps.min(MAX_SD_STEPS))
+    } else {
+        (width, height, steps)
+    }
+}
+
+/// No graphics card with its own memory, or none with more than 6 GB.
+pub fn low_vram(gpus: &[crate::system::Gpu]) -> bool {
+    !gpus.iter().any(|g| !g.shared && g.total_memory > LOW_VRAM_BYTES)
 }
 
 /// A checked request.
@@ -470,8 +503,16 @@ pub fn refused(prompt: &str) -> Option<&'static str> {
 }
 
 /// The picture maker's arguments: only the app's own model files, the
-/// checked request and the output file.
-pub fn sd_args(set: &ModelSet, dir: &Path, req: &Request, seed: u64, out: &Path) -> Vec<String> {
+/// checked request and the output file. `low_vram` (low_vram) adds the
+/// options that save graphics card memory.
+pub fn sd_args(
+    set: &ModelSet,
+    dir: &Path,
+    req: &Request,
+    seed: u64,
+    out: &Path,
+    low_vram: bool,
+) -> Vec<String> {
     let file = |role: &str| {
         set.files
             .iter()
@@ -514,6 +555,12 @@ pub fn sd_args(set: &ModelSet, dir: &Path, req: &Request, seed: u64, out: &Path)
         // Weights wait in memory and move to the card when needed: fits an
         // 8 GB card next to a loaded chat model.
         args.push("--offload-to-cpu".into());
+    }
+    if low_vram {
+        // A small card (e.g. a 4 GB GTX 745): the picture decoded in tiles
+        // and the text encoder kept on the processor, so it fits.
+        args.push("--vae-tiling".into());
+        args.push("--clip-on-cpu".into());
     }
     args
 }
@@ -627,28 +674,287 @@ impl Drop for Slot<'_> {
     }
 }
 
-/// Keeps the end of a pipe's output (read on its own thread, so the picture
-/// maker never stalls on a full pipe).
-fn drain(pipe: Option<impl Read + Send + 'static>) -> Arc<Mutex<Vec<u8>>> {
+/// What the picture maker is doing, read from its output.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Phase {
+    Loading,
+    Sampling,
+    Decoding,
+    Saving,
+}
+
+/// The `image-progress` event: numbers and a phase word only, never the
+/// maker's own text (it names files and folders on this PC).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Progress {
+    /// The screens' id for this picture (image_generate's `job`), else the
+    /// picture's file name.
+    pub id: String,
+    pub phase: Phase,
+    /// Step N of M while sampling (0 before the first step).
+    pub step: u32,
+    pub steps: u32,
+    /// About how many seconds of sampling are left; None until known.
+    pub seconds: Option<u64>,
+    /// The chat model is loaded on the same graphics card (a hint: it
+    /// slows pictures down; nothing is unloaded).
+    pub chat_on_card: bool,
+}
+
+/// The event's name.
+pub const PROGRESS_EVENT: &str = "image-progress";
+/// Steps are sent at most this often (a new phase, and the last step, at
+/// once).
+const PROGRESS_EVERY: Duration = Duration::from_millis(300);
+
+/// One step bar of sd-cli (`pretty_progress`), e.g.
+/// `  |=====>     | 5/20 - 1.23s/it` or `... | 3/20 - 2.50it/s`, written
+/// after a "\r" and sometimes ending in an erase code: (N, M, seconds a
+/// step). Text without a bar (`|`) is not one, so "generating image: 1/1 -
+/// seed 42" is not taken for a step.
+pub fn parse_bar(line: &str) -> Option<(u32, u32, Option<f64>)> {
+    let line = plain(line);
+    let after =&line[line.rfind('|')? + 1..];
+    let words: Vec<&str> = after.split_whitespace().collect();
+    let (n, m) = words.first()?.split_once('/')?;
+    let (n, m) = (n.parse::<u32>().ok()?, m.parse::<u32>().ok()?);
+    if m == 0 || n > m {
+        return None;
+    }
+    let rate = |text: &str| -> Option<f64> {
+        let (num, per_step) = if let Some(num) = text.strip_suffix("s/it") {
+            (num, true)
+        } else {
+            (text.strip_suffix("it/s")?, false)
+        };
+        let v = num
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite() && *v > 0.0)?;
+        Some(if per_step { v } else { 1.0 / v })
+    };
+    let per_step = words.iter().enumerate().skip(1).find_map(|(i, w)| {
+        rate(w).or_else(|| {
+            // "1.23 s/it" in two words.
+            words.get(i + 1).and_then(|unit| rate(&format!("{w}{unit}")))
+        })
+    });
+    Some((n, m, per_step))
+}
+
+/// The phase a log line tells of, if any.
+pub fn parse_phase(line: &str) -> Option<Phase> {
+    let l = line.to_ascii_lowercase();
+    let any = |words: &[&str]| words.iter().any(|w| l.contains(w));
+    if any(&["save result", "saving", "save image"]) {
+        Some(Phase::Saving)
+    } else if any(&[
+        "sampling completed",
+        "decoding",
+        "decode_first_stage",
+        "latents decoded",
+        "decoded,",
+    ]) {
+        Some(Phase::Decoding)
+    } else if any(&["sampling", "generating image"]) {
+        Some(Phase::Sampling)
+    } else if any(&["loading", "load "]) {
+        Some(Phase::Loading)
+    } else {
+        None
+    }
+}
+
+/// Text without terminal codes ("\x1b[K", colours).
+fn plain(piece: &str) -> String {
+    let mut out = String::with_capacity(piece.len());
+    let mut chars = piece.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            if chars.next() == Some('[') {
+                for c in chars.by_ref() {
+                    if c.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Follows the maker's output. Phases only move forward. A bar counts as
+/// sampling when it has the asked number of steps (or, once sampling
+/// began, when it is short), so the model-loading bar (hundreds of
+/// tensors) and the decoder's tiles are not taken for steps.
+pub struct Tracker {
+    /// Sent with each event (Progress::chat_on_card).
+    pub chat_on_card: bool,
+    steps: u32,
+    phase: Phase,
+    step: u32,
+    per_step: Option<f64>,
+    sent: Option<(Instant, Phase)>,
+}
+
+impl Tracker {
+    pub fn new(steps: u32) -> Self {
+        Tracker {
+            chat_on_card: false,
+            steps,
+            phase: Phase::Loading,
+            step: 0,
+            per_step: None,
+            sent: None,
+        }
+    }
+
+    /// Reads one line or "\r" update; true when the phase or step changed.
+    pub fn feed(&mut self, piece: &str) -> bool {
+        let before = (self.phase, self.step);
+        if let Some((n, m, per_step)) = parse_bar(piece) {
+            let sampling = self.phase <= Phase::Sampling
+                && (m == self.steps || (self.phase == Phase::Sampling && m <= 2 * MAX_STEPS));
+            if sampling {
+                self.phase = Phase::Sampling;
+                self.steps = m;
+                self.step = n;
+                if per_step.is_some() {
+                    self.per_step = per_step;
+                }
+            }
+        } else if let Some(phase) = parse_phase(piece) {
+            self.phase = self.phase.max(phase);
+        }
+        (self.phase, self.step) != before
+    }
+
+    /// About how many seconds of sampling are left.
+    pub fn seconds_left(&self) -> Option<u64> {
+        if self.phase != Phase::Sampling {
+            return None;
+        }
+        let per_step = self.per_step?;
+        Some((per_step * self.steps.saturating_sub(self.step) as f64).round() as u64)
+    }
+
+    /// The event to send now, if one is due: the first, a new phase and the
+    /// last step at once, other steps at most every PROGRESS_EVERY.
+    pub fn due(&mut self, id: &str, now: Instant) -> Option<Progress> {
+        let due = match self.sent {
+            None => true,
+            Some((at, phase)) => {
+                phase != self.phase
+                    || self.step == self.steps
+                    || now.duration_since(at) >= PROGRESS_EVERY
+            }
+        };
+        if !due {
+            return None;
+        }
+        self.sent = Some((now, self.phase));
+        Some(Progress {
+            id: id.to_string(),
+            phase: self.phase,
+            step: self.step,
+            steps: self.steps,
+            seconds: self.seconds_left(),
+            chat_on_card: self.chat_on_card,
+        })
+    }
+
+    /// Why the 10-minute limit stopped it, with how far it got.
+    pub fn time_limit_message(&self) -> String {
+        const TRY: &str = "this graphics card is too slow for this size; try 512 px or fewer steps.";
+        match self.phase {
+            Phase::Loading => format!(
+                "Stopped after 10 minutes while still loading the picture model: {TRY}"
+            ),
+            Phase::Sampling => format!(
+                "Stopped at step {} of {} after 10 minutes: {TRY}",
+                self.step, self.steps
+            ),
+            Phase::Decoding | Phase::Saving => format!(
+                "Stopped after 10 minutes while finishing the picture (all {} steps done): {TRY}",
+                self.steps
+            ),
+        }
+    }
+}
+
+/// Splits output into lines and "\r" updates as it comes; an unfinished
+/// part waits in `pending` for the next read.
+fn pieces(pending: &mut Vec<u8>, data: &[u8]) -> Vec<String> {
+    pending.extend_from_slice(data);
+    let mut out = Vec::new();
+    while let Some(at) = pending.iter().position(|b| *b == b'\n' || *b == b'\r') {
+        let piece: Vec<u8> = pending.drain(..=at).collect();
+        let text = String::from_utf8_lossy(&piece[..piece.len() - 1]).into_owned();
+        if !text.trim().is_empty() {
+            out.push(text);
+        }
+    }
+    // A very long line with no end yet: only its end is kept.
+    if pending.len() > MAX_LOG {
+        let cut = pending.len() - MAX_LOG;
+        pending.drain(..cut);
+    }
+    out
+}
+
+type Report = Arc<dyn Fn(&str) + Send + Sync>;
+
+fn send_progress(app: &AppHandle, event: Option<Progress>) {
+    if let Some(event) = event {
+        use tauri::Emitter;
+        let _ = app.emit(PROGRESS_EVENT, event);
+    }
+}
+
+/// Keeps the end of a pipe's output and hands each line or "\r" update to
+/// `report` as it comes (read on its own thread, so the picture maker
+/// never stalls on a full pipe).
+fn drain(pipe: Option<impl Read + Send + 'static>, report: Report) -> Arc<Mutex<Vec<u8>>> {
     let log = Arc::new(Mutex::new(Vec::new()));
     if let Some(mut pipe) = pipe {
         let log = log.clone();
         std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
+            let mut pending = Vec::new();
             while let Ok(n) = pipe.read(&mut buf) {
                 if n == 0 {
                     break;
                 }
-                let mut log = log.lock().unwrap();
-                log.extend_from_slice(&buf[..n]);
-                if log.len() > MAX_LOG {
-                    let cut = log.len() - MAX_LOG;
-                    log.drain(..cut);
+                {
+                    let mut log = log.lock().unwrap();
+                    log.extend_from_slice(&buf[..n]);
+                    if log.len() > MAX_LOG {
+                        let cut = log.len() - MAX_LOG;
+                        log.drain(..cut);
+                    }
+                }
+                for piece in pieces(&mut pending, &buf[..n]) {
+                    report(&piece);
                 }
             }
         });
     }
     log
+}
+
+/// The screens' id for a picture: short, letters, digits, "-" and "_".
+fn job_id(job: Option<&str>) -> Option<String> {
+    job.filter(|j| {
+        !j.is_empty()
+            && j.len() <= 64
+            && j.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    })
+    .map(str::to_string)
 }
 
 #[derive(Serialize)]
@@ -660,6 +966,10 @@ pub struct Generated {
     pub path: String,
     pub seed: u64,
     pub seconds: u64,
+    /// The size and steps really used (SD 1.5: always 512 x 512).
+    pub width: u32,
+    pub height: u32,
+    pub steps: u32,
     /// Where it is on this PC (not sent to the screens).
     #[serde(skip)]
     #[cfg_attr(not(feature = "link"), allow(dead_code))]
@@ -704,18 +1014,21 @@ pub async fn image_generate(
     height: u32,
     steps: Option<u32>,
     seed: Option<i64>,
+    job: Option<String>,
 ) -> Result<Generated, String> {
     if let Some(why) = not_on_this_pc() {
         return Err(why.into());
     }
     let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let set = find_set(&root, &model)?;
-    make(app, set, &prompt, width, height, steps, seed, |_| {}).await
+    make(app, set, &prompt, width, height, steps, seed, job.as_deref(), |_| {}).await
 }
 
 /// Makes one picture: the same checks, caps, word filter and one-at-a-time
 /// slot for the PC's own tool and for a paired device (link.rs "picture").
 /// `started` runs once everything is checked, just before the maker starts.
+/// While it runs, `image-progress` events (Progress) tell the screens the
+/// phase and step, named by `job` (else the picture's file name).
 #[allow(clippy::too_many_arguments)]
 pub async fn make(
     app: AppHandle,
@@ -725,16 +1038,24 @@ pub async fn make(
     height: u32,
     steps: Option<u32>,
     seed: Option<i64>,
+    job: Option<&str>,
     started: impl FnOnce(&Request),
 ) -> Result<Generated, String> {
     if let Some(why) = not_on_this_pc() {
         return Err(why.into());
     }
-    let req = check_request(prompt, width, height, steps.unwrap_or(set.default_steps))?;
+    let (width, height, steps) = fit_request(&set, width, height, steps);
+    let req = check_request(prompt, width, height, steps)?;
     if let Some(why) = refused(&req.prompt) {
         return Err(format!("Refused: {why}. Nothing was made."));
     }
     let exe = sd_exe(&app)?;
+    let gpus = crate::system::gpus(&app);
+    let chat_on_card = gpus.iter().any(|g| !g.shared)
+        && app
+            .state::<crate::model_server::ModelServer>()
+            .address()
+            .is_some();
     let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let models = set_dir(&root, &set);
     if set.dir.is_some() {
@@ -776,7 +1097,7 @@ pub async fn make(
         command.current_dir(parent);
     }
     command
-        .args(sd_args(&set, &models, &req, seed, &out))
+        .args(sd_args(&set, &models, &req, seed, &out, low_vram(&gpus)))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -789,8 +1110,28 @@ pub async fn make(
     let mut child = command
         .spawn()
         .map_err(|e| format!("The picture maker did not start: {e}"))?;
-    let out_log = drain(child.stdout.take());
-    let err_log = drain(child.stderr.take());
+    let id = job_id(job).unwrap_or_else(|| name.clone());
+    let tracker = Arc::new(Mutex::new(Tracker::new(req.steps)));
+    // A hint only: the chat model is never unloaded for a picture.
+    tracker.lock().unwrap().chat_on_card = chat_on_card;
+    // "Loading the model…" straight away.
+    send_progress(&app, tracker.lock().unwrap().due(&id, Instant::now()));
+    let report: Report = {
+        let app = app.clone();
+        let tracker = tracker.clone();
+        Arc::new(move |piece: &str| {
+            let event = {
+                let mut tracker = tracker.lock().unwrap();
+                if !tracker.feed(piece) {
+                    return;
+                }
+                tracker.due(&id, Instant::now())
+            };
+            send_progress(&app, event);
+        })
+    };
+    let out_log = drain(child.stdout.take(), report.clone());
+    let err_log = drain(child.stderr.take(), report);
     state.0.lock().unwrap().child = Some(child);
 
     let begun = Instant::now();
@@ -826,7 +1167,8 @@ pub async fn make(
         return fail("Stopped. No picture was made.".into());
     }
     if timed_out {
-        return fail("Stopped after 10 minutes. Try a smaller size or fewer steps.".into());
+        let message = tracker.lock().unwrap().time_limit_message();
+        return fail(message);
     }
     let ok = status.map(|s| s.success()).unwrap_or(false);
     let is_png = std::fs::File::open(&out)
@@ -854,6 +1196,9 @@ pub async fn make(
         return fail(format!("The picture maker failed.\n{tail}"));
     }
     Ok(Generated {
+        width: req.width,
+        height: req.height,
+        steps: req.steps,
         path: format!(
             "{}/{}/{IMAGES_DIR}/{name}",
             crate::files::APP_PREFIX,
@@ -967,7 +1312,7 @@ mod tests {
         let sets = catalog().unwrap();
         let req = check_request("a cat", 1024, 768, 4).unwrap();
         let dir = Path::new("/app/Documents/image-models/flux2-klein-4b");
-        let args = sd_args(&sets[0], dir, &req, 42, Path::new("/w/images/p.png"));
+        let args = sd_args(&sets[0], dir, &req, 42, Path::new("/w/images/p.png"), false);
         // Windows joins paths with "\\"; compare with "/" everywhere.
         let line = args.join(" ").replace('\\', "/");
         assert!(line.contains("--diffusion-model /app/Documents/image-models/flux2-klein-4b/"));
@@ -990,9 +1335,15 @@ mod tests {
             assert!(!args.iter().any(|a| a == never), "{never}");
         }
         let sd = sets.iter().find(|s| s.id == "sd15").unwrap();
-        let args = sd_args(sd, dir, &req, 1, Path::new("o.png")).join(" ");
+        let args = sd_args(sd, dir, &req, 1, Path::new("o.png"), false).join(" ");
         assert!(args.contains("--model /app/"));
         assert!(!args.contains("--offload-to-cpu"));
+        assert!(!args.contains("--vae-tiling"));
+        assert!(!args.contains("--clip-on-cpu"));
+        // A small card: the low-memory options.
+        let args = sd_args(sd, dir, &req, 1, Path::new("o.png"), true);
+        assert!(args.iter().any(|a| a == "--vae-tiling"));
+        assert!(args.iter().any(|a| a == "--clip-on-cpu"));
     }
 
     /// A temporary app folder with a models folder.
@@ -1026,7 +1377,7 @@ mod tests {
         assert_eq!(set_dir(&root, &set), models.join("hf").join("a").join("r"));
         // The arguments: `--model <file>`, as for the list's SD 1.5.
         let req = check_request("a cat", 512, 512, 20).unwrap();
-        let args = sd_args(&set, &set_dir(&root, &set), &req, 7, Path::new("o.png"));
+        let args = sd_args(&set, &set_dir(&root, &set), &req, 7, Path::new("o.png"), false);
         let m = args.iter().position(|a| a == "--model").unwrap();
         assert_eq!(PathBuf::from(&args[m + 1]), models.join(rel));
         assert!(!args.iter().any(|a| a == "--diffusion-model" || a == "--offload-to-cpu"));
@@ -1115,6 +1466,46 @@ mod tests {
     }
 
     #[test]
+    fn sd15_makes_512_px_with_at_most_25_steps_and_small_cards_save_memory() {
+        let sets = catalog().unwrap();
+        let flux = sets[0].clone();
+        let sd = sets.iter().find(|s| s.id == "sd15").unwrap().clone();
+        assert_eq!(fit_request(&sd, 1024, 768, None), (512, 512, sd.default_steps.min(25)));
+        assert_eq!(fit_request(&sd, 768, 768, Some(30)), (512, 512, 25));
+        assert_eq!(fit_request(&sd, 512, 512, Some(8)), (512, 512, 8));
+        assert_eq!(fit_request(&flux, 1024, 768, None), (1024, 768, flux.default_steps));
+        assert_eq!(fit_request(&flux, 1024, 1024, Some(30)), (1024, 1024, 30));
+        let card = |bytes: u64, shared: bool| crate::system::Gpu {
+            name: "card".into(),
+            total_memory: bytes,
+            free_memory: 0,
+            shared,
+        };
+        const GIB: u64 = 1024 * 1024 * 1024;
+        // A GTX 745 (4 GB), a 6 GB card, none, or only the processor's.
+        assert!(low_vram(&[card(4 * GIB, false)]));
+        assert!(low_vram(&[card(6 * GIB, false)]));
+        assert!(low_vram(&[]));
+        assert!(low_vram(&[card(16 * GIB, true)]));
+        assert!(!low_vram(&[card(8 * GIB, false)]));
+        assert!(!low_vram(&[card(16 * GIB, true), card(12 * GIB, false)]));
+    }
+
+    #[test]
+    fn the_time_limit_says_how_far_it_got() {
+        let mut tracker = Tracker::new(20);
+        assert!(tracker.time_limit_message().contains("while still loading"));
+        tracker.feed("[INFO ] sampling using Euler A method");
+        tracker.feed("  |====>   | 9/20 - 60.00s/it");
+        assert_eq!(
+            tracker.time_limit_message(),
+            "Stopped at step 9 of 20 after 10 minutes: this graphics card is too slow for this size; try 512 px or fewer steps."
+        );
+        tracker.feed("[INFO ] decoding 1 latents");
+        assert!(tracker.time_limit_message().contains("while finishing the picture"));
+    }
+
+    #[test]
     fn picture_names_are_plain_and_dated() {
         assert_eq!(stamp(0), "19700101-000000");
         assert_eq!(stamp(1_795_000_000), "20261118-110640");
@@ -1137,5 +1528,105 @@ mod tests {
             let _slot = Slot(&gen);
         }
         assert!(!gen.0.lock().unwrap().busy);
+    }
+
+    #[test]
+    fn step_bars_are_read_and_other_text_is_not() {
+        assert_eq!(
+            parse_bar("  |=====>                     | 5/20 - 1.23s/it"),
+            Some((5, 20, Some(1.23)))
+        );
+        let (n, m, rate) = parse_bar("  |==>   | 3/20 - 2.50it/s\x1b[K").unwrap();
+        assert_eq!((n, m), (3, 20));
+        assert!((rate.unwrap() - 0.4).abs() < 1e-9);
+        assert_eq!(parse_bar("|=| 1/4 - 2.0 s/it"), Some((1, 4, Some(2.0))));
+        assert_eq!(parse_bar("  |=====| 20/20"), Some((20, 20, None)));
+        // Not bars.
+        assert_eq!(parse_bar("[INFO ] stable-diffusion.cpp:2350 - generating image: 1/1 - seed 42"), None);
+        assert_eq!(parse_bar("  |===| 21/20 - 1s/it"), None);
+        assert_eq!(parse_bar("  |===| 0/0 - 1s/it"), None);
+        assert_eq!(parse_bar("  |===| a/b"), None);
+        assert_eq!(parse_bar(""), None);
+        assert_eq!(parse_phase("[INFO ] stable-diffusion.cpp:212 - loading model from 'x.gguf'"), Some(Phase::Loading));
+        assert_eq!(parse_phase("[INFO ] stable-diffusion.cpp:1390 - sampling using Euler A method"), Some(Phase::Sampling));
+        assert_eq!(parse_phase("[INFO ] stable-diffusion.cpp:2385 - sampling completed, taking 61.20s"), Some(Phase::Decoding));
+        assert_eq!(parse_phase("[INFO ] stable-diffusion.cpp:2403 - decoding 1 latents"), Some(Phase::Decoding));
+        assert_eq!(parse_phase("[INFO ] main.cpp:780 - save result image 0 to 'out.png' (success)"), Some(Phase::Saving));
+        assert_eq!(parse_phase("[INFO ] stable-diffusion.cpp:303 - Version: SD 1.x"), None);
+    }
+
+    /// A whole run as sd-cli prints it (log lines end in "\n", the bar
+    /// redraws with "\r"), cut into odd-sized reads.
+    #[test]
+    fn a_whole_run_is_followed_phase_by_phase() {
+        let mut run = String::new();
+        run.push_str("[INFO ] stable-diffusion.cpp:212  - loading model from 'C:\\Users\\Owner\\AppData\\Roaming\\pocketagent\\Documents\\image-models\\sd15\\v1-5.gguf'\n");
+        run.push_str("[INFO ] model.cpp:1095 - load C:\\Users\\Owner\\v1-5.gguf using gguf format\n");
+        run.push_str("[INFO ] stable-diffusion.cpp:303  - Version: SD 1.x\n");
+        for i in (0..=1130).step_by(113) {
+            run.push_str(&format!("\r  |=====>     | {i}/1130 - 500.00it/s\x1b[K"));
+        }
+        run.push('\n');
+        run.push_str("[INFO ] model.cpp:2150 - loading tensors completed, taking 2.35s\n");
+        run.push_str("[INFO ] stable-diffusion.cpp:2350 - generating image: 1/1 - seed 42\n");
+        run.push_str("[INFO ] stable-diffusion.cpp:1390 - sampling using Euler A method\n");
+        for i in 1..=20 {
+            run.push_str(&format!("\r  |{}>   | {i}/20 - 3.00s/it\x1b[K", "=".repeat(i)));
+        }
+        run.push('\n');
+        run.push_str("[INFO ] stable-diffusion.cpp:2385 - sampling completed, taking 61.20s\n");
+        run.push_str("[INFO ] stable-diffusion.cpp:2403 - decoding 1 latents\n");
+        run.push_str("\r  |====| 2/4 - 1.00s/it\r  |=====| 4/4 - 1.00s/it\n");
+        run.push_str("[INFO ] stable-diffusion.cpp:2413 - latent 1 decoded, taking 4.12s\n");
+        run.push_str("[INFO ] main.cpp:780 - save result image 0 to 'C:\\Users\\Owner\\picture.png' (success)\n");
+
+        let mut tracker = Tracker::new(20);
+        let mut pending = Vec::new();
+        let mut seen: Vec<(Phase, u32, Option<u64>)> = Vec::new();
+        for chunk in run.as_bytes().chunks(37) {
+            for piece in pieces(&mut pending, chunk) {
+                if tracker.feed(&piece) {
+                    seen.push((tracker.phase, tracker.step, tracker.seconds_left()));
+                }
+            }
+        }
+        // The loading bar is not taken for steps.
+        assert!(seen.iter().all(|(p, s, _)| *p != Phase::Loading || *s == 0));
+        assert_eq!(seen[0], (Phase::Sampling, 0, None));
+        assert_eq!(seen[1], (Phase::Sampling, 1, Some(57)));
+        assert!(seen.contains(&(Phase::Sampling, 7, Some(39))));
+        assert!(seen.contains(&(Phase::Sampling, 20, Some(0))));
+        // The decoder's tiles are not steps; phases end with saving.
+        let after: Vec<_> = seen.iter().skip_while(|(p, _, _)| *p == Phase::Sampling).collect();
+        assert_eq!(after, vec![&(Phase::Decoding, 20, None), &(Phase::Saving, 20, None)]);
+    }
+
+    #[test]
+    fn progress_is_sent_a_few_times_a_second_and_names_no_files() {
+        let mut tracker = Tracker::new(20);
+        let start = Instant::now();
+        let first = tracker.due("job-1", start).unwrap();
+        assert_eq!((first.phase, first.step, first.steps, first.seconds), (Phase::Loading, 0, 20, None));
+        tracker.feed("  |=>  | 1/20 - 2.00s/it");
+        // A new phase at once.
+        let next = tracker.due("job-1", start + Duration::from_millis(10)).unwrap();
+        assert_eq!((next.phase, next.step, next.seconds), (Phase::Sampling, 1, Some(38)));
+        tracker.feed("  |=>  | 2/20 - 2.00s/it");
+        assert!(tracker.due("job-1", start + Duration::from_millis(100)).is_none());
+        assert_eq!(tracker.due("job-1", start + Duration::from_millis(400)).unwrap().step, 2);
+        tracker.feed("  |=>  | 20/20 - 2.00s/it");
+        // The last step at once.
+        assert_eq!(tracker.due("job-1", start + Duration::from_millis(410)).unwrap().step, 20);
+        let json = serde_json::to_value(&next).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"id": "job-1", "phase": "sampling", "step": 1, "steps": 20, "seconds": 38, "chatOnCard": false})
+        );
+        // Ids from the screens are plain.
+        assert_eq!(job_id(Some("pic-123_a")).as_deref(), Some("pic-123_a"));
+        assert_eq!(job_id(Some("../x")), None);
+        assert_eq!(job_id(Some("")), None);
+        assert_eq!(job_id(Some(&"a".repeat(65))), None);
+        assert_eq!(job_id(None), None);
     }
 }

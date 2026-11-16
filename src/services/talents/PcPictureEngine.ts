@@ -9,6 +9,7 @@
  */
 import {askPcForPicture} from '../homeLink/homeLink';
 import {unlockHomePc} from '../homeLink/homePcLock';
+import {PC_MAKING_PICTURE, toolProgress} from './pictureProgress';
 import {
   TalentEngine,
   TalentExecuteContext,
@@ -17,6 +18,8 @@ import {
 } from './types';
 
 export const PC_PICTURE_SIZES = [512, 768, 1024];
+const PC_SD15_NOTE =
+  'A PC using Stable Diffusion 1.5 makes 512 x 512 only (at most 25 steps).';
 
 const STOP =
   'Answer the user now; do not call this tool again unless they ask.';
@@ -35,12 +38,12 @@ const DEFINITION: ToolDefinition['function'] = {
       width: {
         type: 'integer',
         enum: PC_PICTURE_SIZES,
-        description: "Pixels; leave out for the PC's default.",
+        description: `Pixels; leave out for the PC's default. ${PC_SD15_NOTE}`,
       },
       height: {
         type: 'integer',
         enum: PC_PICTURE_SIZES,
-        description: "Pixels; leave out for the PC's default.",
+        description: `Pixels; leave out for the PC's default. ${PC_SD15_NOTE}`,
       },
       steps: {
         type: 'integer',
@@ -122,7 +125,10 @@ export class PcPictureEngine implements TalentEngine {
       }
       ctx?.signal?.addEventListener('abort', () => resolve('stopped'));
     });
-    const made = await Promise.race([asked, stopped]);
+    toolProgress.set(PC_MAKING_PICTURE);
+    const made = await Promise.race([asked, stopped]).finally(() =>
+      toolProgress.set(null),
+    );
     if (made === 'stopped') {
       return {
         type: 'text',

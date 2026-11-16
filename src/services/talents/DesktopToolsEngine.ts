@@ -23,6 +23,8 @@
 import {installedSet} from '../imageGen/imageModels';
 import {read as readPcHardware} from '../desktop/pcHardware';
 import {getWorkspaceLimits} from './fileWorkspace';
+import {onPictureProgress} from './pictureEvents';
+import {pictureProgressText, toolProgress} from './pictureProgress';
 import {
   TalentEngine,
   TalentExecuteContext,
@@ -99,6 +101,11 @@ export const MEDIA_ACTIONS: Record<string, string> = {
 };
 
 export const IMAGE_SIZES = [512, 768, 1024];
+/** SD 1.5 sets (kind "sd"): always 512 x 512, at most 25 steps (image_gen.rs fit_request). */
+export const SD_SIZE = 512;
+export const MAX_SD_STEPS = 25;
+const SD15_NOTE =
+  'Stable Diffusion 1.5 makes 512 x 512 only (other sizes are made at 512).';
 
 const DEFINITIONS: Record<DesktopTool, ToolDefinition['function']> = {
   outside_files: {
@@ -144,11 +151,19 @@ const DEFINITIONS: Record<DesktopTool, ToolDefinition['function']> = {
           type: 'string',
           description: 'What the picture shows (at most 1000 characters).',
         },
-        width: {type: 'integer', enum: IMAGE_SIZES, description: 'Pixels.'},
-        height: {type: 'integer', enum: IMAGE_SIZES, description: 'Pixels.'},
+        width: {
+          type: 'integer',
+          enum: IMAGE_SIZES,
+          description: `Pixels. ${SD15_NOTE}`,
+        },
+        height: {
+          type: 'integer',
+          enum: IMAGE_SIZES,
+          description: `Pixels. ${SD15_NOTE}`,
+        },
         steps: {
           type: 'integer',
-          description: "Optional: 1-30; leave out for the model's default.",
+          description: `Optional: 1-30 (Stable Diffusion 1.5: at most ${MAX_SD_STEPS}); leave out for the model's default.`,
         },
         seed: {
           type: 'integer',
@@ -252,35 +267,57 @@ async function makePicture(
       summary: `No picture model is downloaded yet. Tell the user to download one in Toolbox, Image models. ${STOP}`,
     };
   }
-  const width = intOr(args.width, set.kind === 'sd' ? 512 : 1024);
-  const height = intOr(args.height, width);
+  // SD 1.5: 512 x 512 and at most 25 steps (larger runs past the time
+  // limit on small cards); the native side does the same.
+  const sd = set.kind === 'sd';
+  const width = sd ? SD_SIZE : intOr(args.width, 1024);
+  const height = sd ? SD_SIZE : intOr(args.height, width);
+  const asked = intOr(args.steps);
+  const steps =
+    sd && asked !== undefined ? Math.min(asked, MAX_SD_STEPS) : asked;
   // The chat's Stop ends the picture maker too.
   const cancel = () => {
     invoke('image_cancel').catch(() => {});
   };
   signal?.addEventListener('abort', cancel);
+  // Progress in the chat while it runs (the PC may take minutes).
+  const job = `pic-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+  toolProgress.set('Loading the model…');
+  const unlisten = await onPictureProgress(p => {
+    const text = p?.id === job ? pictureProgressText(p) : null;
+    if (text) {
+      toolProgress.set(text);
+    }
+  });
   try {
     const made = await invoke<{
       name: string;
       path: string;
       seed: number;
       seconds: number;
+      width?: number;
+      height?: number;
     }>('image_generate', {
       model: set.id,
       prompt,
       width,
       height,
-      steps: intOr(args.steps) ?? null,
+      steps: steps ?? null,
       seed: intOr(args.seed) ?? null,
+      job,
     });
     return {
       type: 'image',
       path: made.path,
       name: made.name,
-      summary: `Made the picture images/${made.name} (${width}x${height}, ${set.name}, seed ${made.seed}, ${made.seconds} s). The user sees it in the chat; you have not seen it, so don't describe it. ${STOP}`,
+      summary: `Made the picture images/${made.name} (${made.width ?? width}x${made.height ?? height}, ${set.name}, seed ${made.seed}, ${made.seconds} s). The user sees it in the chat; you have not seen it, so don't describe it. ${STOP}`,
     };
   } finally {
     signal?.removeEventListener('abort', cancel);
+    unlisten();
+    toolProgress.set(null);
   }
 }
 

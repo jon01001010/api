@@ -1158,6 +1158,7 @@ async fn picture_for(
         height.unwrap_or(size),
         steps,
         None,
+        None,
         move |req| {
             use tauri_plugin_notification::NotificationExt;
             let _ = note_app
@@ -1188,6 +1189,8 @@ async fn picture_for(
             "name": made.name,
             "seed": made.seed,
             "seconds": made.seconds,
+            "width": made.width,
+            "height": made.height,
         }),
         bytes,
     ))
