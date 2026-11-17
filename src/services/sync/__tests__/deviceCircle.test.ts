@@ -285,6 +285,8 @@ const tick = (ms: number) => {
 };
 
 let alerts: string[] = [];
+/** The user's yes to "Take the … from …?", given after each sync. */
+let takes: (() => Promise<unknown>)[] = [];
 
 beforeEach(async () => {
   mockClock = 1_800_000_000_000;
@@ -295,13 +297,24 @@ beforeEach(async () => {
   resetAskingLoops();
   resetKeptInStepNotice();
   alerts = [];
+  takes = [];
+  require('../promptSync').resetAsking();
   jest.spyOn(Date, 'now').mockImplementation(() => mockNow());
   jest
     .spyOn(Alert, 'alert')
     .mockImplementation((title: string, _m?: string, buttons?: any[]) => {
+      // A new system prompt or "your memory" notes from another device are
+      // asked first (review 2026-11-17): the user says yes, on that device,
+      // once the sync is through.
+      if (title.startsWith('Take the ')) {
+        const dev = mockCur as Name;
+        const take = buttons?.find(b => b.text === 'Take it');
+        takes.push(() => on(dev, () => take.onPress()));
+        return;
+      }
       alerts.push(title);
       // "Kept in step" notices are closed at once (one at a time).
-      if (title === 'Kept in step') {
+      if (title === 'Kept in step' || title === 'Kept in step with your PC') {
         buttons?.[0]?.onPress?.();
       }
     });
@@ -385,6 +398,9 @@ async function syncPair(i: number): Promise<SyncOutcome> {
   const r = await on(device, () => syncWithPc(pc));
   if (!r.ok) {
     throw new Error(`${PAIR_LABEL[i]}: ${r.error}`);
+  }
+  for (const take of takes.splice(0)) {
+    await take();
   }
   tick(SEC);
   return r;
@@ -783,7 +799,11 @@ describe.each(ORDERS)('three devices, $label', order => {
     for (const dev of NAMES) {
       expect(palNames(dev)).toEqual(['Writer']);
     }
-    expect(alerts.filter(a => a !== 'Kept in step')).toEqual([]);
+    expect(
+      alerts.filter(
+        a => a !== 'Kept in step' && a !== 'Kept in step with your PC',
+      ),
+    ).toEqual([]);
   });
 
   it('loops added, edited and stopped on different devices', async () => {
@@ -925,7 +945,11 @@ describe.each(ORDERS)('three devices, $label', order => {
     for (const dev of NAMES) {
       expect(chatIds(dev)).not.toContain('c3');
     }
-    expect(alerts.filter(a => a !== 'Kept in step')).toEqual([]);
+    expect(
+      alerts.filter(
+        a => a !== 'Kept in step' && a !== 'Kept in step with your PC',
+      ),
+    ).toEqual([]);
   });
 
   it('clocks a few minutes apart (within the 5-minute clamp): the later time wins, all agree', async () => {
@@ -1169,7 +1193,11 @@ describe('random edits on random devices, random syncs (seeded)', () => {
         );
         expect(chatIds(dev).filter(id => gone.chats.has(id))).toEqual([]);
       }
-      expect(alerts.filter(a => a !== 'Kept in step')).toEqual([]);
+      expect(
+        alerts.filter(
+          a => a !== 'Kept in step' && a !== 'Kept in step with your PC',
+        ),
+      ).toEqual([]);
     },
   );
 });

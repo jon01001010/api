@@ -25,8 +25,11 @@ import {
   applyItems,
   cleanItems,
   describeKeys,
+  holdForAnswer,
+  loadPeer,
   merge,
   readItems,
+  rememberSync,
 } from './promptSync';
 
 const SETTING = 'pa-link-sync';
@@ -138,19 +141,47 @@ export async function answerSync(
   } catch {
     return JSON.stringify({ok: false, error: 'Not readable'});
   }
+  const from = device || 'a paired device';
+  const peer = `device:${from}`;
   const local = await readItems();
-  const merged = merge(local, cleanItems(remote));
+  const now = Date.now();
+  const received = cleanItems(remote);
+  const merged = merge(local, received, await loadPeer(peer));
   const report: {
     assistantsDeleted: number;
     assistantsHeld: number;
   } & LoopReport = {assistantsDeleted: 0, assistantsHeld: 0};
-  const changed = await applyItems(merged.items, Date.now(), {
-    from: device || 'a paired device',
-    report,
-  });
+  // A new system prompt or "your memory" notes from a device: asked first
+  // (review 2026-11-17); the device is answered at once with its own for
+  // those (nothing decided yet: it keeps its own), and they are taken here
+  // later, on yes.
+  const wins = merged.items.filter(i => merged.takenHere.includes(i.key));
+  const takeNow = await holdForAnswer(
+    wins,
+    from,
+    async item => {
+      const later = await applyItems([item], Date.now(), {from});
+      if (later.length) {
+        keptInStepNotice(
+          `${describeKeys(later)} updated from ${from}. The earlier versions are kept in history.`,
+        );
+      }
+    },
+    peer,
+  );
+  const held = new Set(wins.filter(i => !takeNow.includes(i)).map(i => i.key));
+  const agreed = merged.items.map(i =>
+    held.has(i.key) ? (received.find(r => r.key === i.key) ?? i) : i,
+  );
+  const changed = await applyItems(
+    agreed.filter(i => !held.has(i.key)),
+    now,
+    {from, report},
+  );
+  await rememberSync(peer, received, now);
   if (changed.length) {
     keptInStepNotice(
-      `${describeKeys(changed)} updated from ${device || 'a paired device'}. The earlier versions are kept in history.`,
+      `${describeKeys(changed)} updated from ${from}. The earlier versions are kept in history.`,
     );
   }
   if (report.assistantsDeleted) {
@@ -166,7 +197,6 @@ export async function answerSync(
   let send: unknown[] = [];
   let tombstones: unknown[] = [];
   if (chats && (await hostMirrorAllowed())) {
-    const from = device || 'a paired device';
     // Chats deleted on the device: removed here unless changed here since
     // (kept under Recently deleted); too many at once: asked first.
     const del = await applyTombstones(
@@ -176,9 +206,7 @@ export async function answerSync(
     );
     const known = await knownTombstones();
     const room =
-      SYNC_ROOM -
-      JSON.stringify(merged.items).length -
-      JSON.stringify(known).length;
+      SYNC_ROOM - JSON.stringify(agreed).length - JSON.stringify(known).length;
     const r = await mirrorOnPc(
       chats.sessions,
       chats.versions,
@@ -209,7 +237,7 @@ export async function answerSync(
   }
   return JSON.stringify({
     ok: true,
-    items: merged.items,
+    items: agreed,
     takenByPc: changed,
     chats: {sessions: send, tombstones},
   });

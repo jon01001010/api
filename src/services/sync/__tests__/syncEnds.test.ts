@@ -44,7 +44,23 @@ jest.mock('../../talents/agentMemory', () => ({
 jest.mock('@tauri-apps/api/core', () => ({invoke: jest.fn()}));
 jest.mock('@tauri-apps/api/event', () => ({listen: jest.fn()}));
 
-import {setSyncWithPc, syncWithPc, syncWithPcOn} from '../deviceSync';
+import {
+  changedHereText,
+  pcWins,
+  setSyncWithPc,
+  syncWithPc,
+  syncWithPcOn,
+} from '../deviceSync';
+import {resetAsking} from '../promptSync';
+
+/** Presses a button of the last "Take the …?" question. */
+async function answerLast(alert: jest.SpyInstance, button: string) {
+  const calls = alert.mock.calls.filter(c =>
+    String(c[0]).startsWith('Take the '),
+  );
+  const [, , buttons] = calls[calls.length - 1] as any;
+  await buttons.find((b: any) => b.text === button).onPress();
+}
 import {
   answerSync,
   keptInStepNotice,
@@ -52,6 +68,7 @@ import {
 } from '../hostSync.web';
 
 beforeEach(() => {
+  resetAsking();
   for (const k of Object.keys(mockStore)) {
     delete mockStore[k];
   }
@@ -82,9 +99,25 @@ it('the PC takes a newer prompt from the device, keeps its own newer notes, and 
   });
   const reply = JSON.parse(await answerSync(body, 'Pixel'));
   expect(reply.ok).toBe(true);
+  // A new system prompt from a device: asked first (review 2026-11-17),
+  // with the app's own size line and the text; the device keeps its own
+  // until then.
+  expect(mockText.prompt).toBe('Old PC prompt');
+  expect(reply.takenByPc).toEqual([]);
+  expect(reply.items.find((i: any) => i.key === 'systemPrompt').text).toBe(
+    'Phone prompt',
+  );
+  expect(alert).toHaveBeenCalledWith(
+    'Take the system prompt from Pixel?',
+    expect.stringContaining(
+      'System prompt (the app counted 12 characters, 1 line):\nPhone prompt',
+    ),
+    expect.anything(),
+    expect.anything(),
+  );
+  await answerLast(alert, 'Take it');
   expect(mockText.prompt).toBe('Phone prompt');
   expect(mockText.user).toBe('PC notes (newer)');
-  expect(reply.takenByPc).toEqual(['systemPrompt']);
   expect(reply.items.find((i: any) => i.key === 'userMemory').text).toBe(
     'PC notes (newer)',
   );
@@ -98,6 +131,7 @@ it('the PC takes a newer prompt from the device, keeps its own newer notes, and 
 });
 
 it('the device sends its items and takes the agreed ones back', async () => {
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mockText.user = 'old phone notes';
   let sent: any;
   (NativeModules as any).HomeLink = {
@@ -123,15 +157,109 @@ it('the device sends its items and takes the agreed ones back', async () => {
     'customTools',
     'loops',
   ]);
+  // The prompt and "your memory": asked first, taken on yes.
   expect(r).toEqual({
     ok: true,
-    changedHere: ['systemPrompt', 'userMemory'],
+    changedHere: [],
     changedOnPc: [],
     chatsReceived: 0,
     chatsSent: 0,
   });
+  expect(mockText.prompt).toBe('');
+  for (const call of alert.mock.calls.filter(c =>
+    String(c[0]).startsWith('Take the '),
+  )) {
+    await (call as any)[2].find((b: any) => b.text === 'Take it').onPress();
+  }
   expect(mockText.prompt).toBe('Be brief.');
   expect(mockText.user).toBe('PC notes');
+  // Told, after it was taken.
+  expect(alert).toHaveBeenCalledWith(
+    'Kept in step with your PC',
+    expect.stringContaining('taken from the PC'),
+  );
+  alert.mockRestore();
+});
+
+it('the device never takes an empty item over real text, nor what is the same', () => {
+  const local = [
+    {key: 'customTools' as const, text: '[{"name":"x"}]', updatedAt: 1},
+    {key: 'modelMemory' as const, text: 'real notes', updatedAt: 1},
+    {key: 'systemPrompt' as const, text: 'Same', updatedAt: 1},
+  ];
+  const agreed = [
+    {key: 'customTools' as const, text: '[]', updatedAt: 9},
+    {key: 'modelMemory' as const, text: 'TEMPLATE\n', updatedAt: 9},
+    {key: 'systemPrompt' as const, text: 'Same', updatedAt: 9},
+  ];
+  expect(pcWins(local, agreed)).toEqual([]);
+  expect(
+    pcWins(local, [{key: 'modelMemory', text: 'PC notes', updatedAt: 9}]),
+  ).toEqual([{key: 'modelMemory', text: 'PC notes', updatedAt: 9}]);
+});
+
+it('"Keep mine" keeps it, and the same text is not asked about again', async () => {
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  mockText.prompt = 'Mine';
+  (NativeModules as any).HomeLink = {
+    sync: jest.fn(async () =>
+      JSON.stringify({
+        ok: true,
+        items: [{key: 'systemPrompt', text: 'Injected', updatedAt: 50}],
+        takenByPc: [],
+      }),
+    ),
+  };
+  await syncWithPc('pc1');
+  await answerLast(alert, 'Keep mine');
+  expect(mockText.prompt).toBe('Mine');
+  const asked = alert.mock.calls.length;
+  await syncWithPc('pc1');
+  expect(alert.mock.calls.length).toBe(asked);
+  expect(mockText.prompt).toBe('Mine');
+  alert.mockRestore();
+});
+
+it('says what changed after a sync in the background', () => {
+  expect(
+    changedHereText({
+      ok: true,
+      changedHere: ['modelMemory'],
+      changedOnPc: [],
+      chatsDeleted: 2,
+    }),
+  ).toBe(
+    "The model's memory notes taken from the PC; 2 chat(s) deleted on the PC removed here.",
+  );
+  expect(changedHereText({ok: true, changedHere: [], changedOnPc: []})).toBe(
+    '',
+  );
+});
+
+it('a device that sends the same text "5 minutes from now" every time no longer wins', async () => {
+  jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  mockText.user = 'x';
+  const t0 = Date.now();
+  const send = (now: number) =>
+    JSON.stringify({
+      items: [
+        {key: 'modelMemory', text: 'Evil notes', updatedAt: now + 5 * 60_000},
+      ],
+    });
+  mockText.model = 'PC notes';
+  await answerSync(send(t0), 'Pixel');
+  // Newer than the PC's notes then: taken (the model's notes are not asked).
+  expect(mockText.model).toBe('Evil notes');
+  // The user puts their notes back a minute later (within the skew).
+  mockText.model = 'PC notes again';
+  const now = jest.spyOn(Date, 'now').mockReturnValue(t0 + 60_000);
+  const reply = JSON.parse(await answerSync(send(t0 + 60_000), 'Pixel'));
+  expect(mockText.model).toBe('PC notes again');
+  expect(reply.items.find((i: any) => i.key === 'modelMemory').text).toBe(
+    'PC notes again',
+  );
+  now.mockRestore();
+  (Alert.alert as any).mockRestore();
 });
 
 it("says so when the PC hasn't allowed it", async () => {

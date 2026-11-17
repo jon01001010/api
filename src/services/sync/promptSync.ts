@@ -10,7 +10,16 @@
  * empty item (or memory's starting template) counts as "nothing yet" and
  * never wins over real text. Assistants and loops are the exception:
  * merged one by one, with deletions (see assistantDeletes.ts, loopSync.ts).
+ *
+ * Security review 2026-11-17: the phone takes from the PC's answer only
+ * what differs, never an empty item over real text (deviceSync pcWins);
+ * the same text sent again counts from when it was first seen (so a device
+ * that always says "5 minutes from now" can't win for ever: claimedTime);
+ * a new system prompt or new notes in
+ * "your memory" from another device are taken only after the user says yes
+ * (holdForAnswer); a system prompt is at most MAX_PROMPT.
  */
+import {Alert} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
@@ -79,6 +88,11 @@ const historyKey = (key: SyncKey) =>
     : `@pocketagent/sync/history/${key}/v1`;
 /** Biggest item taken from another device. */
 const MAX_TEXT = 1024 * 1024;
+/**
+ * Biggest system prompt (characters), set here or taken from another device
+ * (security review 2026-11-17: storage, and every chat carries it).
+ */
+export const MAX_PROMPT = 32 * 1024;
 
 /** A short fingerprint of a text (FNV-1a), to notice local edits. */
 export function fingerprint(text: string): string {
@@ -160,7 +174,7 @@ export function cleanItems(raw: unknown, now = Date.now()): SyncItem[] {
     if (
       item &&
       typeof item.text === 'string' &&
-      item.text.length <= MAX_TEXT &&
+      item.text.length <= (key === 'systemPrompt' ? MAX_PROMPT : MAX_TEXT) &&
       typeof item.updatedAt === 'number' &&
       Number.isFinite(item.updatedAt)
     ) {
@@ -184,11 +198,103 @@ export interface Merged {
 }
 
 /**
+ * What this device remembers of one other device, per item: the text it
+ * last sent (`seenPrint`, its fingerprint) and the time that text counts
+ * from (`seenAt`: its time when first seen here, clamped, and no later than
+ * this device's clock then); and a text the user chose not to take
+ * (`declined`, its fingerprint: not asked again).
+ */
+export type PeerState = Partial<
+  Record<SyncKey, {seenPrint?: string; seenAt?: number; declined?: string}>
+>;
+
+const peerKey = (peer: string) =>
+  `@pocketagent/sync/peer/${encodeURIComponent(peer || 'a paired device')}/v1`;
+
+export async function loadPeer(peer: string): Promise<PeerState> {
+  try {
+    const v = JSON.parse((await AsyncStorage.getItem(peerKey(peer))) || '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+async function savePeer(peer: string, state: PeerState): Promise<void> {
+  try {
+    await AsyncStorage.setItem(peerKey(peer), JSON.stringify(state));
+  } catch {
+    // At worst the next sync compares by time alone.
+  }
+}
+
+/**
+ * The other device's item with the time it may claim: the same text it
+ * sent before counts from when it was first seen here (never later than
+ * this device's clock then), so a device that sends the same text again
+ * and again "a few minutes from now" can't win for ever; a local edit
+ * made after that beats it.
+ */
+export function claimedTime(r: SyncItem, peer?: PeerState[SyncKey]): SyncItem {
+  if (
+    peer?.seenPrint !== undefined &&
+    peer.seenAt !== undefined &&
+    peer.seenPrint === fingerprint(r.text)
+  ) {
+    return {...r, updatedAt: Math.min(r.updatedAt, peer.seenAt)};
+  }
+  return r;
+}
+
+/** After a sync with `peer`: what it sent, and from when it counts. */
+export async function rememberSync(
+  peer: string,
+  received: SyncItem[],
+  now = Date.now(),
+): Promise<void> {
+  const state = await loadPeer(peer);
+  for (const item of received) {
+    const print = fingerprint(item.text);
+    const seen = state[item.key];
+    if (seen?.seenPrint === print) {
+      continue;
+    }
+    state[item.key] = {
+      ...seen,
+      seenPrint: print,
+      seenAt: Math.min(item.updatedAt, now),
+    };
+  }
+  await savePeer(peer, state);
+}
+
+/**
+ * Whether the other device's edit beats this one's, by time (its time as
+ * claimedTime allows); the same moment: the same choice on both devices.
+ */
+export function remoteIsNewer(
+  l: SyncItem,
+  r: SyncItem,
+  peer?: PeerState[SyncKey],
+): boolean {
+  const t = claimedTime(r, peer).updatedAt;
+  if (t !== l.updatedAt) {
+    return t > l.updatedAt;
+  }
+  return r.text > l.text;
+}
+
+/**
  * Item by item, the newer edit wins; empty never wins over real text.
  * Assistants are merged one by one (assistantDeletes.ts): both lists are
  * joined and, for each assistant, its newer edit or deletion wins.
+ * `peer`: what this device remembers of the other one (remoteIsNewer).
  */
-export function merge(local: SyncItem[], remote: SyncItem[]): Merged {
+export function merge(
+  local: SyncItem[],
+  remote: SyncItem[],
+  peer: PeerState = {},
+): Merged {
   const result: Merged = {items: [], takenHere: [], takenThere: []};
   for (const key of SYNC_KEYS) {
     const l = local.find(i => i.key === key);
@@ -232,10 +338,7 @@ export function merge(local: SyncItem[], remote: SyncItem[]): Merged {
         ? true
         : rEmpty && !lEmpty
           ? false
-          : r.updatedAt !== l.updatedAt
-            ? r.updatedAt > l.updatedAt
-            : // Same moment: the same choice on both devices.
-              r.text > l.text;
+          : remoteIsNewer(l, r, peer[key]);
     result.items.push(remoteWins ? r : l);
     (remoteWins ? result.takenHere : result.takenThere).push(key);
   }
@@ -352,6 +455,73 @@ export async function applyItems(
   }
   await AsyncStorage.setItem(STATE_KEY, JSON.stringify(state));
   return changed;
+}
+
+/** Items taken only after the user says yes (from any other device). */
+export const ASK_FIRST: SyncKey[] = ['systemPrompt', 'userMemory'];
+
+/** Questions open now (one per device and item). */
+const asking = new Set<string>();
+
+/**
+ * Splits the items to take: those taken now, and (ASK_FIRST) those the
+ * user is asked about first, each in its own question, taken (`take`) only
+ * on yes. A text the user said no to is not asked about again (until the
+ * other device changes it). Returns the items to take now.
+ */
+export async function holdForAnswer(
+  items: SyncItem[],
+  from: string,
+  take: (item: SyncItem) => Promise<void>,
+  /** Where the answer is remembered (default: `from`). */
+  peerId: string = from,
+): Promise<SyncItem[]> {
+  const now: SyncItem[] = [];
+  const peer = await loadPeer(peerId);
+  for (const item of items) {
+    if (!ASK_FIRST.includes(item.key) || isEmpty(item.key, item.text)) {
+      now.push(item);
+      continue;
+    }
+    const print = fingerprint(item.text);
+    const id = `${peerId}:${item.key}`;
+    if (peer[item.key]?.declined === print || asking.has(id)) {
+      continue;
+    }
+    asking.add(id);
+    const {textView} = require('../../utils/shownText');
+    const label = SYNC_LABEL[item.key];
+    Alert.alert(
+      `Take the ${label.toLowerCase()} from ${from}?`,
+      `${textView(item.text, {name: label})}\n\nIt replaces yours here (yours is kept in history).`,
+      [
+        {
+          text: 'Keep mine',
+          style: 'cancel',
+          onPress: async () => {
+            asking.delete(id);
+            const state = await loadPeer(peerId);
+            state[item.key] = {...state[item.key], declined: print};
+            await savePeer(peerId, state);
+          },
+        },
+        {
+          text: 'Take it',
+          onPress: async () => {
+            asking.delete(id);
+            await take(item);
+          },
+        },
+      ],
+      {cancelable: true, onDismiss: () => asking.delete(id)},
+    );
+  }
+  return now;
+}
+
+/** For tests. */
+export function resetAsking(): void {
+  asking.clear();
 }
 
 /** "System prompt, your memory notes" for a list of keys. */

@@ -45,8 +45,11 @@ jest.mock('../syncSources', () => ({
 
 import {
   applyItems,
+  claimedTime,
   cleanItems,
+  fingerprint,
   MAX_CLOCK_SKEW,
+  MAX_PROMPT,
   merge,
   promptHistory,
   readItems,
@@ -194,5 +197,40 @@ describe('a time far in the future (a clock ahead, or forged)', () => {
     mockStore[key] = JSON.stringify(state);
     const items = await readItems(5000);
     expect(items.find(i => i.key === 'systemPrompt')!.updatedAt).toBe(5000);
+  });
+});
+
+describe('security review 2026-11-17', () => {
+  it('a system prompt over MAX_PROMPT is not taken from another device', () => {
+    expect(
+      cleanItems([
+        {key: 'systemPrompt', text: 'x'.repeat(MAX_PROMPT + 1), updatedAt: 1},
+      ]),
+    ).toEqual([]);
+    expect(
+      cleanItems([
+        {key: 'systemPrompt', text: 'x'.repeat(MAX_PROMPT), updatedAt: 1},
+      ]),
+    ).toHaveLength(1);
+    // Notes may be longer.
+    expect(
+      cleanItems([
+        {key: 'userMemory', text: 'x'.repeat(MAX_PROMPT + 1), updatedAt: 1},
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('the same text sent again counts from when it was first seen', () => {
+    const peer = {systemPrompt: {seenPrint: fingerprint('Evil'), seenAt: 1000}};
+    // Sent again "5 minutes from now": it counts from 1000.
+    const again = item('systemPrompt', 'Evil', 5000 + MAX_CLOCK_SKEW);
+    expect(claimedTime(again, peer.systemPrompt).updatedAt).toBe(1000);
+    // A local edit after that wins; without the memory, it would not.
+    const local = [item('systemPrompt', 'Mine', 3000)];
+    expect(merge(local, [again], peer).takenHere).toEqual([]);
+    expect(merge(local, [again]).takenHere).toEqual(['systemPrompt']);
+    // A new text is a new edit: its own time.
+    const edited = item('systemPrompt', 'Evil 2', 4000);
+    expect(merge(local, [edited], peer).takenHere).toEqual(['systemPrompt']);
   });
 });
