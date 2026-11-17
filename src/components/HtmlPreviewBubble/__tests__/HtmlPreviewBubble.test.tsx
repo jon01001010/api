@@ -336,3 +336,42 @@ describe('preview fit', () => {
     expect(doc).toContain('s >= 0.5');
   });
 });
+
+describe('resource hints (review 2026-11-17)', () => {
+  const {
+    stripResourceHints,
+    wrapDocument: wrap,
+  } = require('../HtmlPreviewBubble');
+
+  it('takes out DNS prefetch, preconnect, prerender, prefetch and module preload', () => {
+    for (const rel of [
+      'dns-prefetch',
+      'preconnect',
+      'prerender',
+      'prefetch',
+      'modulepreload',
+      'DNS-PREFETCH',
+      '"preconnect"',
+      "'stylesheet prefetch'",
+    ]) {
+      const html = `<p>a</p><link rel=${rel} href="//secret.evil.example"><p>b</p>`;
+      expect(stripResourceHints(html)).toBe('<p>a</p><p>b</p>');
+    }
+    // A ">" inside a quoted value doesn't end the tag early.
+    expect(
+      stripResourceHints('<link title="a>b" rel=dns-prefetch href=//x.evil>ok'),
+    ).toBe('ok');
+    // A stylesheet link stays (the CSP blocks it anyway).
+    expect(stripResourceHints('<link rel="stylesheet" href="a.css">')).toBe(
+      '<link rel="stylesheet" href="a.css">',
+    );
+    const doc = wrap('<link href="//x.evil" rel="dns-prefetch">hi');
+    expect(doc).not.toContain('x.evil');
+    expect(doc).toContain(
+      '<meta http-equiv="x-dns-prefetch-control" content="off" />',
+    );
+    expect(doc.indexOf('x-dns-prefetch-control')).toBeLessThan(
+      doc.indexOf('<body>'),
+    );
+  });
+});
