@@ -1766,7 +1766,13 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(gen).toContain('pub const SIZES: [u32; 3] = [512, 768, 1024];');
     expect(gen).toContain('pub const MAX_STEPS: u32 = 30;');
     expect(gen).toContain(
-      'pub const TIME_LIMIT: Duration = Duration::from_secs(10 * 60);',
+      'pub const TIME_LIMIT: Duration = Duration::from_secs(60 * 60);',
+    );
+    expect(gen).toContain(
+      'pub const STALL_LIMIT: Duration = Duration::from_secs(5 * 60);',
+    );
+    expect(gen).toMatch(
+      /if let Some\(why\) = should_stop\(begun\.elapsed\(\), quiet\) \{\s*let _ = child\.kill\(\);/,
     );
     expect(gen).toMatch(/if job\.busy \{\s*return Err/);
     // Checked and word-filtered before anything runs.

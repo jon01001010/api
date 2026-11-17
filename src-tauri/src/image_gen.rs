@@ -18,7 +18,8 @@
 //!
 //! Limits: prompt up to 1000 characters (no control or invisible
 //! characters), sizes 512 / 768 / 1024, at most 30 steps, one picture at a
-//! time, stopped after 10 minutes (saying how far it got), and
+//! time, stopped when it makes no progress for 5 minutes or runs past an
+//! hour (saying how far it got), and
 //! `image_cancel` stops it at once. SD 1.5 always makes 512 x 512 with at
 //! most 25 steps (fit_request). Cards with 6 GB or less of their own (or
 //! none) get `--vae-tiling` and `--clip-on-cpu` (low_vram).
@@ -43,7 +44,10 @@ use tauri::{AppHandle, Manager, State};
 pub const MAX_PROMPT: usize = 1000;
 pub const SIZES: [u32; 3] = [512, 768, 1024];
 pub const MAX_STEPS: u32 = 30;
-pub const TIME_LIMIT: Duration = Duration::from_secs(10 * 60);
+/// The longest a picture may take, however steadily it moves.
+pub const TIME_LIMIT: Duration = Duration::from_secs(60 * 60);
+/// Stopped sooner when the maker writes nothing for this long (stuck).
+pub const STALL_LIMIT: Duration = Duration::from_secs(5 * 60);
 /// The end of the picture maker's output kept for an error message.
 const MAX_LOG: usize = 4 * 1024;
 /// The model list, shared with the screens.
@@ -800,6 +804,29 @@ pub struct Tracker {
     step: u32,
     per_step: Option<f64>,
     sent: Option<(Instant, Phase)>,
+    /// When the maker last wrote anything (a step, a loading or tile bar).
+    heard: Option<Instant>,
+}
+
+/// Why a picture was stopped before it was done.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stop {
+    /// Nothing written for STALL_LIMIT.
+    Stalled,
+    /// Still going after TIME_LIMIT.
+    TooLong,
+}
+
+/// Whether to stop now: slow is fine while it moves; stuck or past the
+/// hour is not.
+pub fn should_stop(running: Duration, quiet: Duration) -> Option<Stop> {
+    if running > TIME_LIMIT {
+        Some(Stop::TooLong)
+    } else if quiet > STALL_LIMIT {
+        Some(Stop::Stalled)
+    } else {
+        None
+    }
 }
 
 impl Tracker {
@@ -811,7 +838,18 @@ impl Tracker {
             step: 0,
             per_step: None,
             sent: None,
+            heard: None,
         }
+    }
+
+    /// The maker wrote something.
+    pub fn heard(&mut self, now: Instant) {
+        self.heard = Some(now);
+    }
+
+    /// How long the maker has been silent (since it started, if never).
+    pub fn quiet(&self, begun: Instant, now: Instant) -> Duration {
+        now.saturating_duration_since(self.heard.unwrap_or(begun).max(begun))
     }
 
     /// Reads one line or "\r" update; true when the phase or step changed.
@@ -868,20 +906,22 @@ impl Tracker {
         })
     }
 
-    /// Why the 10-minute limit stopped it, with how far it got.
-    pub fn time_limit_message(&self) -> String {
-        const TRY: &str = "this graphics card is too slow for this size; try 512 px or fewer steps.";
-        match self.phase {
-            Phase::Loading => format!(
-                "Stopped after 10 minutes while still loading the picture model: {TRY}"
-            ),
-            Phase::Sampling => format!(
-                "Stopped at step {} of {} after 10 minutes: {TRY}",
-                self.step, self.steps
-            ),
+    /// Why it was stopped, with how far it got.
+    pub fn stop_message(&self, why: Stop) -> String {
+        let at = match self.phase {
+            Phase::Loading => "while still loading the picture model".to_string(),
+            Phase::Sampling => format!("at step {} of {}", self.step, self.steps),
             Phase::Decoding | Phase::Saving => format!(
-                "Stopped after 10 minutes while finishing the picture (all {} steps done): {TRY}",
+                "while finishing the picture (all {} steps done)",
                 self.steps
+            ),
+        };
+        match why {
+            Stop::TooLong => format!(
+                "Stopped after 60 minutes {at}: this graphics card is too slow for this size; try 512 px or fewer steps."
+            ),
+            Stop::Stalled => format!(
+                "Stopped {at}: the picture maker showed no progress for 5 minutes, so it may be stuck. Try again; closing other programs that use the graphics card can help."
             ),
         }
     }
@@ -1122,6 +1162,7 @@ pub async fn make(
         Arc::new(move |piece: &str| {
             let event = {
                 let mut tracker = tracker.lock().unwrap();
+                tracker.heard(Instant::now());
                 if !tracker.feed(piece) {
                     return;
                 }
@@ -1136,21 +1177,23 @@ pub async fn make(
 
     let begun = Instant::now();
     let waiter = app.clone();
-    let (status, timed_out) = tauri::async_runtime::spawn_blocking(move || {
+    let watch = tracker.clone();
+    let (status, stopped) = tauri::async_runtime::spawn_blocking(move || {
         let state = waiter.state::<ImageGen>();
         loop {
             {
                 let mut job = state.0.lock().unwrap();
                 let Some(child) = job.child.as_mut() else {
-                    return (None, false);
+                    return (None, None);
                 };
                 if let Ok(Some(status)) = child.try_wait() {
-                    return (Some(status), false);
+                    return (Some(status), None);
                 }
-                if begun.elapsed() > TIME_LIMIT {
+                let quiet = watch.lock().unwrap().quiet(begun, Instant::now());
+                if let Some(why) = should_stop(begun.elapsed(), quiet) {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return (None, true);
+                    return (None, Some(why));
                 }
             }
             std::thread::sleep(Duration::from_millis(250));
@@ -1166,8 +1209,8 @@ pub async fn make(
     if cancelled {
         return fail("Stopped. No picture was made.".into());
     }
-    if timed_out {
-        let message = tracker.lock().unwrap().time_limit_message();
+    if let Some(why) = stopped {
+        let message = tracker.lock().unwrap().stop_message(why);
         return fail(message);
     }
     let ok = status.map(|s| s.success()).unwrap_or(false);
@@ -1494,15 +1537,44 @@ mod tests {
     #[test]
     fn the_time_limit_says_how_far_it_got() {
         let mut tracker = Tracker::new(20);
-        assert!(tracker.time_limit_message().contains("while still loading"));
+        assert!(tracker.stop_message(Stop::Stalled).contains("while still loading"));
         tracker.feed("[INFO ] sampling using Euler A method");
         tracker.feed("  |====>   | 9/20 - 60.00s/it");
         assert_eq!(
-            tracker.time_limit_message(),
-            "Stopped at step 9 of 20 after 10 minutes: this graphics card is too slow for this size; try 512 px or fewer steps."
+            tracker.stop_message(Stop::TooLong),
+            "Stopped after 60 minutes at step 9 of 20: this graphics card is too slow for this size; try 512 px or fewer steps."
         );
+        assert!(tracker
+            .stop_message(Stop::Stalled)
+            .starts_with("Stopped at step 9 of 20: the picture maker showed no progress for 5 minutes"));
         tracker.feed("[INFO ] decoding 1 latents");
-        assert!(tracker.time_limit_message().contains("while finishing the picture"));
+        assert!(tracker.stop_message(Stop::TooLong).contains("while finishing the picture"));
+    }
+
+    #[test]
+    fn slow_is_fine_while_it_moves() {
+        let min = |m: u64| Duration::from_secs(m * 60);
+        // The GTX 745 case: 7 minutes, steps every few seconds.
+        assert_eq!(should_stop(min(7), Duration::from_secs(4)), None);
+        // 40 minutes but still moving: kept going.
+        assert_eq!(should_stop(min(40), min(1)), None);
+        // Silent for over 5 minutes: stuck.
+        assert_eq!(should_stop(min(12), min(5) + Duration::from_secs(1)), Some(Stop::Stalled));
+        assert_eq!(should_stop(min(5), min(5)), None);
+        // Past the hour, however steady.
+        assert_eq!(should_stop(min(60) + Duration::from_secs(1), Duration::ZERO), Some(Stop::TooLong));
+    }
+
+    #[test]
+    fn quiet_counts_from_the_last_output() {
+        let begun = Instant::now();
+        let mut tracker = Tracker::new(20);
+        let at = |s: u64| begun + Duration::from_secs(s);
+        assert_eq!(tracker.quiet(begun, at(90)), Duration::from_secs(90));
+        tracker.heard(at(80));
+        assert_eq!(tracker.quiet(begun, at(90)), Duration::from_secs(10));
+        // A clock oddity never gives a negative or huge gap.
+        assert_eq!(tracker.quiet(begun, at(70)), Duration::ZERO);
     }
 
     #[test]

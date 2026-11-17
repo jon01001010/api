@@ -35,8 +35,9 @@ const MAX_LINE: usize = 4096;
 pub const MAX_SYNC: usize = 4 * 1024 * 1024;
 /// Largest picture taken from the PC (the PC's own limit too).
 pub const MAX_PICTURE: usize = 8 * 1024 * 1024;
-/// How long a picture may take (the PC stops its maker after 10 minutes).
-const PICTURE_TIME: Duration = Duration::from_secs(11 * 60);
+/// How long a picture may take (the PC stops its maker after 60 minutes,
+/// sooner when it is stuck).
+const PICTURE_TIME: Duration = Duration::from_secs(61 * 60);
 const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";
 
 /// A picture made on the PC for this device.
