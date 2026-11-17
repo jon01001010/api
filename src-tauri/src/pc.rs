@@ -393,11 +393,17 @@ pub fn openable(name: &str) -> bool {
 /// the one check the PC's own file tools (open, print) and a paired
 /// device's reads (link.rs) share.
 pub(crate) fn workspace_file(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
-    if name.contains(['/', '\\', ':']) || name.contains("..") || name.trim().is_empty() {
-        return Err("Use a workspace file name (no folders)".into());
-    }
-    let path = workspace(app)?.join(name);
-    if !path.is_file() {
+    workspace_file_in(&workspace(app)?, name)
+}
+
+/// A workspace file by its name, with the same checks as a device's read
+/// (security review 2026-11-17): one plain name (pc_files::check_name:
+/// no folder, no `..`, no hidden, system or device name) and a plain file
+/// there (pc_files::plain_file: no link, junction, hidden or system file).
+pub fn workspace_file_in(workspace: &Path, name: &str) -> Result<PathBuf, String> {
+    let name = crate::pc_files::check_name(name)?;
+    let path = workspace.join(name);
+    if !crate::pc_files::plain_file(&path) {
         return Err(format!("No workspace file named {name}"));
     }
     Ok(path)
@@ -663,5 +669,25 @@ mod tests {
         let q = open_question("notes.md", Some("Pixel 8"));
         assert!(q.starts_with("\u{201c}Pixel 8\u{201d} asks to open"), "{q}");
         assert!(q.ends_with("\n\nnotes.md"));
+    }
+
+    #[test]
+    fn this_pcs_own_open_and_print_check_names_like_a_device_read() {
+        let ws = std::env::temp_dir().join(format!("pc-wsfile-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ws);
+        std::fs::create_dir_all(ws.join("sub")).unwrap();
+        std::fs::write(ws.join("notes.txt"), "x").unwrap();
+        std::fs::write(ws.join(".hidden.txt"), "x").unwrap();
+        std::fs::write(ws.join("desktop.ini"), "x").unwrap();
+        assert!(workspace_file_in(&ws, "notes.txt").is_ok());
+        for bad in [".hidden.txt", "desktop.ini", "sub", "../notes.txt", "sub/notes.txt", "missing.txt", "con.txt", " notes.txt"] {
+            assert!(workspace_file_in(&ws, bad).is_err(), "{bad}");
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink("/etc/hostname", ws.join("link.txt")).unwrap();
+            assert!(workspace_file_in(&ws, "link.txt").is_err());
+        }
+        let _ = std::fs::remove_dir_all(&ws);
     }
 }
