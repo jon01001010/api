@@ -45,9 +45,14 @@ jest.mock('../syncSources', () => ({
 
 import {
   applyItems,
+  claimedTime,
   cleanItems,
+  fingerprint,
   MAX_CLOCK_SKEW,
+  MAX_HISTORY_CHARS,
+  MAX_PROMPT,
   merge,
+  trimHistory,
   promptHistory,
   readItems,
   type SyncItem,
@@ -195,4 +200,62 @@ describe('a time far in the future (a clock ahead, or forged)', () => {
     const items = await readItems(5000);
     expect(items.find(i => i.key === 'systemPrompt')!.updatedAt).toBe(5000);
   });
+});
+
+describe('security review 2026-11-17', () => {
+  it('a system prompt over MAX_PROMPT is not taken from another device', () => {
+    expect(
+      cleanItems([
+        {key: 'systemPrompt', text: 'x'.repeat(MAX_PROMPT + 1), updatedAt: 1},
+      ]),
+    ).toEqual([]);
+    expect(
+      cleanItems([
+        {key: 'systemPrompt', text: 'x'.repeat(MAX_PROMPT), updatedAt: 1},
+      ]),
+    ).toHaveLength(1);
+    // Notes may be longer.
+    expect(
+      cleanItems([
+        {key: 'userMemory', text: 'x'.repeat(MAX_PROMPT + 1), updatedAt: 1},
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('the same text sent again counts from when it was first seen', () => {
+    const peer = {systemPrompt: {seenPrint: fingerprint('Evil'), seenAt: 1000}};
+    // Sent again "5 minutes from now": it counts from 1000.
+    const again = item('systemPrompt', 'Evil', 5000 + MAX_CLOCK_SKEW);
+    expect(claimedTime(again, peer.systemPrompt).updatedAt).toBe(1000);
+    // A local edit after that wins; without the memory, it would not.
+    const local = [item('systemPrompt', 'Mine', 3000)];
+    expect(merge(local, [again], peer).takenHere).toEqual([]);
+    expect(merge(local, [again]).takenHere).toEqual(['systemPrompt']);
+    // A new text is a new edit: its own time.
+    const edited = item('systemPrompt', 'Evil 2', 4000);
+    expect(merge(local, [edited], peer).takenHere).toEqual(['systemPrompt']);
+  });
+});
+
+it('sync history keeps at most 10 versions within its size budget', () => {
+  const big = (n: number) => ({at: n, text: 'x'.repeat(MAX_HISTORY_CHARS / 2)});
+  expect(trimHistory([big(1), big(2), big(3)]).map(e => e.at)).toEqual([1, 2]);
+  // The newest is always kept, however big.
+  const huge = {at: 9, text: 'y'.repeat(MAX_HISTORY_CHARS + 1)};
+  expect(trimHistory([huge, big(1)]).map(e => e.at)).toEqual([9]);
+  const small = Array.from({length: 15}, (_, i) => ({at: i, text: 's'}));
+  expect(trimHistory(small)).toHaveLength(10);
+});
+
+it('the global prompt cap is the same as the sync cap', () => {
+  const {readFileSync} = require('fs');
+  const src = readFileSync(
+    require('path').join(__dirname, '../../../utils/globalToolSettings.ts'),
+    'utf8',
+  ).replace(/\r\n/g, '\n');
+  expect(src).toContain('export const MAX_GLOBAL_PROMPT = 32 * 1024;');
+  expect(MAX_PROMPT).toBe(32 * 1024);
+  expect(src).toMatch(
+    /if \(prompt\.length > MAX_GLOBAL_PROMPT\) \{\s*throw new Error/,
+  );
 });

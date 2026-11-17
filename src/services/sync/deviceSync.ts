@@ -2,7 +2,17 @@
  * The device side of keeping in step (a phone, or another PC, paired with a
  * home PC): send this device's items, take the agreed ones back. Off until
  * the user switches it on for that PC (and the PC allows it too).
+ *
+ * Security review 2026-11-17: the PC merges (with its own clock, clamping
+ * this device's times, and the same text sent again counting from when it
+ * first saw it: promptSync claimedTime); here, only what differs from this
+ * device's own is taken (pcWins), never an empty item over real text; a new
+ * system prompt or new "your memory" notes only after the user says yes
+ * (holdForAnswer); and the user is always told what changed, after a sync in
+ * the background too. (Comparing times again here would disagree with the
+ * PC for ever when this device's clock is off.)
  */
+import {Alert} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {syncRawWithPc} from '../homeLink/homeLink';
@@ -29,10 +39,19 @@ import type {LoopReport} from './loopSync';
 import {
   applyItems,
   cleanItems,
+  describeKeys,
+  holdForAnswer,
+  isEmpty,
   readItems,
   SYNC_KEYS,
+  type SyncItem,
   type SyncKey,
 } from './promptSync';
+
+/** How this device names the PC in questions and notices. */
+const THE_PC = 'the PC';
+/** Remembered per PC (its key), named "the PC" to the user. */
+const peerName = (pc: string) => `pc:${pc}`;
 
 const settingKey = (pc: string) => `@pocketagent/sync/with/${pc}`;
 const mirrorKey = (pc: string) => `@pocketagent/sync/chats-with/${pc}`;
@@ -142,8 +161,23 @@ export async function syncWithPc(pc: string): Promise<SyncOutcome> {
       assistantsDeleted: number;
       assistantsHeld: number;
     } & LoopReport = {assistantsDeleted: 0, assistantsHeld: 0};
-    const changedHere = await applyItems(agreed, Date.now(), {
-      from: 'the PC',
+    // Only what the PC's side won (never an empty item over real text),
+    // and a new prompt or notes asked first.
+    const now = Date.now();
+    const wins = pcWins(items, agreed);
+    const takeNow = await holdForAnswer(
+      wins,
+      THE_PC,
+      async item => {
+        const later = await applyItems([item], Date.now(), {from: THE_PC});
+        if (later.length) {
+          notice(`${describeKeys(later)} taken from the PC.`);
+        }
+      },
+      peerName(pc),
+    );
+    const changedHere = await applyItems(takeNow, now, {
+      from: THE_PC,
       report,
     });
     let chatsReceived = 0;
@@ -261,6 +295,55 @@ export async function syncWithPc(pc: string): Promise<SyncOutcome> {
   }
 }
 
+/**
+ * The PC's agreed items this device takes: those that differ from its own,
+ * never an empty one over real text.
+ */
+export function pcWins(local: SyncItem[], agreed: SyncItem[]): SyncItem[] {
+  return agreed.filter(r => {
+    const here = local.find(l => l.key === r.key)?.text ?? '';
+    return (
+      r.text !== here && !(isEmpty(r.key, r.text) && !isEmpty(r.key, here))
+    );
+  });
+}
+
+function notice(message: string): void {
+  Alert.alert(
+    'Kept in step with your PC',
+    `${message} The earlier versions are kept in history.`,
+  );
+}
+
+/** What changed here in a sync, in a few words; '' if nothing did. */
+export function changedHereText(r: SyncOutcome): string {
+  if (!r.ok) {
+    return '';
+  }
+  const parts = [
+    r.changedHere.length
+      ? `${describeKeys(r.changedHere)} taken from the PC`
+      : '',
+    r.assistantsDeleted
+      ? `${r.assistantsDeleted} assistant(s) deleted on the PC removed here`
+      : '',
+    r.assistantsHeld
+      ? `${r.assistantsHeld} assistant deletion(s) wait for your answer`
+      : '',
+    r.chatsDeleted
+      ? `${r.chatsDeleted} chat(s) deleted on the PC removed here`
+      : '',
+    r.chatsHeld ? `${r.chatsHeld} chat deletion(s) wait for your answer` : '',
+    r.loops?.loopsAdded
+      ? `${r.loops.loopsAdded} loop(s) from the PC (paused)`
+      : '',
+    r.loops?.loopsDeleted
+      ? `${r.loops.loopsDeleted} loop(s) deleted on the PC removed here`
+      : '',
+  ].filter(Boolean);
+  return parts.length ? `${parts.join('; ')}.` : '';
+}
+
 let mirrorTimer: ReturnType<typeof setTimeout> | undefined;
 
 /**
@@ -280,7 +363,11 @@ export function mirrorAfterReply(): void {
     clearTimeout(mirrorTimer);
     mirrorTimer = setTimeout(async () => {
       if (await mirrorChatsOn(pc)) {
-        await syncWithPc(pc);
+        // In the background, but never silent: what changed here is told.
+        const text = changedHereText(await syncWithPc(pc));
+        if (text) {
+          notice(text);
+        }
       }
     }, 2000);
   } catch {

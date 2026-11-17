@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 
 use homelink::Phone;
 use serde::Serialize;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 static CLIENT: Mutex<Option<Arc<Phone>>> = Mutex::new(None);
 
@@ -39,6 +39,8 @@ pub fn uses_link_key(one_key: Option<&str>, has_own_key: bool) -> bool {
     one_key.map(str::trim) == Some("on") || !has_own_key
 }
 
+// Kept for the tests (and a later key move); nothing writes a key file now.
+#[cfg_attr(not(test), allow(dead_code))]
 fn to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -61,25 +63,15 @@ fn own_key(app: &AppHandle) -> Result<Option<[u8; 32]>, String> {
     if let Some(key) = crate::link::read_entry(app, CLIENT_KEY_ENTRY).and_then(|t| from_hex(&t)) {
         return Ok(Some(key));
     }
-    // Before 2026-11-15 the key was a file in the settings folder, which on
-    // Windows is the screens' own folder: moved (pairing is kept).
-    let old = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("link")
-        .join("client.key");
-    let Some(key) = std::fs::read(&old)
-        .ok()
-        .and_then(|bytes| <[u8; 32]>::try_from(bytes.as_slice()).ok())
-    else {
-        return Ok(None);
-    };
-    crate::link::write_entry(app, CLIENT_KEY_ENTRY, &to_hex(&key))?;
-    if crate::link::read_entry(app, CLIENT_KEY_ENTRY).and_then(|t| from_hex(&t)) == Some(key) {
-        let _ = std::fs::remove_file(&old);
-    }
-    Ok(Some(key))
+    // Before 2026-11-15 the key was a file in the settings folder
+    // (app_config_dir/link/client.key), moved from there on first use.
+    // That folder is the screens' own on Windows, so a key found there
+    // could have been planted by them: since the security review of
+    // 2026-11-17 it is never read (key material only from the Credential
+    // Manager entry above). A PC that still had it there uses the one link
+    // key instead; pair it again with the PCs that knew the old key.
+    let _ = app;
+    Ok(None)
 }
 
 /// The own device key while this PC still uses it; None: the link key.
@@ -358,6 +350,9 @@ mod tests {
         assert!(client.contains("Some(key) => Phone::with_key(key, None)?"));
         let own = &source[source.find("fn own_key(app").unwrap()..source.find("fn own_key_in_use").unwrap()];
         assert!(!own.contains("generate()"));
+        // Never from a file the screens can write (security review 2026-11-17).
+        let code: String = own.lines().filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n");
+        assert!(!code.contains("std::fs::") && !code.contains("client.key") && !code.contains("app_config_dir"), "{own}");
         let link = &include_str!("link.rs").replace("\r\n", "\n");
         let device = &link[link.find("pub async fn device_endpoint").unwrap()..];
         let device = &device[..device.find("\n}").unwrap()];

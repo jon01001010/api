@@ -69,6 +69,10 @@ export function matchReadUrl(url: string): string | null {
   if (!canonical || canonical.username || canonical.password) {
     return null;
   }
+  // Any page of a named site, a query too: once the chat has read private
+  // data, every read_url asks first, showing the address (chatGuard.ts
+  // OUTGOING), so a query the model put together can't carry it out
+  // unseen (security review 2026-11-17).
   return (
     allowed.get(matchKey(canonical)) ??
     (userSites.has(userSiteKey(canonical)) ? canonical.toString() : null)
@@ -162,6 +166,12 @@ function addUserSites(text: string): void {
  * user-written text, and URLs from this session's persisted search hits and
  * read_url `links`. Never assistant text, tool arguments or any `summary`.
  * Parameters are structural so chat code can pass its own message shapes.
+ *
+ * `typed`: the texts the user typed on this device (security review
+ * 2026-11-17: a mirrored chat's messages and a loop's are not the user's
+ * words here). When given, only these name sites; else every user message
+ * of `assembledMessages` does. The exact URLs the user wrote are allowed
+ * as written too.
  */
 export function seedReadUrlAllowlist(
   assembledMessages: Array<{role: string; content?: unknown}>,
@@ -174,18 +184,27 @@ export function seedReadUrlAllowlist(
       }>;
     }>;
   }>,
+  typed?: string[],
 ): void {
   resetReadUrlAllowlist();
-  for (const msg of assembledMessages) {
+  if (typed) {
+    for (const text of typed) {
+      addUserSites(text);
+      allowReadUrls(extractUrls(text));
+    }
+  }
+  for (const msg of typed ? [] : assembledMessages) {
     if (msg.role !== 'user') {
       continue;
     }
     if (typeof msg.content === 'string') {
       addUserSites(msg.content);
+      allowReadUrls(extractUrls(msg.content));
     } else if (Array.isArray(msg.content)) {
       for (const part of msg.content) {
         if (part?.type === 'text' && typeof part.text === 'string') {
           addUserSites(part.text);
+          allowReadUrls(extractUrls(part.text));
         }
       }
     }

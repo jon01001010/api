@@ -9,8 +9,10 @@
 //!
 //! Each change is asked natively on this PC every time (link.rs write_for,
 //! approval::ask_for; never "always"), with a short before/after view built
-//! here: a unified diff (`- ` before, `+ ` after), its head and tail when
-//! long, saying how many lines are not shown and how long a cut line is.
+//! here: a unified diff (`- ` before, `+ ` after), shown whole. A change
+//! too long to show whole (VIEW_MAX_LINES, VIEW_MAX_CHARS) is refused
+//! (security review 2026-11-17: never allowed unseen); an undo, which only
+//! brings back a version kept here, shows its head and tail instead.
 //!
 //! The previous version is kept as the screens' own file history keeps it
 //! (fileHistory.ts: Documents/PocketAgentFileHistory/<name>/<ms>-<id>.txt,
@@ -40,8 +42,13 @@ const MAX_CELLS: usize = 4_000_000;
 /// answer can show the whole question (pcQuestions.ts MAX_SHOWN, MAX_LINES).
 pub const VIEW_HEAD: usize = 10;
 pub const VIEW_TAIL: usize = 6;
-/// Characters of one line shown (the rest counted).
+/// Characters of one line shown (the rest counted) in a view that is cut.
 pub const VIEW_LINE: usize = 80;
+/// Most lines and characters of a before/after view shown whole; past
+/// either, a write is refused (TOO_LONG_TO_SHOW).
+pub const VIEW_MAX_LINES: usize = 40;
+pub const VIEW_MAX_CHARS: usize = 3000;
+pub const TOO_LONG_TO_SHOW: &str = "That change is too long to show whole in the question (at most 40 lines and 3000 characters of changed text), so it isn't written. Write it in smaller parts (add at the end).";
 
 pub const WRITE_KINDS: &str = "Only text files that open in a viewer are written from a device (.txt, .md, .csv, .json, .xml, .html, .log); never programs or scripts";
 
@@ -159,6 +166,30 @@ pub fn shown_line(mark: &str, line: &str) -> String {
     out
 }
 
+/// One line of a view shown whole: hidden characters as escapes, never cut.
+pub fn whole_line(mark: &str, line: &str) -> String {
+    let mut out = String::from(mark);
+    for c in line.chars() {
+        match c {
+            '\t' => out.push_str("\\t"),
+            c if crate::remote_ask::hidden_char(c) => out.push_str(&format!("\\u{{{:x}}}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// The view, whole when it fits (VIEW_MAX_LINES, VIEW_MAX_CHARS): (view,
+/// whole). Else its head and tail with lines cut (shown_line), not whole.
+fn fit(lines: Vec<(&'static str, &str)>) -> (Vec<String>, bool) {
+    let full: Vec<String> = lines.iter().map(|(mark, line)| whole_line(mark, line)).collect();
+    let chars: usize = full.iter().map(|l| l.chars().count() + 1).sum();
+    if full.len() <= VIEW_MAX_LINES && chars <= VIEW_MAX_CHARS {
+        return (full, true);
+    }
+    (head_and_tail(lines.iter().map(|(mark, line)| shown_line(mark, line)).collect()), false)
+}
+
 /// The view's head and tail when it is longer than VIEW_HEAD + VIEW_TAIL
 /// lines, with the count of lines left out between them (never cut
 /// silently).
@@ -179,20 +210,23 @@ pub fn head_and_tail(mut lines: Vec<String>) -> Vec<String> {
 pub struct Change {
     pub added: usize,
     pub removed: usize,
-    /// The before/after view (head and tail when long).
+    /// The before/after view (head and tail when too long to show whole).
     pub view: Vec<String>,
+    /// The view shows the whole change.
+    pub whole: bool,
 }
 
 /// The change from `before` (None: a new file) to `after`.
 pub fn change(before: Option<&str>, after: &str) -> Change {
     let Some(before) = before else {
-        let lines: Vec<String> = split_lines(after).iter().map(|l| shown_line("+ ", l)).collect();
-        return Change { added: line_count(after), removed: 0, view: head_and_tail(lines) };
+        let after_lines = split_lines(after);
+        let (view, whole) = fit(after_lines.iter().map(|l| ("+ ", *l)).collect());
+        return Change { added: line_count(after), removed: 0, view, whole };
     };
     let ops = diff(&split_lines(before), &split_lines(after));
     let changed: Vec<bool> = ops.iter().map(|(op, _)| *op != Op::Same).collect();
     let near = |i: usize| (i.saturating_sub(CONTEXT)..=(i + CONTEXT).min(ops.len() - 1)).any(|k| changed[k]);
-    let mut view = Vec::new();
+    let mut view: Vec<(&'static str, &str)> = Vec::new();
     let mut skipped = false;
     for (i, (op, line)) in ops.iter().enumerate() {
         if !near(i) {
@@ -200,7 +234,7 @@ pub fn change(before: Option<&str>, after: &str) -> Change {
             continue;
         }
         if skipped {
-            view.push("…".to_string());
+            view.push(("", "…"));
         }
         skipped = false;
         let mark = match op {
@@ -208,15 +242,17 @@ pub fn change(before: Option<&str>, after: &str) -> Change {
             Op::Removed => "- ",
             Op::Added => "+ ",
         };
-        view.push(shown_line(mark, line));
+        view.push((mark, line));
     }
     if skipped && !view.is_empty() {
-        view.push("…".to_string());
+        view.push(("", "…"));
     }
+    let (view, whole) = fit(view);
     Change {
         added: ops.iter().filter(|(op, _)| *op == Op::Added).count(),
         removed: ops.iter().filter(|(op, _)| *op == Op::Removed).count(),
-        view: head_and_tail(view),
+        view,
+        whole,
     }
 }
 
@@ -375,6 +411,10 @@ pub fn plan(workspace: &Path, history: &Path, file: &str, kind: WriteKind, conte
     };
     check_text(&next)?;
     let change = change(previous.as_deref(), &next);
+    // Never allowed unseen; an undo only brings back a version kept here.
+    if !change.whole && kind != WriteKind::Undo {
+        return Err(TOO_LONG_TO_SHOW.into());
+    }
     Ok(Plan { file: file.to_string(), kind, previous, next, change })
 }
 
@@ -541,9 +581,26 @@ mod tests {
     }
 
     #[test]
+    fn a_change_too_long_to_show_whole_is_refused() {
+        let (ws, hist) = dirs("too-long");
+        let fits: String = (1..VIEW_MAX_LINES).map(|i| format!("line {i}\n")).collect();
+        let p = plan(&ws, &hist, "a.md", WriteKind::Write, &fits).unwrap();
+        assert!(p.change.whole && !question("Pixel", &p).contains("not shown"));
+        let long: String = (1..=100).map(|i| format!("line {i}\n")).collect();
+        assert_eq!(plan(&ws, &hist, "a.md", WriteKind::Write, &long).unwrap_err(), TOO_LONG_TO_SHOW);
+        // A long line is shown whole, not cut, within the budget.
+        let wide = format!("{}\n", "w".repeat(500));
+        let p = plan(&ws, &hist, "b.md", WriteKind::Write, &wide).unwrap();
+        assert!(p.change.view[0].ends_with(&"w".repeat(500)));
+        let too_wide = "w".repeat(VIEW_MAX_CHARS + 1);
+        assert_eq!(plan(&ws, &hist, "b.md", WriteKind::Write, &too_wide).unwrap_err(), TOO_LONG_TO_SHOW);
+    }
+
+    #[test]
     fn a_long_change_shows_its_head_and_tail_with_counts() {
         let after: String = (1..=100).map(|i| format!("line {i}\n")).collect();
         let c = change(None, &after);
+        assert!(!c.whole);
         assert_eq!(c.added, 100);
         assert_eq!(c.view.len(), VIEW_HEAD + VIEW_TAIL + 1);
         assert_eq!(c.view[0], "+ line 1");

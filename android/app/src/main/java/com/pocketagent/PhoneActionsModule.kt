@@ -46,9 +46,16 @@ class PhoneActionsModule(private val context: ReactApplicationContext) :
     companion object {
         @Volatile private var instance: PhoneActionsModule? = null
         @Volatile private var assistPending = false
+        /** The last assistant launch came from the system (it may send). */
+        @Volatile private var assistFromSystem = false
 
-        /** MainActivity was opened as the assistant (long-press power, …). */
-        fun onAssistLaunch() {
+        /**
+         * MainActivity was opened as the assistant (long-press power, …).
+         * `fromSystem`: by the system, not another app (MainActivity
+         * systemOpened); only then may a spoken message send by itself.
+         */
+        fun onAssistLaunch(fromSystem: Boolean) {
+            assistFromSystem = fromSystem
             assistPending = true
             instance?.emitAssist()
         }
@@ -69,11 +76,17 @@ class PhoneActionsModule(private val context: ReactApplicationContext) :
     @ReactMethod fun addListener(eventName: String) {}
     @ReactMethod fun removeListeners(count: Int) {}
 
-    /** True once after an assistant launch (covers a cold start). */
+    /**
+     * Once after an assistant launch (covers a cold start): true when the
+     * system opened it, "other" when another app did (listen, never send by
+     * itself); false when there was none.
+     */
     @ReactMethod fun takeAssistLaunch(promise: Promise) {
         val was = assistPending
         assistPending = false
-        promise.resolve(was)
+        if (!was) promise.resolve(false)
+        else if (assistFromSystem) promise.resolve(true)
+        else promise.resolve("other")
     }
 
     /** Settings pages a model may open (read-only screens; the user acts). */

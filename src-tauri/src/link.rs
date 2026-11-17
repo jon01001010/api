@@ -564,30 +564,9 @@ pub fn without_paths(text: &str, known: &[(String, &str)]) -> String {
         }
     }
     // Anything still looking like an absolute path, up to the next space
-    // or quote: `C:\...`, `\\server\...`, `/home/...`, `/Users/...`.
-    let mut cleaned = String::new();
-    for (i, word) in out.split(' ').enumerate() {
-        if i > 0 {
-            cleaned.push(' ');
-        }
-        let start = word.find(|c: char| !matches!(c, '"' | '\'' | '(' | '[' | '`' | '\n')).unwrap_or(word.len());
-        let (lead, rest) = word.split_at(start);
-        let b = rest.as_bytes();
-        let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
-        let unc = rest.starts_with("\\\\");
-        let home = ["/home/", "/Users/", "/root/", "/var/", "/tmp/", "/opt/", "/mnt/", "/media/", "/usr/"]
-            .iter()
-            .any(|p| rest.starts_with(p));
-        if drive || unc || home {
-            cleaned.push_str(lead);
-            let end = rest.find(['"', '\'', ')', ']', '`', ',', ';', '\n']).unwrap_or(rest.len());
-            cleaned.push_str("<path>");
-            cleaned.push_str(&rest[end..]);
-        } else {
-            cleaned.push_str(word);
-        }
-    }
-    cleaned
+    // or quote: `C:\...`, `\\server\...`, `/home/...`, `/Users/...`, also
+    // after `=` or `:` (`key=C:\...`, security review 2026-11-17).
+    crate::remote_ask::hide_paths(&out)
 }
 
 /// `text` with every `what` (in any letter case, as Windows paths are) as `with`.
@@ -1261,7 +1240,7 @@ async fn may_read_now(app: &AppHandle, remote: &str, device: &str, chat: &str) -
         return true;
     }
     let allowed_now = link.read_grants.lock().unwrap().count(remote, Instant::now());
-    if !crate::approval::ask(app, &read_question(device, chat, allowed_now)).await {
+    if !crate::approval::ask_as(app, &read_question(device, chat, allowed_now), Some(remote)).await {
         return false;
     }
     if !tools_allowed(app) || !may_read(&load_phones(app), remote) {
@@ -1298,7 +1277,7 @@ pub fn act_note(device: &str, call: &RemoteCall, clipboard_chars: usize) -> Stri
 /// its length only) and told in a notification.
 async fn act_for(app: &AppHandle, remote: &str, device: &str, call: RemoteCall, thinking: Option<&str>) -> Result<serde_json::Value, String> {
     let still_allowed = || tools_allowed(app) && may_act(&load_phones(app), remote);
-    let by = crate::approval::Device { name: device, still_allowed: &still_allowed };
+    let by = crate::approval::Device { id: remote, name: device, still_allowed: &still_allowed };
     let (answer, clipboard_chars) = match &call {
         RemoteCall::Open(file) => {
             crate::pc::open_file(app, file, Some(&by), thinking).await?;
@@ -1325,6 +1304,72 @@ async fn act_for(app: &AppHandle, remote: &str, device: &str, call: RemoteCall, 
     let _ = app.notification().builder().title(format!("{device} used this PC")).body(note).show();
     Ok(answer)
 }
+
+/// This PC's information as a device may see it (security review
+/// 2026-11-17): disk names and mount points without this PC's paths
+/// (without_paths).
+pub fn info_for_device(mut info: serde_json::Value, known: &[(String, &str)]) -> serde_json::Value {
+    if let Some(disks) = info.get_mut("disks").and_then(|d| d.as_array_mut()) {
+        for disk in disks {
+            for field in ["name", "mount"] {
+                if let Some(text) = disk.get(field).and_then(|v| v.as_str()).map(str::to_string) {
+                    disk[field] = serde_json::Value::String(without_paths(&text, known));
+                }
+            }
+        }
+    }
+    info
+}
+
+/// The model server's answer to GET /props as a device may see it
+/// (security review 2026-11-17): `model_path` (the model file's full
+/// path on this PC) cut to the file's name. Anything that can't be read
+/// as one plain JSON answer is refused rather than passed on with it.
+pub fn props_for_device(raw: &[u8]) -> Vec<u8> {
+    let Some(end) = raw.windows(4).position(|w| w == b"\r\n\r\n") else {
+        return forbidden("The model server's answer could not be read");
+    };
+    let (head, body) = (&raw[..end], &raw[end + 4..]);
+    let Ok(head) = std::str::from_utf8(head) else {
+        return forbidden("The model server's answer could not be read");
+    };
+    let Ok(mut json) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return forbidden("The model server's answer could not be read");
+    };
+    fn cut(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::Object(map) => {
+                for (k, x) in map.iter_mut() {
+                    if k == "model_path" {
+                        if let Some(p) = x.as_str() {
+                            *x = serde_json::Value::String(p.rsplit(['/', '\\']).next().unwrap_or("").to_string());
+                        }
+                    } else {
+                        cut(x);
+                    }
+                }
+            }
+            serde_json::Value::Array(list) => list.iter_mut().for_each(cut),
+            _ => {}
+        }
+    }
+    cut(&mut json);
+    let body = json.to_string();
+    let mut out = String::new();
+    for (i, line) in head.split("\r\n").enumerate() {
+        let lower = line.to_ascii_lowercase();
+        if i > 0 && (lower.starts_with("content-length:") || lower.starts_with("transfer-encoding:")) {
+            continue;
+        }
+        out.push_str(line);
+        out.push_str("\r\n");
+    }
+    out.push_str(&format!("Content-Length: {}\r\n\r\n{body}", body.len()));
+    out.into_bytes()
+}
+
+/// Most bytes of the model server's answer to GET /props read here.
+const MAX_PROPS: u64 = 1024 * 1024;
 
 /// Most bytes of a command's output sent to a device (as this PC's own
 /// tool returns: pc::run caps it at 32 KB; capped again after the paths
@@ -1385,7 +1430,7 @@ fn command_end(exit_code: Option<i32>, timed_out: bool) -> String {
 /// goes back without this PC's paths.
 async fn command_for(app: &AppHandle, remote: &str, device: &str, command: &str, thinking: Option<&str>) -> Result<serde_json::Value, String> {
     let still_allowed = || tools_allowed(app) && may_command(&load_phones(app), remote);
-    let by = crate::approval::Device { name: device, still_allowed: &still_allowed };
+    let by = crate::approval::Device { id: remote, name: device, still_allowed: &still_allowed };
     let ran = crate::pc::run_checked_command(app, command, Some(&by), thinking).await?;
     let how = command_end(ran.exit_code, ran.timed_out);
     crate::remote_ask::log_use(app, device, &format!("ran a command ({how}): {command}"));
@@ -1422,7 +1467,7 @@ async fn write_for(
     thinking: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     let still_allowed = || tools_allowed(app) && may_write(&load_phones(app), remote);
-    let by = crate::approval::Device { name: device, still_allowed: &still_allowed };
+    let by = crate::approval::Device { id: remote, name: device, still_allowed: &still_allowed };
     let workspace = crate::pc::workspace(app)?;
     let history = app.path().app_data_dir().map_err(|e| e.to_string())?.join(crate::pc_write::HISTORY);
     let (w, h) = (workspace.clone(), history.clone());
@@ -1499,7 +1544,7 @@ async fn tool_for(
             let a = app.clone();
             let info = blocking(move || serde_json::to_value(crate::pc::pc_info(a)).map_err(|e| e.to_string())).await?;
             crate::remote_ask::log_use(app, device, "pc_info");
-            Ok(info)
+            Ok(info_for_device(info, &local_folders(app)))
         }
         RemoteCall::WorkspaceList => {
             let dir = crate::pc::workspace(app)?;
@@ -1743,6 +1788,12 @@ pub fn prepare_head(head: &[u8], key: &str) -> Result<ModelRequest, &'static str
     let text = text.strip_suffix("\r\n\r\n").ok_or("unfinished head")?;
     let mut lines = text.split("\r\n");
     let first = lines.next().unwrap_or("");
+    // Plain printable ASCII only in the request line (security review
+    // 2026-11-17): no control character or other byte the model server
+    // might read differently from these checks.
+    if first.bytes().any(|b| !(0x20..0x7f).contains(&b)) {
+        return Err("not a plain HTTP/1.1 request");
+    }
     let parts: Vec<&str> = first.split(' ').collect();
     if parts.len() != 3 || !matches!(parts[2], "HTTP/1.1" | "HTTP/1.0") {
         return Err("not a plain HTTP/1.1 request");
@@ -2031,7 +2082,7 @@ async fn serve_stream(
             } else if !may_answer(&load_phones(&app), &remote) {
                 serde_json::json!({"ok": false, "error": NOT_THIS_DEVICE})
             } else {
-                serde_json::json!({"ok": true, "questions": questions.list()})
+                serde_json::json!({"ok": true, "questions": questions.list_for(&remote)})
             };
             reply(&mut send, answer).await;
         }
@@ -2048,10 +2099,9 @@ async fn serve_stream(
                     .find(|p| p.id == remote)
                     .map(|p| p.name)
                     .unwrap_or_else(|| "a device".into());
-                if questions.answer(id, yes, &name) {
-                    serde_json::json!({"ok": true})
-                } else {
-                    serde_json::json!({"ok": false, "error": "That question was already answered or has expired"})
+                match questions.answer(id, yes, &remote, &name) {
+                    Ok(()) => serde_json::json!({"ok": true}),
+                    Err(error) => serde_json::json!({"ok": false, "error": error}),
                 }
             };
             reply(&mut send, answer).await;
@@ -2182,6 +2232,15 @@ async fn serve_stream(
             tokio::io::AsyncWriteExt::write_all(&mut to_model, &body)
                 .await
                 .map_err(|e| e.to_string())?;
+            if request.path == "/props" {
+                // Read whole, the PC's paths taken out (props_for_device).
+                use tokio::io::AsyncReadExt;
+                let mut raw = Vec::new();
+                let _ = (&mut from_model).take(MAX_PROPS).read_to_end(&mut raw).await;
+                let _ = send.write_all(&props_for_device(&raw)).await;
+                let _ = send.finish();
+                return Ok(());
+            }
             // The answer (streamed as it comes, for chats that stream).
             let _ = tokio::io::copy(&mut from_model, &mut send).await;
             let _ = send.finish();
@@ -2677,6 +2736,17 @@ mod tests {
         assert!(prepare_head(b"GET /health  HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n", "k1").is_err());
         assert!(prepare_head(b"GET /slots HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n", "k1").is_err());
         assert!(prepare_head(b"GET /health HTTP/1.1\r\n\r\n", "k1").is_err());
+        // No control character or non-ASCII byte in the request line
+        // (security review 2026-11-17).
+        for bad in [
+            &b"GET /health?a\x01b HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n"[..],
+            &b"GET /health?a\tb HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n"[..],
+            &b"GET /health?a\x7f HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n"[..],
+            "GET /health?\u{e9} HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n".as_bytes(),
+        ] {
+            assert!(prepare_head(bad, "k1").is_err(), "{bad:?}");
+        }
+        assert!(prepare_head(b"GET /health?a=b HTTP/1.1\r\nAuthorization: Bearer k1\r\n\r\n", "k1").is_ok());
     }
 
     #[test]
@@ -3630,5 +3700,29 @@ mod tests {
             read_note("Pixel 8", "budget.xlsx", 2),
             "Pixel 8 read budget.xlsx from the workspace (2 of at most 3 chats allowed to read)"
         );
+    }
+
+    #[test]
+    fn a_device_never_gets_this_pcs_paths_in_pc_info_or_props() {
+        let known = vec![("C:\\Users\\ann\\AppData\\Roaming\\app".to_string(), "<app folder>")];
+        let info = serde_json::json!({"system": "Windows", "disks": [
+            {"name": "Local Disk", "mount": "C:\\", "total": 1, "free": 1},
+            {"name": "USB", "mount": "/media/ann/USB", "total": 1, "free": 1},
+            {"name": "x", "mount": "C:\\Users\\ann\\AppData\\Roaming\\app\\mnt", "total": 1, "free": 1}
+        ]});
+        let shown = info_for_device(info, &known).to_string();
+        assert!(!shown.contains("ann"), "{shown}");
+        assert!(shown.contains("Local Disk") && shown.contains("\"system\":\"Windows\""), "{shown}");
+        let raw = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 99\r\n\r\n{\"model_path\":\"C:\\\\Users\\\\ann\\\\models\\\\qwen.gguf\",\"default_generation_settings\":{\"model_path\":\"/home/ann/m/x.gguf\",\"n_ctx\":4096}}";
+        let out = String::from_utf8(props_for_device(raw)).unwrap();
+        assert!(!out.contains("ann"), "{out}");
+        assert!(out.contains("\"model_path\":\"qwen.gguf\"") && out.contains("\"n_ctx\":4096"), "{out}");
+        let body = &out[out.find("\r\n\r\n").unwrap() + 4..];
+        assert!(out.contains(&format!("Content-Length: {}\r\n", body.len())), "{out}");
+        assert_eq!(out.matches("Content-Length").count(), 1);
+        // Not plain JSON: refused, never passed on.
+        assert!(String::from_utf8(props_for_device(b"HTTP/1.1 200 OK\r\n\r\nnot json /home/ann")).unwrap().contains("403"));
+        // key=C:\... is a path too.
+        assert_eq!(without_paths("failed: file=C:\\Users\\ann\\x.gguf", &[]), "failed: file=<path>");
     }
 }

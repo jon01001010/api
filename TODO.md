@@ -102,6 +102,44 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
 **Out of scope for release**
 - iPhone / Apple: not made (decided: no Apple).
 
+## Security review 2026-11-17
+
+Two read-only reviews; each finding checked in the code first. Branch: the security-review worktree.
+
+1. **Private text to paired devices through questions: fixed.** Other devices get a question without the clipboard's text, a change's text, the thinking or this PC's paths, and can only refuse it (`remote_ask::shared_view`, `list_for`, `answer`; phone `onlyRefuse`). The asking device sees its own question whole (owner decision 1c kept).
+2. **"Allow" was the default button; no rate limit: fixed.** rfd called directly with "Don't allow" first (rfd's TaskDialog makes the first button the default: `nDefaultButton: 0`; the dialog plugin maps Esc to the last button, so it is not used for questions). One dialog at a time; 3 refusals in a row within a minute from one asker: 2 minutes' pause. First-answer-wins kept (a question answered on a device while waiting its turn is never shown).
+3. **Documents: fixed** (running cap for slides and sheets, 10000 parts, 256 MB unpacked).
+4. **Device key from the screens' folder: fixed** (never read; a PC that still had it there uses the one link key: pair again with PCs that knew the old key).
+5. **Screens outside the app folder: fixed** (this PC only, names the screens, nothing that runs written there).
+6. **Config folders writable by the model: fixed** (AppData, `~/.config`, `.git`, `.vscode`, … never reachable; a write too long to show whole is refused).
+7. **Request line: fixed** (printable ASCII only).
+8. **Hidden characters: fixed** (more blank look-alikes on both sides, a test keeps them equal; long runs of spaces or tabs in commands refused).
+9. **PC's own open / print: fixed** (`check_name` + `plain_file`).
+10. **Paths to devices: fixed** (`pc_info` disks, `/props` `model_path`, `key=C:\…`).
+11. **Phone applied whatever the PC returned: fixed, partly as asked.** The phone takes only what differs, never empty over real text, asks before a new prompt or "your memory" notes (the PC asks too), and always tells. It does not compare times again itself: with its own clock off it would disagree with the PC for ever (the device-circle tests show it); the PC's merge (its own clock, clamped) decides.
+12. **Forged future time: fixed differently.** The same text sent again counts from when it was first seen; a local edit after that wins. ("A local edit wins ties within the skew window" broke the circle's agreement, so it was not built.)
+13. **read_url: fixed, partly.** Sites only from text typed here (mirrored and loop messages left out); exact URLs the user wrote allowed; `file_read` is a private read. A query on a named site is still allowed while the chat has read nothing private (after a private read every `read_url` asks, showing the address). There is no past-chat read tool (past chats come with the memory in the prompt).
+    - Owner decision: memory and past-chat snippets in the prompt are private data the model always has; read-then-leak doesn't count them (kept as is for now).
+14. **Read-then-leak lost on restart: fixed** (recomputed from the saved turns; "nothing more" saved).
+15. **Tool output not wrapped: fixed** (`file_read`, line ranges, outside reads, commands, clipboard).
+16. **Phone approvals showed model text raw: fixed** (`utils/shownText.ts`, shared with `pcQuestions.ts`, whose exports are kept).
+17. **ACTION_ASSIST from any app auto-sent: fixed** (`getReferrer` must be the system, the system UI or the chosen assistant, with no caller-set referrer; else the words wait in the box).
+18. **Storage: fixed** (system prompt 32 KB, memory keeps 100 earlier versions, sync history 2 MB per item).
+19. **Guard vs engine arguments: fixed** (`stepArgs.ts`; music, reminders, timer and alarm labels count as going out).
+20. **HTML preview resource hints: fixed** (taken out; DNS prefetch off; the desktop preview is built by the same code).
+- Skipped by owner decision: 1c (a device may answer its own question) stays.
+- Later: removing a PC from the circle is trusted from a newly paired PC (only a denial of service): look at it with the circle work.
+
+### Check on the phone / Windows
+
+- Windows: an "Allow?" dialog has "Don't allow" first and focused; Enter and Esc both refuse; two questions at once come one after the other; three "Don't allow" in a row from the model pause its questions for 2 minutes (notification).
+- Windows: a question about the clipboard shows on the phone as "clipboard text, N characters, shown on the PC only" with only "Don't allow".
+- Linux: the same dialogs (GTK): first button "Don't allow", the window's X refuses.
+- Phone: keeping in step asks "Take the system prompt from the PC?"; "Keep mine" isn't asked again for that text; a background sync after a reply says what changed.
+- Phone: long-press power still listens and sends; an assistant launch from another app only fills the box.
+- Phone: the approval window shows ⟦U+…⟧ markers and "The app counted …".
+- Both: an HTML page with `<link rel=dns-prefetch>` makes no DNS lookup.
+
 ## Roadmap (agreed 2026-11-08)
 
 **No point in any of this without real security.** Every step keeps the rules in SECURITY.md (off until switched on; anything outside the app asks, natively, every time), and each new ability gets its rule test before it ships.

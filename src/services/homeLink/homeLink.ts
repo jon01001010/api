@@ -77,6 +77,12 @@ export interface PcQuestion {
   id: number;
   text: string;
   secondsLeft: number;
+  /**
+   * Parts of it are shown on the PC only (the clipboard's text, a change's
+   * text, the model's thinking, the PC's paths: asked by the PC itself or
+   * by another device): it can only be refused here (the PC refuses a yes).
+   */
+  onlyRefuse?: boolean;
 }
 
 /** The PC's questions waiting for an answer (only while allowed on the PC). */

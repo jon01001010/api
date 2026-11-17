@@ -88,6 +88,7 @@ export function referencesRemoteResources(html: string): boolean {
 }
 
 const HEAD_INJECTION = `<meta http-equiv="Content-Security-Policy" content="${CSP}" />
+<meta http-equiv="x-dns-prefetch-control" content="off" />
 <script data-preview-guard>${PREVIEW_GUARD_SCRIPT}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style data-preview-override>
@@ -137,13 +138,41 @@ const FRAGMENT_STYLES = `<style>
   a { color: #0b57d0; }
 </style>`;
 
+/**
+ * Link tags that make the browser look up or contact a host before (or
+ * without) any request the CSP sees: DNS prefetch, preconnect, prerender,
+ * prefetch, module preload. Taken out (security review 2026-11-17: a host
+ * name can carry data out through a DNS lookup).
+ */
+const LINK_TAG = /<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+const REL = /\brel\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i;
+const HINTS =
+  /\b(?:dns-prefetch|preconnect|prerender|prefetch|modulepreload)\b/i;
+
+/** The markup without resource hints (link tags, quotes respected). */
+export function stripResourceHints(html: string): string {
+  let out = html;
+  // Again until none: taking one out could join the pieces of another.
+  for (let i = 0; i < 5; i++) {
+    const next = out.replace(LINK_TAG, tag => {
+      const rel = REL.exec(tag)?.[1] ?? '';
+      return HINTS.test(rel) ? '' : tag;
+    });
+    if (next === out) {
+      break;
+    }
+    out = next;
+  }
+  return out;
+}
+
 /** Policy-first envelope: untrusted markup can never precede the CSP. */
 export function wrapDocument(html: string): string {
   // Policy must precede every byte of untrusted markup. Never locate a head
   // with a regex: an attacker can put the first match inside a comment.
   return `<!DOCTYPE html><html><head><meta charset="utf-8" />
 ${HEAD_INJECTION}${FRAGMENT_STYLES}</head><body>${neutralizeFrameTags(
-    html,
+    stripResourceHints(html),
   )}</body></html>`;
 }
 

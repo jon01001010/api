@@ -97,7 +97,19 @@ export async function readGlobalPrompt(): Promise<string> {
   return (await AsyncStorage.getItem(PROMPT_KEY)) ?? '';
 }
 
+/**
+ * Longest global system prompt (characters; the same as promptSync.ts
+ * MAX_PROMPT for one from another device). Security review 2026-11-17:
+ * storage, and every chat carries it.
+ */
+export const MAX_GLOBAL_PROMPT = 32 * 1024;
+
 export async function writeGlobalPrompt(prompt: string): Promise<void> {
+  if (prompt.length > MAX_GLOBAL_PROMPT) {
+    throw new Error(
+      `The system prompt is longer than ${MAX_GLOBAL_PROMPT / 1024} KB (${prompt.length} characters); shorten it`,
+    );
+  }
   await AsyncStorage.setItem(PROMPT_KEY, prompt);
 }
 

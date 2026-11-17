@@ -25,6 +25,8 @@
  * Plain data and functions; the questions are passed in (makeToolGuard),
  * so this file has no screens and no stores.
  */
+import {chainStep, fillIn} from '../talents/stepArgs';
+import {HIDDEN_RANGES} from '../../utils/shownText';
 import type {TalentResult} from '../talents/types';
 
 /** Questions in one chat within ASK_WINDOW_MS before the run pauses. */
@@ -65,6 +67,8 @@ const str = (value: unknown): string =>
  */
 export const PRIVATE_READS: Record<string, (args: Args) => boolean> = {
   outside_files: a => a?.action === 'read' || a?.action === 'list',
+  // A workspace file (the user's own documents; security review 2026-11-17).
+  file_read: () => true,
   clipboard_read: () => true,
   pc_clipboard_read: () => true,
   pc_workspace_read: () => true,
@@ -92,6 +96,15 @@ export const OUTGOING: Record<string, (args: Args) => string> = {
   search_in_app: a =>
     `A search handed to ${str(a?.app) || 'an app'}:\n${str(a?.query)}`,
   navigate_to: a => `A place handed to the maps app:\n${str(a?.destination)}`,
+  // Handed to another app too (security review 2026-11-17).
+  play_music: a => `A search handed to the music app:\n${str(a?.query)}`,
+  add_reminder: a =>
+    `A reminder handed to the calendar app:\n${str(a?.title)}` +
+    (a?.notes ? `\n${str(a.notes)}` : ''),
+  set_timer: a =>
+    a?.label ? `A timer label handed to the clock app:\n${str(a.label)}` : '',
+  set_alarm: a =>
+    a?.label ? `An alarm label handed to the clock app:\n${str(a.label)}` : '',
   pc_workspace_read: a =>
     `A file name sent to your Home PC:\n${str(a?.filename)}`,
   pc_open: a =>
@@ -111,26 +124,18 @@ export const OUTGOING: Record<string, (args: Args) => string> = {
 function stepsOf(name: string, args: Args, engineLike: EngineLike) {
   const engine = fieldsOf(engineLike);
   if (name === 'phone_actions_chain' && Array.isArray(args?.steps)) {
-    return (args.steps as any[]).map(s => ({
-      tool: String(s?.action ?? ''),
-      args: (s?.args ?? s ?? {}) as Args,
-    }));
+    // Read exactly as the chain runs it (stepArgs.ts).
+    return (args.steps as unknown[]).map(raw => {
+      const {action, args: stepArgs} = chainStep(raw);
+      return {tool: action, args: stepArgs as Args};
+    });
   }
   if (engine?.tool?.kind === 'shortcut' && Array.isArray(engine.tool.steps)) {
-    // The steps with the call's fill-ins put in, as the run will.
-    const fill = (value: unknown): unknown =>
-      typeof value === 'string'
-        ? value.replace(/\{\{(\w+)\}\}/g, (all, key: string) =>
-            args?.[key.toLowerCase()] !== undefined
-              ? String(args[key.toLowerCase()])
-              : all,
-          )
-        : value;
+    // The steps with the call's fill-ins put in, as the run will
+    // (the same pattern and filling: stepArgs.ts).
     return engine.tool.steps.map(s => ({
-      tool: s.tool,
-      args: Object.fromEntries(
-        Object.entries(s.args ?? {}).map(([k, v]) => [k, fill(v)]),
-      ) as Args,
+      tool: String(s.tool ?? '').trim(),
+      args: fillIn(s.args ?? {}, args ?? {}) as Args,
     }));
   }
   return [];
@@ -148,7 +153,8 @@ export function outgoing(
   }
   const one = OUTGOING[name];
   if (one) {
-    return one(args ?? {});
+    // '' : nothing of the user's goes out (a timer without a label).
+    return one(args ?? {}) || null;
   }
   const out = stepsOf(name, args ?? {}, engine)
     .map(s => outgoing(s.tool, s.args))
@@ -237,22 +243,12 @@ export function asksUser(name: string, engine?: EngineLike): boolean {
 }
 
 /** Characters a question must never show as they are (line tricks,
- *  bidi, zero-width): the same set as the PC's remote_ask::hidden_char. */
+ *  bidi, zero-width, blank look-alikes): the same set as the PC's
+ *  remote_ask::hidden_char (utils/shownText.ts HIDDEN_RANGES, plus line
+ *  breaks and tabs). */
 export function hiddenChar(c: string): boolean {
   const n = c.codePointAt(0) ?? 0;
-  return (
-    n < 0x20 ||
-    (n >= 0x7f && n <= 0x9f) ||
-    n === 0xad ||
-    n === 0x61c ||
-    n === 0x180e ||
-    (n >= 0x200b && n <= 0x200f) ||
-    (n >= 0x2028 && n <= 0x202e) ||
-    (n >= 0x2060 && n <= 0x206f) ||
-    n === 0xfeff ||
-    (n >= 0xfff9 && n <= 0xfffb) ||
-    (n >= 0xe0000 && n <= 0xe007f)
-  );
+  return n < 0x20 || HIDDEN_RANGES.some(([a, b]) => n >= a && n <= b);
 }
 
 /**
@@ -417,9 +413,82 @@ export function markPrivateRead(chat: string, tool: string): void {
 export function privateReadIn(chat: string): string | null {
   return chats.get(chat)?.privateRead ?? null;
 }
-/** "Don't allow anything more in this chat". */
+/** "Don't allow anything more in this chat" (kept across restarts). */
 export function allowNothingMore(chat: string): void {
   stateOf(chat).noMore = true;
+  saveNothingMore(chat).catch(() => {});
+}
+
+const NO_MORE_KEY = '@pocketagent/chat-guard/nothing-more/v1';
+/** Chats kept with "nothing more" (the newest). */
+const MAX_NO_MORE = 500;
+
+async function saveNothingMore(chat: string): Promise<void> {
+  const AsyncStorage =
+    require('@react-native-async-storage/async-storage').default;
+  let list: string[] = [];
+  try {
+    list = JSON.parse((await AsyncStorage.getItem(NO_MORE_KEY)) || '[]');
+  } catch {
+    list = [];
+  }
+  list = [...list.filter(c => c !== chat), chat].slice(-MAX_NO_MORE);
+  await AsyncStorage.setItem(NO_MORE_KEY, JSON.stringify(list));
+}
+
+/**
+ * At the start of a run (security review 2026-11-17: the guards lived in
+ * memory only, so a restart forgot them): "nothing more" as saved, and
+ * every private read this chat's saved turns did (their tool calls and
+ * outcomes) marked again.
+ */
+export async function recallChatGuard(
+  chat: string,
+  rows: ReadonlyArray<unknown>,
+): Promise<void> {
+  try {
+    const AsyncStorage =
+      require('@react-native-async-storage/async-storage').default;
+    const list = JSON.parse((await AsyncStorage.getItem(NO_MORE_KEY)) || '[]');
+    if (Array.isArray(list) && list.includes(chat)) {
+      stateOf(chat).noMore = true;
+    }
+  } catch {
+    // Unreadable: the private reads below still count.
+  }
+  const read = privateReadInRows(rows);
+  if (read) {
+    markPrivateRead(chat, read);
+  }
+}
+
+/** The first private read in a chat's saved turns, or null. */
+export function privateReadInRows(rows: ReadonlyArray<unknown>): string | null {
+  for (const row of rows as any[]) {
+    for (const step of row?.steps ?? row?.metadata?.steps ?? []) {
+      const calls = new Map<string, any>(
+        (step?.toolCalls ?? []).map((c: any) => [c?.id, c]),
+      );
+      for (const outcome of step?.toolOutcomes ?? []) {
+        if (!outcome || outcome.result?.type === 'error') {
+          continue;
+        }
+        const name = String(outcome.toolName ?? '');
+        let args: Args = {};
+        try {
+          args = JSON.parse(
+            calls.get(outcome.callId)?.function?.arguments || '{}',
+          );
+        } catch {
+          args = {};
+        }
+        if (readsPrivate(name, args)) {
+          return name;
+        }
+      }
+    }
+  }
+  return null;
 }
 export function nothingMoreAllowed(chat: string): boolean {
   return chats.get(chat)?.noMore ?? false;

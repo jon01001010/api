@@ -72,6 +72,14 @@ beforeEach(() => {
   mockApproval.mockResolvedValue(true);
 });
 
+/** A file's text without the untrusted-data wrapper (review 2026-11-17). */
+function unwrapped(summary: string | undefined): string {
+  const m = /-----\n([\s\S]*)\n----- END UNTRUSTED WEB CONTENT \w+ -----$/.exec(
+    summary ?? '',
+  );
+  return m ? m[1] : (summary ?? '');
+}
+
 describe('bug fixes', () => {
   it('file_read_range splits on real newlines, including CRLF', async () => {
     put('a.txt', 'one\r\ntwo\nthree');
@@ -80,7 +88,8 @@ describe('bug fixes', () => {
       start_line: 2,
       line_count: 2,
     });
-    expect(r.summary).toBe('2: two\n3: three');
+    expect(r.summary).toContain('BEGIN UNTRUSTED WEB CONTENT');
+    expect(unwrapped(r.summary)).toBe('2: two\n3: three');
   });
 
   it('file_search separates results with real newlines', async () => {
@@ -261,17 +270,19 @@ it('registers every file tool', () => {
 describe('documents and searching inside files', () => {
   it('reads a Word file as text, also in ranges', async () => {
     mockFiles.set(ROOT + '/report.docx', 'PK-binary');
-    expect((await run('file_read', {filename: 'report.docx'})).summary).toBe(
-      'Quarterly report\nTea costs 3.50',
-    );
     expect(
-      (
-        await run('file_read_range', {
-          filename: 'report.docx',
-          start_line: 2,
-          line_count: 1,
-        })
-      ).summary,
+      unwrapped((await run('file_read', {filename: 'report.docx'})).summary),
+    ).toBe('Quarterly report\nTea costs 3.50');
+    expect(
+      unwrapped(
+        (
+          await run('file_read_range', {
+            filename: 'report.docx',
+            start_line: 2,
+            line_count: 1,
+          })
+        ).summary,
+      ),
     ).toBe('2: Tea costs 3.50');
   });
 

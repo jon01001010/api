@@ -15,7 +15,9 @@ import {
   makeToolGuard,
   outgoing,
   privateReadIn,
+  privateReadInRows,
   readsPrivate,
+  recallChatGuard,
   resetChatGuards,
   thinkingShown,
   thinkTagContent,
@@ -48,7 +50,9 @@ describe('what reads private data and what goes out (explicit lists)', () => {
     ]) {
       expect(readsPrivate(name, {})).toBe(true);
     }
-    for (const name of ['file_read', 'web_search', 'calculate', 'pc_info']) {
+    // A workspace file is private too (review 2026-11-17).
+    expect(readsPrivate('file_read', {filename: 'notes.md'})).toBe(true);
+    for (const name of ['web_search', 'calculate', 'pc_info']) {
       expect(readsPrivate(name, {})).toBe(false);
     }
   });
@@ -545,5 +549,90 @@ describe('the model is never told its reasoning is shown or logged', () => {
     )) {
       expect(m[2]).not.toMatch(/thinking|reasoning|log/i);
     }
+  });
+});
+
+describe('security review 2026-11-17', () => {
+  beforeEach(() => resetChatGuards());
+
+  it('reads a chain and a shortcut exactly as they run', () => {
+    // A padded action name runs (the chain trims it): the guard sees it.
+    expect(
+      outgoing('phone_actions_chain', {
+        steps: [
+          {action: ' share_text ', args: {text: 'the secret'}},
+          {action: 'set_timer', args: {minutes: 1}},
+        ],
+      }),
+    ).toContain('the secret');
+    // Arguments only from `args`, as the chain reads them.
+    expect(
+      outgoing('phone_actions_chain', {
+        steps: [{action: 'share_text', text: 'not used'}],
+      }),
+    ).not.toContain('not used');
+    // A {{ fill-in }} with spaces is filled as the run fills it.
+    const shortcut = {
+      tool: {
+        kind: 'shortcut',
+        steps: [{tool: 'web_search', args: {query: 'q {{ Note }}'}}],
+      },
+    };
+    expect(outgoing('my_shortcut', {note: 'pin 1234'}, shortcut)).toContain(
+      'q pin 1234',
+    );
+  });
+
+  it('music, reminders and timer or alarm labels go out too', () => {
+    expect(outgoing('play_music', {query: 'secret'})).toContain('secret');
+    expect(outgoing('add_reminder', {title: 't', notes: 'n'})).toContain('n');
+    expect(outgoing('set_timer', {minutes: 1, label: 'pin 12'})).toContain(
+      'pin 12',
+    );
+    expect(outgoing('set_alarm', {hour: 7, label: 'x'})).toContain('x');
+    // Nothing of the user's: nothing goes out.
+    expect(outgoing('set_timer', {minutes: 1})).toBeNull();
+  });
+
+  it('a private read in the saved chat is remembered after a restart', async () => {
+    const rows = [
+      {
+        type: 'assistant_turn',
+        steps: [
+          {
+            toolCalls: [
+              {
+                id: 'c1',
+                function: {
+                  name: 'outside_files',
+                  arguments: '{"action":"read","path":"x"}',
+                },
+              },
+              {id: 'c2', function: {name: 'calculate', arguments: '{}'}},
+            ],
+            toolOutcomes: [
+              {
+                callId: 'c2',
+                toolName: 'calculate',
+                result: {type: 'text', summary: '2'},
+              },
+              {
+                callId: 'c1',
+                toolName: 'outside_files',
+                result: {type: 'text', summary: 'x'},
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    expect(privateReadInRows(rows)).toBe('outside_files');
+    // A refused read marks nothing.
+    const refused = JSON.parse(JSON.stringify(rows));
+    refused[0].steps[0].toolOutcomes[1].result = {type: 'error', summary: 'no'};
+    expect(privateReadInRows(refused)).toBeNull();
+    expect(privateReadIn('chat-r')).toBeNull();
+    await recallChatGuard('chat-r', rows);
+    expect(privateReadIn('chat-r')).toBe('outside_files');
   });
 });

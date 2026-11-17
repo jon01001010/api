@@ -15,15 +15,19 @@ import {whenAppUnlocked} from '../services/appLock/appLock';
  * PocketAgent chosen as the phone's assistant (Settings > Apps > Default
  * apps > Digital assistant app): long-press power or a corner swipe opens
  * it here. Go to Chat and start listening, as if the mic was tapped.
+ * `send`: false when another app (not the system) opened it: listen, but
+ * leave the words in the box for the user to send (security review
+ * 2026-11-17).
  */
 export async function listenForAssist(
   navigate: (route: string) => void,
   tries = 10,
+  send = true,
 ): Promise<void> {
   navigate(ROUTES.CHAT);
   // The chat input registers the voice sender once mounted.
   for (let i = 0; i < tries; i++) {
-    const result = await startVoiceInput().catch(() => 'error');
+    const result = await startVoiceInput({send}).catch(() => 'error');
     if (result !== 'no-sender') {
       return;
     }
@@ -43,7 +47,15 @@ export function useAssistLaunch(): void {
     const check = () =>
       whenAppUnlocked()
         .then(() => mod.takeAssistLaunch())
-        .then((was: boolean) => (was ? listenForAssist(navigate) : undefined))
+        // true: the system opened it; "other": another app did (never
+        // sends by itself).
+        .then((was: boolean | string) =>
+          was === true
+            ? listenForAssist(navigate)
+            : was
+              ? listenForAssist(navigate, 10, false)
+              : undefined,
+        )
         .catch(() => {});
     check();
     const emitter = new NativeEventEmitter(mod);

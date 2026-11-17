@@ -8,6 +8,39 @@ import {
 } from '../services/talents/fileApprovalGate';
 import {MODEL_THINKING} from '../services/agent/chatGuard';
 import {MODEL_SAYS} from '../services/agent/subAgent';
+import {
+  DIALOG_LIMITS,
+  headTailView,
+  showHidden,
+  sizeLine,
+} from '../utils/shownText';
+
+/**
+ * Text from the model as a question shows it (security review 2026-11-17):
+ * the app's own count first, then the text with hidden characters made
+ * visible (⟦U+202E⟧), its start and end when very long.
+ */
+function ShownText({
+  text,
+  testID,
+  style,
+}: {
+  text: string;
+  testID?: string;
+  style?: object;
+}) {
+  const view = headTailView(text, DIALOG_LIMITS);
+  return (
+    <>
+      <Text variant="labelSmall" style={styles.size} testID="approval-size">
+        {`The app counted ${sizeLine(text)}${view.shortened ? '; its start and end are shown' : ''}.`}
+      </Text>
+      <Text variant="bodySmall" selectable style={style} testID={testID}>
+        {view.text}
+      </Text>
+    </>
+  );
+}
 
 const ACTION_LABEL: Record<FileProposal['action'], string> = {
   file_create: 'creation',
@@ -40,7 +73,7 @@ function ModelSays({proposal}: {proposal: FileProposal}) {
     <View style={styles.thinking}>
       <Text variant="labelMedium">{MODEL_SAYS}</Text>
       <Text variant="bodySmall" selectable testID="approval-model-says">
-        {proposal.modelSays}
+        {showHidden(proposal.modelSays)}
       </Text>
     </View>
   ) : null;
@@ -151,13 +184,11 @@ function ManyModelsDialog({proposal}: {proposal: FileProposal}) {
             <Text variant="labelMedium" style={styles.thinking}>
               Exactly this text will be sent:
             </Text>
-            <Text
-              variant="bodySmall"
-              selectable
+            <ShownText
+              text={proposal.content}
               style={styles.sent}
-              testID="approval-sent-text">
-              {proposal.content}
-            </Text>
+              testID="approval-sent-text"
+            />
             <ModelSays proposal={proposal} />
             <Thinking proposal={proposal} />
           </ScrollView>
@@ -233,13 +264,11 @@ export function FileApprovalHost(): React.JSX.Element {
               <Text variant="labelMedium" style={styles.thinking}>
                 Exactly this text will be sent:
               </Text>
-              <Text
-                variant="bodySmall"
-                selectable
+              <ShownText
+                text={proposal.content}
                 style={styles.sent}
-                testID="approval-sent-text">
-                {proposal.content}
-              </Text>
+                testID="approval-sent-text"
+              />
               <ModelSays proposal={proposal} />
               <Thinking proposal={proposal} />
             </ScrollView>
@@ -271,12 +300,10 @@ export function FileApprovalHost(): React.JSX.Element {
           <Dialog.Content>
             <ScrollView style={styles.scroll} nestedScrollEnabled>
               <Text variant="bodyLarge" selectable>
-                {proposal.filename}
+                {showHidden(proposal.filename)}
               </Text>
               {!!proposal.content && (
-                <Text variant="bodySmall" selectable style={{marginTop: 8}}>
-                  {proposal.content}
-                </Text>
+                <ShownText text={proposal.content} style={{marginTop: 4}} />
               )}
               <Thinking proposal={proposal} />
             </ScrollView>
@@ -351,6 +378,7 @@ const styles = StyleSheet.create({
   detail: {opacity: 0.7, marginLeft: 8, marginBottom: 4},
   sent: {fontFamily: 'JetBrainsMono-Regular', marginTop: 4},
   thinking: {marginTop: 12},
+  size: {opacity: 0.7, marginTop: 8},
   warning: {color: '#C62828', fontWeight: 'bold', marginBottom: 6},
   actions: {flexWrap: 'wrap'},
 });

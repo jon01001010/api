@@ -16,6 +16,13 @@ const MAX_FILE: u64 = 64 * 1024 * 1024;
 const MAX_PART: u64 = 64 * 1024 * 1024;
 /// Most text returned (characters); the tool reads longer ones in ranges.
 const MAX_TEXT: usize = 2_000_000;
+/// Most parts (files) inside a document, and most bytes unpacked from all
+/// of them together (security review 2026-11-17: a document of many
+/// parts, or many slides, can't fill the PC's memory).
+const MAX_ENTRIES: usize = 10_000;
+const MAX_UNPACKED: u64 = 256 * 1024 * 1024;
+pub const TOO_MANY_PARTS: &str = "The document has too many parts inside; it isn't read";
+pub const TOO_BIG_INSIDE: &str = "The document is too large inside (over 256 MB unpacked); it isn't read";
 
 /// The document kinds read here, by file name.
 pub fn kind_of(name: &str) -> Option<&'static str> {
@@ -91,16 +98,48 @@ fn reference(r: &quick_xml::events::BytesRef) -> String {
 
 type Zip = zip::ZipArchive<std::io::Cursor<Vec<u8>>>;
 
-fn part(zip: &mut Zip, name: &str) -> Option<Vec<u8>> {
-    let file = zip.by_name(name).ok()?;
+/// A zipped document and how many more bytes may be unpacked from it.
+struct Doc {
+    zip: Zip,
+    left: u64,
+}
+
+/// Opens a zipped document: at most `max_entries` parts, `unpacked`
+/// bytes from all of them.
+fn open_doc(bytes: Vec<u8>, max_entries: usize, unpacked: u64) -> Result<Doc, String> {
+    let zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|_| "The file is damaged or not this kind of document".to_string())?;
+    if zip.len() > max_entries {
+        return Err(TOO_MANY_PARTS.into());
+    }
+    Ok(Doc { zip, left: unpacked })
+}
+
+/// One part (None: not there or unreadable), cut at MAX_PART; Err when it
+/// would take the whole document past its unpacked budget.
+fn part(doc: &mut Doc, name: &str) -> Result<Option<Vec<u8>>, String> {
+    let Ok(file) = doc.zip.by_name(name) else {
+        return Ok(None);
+    };
+    let budget = doc.left.min(MAX_PART);
     let mut out = Vec::new();
-    file.take(MAX_PART).read_to_end(&mut out).ok()?;
-    Some(out)
+    if file.take(budget + 1).read_to_end(&mut out).is_err() {
+        return Ok(None);
+    }
+    if out.len() as u64 > budget {
+        if budget == doc.left {
+            return Err(TOO_BIG_INSIDE.into());
+        }
+        out.truncate(budget as usize);
+    }
+    doc.left -= out.len() as u64;
+    Ok(Some(out))
 }
 
 /// Part names like "ppt/slides/slide12.xml", in number order.
-fn numbered(zip: &Zip, prefix: &str) -> Vec<String> {
-    let mut names: Vec<(u32, String)> = zip
+fn numbered(doc: &Doc, prefix: &str) -> Vec<String> {
+    let mut names: Vec<(u32, String)> = doc
+        .zip
         .file_names()
         .filter_map(|n| {
             let n = n.ok()?;
@@ -112,19 +151,23 @@ fn numbered(zip: &Zip, prefix: &str) -> Vec<String> {
     names.into_iter().map(|(_, n)| n).collect()
 }
 
-fn docx(zip: &mut Zip) -> Result<String, String> {
-    let xml = part(zip, "word/document.xml").ok_or("Not a Word document")?;
+fn docx(doc: &mut Doc) -> Result<String, String> {
+    let xml = part(doc, "word/document.xml")?.ok_or("Not a Word document")?;
     Ok(xml_text(&xml, &["w:t"], &["w:p"], &["w:tc"]))
 }
 
-fn pptx(zip: &mut Zip) -> Result<String, String> {
-    let slides = numbered(zip, "ppt/slides/slide");
+fn pptx(doc: &mut Doc) -> Result<String, String> {
+    let slides = numbered(doc, "ppt/slides/slide");
     if slides.is_empty() {
         return Err("Not a PowerPoint file".into());
     }
     let mut out = String::new();
     for (i, name) in slides.iter().enumerate() {
-        let xml = part(zip, name).unwrap_or_default();
+        // Enough already (as xlsx): the rest is never unpacked.
+        if out.len() > MAX_TEXT {
+            break;
+        }
+        let xml = part(doc, name)?.unwrap_or_default();
         out.push_str(&format!("--- Slide {} ---\n", i + 1));
         out.push_str(&xml_text(&xml, &["a:t"], &["a:p"], &[]));
         out.push('\n');
@@ -132,9 +175,9 @@ fn pptx(zip: &mut Zip) -> Result<String, String> {
     Ok(out)
 }
 
-fn xlsx(zip: &mut Zip) -> Result<String, String> {
+fn xlsx(doc: &mut Doc) -> Result<String, String> {
     // Shared strings: cells of type "s" hold an index into this list.
-    let shared: Vec<String> = part(zip, "xl/sharedStrings.xml")
+    let shared: Vec<String> = part(doc, "xl/sharedStrings.xml")?
         .map(|xml| {
             xml_text(&xml, &["t"], &["si"], &[])
                 .split('\n')
@@ -142,13 +185,16 @@ fn xlsx(zip: &mut Zip) -> Result<String, String> {
                 .collect()
         })
         .unwrap_or_default();
-    let sheets = numbered(zip, "xl/worksheets/sheet");
+    let sheets = numbered(doc, "xl/worksheets/sheet");
     if sheets.is_empty() {
         return Err("Not an Excel file".into());
     }
     let mut out = String::new();
     for (i, name) in sheets.iter().enumerate() {
-        let xml = part(zip, name).unwrap_or_default();
+        if out.len() > MAX_TEXT {
+            break;
+        }
+        let xml = part(doc, name)?.unwrap_or_default();
         out.push_str(&format!("--- Sheet {} ---\n", i + 1));
         let mut reader = Reader::from_reader(xml.as_slice());
         let (mut is_shared, mut in_value, mut row) = (false, false, Vec::<String>::new());
@@ -192,8 +238,8 @@ fn xlsx(zip: &mut Zip) -> Result<String, String> {
     Ok(out)
 }
 
-fn odf(zip: &mut Zip) -> Result<String, String> {
-    let xml = part(zip, "content.xml").ok_or("Not an OpenDocument file")?;
+fn odf(doc: &mut Doc) -> Result<String, String> {
+    let xml = part(doc, "content.xml")?.ok_or("Not an OpenDocument file")?;
     Ok(xml_text(
         &xml,
         &["text:p", "text:h", "text:span"],
@@ -215,13 +261,12 @@ pub fn to_text(name: &str, bytes: Vec<u8>) -> Result<String, String> {
     let mut text = if kind == "pdf" {
         pdf(&bytes)?
     } else {
-        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-            .map_err(|_| "The file is damaged or not this kind of document".to_string())?;
+        let mut doc = open_doc(bytes, MAX_ENTRIES, MAX_UNPACKED)?;
         match kind {
-            "docx" => docx(&mut zip)?,
-            "pptx" => pptx(&mut zip)?,
-            "xlsx" => xlsx(&mut zip)?,
-            _ => odf(&mut zip)?,
+            "docx" => docx(&mut doc)?,
+            "pptx" => pptx(&mut doc)?,
+            "xlsx" => xlsx(&mut doc)?,
+            _ => odf(&mut doc)?,
         }
     };
     if text.len() > MAX_TEXT {
@@ -344,5 +389,35 @@ mod tests {
         assert!(to_text("x.docx", b"not a zip".to_vec()).is_err());
         assert!(to_text("x.pdf", b"%PDF-broken".to_vec()).is_err());
         assert_eq!(kind_of("Report.PDF"), Some("pdf"));
+    }
+
+    #[test]
+    fn slides_stop_once_there_is_enough_text() {
+        let big = format!("<p:sld><a:p><a:t>{}</a:t></a:p></p:sld>", "x".repeat(MAX_TEXT / 2 + 10));
+        let ppt = zip_of(&[
+            ("ppt/slides/slide1.xml", big.as_str()),
+            ("ppt/slides/slide2.xml", big.as_str()),
+            ("ppt/slides/slide3.xml", big.as_str()),
+        ]);
+        let mut doc = open_doc(ppt, MAX_ENTRIES, MAX_UNPACKED).unwrap();
+        let text = pptx(&mut doc).unwrap();
+        assert_eq!(text.matches("--- Slide").count(), 2);
+        // The third slide was never unpacked.
+        assert_eq!(MAX_UNPACKED - doc.left, 2 * big.len() as u64);
+    }
+
+    #[test]
+    fn many_parts_or_too_much_unpacked_is_refused() {
+        let parts: Vec<(String, String)> = (0..20).map(|i| (format!("ppt/slides/slide{i}.xml"), "<a:t>x</a:t>".to_string())).collect();
+        let refs: Vec<(&str, &str)> = parts.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let many = zip_of(&refs);
+        assert_eq!(open_doc(many.clone(), 10, MAX_UNPACKED).err().unwrap(), TOO_MANY_PARTS);
+        assert!(open_doc(many, 20, MAX_UNPACKED).is_ok());
+        let body = format!("<w:document><w:p><w:t>{}</w:t></w:p></w:document>", "a".repeat(5000));
+        let word = zip_of(&[("word/document.xml", body.as_str())]);
+        let mut doc = open_doc(word.clone(), MAX_ENTRIES, 1000).unwrap();
+        assert_eq!(docx(&mut doc).unwrap_err(), TOO_BIG_INSIDE);
+        let mut doc = open_doc(word, MAX_ENTRIES, 100_000).unwrap();
+        assert!(docx(&mut doc).unwrap().starts_with("aaa"));
     }
 }

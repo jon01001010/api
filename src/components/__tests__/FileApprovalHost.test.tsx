@@ -265,3 +265,28 @@ describe('FileApprovalHost: several models', () => {
     await expect(answer).resolves.toBe(true);
   });
 });
+
+describe('FileApprovalHost: what the model wrote is shown as it is (review 2026-11-17)', () => {
+  beforeAll(() => {
+    (AppState as any).currentState = 'active';
+  });
+
+  it('hidden characters are made visible, under the app counted size', async () => {
+    const {findByText, getByText, getByTestId} = render(<FileApprovalHost />);
+    let answer: Promise<boolean> | undefined;
+    act(() => {
+      answer = requestFileApproval({
+        action: 'sends_out',
+        filename: 'Share this \u202Etxt.exe?',
+        content: 'pay \u2066here\u2069\u3164 now',
+      });
+    });
+    expect(await findByText('Share this ⟦U+202E⟧txt.exe?')).toBeTruthy();
+    expect(getByText('pay ⟦U+2066⟧here⟦U+2069⟧⟦U+3164⟧ now')).toBeTruthy();
+    expect(getByTestId('approval-size').props.children).toBe(
+      'The app counted 15 characters, 1 line.',
+    );
+    fireEvent.press(getByText('Deny'));
+    await expect(answer).resolves.toBe(false);
+  });
+});

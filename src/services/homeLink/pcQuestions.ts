@@ -3,7 +3,10 @@
  * PC (here) and allowed on that PC, the PC's "Allow?" questions show here too,
  * word for word (hidden characters shown as markers), and can be answered
  * Allow or Don't allow; a question too long to show whole shows its start
- * and end, and can only be refused here. That question
+ * and end, and can only be refused here; so can a question the PC shows
+ * without its private parts (onlyRefuse: the clipboard's text, a change's
+ * text, the model's thinking, the PC's paths, unless this device asked
+ * it). That question
  * only, never "always". The PC's own window stays open; the first answer
  * (here or there) wins. Looks every few seconds, only while the app is open.
  */
@@ -13,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {answerPcQuestion, pcQuestions, type PcQuestion} from './homeLink';
 import {unlockHomePc} from './homePcLock';
 import {appUnlockedNow} from '../appLock/appLock';
+import {headTailView} from '../../utils/shownText';
 
 const settingKey = (pc: string) => `@pocketagent/link/answer-for/${pc}`;
 
@@ -60,50 +64,11 @@ const HEAD_LINES = 24;
 const TAIL_LINES = 12;
 
 /**
- * Characters that change how text looks without showing themselves: the
- * same set as the PC's `remote_ask::hidden_char` (a test pins both), except
- * a newline and a tab, which show as themselves. Control characters, the
- * soft hyphen (U+00AD), direction controls (U+061C, U+202A–U+202E,
- * U+2066–U+2069), the Mongolian vowel separator (U+180E), zero-width and
- * marks (U+200B–U+200F, U+2060–U+206F, U+FEFF), line and paragraph
- * separators, interlinear annotation marks (U+FFF9–U+FFFB) and the tag
- * characters (U+E0000–U+E007F).
+ * Hidden characters and the head-and-tail view now live in
+ * utils/shownText.ts (shared with the phone's own approvals); exported here
+ * too, as before.
  */
-export const HIDDEN_RANGES: readonly (readonly [number, number])[] = [
-  [0x0000, 0x0008],
-  [0x000b, 0x001f],
-  [0x007f, 0x009f],
-  [0x00ad, 0x00ad],
-  [0x061c, 0x061c],
-  [0x180e, 0x180e],
-  [0x200b, 0x200f],
-  [0x2028, 0x202e],
-  [0x2060, 0x206f],
-  [0xfeff, 0xfeff],
-  [0xfff9, 0xfffb],
-  [0xe0000, 0xe007f],
-];
-
-const codePoint = (n: number) => `\\u{${n.toString(16)}}`;
-const HIDDEN = new RegExp(
-  `[${HIDDEN_RANGES.map(([a, b]) =>
-    a === b ? codePoint(a) : `${codePoint(a)}-${codePoint(b)}`,
-  ).join('')}]`,
-  'gu',
-);
-/** Half of a surrogate pair on its own (a long question cut inside one). */
-const LONE_HALF =
-  /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
-
-const marker = (n: number) =>
-  `⟦U+${n.toString(16).toUpperCase().padStart(4, '0')}⟧`;
-
-/** Each hidden character as a visible marker, e.g. ⟦U+202E⟧. */
-export function showHidden(text: string): string {
-  return text
-    .replace(HIDDEN, c => marker(c.codePointAt(0) ?? 0))
-    .replace(LONE_HALF, c => marker(c.charCodeAt(0)));
-}
+export {HIDDEN_RANGES, showHidden} from '../../utils/shownText';
 
 /**
  * A question as the phone shows it: hidden characters made visible, and,
@@ -114,29 +79,23 @@ export function questionView(q: PcQuestion): {
   text: string;
   shortened: boolean;
 } {
-  const all = q.text;
-  const lines = all.split('\n');
-  if (all.length <= MAX_SHOWN && lines.length <= MAX_LINES) {
-    return {text: showHidden(all), shortened: false};
-  }
-  let head = lines.slice(0, HEAD_LINES).join('\n').slice(0, HEAD_CHARS);
-  let tail = lines.slice(-TAIL_LINES).join('\n').slice(-TAIL_CHARS);
-  if (head.length + tail.length > all.length) {
-    // Few, very long lines: plain character counts.
-    head = all.slice(0, HEAD_CHARS);
-    tail = all.slice(-TAIL_CHARS);
-  }
-  const left = all.length - head.length - tail.length;
-  return {
-    text: `${showHidden(head)}\n… (${left} characters not shown) …\n${showHidden(tail)}`,
-    shortened: true,
-  };
+  return headTailView(q.text, {
+    maxChars: MAX_SHOWN,
+    maxLines: MAX_LINES,
+    headChars: HEAD_CHARS,
+    tailChars: TAIL_CHARS,
+    headLines: HEAD_LINES,
+    tailLines: TAIL_LINES,
+  });
 }
 
 /** What the phone shows: the PC's exact words, and what answering does. */
 export function questionMessage(q: PcQuestion): string {
   const view = questionView(q);
   const seconds = Math.max(1, q.secondsLeft);
+  if (q.onlyRefuse === true) {
+    return `${view.text}\n\nParts of this are shown on your PC only; answer there. (You can still say Don't allow here, within ${seconds} s.)`;
+  }
   return view.shortened
     ? `${view.text}\n\nToo long to show here; answer on the PC. (You can still say Don't allow here, within ${seconds} s.)`
     : `${view.text}\n\n(Asked on your PC. Answer within ${seconds} s; this allows it once only. The PC's own window stays open.)`;
@@ -175,11 +134,12 @@ function show(pc: string, q: PcQuestion) {
     style: 'cancel' as const,
     onPress: () => send(false),
   };
-  // A question too long to show whole is never allowed from here.
+  // A question too long to show whole, or shown without its private
+  // parts, is never allowed from here.
   Alert.alert(
     'Your PC asks',
     questionMessage(q),
-    questionView(q).shortened
+    questionView(q).shortened || q.onlyRefuse === true
       ? [no]
       : [no, {text: 'Allow once', onPress: () => send(true)}],
   );

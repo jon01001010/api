@@ -62,8 +62,14 @@ export const memoryMessage = (e: SpeechMemoryError) =>
     .replace('{{needed}}', mb(e.neededBytes))
     .replace('{{available}}', mb(e.availableBytes));
 
-/** Tap the mic: listen, transcribe, send. */
-export async function startVoiceInput(): Promise<StartResult> {
+/**
+ * Tap the mic: listen, transcribe, send. `send: false` (an assistant launch
+ * by another app, not the system): the words go into the message box
+ * instead, for the user to send.
+ */
+export async function startVoiceInput(
+  opts: {send?: boolean} = {},
+): Promise<StartResult> {
   if (voiceStore.state !== 'idle') {
     return 'busy';
   }
@@ -88,11 +94,20 @@ export async function startVoiceInput(): Promise<StartResult> {
   beforeListen?.();
   const handle = listen(level => voiceStore.setLevel(level));
   active = handle;
-  run(handle, whisperModelPath(model)).catch(() => {});
+  run(handle, whisperModelPath(model), opts.send !== false).catch(() => {});
   return 'started';
 }
 
-async function run(handle: ListenHandle, modelPath: string) {
+/** Spoken words left in the message box (not sent). */
+function leaveInBox(text: string) {
+  const {chatSessionStore} = require('../../store');
+  chatSessionStore.restoreUnsentText(
+    chatSessionStore.activeSessionId ?? null,
+    text,
+  );
+}
+
+async function run(handle: ListenHandle, modelPath: string, send = true) {
   try {
     const {audio, reason} = await handle.result;
     if (!audio) {
@@ -103,8 +118,10 @@ async function run(handle: ListenHandle, modelPath: string) {
     }
     voiceStore.setState('transcribing');
     const text = await transcribe(modelPath, audio, voiceStore.language);
-    if (text) {
+    if (text && send) {
       sendSpoken(text);
+    } else if (text) {
+      leaveInBox(text);
     } else {
       warn(uiStore.l10n.voiceAndSpeech.voiceInput.nothingHeard);
     }
