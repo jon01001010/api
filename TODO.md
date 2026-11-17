@@ -917,6 +917,16 @@ Research (2026-11-07): **iroh 1.x** (Rust, MIT/Apache, 1.0 in June 2026; we pin 
 - [ ] Keep the tunnel alive in the background (foreground service) for long replies with the screen off. (2026-11-15: the link is reopened between replies, `keepLink.ts`; no foreground service yet)
 - [ ] Desktop-to-phone the other way (PC uses the phone's tools), shared tasks: later.
 
+## VPN built into the app (user, 2026-11-17, write-up only)
+
+The user wants a VPN built into the app, over the home link (iroh: direct when possible, else an encrypted relay; no PocketAgent-run server, no outside account). Today the link carries only what the app needs (models, sync, questions, pictures, tools; `Http` tunnel media only), so it is not a VPN yet. Not decided yet: which of the two below, or both.
+
+- [ ] **Decide (owner):** (a) app-only, (b) whole phone, or (a) first then (b).
+- [ ] **(a) The app's own internet through home:** web search, read_url and cloud servers (Muse, Claude, …) leave from the home PC instead of the phone's network. Off by default, switched on by the user; per paired device (a new flag, like `may_read`); the PC asks before reaching a new host and logs every host (like outside.log); the PC's own deny list applies (no local network addresses, no PC services) so a phone, or a model on it, can't reach into the home network. No new Android permission.
+- [ ] **(b) Whole phone (Android VpnService):** every app's traffic goes through the home PC. Needs the VPN permission and a persistent notification; Android allows one VPN at a time (replaces any other VPN the user runs); the app would see all phone traffic, so it must be a separate, clearly named switch, off by default, nothing logged beyond host names, and it must not be reachable by any model tool. DNS through the PC too (no leaks); a kill switch option (no internet when the link drops). Battery: a foreground service, as in "Keep the tunnel alive in the background".
+- [ ] **Both:** shows the route ("direct" / "relay") as the Home PC sheet does; works away from home on mobile data; the PC needs its own internet (not the phone's hotspot, see the note above); Windows first, then Linux; tests and SECURITY.md entries before any build.
+- [ ] Later, optional: PC to PC (laptop away from home through the home PC), and "Use my own relay".
+
 ## PocketAgent Desktop: companion app and phone ↔ desktop link (idea 2026-11-06, write-up only)
 
 A desktop app that pairs with the phone: trains the personal LoRA, runs bigger models (14B–30B) for the phone, and takes heavy jobs. **Platforms (decided 2026-11-07, updated 2026-11-12): Windows first, then Linux (x64 and ARM builds exist now); no Apple at all (no Mac, no iPhone).** Open source, no Google, no account, no cloud.
