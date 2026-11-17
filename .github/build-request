@@ -2,4 +2,4 @@ Change this file on the windows branch to build the phone app (APK) and the
 desktop apps (Windows, Linux) together, from the same commit, so they match.
 Each app shows its build in App Info; the home link says when phone and PC
 differ.
-Requested: 2026-11-16T23:37:33Z (picture progress, 512 px and small-card flags on weak cards; several models and/or; Meta Muse preset)
+Requested: 2026-11-17T23:44:17Z (app pin and erase pin; security review fixes; picture time limit keeps going while it moves)
