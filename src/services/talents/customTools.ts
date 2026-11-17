@@ -135,7 +135,8 @@ const OPENS_ANOTHER_APP = new Set([
 ]);
 
 const NAME = /^[a-z][a-z0-9_]{2,39}$/;
-const FILL_IN = /\{\{\s*([a-z][a-z0-9_]{0,30})\s*\}\}/gi;
+// The fill-in pattern and filling: shared with the chat guard (stepArgs.ts).
+import {FILL_IN, fillIn as fillInShared} from './stepArgs';
 
 /** The fill-in names a shortcut's steps use, in order of first use. */
 export function fillInsOf(steps: ShortcutStep[]): string[] {
@@ -159,23 +160,7 @@ export function fillInsOf(steps: ShortcutStep[]): string[] {
 }
 
 /** Step arguments with each {{fill-in}} replaced by the value given. */
-export function fillIn(v: unknown, values: Record<string, unknown>): unknown {
-  if (typeof v === 'string') {
-    return v.replace(FILL_IN, (_m, n: string) => {
-      const value = values[n.toLowerCase()];
-      return value === undefined || value === null ? '' : String(value);
-    });
-  }
-  if (Array.isArray(v)) {
-    return v.map(x => fillIn(x, values));
-  }
-  if (v && typeof v === 'object') {
-    return Object.fromEntries(
-      Object.entries(v).map(([k, x]) => [k, fillIn(x, values)]),
-    );
-  }
-  return v;
-}
+export const fillIn = fillInShared;
 
 /** Names of the built-in tools (everything registered that isn't custom). */
 export function builtInToolNames(): string[] {

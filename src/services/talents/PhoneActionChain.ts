@@ -8,6 +8,7 @@
  */
 import {AppState, type AppStateStatus} from 'react-native';
 
+import {chainStep} from './stepArgs';
 import {requestFileApproval} from './fileApprovalGate';
 import {fromContext} from '../agent/chatGuard';
 import {
@@ -120,18 +121,14 @@ async function checkSteps(
   }
   const steps: Step[] = [];
   for (const [i, raw] of input.entries()) {
-    const s = (raw ?? {}) as Record<string, unknown>;
-    const action = typeof s.action === 'string' ? s.action.trim() : '';
+    // Read as the chat guard reads it (stepArgs.ts).
+    const {action, args} = chainStep(raw);
     if (!PHONE_TOOL_NAMES.includes(action)) {
       return `Step ${i + 1}: "${action}" is not a phone action. A chain can only use: ${PHONE_TOOL_NAMES.join(', ')}.`;
     }
     if (!switchedOn.includes(action)) {
       return `Step ${i + 1}: ${action} is switched off (Toolbox). Tell the user; don't try another way.`;
     }
-    const args =
-      s.args && typeof s.args === 'object' && !Array.isArray(s.args)
-        ? (s.args as Record<string, unknown>)
-        : {};
     const plan = await PHONE_TOOLS[action].plan(args);
     if (typeof plan === 'string') {
       return `Step ${i + 1} (${action}): ${plan}`;

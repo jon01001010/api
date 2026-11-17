@@ -45,9 +45,13 @@ import {
   convertToChatMessages,
   removeThinkingParts,
   visibleStepContent,
+  userId,
 } from '../utils/chat';
 import {activateKeepAwake, deactivateKeepAwake} from '../utils/keepAwake';
-import {startBackgroundInference, finishBackgroundInference} from '../utils/backgroundInference';
+import {
+  startBackgroundInference,
+  finishBackgroundInference,
+} from '../utils/backgroundInference';
 import {
   toApiCompletionParams,
   ApiCompletionParams,
@@ -64,7 +68,13 @@ import {
   joinParts,
   readPromptPartSettings,
 } from '../utils/promptParts';
-import {readGlobalTools, readGlobalPrompt, toolPromptPieces, readAgentMaxTurns, assistantOnlyTools} from '../utils/globalToolSettings';
+import {
+  readGlobalTools,
+  readGlobalPrompt,
+  toolPromptPieces,
+  readAgentMaxTurns,
+  assistantOnlyTools,
+} from '../utils/globalToolSettings';
 import {
   agentStateReducer,
   createTriggerMarkerCache,
@@ -76,10 +86,25 @@ import {
   type TokenDelta,
 } from '../services/agent';
 import {inAppGuard, isCloudServer} from '../services/agent/guardQuestions';
+import {recallChatGuard} from '../services/agent/chatGuard';
+import {isMirrored} from '../services/sync/mirrorMark';
 // Helper function to prepare completion parameters using OpenAI-compatible
 // messages API. Creates the empty `assistant_turn` row up-front so the
 // active-vs-persisted predicate sees the right "last message" before the
 // run flips to `preparing`.
+/** The texts the user typed on this device (not mirrored, not a loop's). */
+export function typedTexts(rows: ReadonlyArray<MessageType.Any>): string[] {
+  return rows
+    .filter(
+      m =>
+        m.type === 'text' &&
+        m.author?.id === userId &&
+        !isMirrored(m.metadata) &&
+        !m.metadata?.fromLoop,
+    )
+    .map(m => (m as MessageType.Text).text);
+}
+
 const prepareCompletion = async ({
   imageUris,
   message,
@@ -177,8 +202,13 @@ const prepareCompletion = async ({
   ]);
 
   // Reseed the read_url exfiltration allowlist for this run; the trust policy
-  // (which sources count) lives in the talents module.
-  seedReadUrlAllowlist(messages, currentMessages);
+  // (which sources count) lives in the talents module. Sites named only in
+  // text the user typed here: not in a mirrored chat's messages, nor in a
+  // loop's messages (security review 2026-11-17).
+  seedReadUrlAllowlist(messages, currentMessages, [
+    ...typedTexts(currentMessages),
+    ...(message.metadata?.fromLoop ? [] : [message.text]),
+  ]);
 
   const completionParamsWithAppProps = {
     ...sessionCompletionSettings,
@@ -667,9 +697,12 @@ export const useChatSession = (
       return;
     }
     leaseRef.current = lease;
-    const cancelSubscription = Platform.OS === 'android'
-      ? DeviceEventEmitter.addListener('PocketAgentInferenceCancel', () => lease.abort())
-      : null;
+    const cancelSubscription =
+      Platform.OS === 'android'
+        ? DeviceEventEmitter.addListener('PocketAgentInferenceCancel', () =>
+            lease.abort(),
+          )
+        : null;
 
     // Run UI clears on abort, not on drain.
     let uiStopped = false;
@@ -686,7 +719,11 @@ export const useChatSession = (
       chatSessionStore.setToolCallTokenCount(0);
       try {
         deactivateKeepAwake();
-        void finishBackgroundInference(completedNormally && !lease.signal.aborted).catch(error => console.warn('Could not stop inference notification', error));
+        void finishBackgroundInference(
+          completedNormally && !lease.signal.aborted,
+        ).catch(error =>
+          console.warn('Could not stop inference notification', error),
+        );
       } catch (error) {
         console.error('Failed to deactivate keep awake after chat:', error);
       }
@@ -698,7 +735,9 @@ export const useChatSession = (
     }
 
     try {
-      await startBackgroundInference().catch(error => console.warn('Background inference service unavailable', error));
+      await startBackgroundInference().catch(error =>
+        console.warn('Background inference service unavailable', error),
+      );
       const result = await sendUnderLease(message, lease, {
         stop: uiStop,
         isStopped: () => uiStopped,
@@ -755,6 +794,8 @@ export const useChatSession = (
         conversationId: conversationIdRef.current,
         copyable: true,
         multimodal: hasImages,
+        // Sent by a loop, not typed (readUrlAllowlist: not the user's words).
+        ...(message.metadata?.fromLoop ? {fromLoop: true} : {}),
       },
     };
     const wasUntitled =
@@ -797,22 +838,25 @@ export const useChatSession = (
     let globalInstructions = '';
     try {
       [globalNames, globalInstructions] = await Promise.all([
-        readGlobalTools(), readGlobalPrompt(),
+        readGlobalTools(),
+        readGlobalPrompt(),
       ]);
     } catch (e) {
       console.warn('[chat] global tool settings unavailable', e);
     }
-    const palTalents = [...new Set([
-      // An assistant (including one downloaded from PalsHub) may only add the
-      // harmless built-ins on its own; every other tool runs only when it is
-      // switched on in Toolbox. Off means off, whatever the assistant says.
-      ...assistantOnlyTools(pal?.pact?.talents ?? []),
-      // Only tools the user switched on (or the assistant declares). Memory
-      // tools too: the memory itself is always in the prompt below, but the
-      // tools that read and change it are sent only when turned on.
-      // A chain of phone actions only next to a phone action that is on.
-      ...withChainOnlyIfUsable(globalNames),
-    ])];
+    const palTalents = [
+      ...new Set([
+        // An assistant (including one downloaded from PalsHub) may only add the
+        // harmless built-ins on its own; every other tool runs only when it is
+        // switched on in Toolbox. Off means off, whatever the assistant says.
+        ...assistantOnlyTools(pal?.pact?.talents ?? []),
+        // Only tools the user switched on (or the assistant declares). Memory
+        // tools too: the memory itself is always in the prompt below, but the
+        // tools that read and change it are sent only when turned on.
+        // A chain of phone actions only next to a phone action that is on.
+        ...withChainOnlyIfUsable(globalNames),
+      ]),
+    ];
     // Tool line and guidance come only from the tools sent this turn.
     const toolPieces = toolPromptPieces(
       palTalents,
@@ -946,6 +990,9 @@ export const useChatSession = (
     let undone: UndoneSend | undefined;
     try {
       const agentMaxTurns = await readAgentMaxTurns();
+      // The chat's guards as saved: private reads in its earlier turns and
+      // "nothing more" (they were in memory only before).
+      await recallChatGuard(messageInfo.sessionId, currentMessages);
       const events = runAgent({
         // Thinking that goes round in circles ends early (api/loopGuardEngine).
         engine: guardThinkingLoops(engine),

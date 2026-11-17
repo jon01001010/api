@@ -90,7 +90,13 @@ export const ChatScreen: React.FC = observer(() => {
   sendRef.current = handleSendPress;
   React.useEffect(() => {
     setLoopSender(
-      text => sendRef.current({type: 'text', text} as any),
+      // Marked as a loop's (not typed: readUrlAllowlist, review 2026-11-17).
+      text =>
+        sendRef.current({
+          type: 'text',
+          text,
+          metadata: {fromLoop: true},
+        } as any),
       () => (navigation as any).navigate(ROUTES.CHAT),
     );
     startLoopWatch();

@@ -21,6 +21,7 @@ import {
 import {requestFileApproval, type FileProposal} from './fileApprovalGate';
 import {fromContext} from '../agent/chatGuard';
 import {diffLines, splitLines} from './lineDiff';
+import {wrapUntrusted} from './untrustedContent';
 import {
   listFileHistory,
   readFileSnapshot,
@@ -179,17 +180,19 @@ export class FileToolsEngine implements TalentEngine {
         )
           throw new Error('Use start_line >= 1 and line_count 1–200');
         const lines = splitLines(await readAny(name));
+        const picked = lines
+          .slice(start - 1, start - 1 + count)
+          .map((line, index) => start + index + ': ' + line)
+          .join('\n');
+        // A file's text is data, never instructions (review 2026-11-17).
         return {
           type: 'text',
-          summary:
-            lines
-              .slice(start - 1, start - 1 + count)
-              .map((line, index) => start + index + ': ' + line)
-              .join('\n') || 'No lines in range',
+          summary: picked ? wrapUntrusted(picked) : 'No lines in range',
         };
       }
       if (this.name === 'file_read') {
-        return {type: 'text', summary: await readAny(name)};
+        // A file's text is data, never instructions (review 2026-11-17).
+        return {type: 'text', summary: wrapUntrusted(await readAny(name))};
       }
       if (this.name === 'file_history') {
         const snapshots = await listFileHistory(name);
