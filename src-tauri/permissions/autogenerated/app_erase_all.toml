@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-erase-all"
+description = "Enables the app_erase_all command without any pre-configured scope."
+commands.allow = ["app_erase_all"]
+
+[[permission]]
+identifier = "deny-app-erase-all"
+description = "Denies the app_erase_all command without any pre-configured scope."
+commands.deny = ["app_erase_all"]

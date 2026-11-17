@@ -10,7 +10,8 @@ import './installNet';
 import React from 'react';
 import {AppRegistry} from 'react-native';
 import '../index';
-import App from '../App';
+import {AppLockRoot} from '../src/components/AppLock/AppLockRoot';
+import {whenAppUnlocked} from '../src/services/appLock/appLock';
 import {ErrorScreen} from './ErrorScreen';
 import {AlertHost} from './AlertHost';
 
@@ -47,10 +48,14 @@ function FirstScreenTimer() {
   return null;
 }
 
+const loadApp = () => require('../App').default;
+
 AppRegistry.registerComponent(DESKTOP_APP, () => () => (
   <ErrorScreen>
     <FirstScreenTimer />
-    <App />
+    {/* The app PIN first (off by default): the app's own code, and with
+        it the chats, loads only after it (src/services/appLock). */}
+    <AppLockRoot loadApp={loadApp} />
     {/* Alert.alert dialogs (empty in react-native-web otherwise). */}
     <AlertHost />
   </ErrorScreen>
@@ -58,8 +63,11 @@ AppRegistry.registerComponent(DESKTOP_APP, () => () => (
 AppRegistry.runApplication(DESKTOP_APP, {
   rootTag: document.getElementById('root'),
 });
-// Keeping in step with paired devices (off unless allowed in Settings).
-require('../src/services/sync/hostSync').startHostSync();
+// Keeping in step with paired devices (off unless allowed in Settings),
+// once the app PIN (if on) was entered.
+whenAppUnlocked()
+  .then(() => require('../src/services/sync/hostSync').startHostSync())
+  .catch(() => {});
 
 // The quick-chat key (Settings), if the user switched it on.
 try {

@@ -38,6 +38,12 @@ All of it is in the app's private storage, which other apps can't read (unless t
 
 **Anything running as you on the PC can read Credential Manager and these files.** A copied link key would let someone pose as that PC (sealing the key to the PC is being considered). If you think a device or key is compromised, remove the device in the PC's list: it is cut off at once.
 
+## App PIN and erase PIN (both devices; off by default)
+
+- The app PIN and the erase PIN are kept as salted hashes only (never the PINs), in the key store above (Android's keystore; Windows Credential Manager / the Linux key store).
+- The erase PIN erases everything in the two tables above that is the app's own: on the phone, Android's "Clear storage" for the app (its private storage, the no-backup folder, its keystore keys); on the PC, the app's own folders (Roaming, Local with the web view's storage, settings, cache; the workspace and models are inside) and its own Credential Manager / key store entries. Files you saved elsewhere (Downloads, a model file run from another folder) stay. Nothing is sent to your other devices: remove the erased device there.
+- It is a normal delete, not a secure wipe: flash storage may keep pieces a forensic lab could recover.
+
 ## What the home link sends, and what others can see
 
 The link between your phone and PC (or two PCs) is encrypted end to end (QUIC with TLS 1.3). Each device is pinned by its key, chosen when you paired them.

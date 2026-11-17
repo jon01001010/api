@@ -1,0 +1,88 @@
+import * as React from 'react';
+import {Modal, StyleSheet, useColorScheme, View} from 'react-native';
+
+import {
+  appLockedNow,
+  loadAppLock,
+  subscribeAppLock,
+} from '../../services/appLock/appLock';
+import {AppLockScreen} from './AppLockScreen';
+
+type Phase = 'reading' | 'locked' | 'error' | 'open';
+
+/**
+ * The app's outermost part (index.js, web/start.js). With an app PIN on,
+ * the PIN screen comes first and the app's own code (its screens and
+ * stores, and with them the chats) is loaded only after the PIN: `loadApp`
+ * is called then, once. When the app locks again later (away longer than
+ * the chosen minutes), the PIN screen covers everything, in a window of its
+ * own above the app's dialogs.
+ */
+export function AppLockRoot({
+  loadApp,
+}: {
+  loadApp: () => React.ComponentType;
+}): React.JSX.Element {
+  const [phase, setPhase] = React.useState<Phase>('reading');
+  const [App, setApp] = React.useState<React.ComponentType | null>(null);
+  const dark = useColorScheme() === 'dark';
+
+  React.useEffect(() => {
+    let live = true;
+    const stop = subscribeAppLock(locked => {
+      if (live) {
+        setPhase(locked ? 'locked' : 'open');
+      }
+    });
+    loadAppLock().then(result => {
+      if (!live) {
+        return;
+      }
+      if (result === 'error') {
+        setPhase('error');
+      } else {
+        setPhase(appLockedNow() ? 'locked' : 'open');
+      }
+    });
+    return () => {
+      live = false;
+      stop();
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (phase === 'open' && !App) {
+      const Loaded = loadApp();
+      setApp(() => Loaded);
+    }
+  }, [phase, App, loadApp]);
+
+  if (!App) {
+    if (phase === 'locked' || phase === 'error') {
+      return <AppLockScreen error={phase === 'error'} />;
+    }
+    // Reading the setting: a plain background, nothing of the app.
+    return <View style={dark ? styles.dark : styles.light} />;
+  }
+  const locked = phase === 'locked' || phase === 'error';
+  return (
+    <View style={styles.fill}>
+      <App />
+      {locked ? (
+        <Modal
+          visible
+          animationType="none"
+          statusBarTranslucent
+          onRequestClose={() => {}}>
+          <AppLockScreen error={phase === 'error'} />
+        </Modal>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  fill: {flex: 1},
+  light: {flex: 1, backgroundColor: '#ffffff'},
+  dark: {flex: 1, backgroundColor: '#000000'},
+});

@@ -60,6 +60,7 @@ import {YourDevicesCard} from '../../components/YourDevices/YourDevices';
 import {homeLinkInBuild} from '../../services/homeLink/homeLink';
 import {homeLinkAvailable} from '../../services/desktop/homeLink';
 import {QuickKeyCard} from './QuickKeyCard';
+import {AppLockSettings} from '../../components/AppLock/AppLockSettings';
 
 import {useTheme} from '../../hooks';
 
@@ -385,6 +386,9 @@ export const SettingsScreen: React.FC = observer(() => {
           keyboardShouldPersistTaps="handled">
           {/* Screens that used to be in the side menu */}
           <SettingsLinks cardStyle={styles.card} />
+
+          {/* App PIN and erase PIN (off by default; services/appLock). */}
+          <AppLockSettings cardStyle={styles.card} />
 
           {/* Windows app only: run a model with the bundled llama.cpp server. */}
           <ThisPcModelCard cardStyle={styles.card} />

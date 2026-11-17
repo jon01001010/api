@@ -5,6 +5,11 @@
  * closed shows when it opens again ("missed"). Nothing leaves the PC.
  */
 import {Alert} from 'react-native';
+import {
+  appUnlockedNow,
+  privateNotice,
+  whenAppUnlocked,
+} from '../appLock/appLock';
 
 export type PcReminderKind = 'timer' | 'alarm' | 'reminder';
 
@@ -98,19 +103,29 @@ function fire(id: number, missed = false) {
   beep();
   // Also a system notification, for when DesktopAgent is behind other windows.
   const tauri = (globalThis as any).__TAURI_INTERNALS__;
+  // With the app PIN on, the notification doesn't say what it is.
   tauri
-    ?.invoke('notify', {
-      title: TITLE[item.kind],
-      body: item.label || TITLE[item.kind],
-    })
+    ?.invoke(
+      'notify',
+      privateNotice(TITLE[item.kind], item.label || TITLE[item.kind]),
+    )
     .catch(() => {});
   const when = new Date(item.at).toLocaleString();
-  Alert.alert(
-    missed ? `${TITLE[item.kind]} (missed while closed)` : TITLE[item.kind],
-    missed
-      ? `${item.label || TITLE[item.kind]}\nWas due ${when}.`
-      : item.label || TITLE[item.kind],
-  );
+  // App PIN on and locked: shown once it is entered.
+  const show = () =>
+    Alert.alert(
+      missed ? `${TITLE[item.kind]} (missed while closed)` : TITLE[item.kind],
+      missed
+        ? `${item.label || TITLE[item.kind]}\nWas due ${when}.`
+        : item.label || TITLE[item.kind],
+    );
+  if (appUnlockedNow()) {
+    show();
+  } else {
+    whenAppUnlocked()
+      .then(show)
+      .catch(() => {});
+  }
   // A repeating alarm sets itself again for its next day.
   if (item.kind === 'alarm' && item.days && item.days.length) {
     const at = new Date(item.at);

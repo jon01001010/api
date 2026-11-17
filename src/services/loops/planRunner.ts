@@ -40,6 +40,7 @@ import {
 } from './plan';
 import {currentPlan, keepLastResults, lastResultsOf} from './planStore';
 import {stopQuietly} from '../../utils/stopQuietly';
+import {appUnlockedNow, whenAppUnlocked} from '../appLock/appLock';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const RUNS_KEY = '@pocketagent/loop-plan-runs/v1';
@@ -240,7 +241,16 @@ async function toolRun(
 const realDeps: PlanDeps = {
   complete: modelComplete,
   runTool: toolRun,
-  notify: (title, text) => Alert.alert(title, text),
+  // With the app PIN on and locked: shown once it is entered.
+  notify: (title, text) => {
+    if (appUnlockedNow()) {
+      Alert.alert(title, text);
+    } else {
+      whenAppUnlocked()
+        .then(() => Alert.alert(title, text))
+        .catch(() => {});
+    }
+  },
   log: async (loopId, what) => {
     await updateLoop(loopId, l => addLog(l, what));
   },

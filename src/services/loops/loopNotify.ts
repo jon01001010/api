@@ -15,6 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {NativeModules, Platform} from 'react-native';
 
 import {isFinished, type Loop} from './loops';
+import {appLockOn, privateNotice} from '../appLock/appLock';
 
 const KEY = '@pocketagent/loops/notify/v1';
 
@@ -77,7 +78,11 @@ export async function syncLoopAlarms(
     return;
   }
   try {
-    await mod.schedule(alarmPlan(loops, await isLoopNotifyOn(), now));
+    const plan = alarmPlan(loops, await isLoopNotifyOn(), now);
+    // With the app PIN on, a notification doesn't name the loop.
+    await mod.schedule(
+      appLockOn() ? plan.map(a => ({...a, title: 'a loop'})) : plan,
+    );
   } catch {
     // No alarms: the app still asks while it is open.
   }
@@ -120,10 +125,13 @@ export async function notifyDesktop(loop: Loop): Promise<boolean> {
     return false;
   }
   try {
-    await tauri().invoke('notify', {
-      title: `Loop due: ${loop.title}`,
-      body: 'Open DesktopAgent to choose: Run now, Later or Skip.',
-    });
+    await tauri().invoke(
+      'notify',
+      privateNotice(
+        `Loop due: ${loop.title}`,
+        'Open DesktopAgent to choose: Run now, Later or Skip.',
+      ),
+    );
     return true;
   } catch {
     return false;

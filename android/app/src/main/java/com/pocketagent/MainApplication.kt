@@ -31,6 +31,7 @@ class MainApplication : Application(), ReactApplication {
               add(LoopAlarmsPackage())
               add(AppDiagnosticsPackage())
               add(HardwareInfoPackage())
+              add(AppErasePackage())
               add(DownloadPackage())
               add(com.pocketagent.localapi.LocalApiPackage())
               add(com.pocketagent.homelink.HomeLinkPackage())

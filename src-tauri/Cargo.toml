@@ -51,10 +51,13 @@ link = ["dep:iroh", "dep:qrcode", "dep:homelink"]
 keyring = { version = "3.6.3", features = ["windows-native"] }
 # The page's own profiler at start-up (profile.rs): the same versions Tauri uses.
 webview2-com = "=0.39.1"
-windows = { version = "=0.62.2", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_UI_Input_KeyboardAndMouse", "Win32_Devices_DeviceAndDriverInstallation"] }
+windows = { version = "=0.62.2", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_UI_Input_KeyboardAndMouse", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Security_Credentials"] }
 
 [target.'cfg(not(windows))'.dependencies]
 keyring = { version = "3.6.3", features = ["linux-native"] }
+# The erase PIN: finds the app's own key store entries (erase.rs); the
+# version keyring already uses.
+linux-keyutils = "=0.2.5"
 
 [profile.release]
 codegen-units = 1
