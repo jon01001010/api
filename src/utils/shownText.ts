@@ -84,6 +84,19 @@ export const APPROVAL_LIMITS: ViewLimits = {
 };
 
 /**
+ * For the phone's approval window (it scrolls): whole up to here, then its
+ * start and end.
+ */
+export const DIALOG_LIMITS: ViewLimits = {
+  maxChars: 20000,
+  maxLines: 400,
+  headChars: 12000,
+  tailChars: 4000,
+  headLines: 240,
+  tailLines: 80,
+};
+
+/**
  * Hidden characters made visible and, past the limits (characters or
  * lines), its start and its end with how many characters were left out.
  */
