@@ -1067,7 +1067,8 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     );
     const pcRs = tauri('src/pc.rs');
     expect(pcRs).toMatch(
-      /pub\(crate\) fn workspace_file[\s\S]*?name\.contains\(\['\/', '\\\\', ':'\]\) \|\| name\.contains\("\.\."\)/,
+      // The same checks as a device's read (review 2026-11-17).
+      /pub fn workspace_file_in[\s\S]*?let name = crate::pc_files::check_name\(name\)\?;[\s\S]*?if !crate::pc_files::plain_file\(&path\) \{\s*return Err/,
     );
     expect(pcRs).toMatch(
       /pub async fn open_file[\s\S]*?if !openable\(name\) \{\s*return Err[\s\S]*?workspace_file\(app, name\)\?/,
@@ -1604,6 +1605,31 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'tauri_plugin_global_shortcut::Builder::new().build()',
     );
     expect(lib).not.toMatch(/with_shortcut|register\(QUICK_KEY\)/);
+  });
+
+  it('an assistant launch by another app never sends by itself (review 2026-11-17)', () => {
+    const main = read(
+      'android/app/src/main/java/com/pocketagent/MainActivity.kt',
+    );
+    expect(main).toContain(
+      'PhoneActionsModule.onAssistLaunch(systemOpened(intent))',
+    );
+    expect(main).toMatch(
+      /private fun systemOpened\(intent: Intent\): Boolean \{\s*if \(intent\.hasExtra\(Intent\.EXTRA_REFERRER\) \|\| intent\.hasExtra\(Intent\.EXTRA_REFERRER_NAME\)\) \{\s*return false/,
+    );
+    expect(main).toContain(
+      'if (pkg == "android" || pkg == "com.android.systemui") return true',
+    );
+    const actions = read(
+      'android/app/src/main/java/com/pocketagent/PhoneActionsModule.kt',
+    );
+    expect(actions).toContain('else promise.resolve("other")');
+    expect(read('src/hooks/useAssistLaunch.ts')).toMatch(
+      /was === true\s*\?\s*listenForAssist\(navigate\)\s*:\s*was\s*\?\s*listenForAssist\(navigate, 10, false\)/,
+    );
+    expect(read('src/services/voice/voiceController.ts')).toMatch(
+      /if \(text && send\) \{\s*sendSpoken\(text\);\s*\} else if \(text\) \{\s*leaveInBox\(text\);/,
+    );
   });
 
   it("PC to PC: this PC as the other end uses the phone's own link library, unchanged", () => {
@@ -2149,6 +2175,8 @@ describe('Rule 1: the model is treated as possibly hostile (chat guards, 2026-11
   it('read-then-leak: the private reads and what goes out are explicit lists', () => {
     expect(keysOf('PRIVATE_READS')).toEqual([
       'outside_files',
+      // A workspace file (review 2026-11-17).
+      'file_read',
       'clipboard_read',
       'pc_clipboard_read',
       'pc_workspace_read',
@@ -2162,6 +2190,11 @@ describe('Rule 1: the model is treated as possibly hostile (chat guards, 2026-11
       'share_text',
       'search_in_app',
       'navigate_to',
+      // Handed to another app too (review 2026-11-17).
+      'play_music',
+      'add_reminder',
+      'set_timer',
+      'set_alarm',
       'pc_workspace_read',
       'pc_open',
       'pc_print',
@@ -2172,6 +2205,20 @@ describe('Rule 1: the model is treated as possibly hostile (chat guards, 2026-11
     ]);
     expect(read('src/services/talents/PcPictureEngine.ts')).toContain(
       "readonly sendsTo = 'your Home PC, to make a picture';",
+    );
+    // The guard reads a chain's and a shortcut's steps exactly as they run
+    // (one normaliser: stepArgs.ts), and the marks survive a restart
+    // (review 2026-11-17).
+    expect(read('src/services/talents/PhoneActionChain.ts')).toContain(
+      'const {action, args} = chainStep(raw);',
+    );
+    expect(read('src/services/talents/customTools.ts')).toContain(
+      "import {FILL_IN, fillIn as fillInShared} from './stepArgs';",
+    );
+    expect(guard).toContain('const {action, args: stepArgs} = chainStep(raw);');
+    expect(guard).toContain('args: fillIn(s.args ?? {}, args ?? {}) as Args,');
+    expect(read('src/hooks/useChatSession.ts')).toMatch(
+      /await recallChatGuard\(messageInfo\.sessionId, currentMessages\);[\s\S]*?guard: inAppGuard\(messageInfo\.sessionId/,
     );
     // Only a result that is not an error marks the chat; once marked,
     // anything going out asks (the model can't answer: the app's window).
