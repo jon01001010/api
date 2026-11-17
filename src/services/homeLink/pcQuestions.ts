@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {answerPcQuestion, pcQuestions, type PcQuestion} from './homeLink';
 import {unlockHomePc} from './homePcLock';
+import {appUnlockedNow} from '../appLock/appLock';
 
 const settingKey = (pc: string) => `@pocketagent/link/answer-for/${pc}`;
 
@@ -186,6 +187,11 @@ function show(pc: string, q: PcQuestion) {
 
 /** One look at every PC this is switched on for; the wait until the next. */
 export async function lookOnce(): Promise<number> {
+  // App PIN on and locked: no question is fetched or shown until it is
+  // entered.
+  if (!appUnlockedNow()) {
+    return LOOK_EVERY_MS;
+  }
   let wait = 0;
   for (const pc of pairedPcs()) {
     if (!(await answerForPcOn(pc))) {

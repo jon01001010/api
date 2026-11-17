@@ -22,6 +22,7 @@ import {
   takeOpenedLoop,
 } from './loopNotify';
 import {readBattery} from './loopBattery';
+import {appUnlockedNow} from '../appLock/appLock';
 import {
   addLog,
   afterReply,
@@ -276,6 +277,10 @@ let appStateSub: {remove: () => void} | undefined;
 async function look(): Promise<void> {
   // Desktop: also while behind other windows, with a system notification.
   if (AppState.currentState !== 'active' && !isDesktopApp()) {
+    return;
+  }
+  // App PIN on and locked: asked once it is entered.
+  if (!appUnlockedNow()) {
     return;
   }
   await lookForDue(Date.now(), await takeOpenedLoop());

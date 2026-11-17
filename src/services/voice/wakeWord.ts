@@ -26,6 +26,7 @@ import {
   voiceStore,
 } from '../../store';
 import {createSegmenter} from './endpointer';
+import {appUnlockedNow} from '../appLock/appLock';
 import {
   base64ToBytes,
   releaseWhisper,
@@ -198,6 +199,10 @@ const segmenter = createSegmenter(audio => {
 });
 
 async function onUtterance(audio: Uint8Array) {
+  // App PIN on and locked: the wake word does nothing.
+  if (!appUnlockedNow()) {
+    return;
+  }
   const model = voiceStore.selectedModel;
   // One check at a time; skip while the app is busy with voice or a reply.
   if (checking || !model || voiceStore.state !== 'idle' || replyRunning()) {

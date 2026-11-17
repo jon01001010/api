@@ -70,6 +70,7 @@ const COMMANDS: &[&str] = &[
     "link_key_mode",
     "link_use_one_key",
     "link_circle",
+    "app_erase_all",
 ];
 
 fn main() {

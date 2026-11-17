@@ -21,7 +21,13 @@ if (__E2E__) {
   LogBox.ignoreAllLogs(true);
 }
 
-import App from './App';
+import React from 'react';
 import {name as appName} from './app.json';
+import {AppLockRoot} from './src/components/AppLock/AppLockRoot';
 
-AppRegistry.registerComponent(appName, () => App);
+// The app PIN (Settings; off by default) comes first: the app's own code,
+// and with it the chats, loads only after it (src/services/appLock).
+const loadApp = () => require('./App').default;
+const Root = () => React.createElement(AppLockRoot, {loadApp});
+
+AppRegistry.registerComponent(appName, () => Root);

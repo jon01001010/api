@@ -9,6 +9,7 @@ import {useNavigation} from '@react-navigation/native';
 
 import {ROUTES} from '../utils/navigationConstants';
 import {startVoiceInput} from '../services/voice/voiceController';
+import {whenAppUnlocked} from '../services/appLock/appLock';
 
 /**
  * PocketAgent chosen as the phone's assistant (Settings > Apps > Default
@@ -38,9 +39,10 @@ export function useAssistLaunch(): void {
       return;
     }
     const navigate = (route: string) => navigation.navigate(route);
+    // With the app PIN on and locked: nothing until it is entered.
     const check = () =>
-      mod
-        .takeAssistLaunch()
+      whenAppUnlocked()
+        .then(() => mod.takeAssistLaunch())
         .then((was: boolean) => (was ? listenForAssist(navigate) : undefined))
         .catch(() => {});
     check();

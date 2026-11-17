@@ -75,6 +75,7 @@
     "allow-homelink-close-tunnel",
     "allow-link-key-mode",
     "allow-link-use-one-key",
-    "allow-link-circle"
+    "allow-link-circle",
+    "allow-app-erase-all"
   ]
 }

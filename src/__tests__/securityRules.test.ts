@@ -312,8 +312,11 @@ describe('Rule 5: the phone side stays small', () => {
       /method !== 'pair' && method !== 'closeTunnel'\) \{\n\s*const gate = await homePcGate/,
     );
     const lock = read('src/services/homeLink/homePcLock.ts');
-    expect(lock).toMatch(/TRIES_BEFORE_WAIT = 5\b/);
-    expect(lock).toMatch(/FIRST_WAIT_MS = 5 \* 60 \* 1000/);
+    // The try limit and waits are shared with the app PIN (pinCore.ts).
+    const core = read('src/services/pinLock/pinCore.ts');
+    expect(core).toMatch(/TRIES_BEFORE_WAIT = 5\b/);
+    expect(core).toMatch(/FIRST_WAIT_MS = 5 \* 60 \* 1000/);
+    expect(lock).toContain('await countedTry(');
     // What is saved: salt, hash, rounds, settings and the try count.
     expect(lock).not.toMatch(/JSON\.stringify\(\{[^}]*\bpin\b/);
     expect(read('src/services/homeLink/pinHash.ts')).toMatch(
@@ -403,6 +406,8 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'link_key_mode',
         'link_use_one_key',
         'link_circle',
+        // The erase PIN (erase.rs): only the app's own folders and keys.
+        'app_erase_all',
       ].sort(),
     );
     // The window is allowed exactly those, plus Tauri's core basics.
@@ -557,6 +562,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'preview',
       'link',
       'link_unavailable',
+      'erase',
     ]) {
       const src = tauri(`src/${file}.rs`).replace(/\r\n/g, '\n');
       expect([
@@ -1834,6 +1840,141 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
   });
 });
 
+describe('App PIN and erase PIN (2026-11-17)', () => {
+  const lock = read('src/services/appLock/appLock.ts');
+
+  it("comes before the app's own code, and the PC's sync waits for it", () => {
+    const index = read('index.js');
+    expect(index).not.toMatch(/^import App\b/m);
+    expect(index).toContain("const loadApp = () => require('./App').default;");
+    expect(index).toMatch(/registerComponent\(appName, \(\) => Root\)/);
+    const start = read('web/start.js');
+    expect(start).not.toMatch(/^import App\b/m);
+    expect(start).toContain('<AppLockRoot loadApp={loadApp} />');
+    expect(start).toMatch(
+      /whenAppUnlocked\(\)\n\s*\.then\(\(\) => require\('\.\.\/src\/services\/sync\/hostSync'\)\.startHostSync\(\)\)/,
+    );
+    expect(start.match(/startHostSync\(/g)?.length).toBe(1);
+    // What acts by itself waits while locked.
+    expect(read('src/services/homeLink/pcQuestions.ts')).toMatch(
+      /lookOnce\(\): Promise<number> \{[\s\S]{0,160}if \(!appUnlockedNow\(\)\)/,
+    );
+    expect(read('src/services/voice/wakeWord.ts')).toMatch(
+      /async function onUtterance[\s\S]{0,120}if \(!appUnlockedNow\(\)\)/,
+    );
+    expect(read('src/hooks/useAssistLaunch.ts')).toMatch(
+      /whenAppUnlocked\(\)\n\s*\.then\(\(\) => mod\.takeAssistLaunch\(\)\)/,
+    );
+    expect(read('src/services/loops/loopRunner.ts')).toContain(
+      'if (!appUnlockedNow()) {',
+    );
+  });
+
+  it('only hashes are kept; every try computes both before choosing', () => {
+    expect(lock).not.toMatch(/JSON\.stringify\(\{[^}]*\bpin\b/i);
+    expect(lock).not.toMatch(/console\./);
+    const check = lock.slice(lock.indexOf('async function checkAppPin'));
+    const a = check.indexOf('const isA = await pinMatches(');
+    const b = check.indexOf('const isB = await pinMatches(');
+    expect(a).toBeGreaterThan(0);
+    expect(b).toBeGreaterThan(a);
+    // Nothing is decided before both are done.
+    expect(check.indexOf('return', a)).toBeGreaterThan(b);
+    // Compared in constant time (pinHash.sameBytes).
+    expect(read('src/services/pinLock/pinCore.ts')).toContain(
+      'return sameBytes(hash, fromHex(hashHex));',
+    );
+    // A wait is checked before any PIN, the erase PIN too (countedTry).
+    expect(lock).toContain('await countedTry<AppLockRecord, Which>(');
+    // Without an erase PIN the second hash is random: same work.
+    expect(lock).toContain('b: await filler(PIN_ITERATIONS),');
+  });
+
+  it('the model can never see, set, change or trigger it', () => {
+    // Only these files use the app lock at all: no tool, chat loop,
+    // prompt, sync or report code.
+    expect(
+      filesMatching(
+        /appLock\/app(Lock|Erase)['"]|['"]\.\/app(Lock|Erase)['"]|components\/AppLock\//,
+      ),
+    ).toEqual(
+      [
+        'src/components/AppLock/AppLockRoot.tsx',
+        'src/components/AppLock/AppLockScreen.tsx',
+        'src/components/AppLock/AppLockSettings.tsx',
+        'src/hooks/useAssistLaunch.ts',
+        'src/screens/SettingsScreen/SettingsScreen.tsx',
+        'src/services/appLock/appLock.ts',
+        'src/services/homeLink/pcQuestions.ts',
+        'src/services/loops/loopNotify.ts',
+        'src/services/loops/loopRunner.ts',
+        'src/services/loops/planRunner.ts',
+        'src/services/phoneActions/pcReminders.ts',
+        'src/services/voice/wakeWord.ts',
+      ].sort(),
+    );
+    // Setting, changing, trying a PIN and erasing: the PIN screen and the
+    // Settings card only.
+    expect(
+      filesMatching(
+        /\b(turnOnAppPin|changeAppLock|tryAppPin|tryAppFingerprint|eraseEverything)\(/,
+      ),
+    ).toEqual(
+      [
+        'src/components/AppLock/AppLockScreen.tsx',
+        'src/components/AppLock/AppLockSettings.tsx',
+        'src/services/appLock/appErase.ts',
+        'src/services/appLock/appLock.ts',
+      ].sort(),
+    );
+    // Its key store entries are named in one file only.
+    expect(filesMatching(/pocketagent-app-lock/)).toEqual([
+      'src/services/appLock/appLock.ts',
+    ]);
+    // The native erase is called from one file only, on both platforms.
+    expect(filesMatching(/app_erase_all|AppErase\b/)).toEqual([
+      'src/services/appLock/appErase.ts',
+    ]);
+    const lib = read('src-tauri/src/lib.rs');
+    expect(lib.match(/erase::/g)?.length).toBe(2);
+    for (const file of [
+      'link.rs',
+      'link_client.rs',
+      'remote_ask.rs',
+      'pc.rs',
+      'pc_extra.rs',
+      'pc_files.rs',
+      'pc_write.rs',
+      'approval.rs',
+    ]) {
+      expect([
+        file,
+        /erase::|app_erase_all/.test(read(`src-tauri/src/${file}`)),
+      ]).toEqual([file, false]);
+    }
+  });
+
+  it("erasing touches only the app's own things, and sends nothing", () => {
+    const erase = read('src-tauri/src/erase.rs');
+    expect(erase).toMatch(
+      /OWN_ENTRIES: &\[\(&str, &str\)\] = &\[\n\s*\("generic", "PocketAgent:"\),\n\s*\("link", "DesktopAgent-link:"\),\n\s*\("file", "DesktopAgent-model:"\),\n\];/,
+    );
+    // Every folder is checked right before it is removed.
+    expect(erase).toMatch(
+      /for root in roots \{\n\s*if let Err\(e\) = check_root\(root, identifier, home\)/,
+    );
+    expect(erase).not.toMatch(/reqwest|iroh|homelink|link::/);
+    const kotlin = read(
+      'android/app/src/main/java/com/pocketagent/AppEraseModule.kt',
+    );
+    expect(kotlin).toContain('am.clearApplicationUserData()');
+    expect(kotlin).not.toMatch(/http|Socket|homelink/i);
+    expect(read('src/services/appLock/appErase.ts')).not.toMatch(
+      /homeLink\/|services\/sync|fetch\(/,
+    );
+  });
+});
+
 describe('Paired devices: sync, mirrored chats, answers (review of 2026-11-15)', () => {
   it('what comes from a paired device is checked, bounded and kept', () => {
     // Custom tools from a sync (or deleted) are switched off before saving.
@@ -1987,7 +2128,8 @@ describe('security review 2 (2026-11-15), app code', () => {
   });
 
   it('the PIN wait counts only time the app measured', () => {
-    const lock = read('src/services/homeLink/homePcLock.ts');
+    // Shared by the Home PC PIN and the app PIN.
+    const lock = read('src/services/pinLock/pinCore.ts');
     expect(lock).toContain('performance.now()');
     expect(lock).toMatch(
       /Math\.max\(0, Math\.min\(wall, mono - last\.mono\)\)/,

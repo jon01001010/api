@@ -6,6 +6,7 @@
 mod approval;
 mod docs;
 mod download;
+mod erase;
 mod files;
 mod image_gen;
 #[cfg(feature = "link")]
@@ -149,9 +150,13 @@ pub fn run() {
             link_client::link_key_mode,
             link_client::link_use_one_key,
             link::link_circle,
+            erase::app_erase_all,
         ])
         .build(tauri::generate_context!())
         .expect("error while building PocketAgent");
+    // The erase PIN: an erase the last run began is finished before any
+    // window opens (erase.rs).
+    erase::finish_pending(app.handle());
     app.run(|handle, event| {
         // Never leave the model server running after the app closes.
         if let tauri::RunEvent::Exit = event {
@@ -196,6 +201,7 @@ mod tests {
             include_str!("link_unavailable.rs"),
             include_str!("link_client.rs"),
             include_str!("remote_ask.rs"),
+            include_str!("erase.rs"),
         ];
         for source in sources {
             let lines: Vec<&str> = source.lines().collect();
