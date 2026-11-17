@@ -27,26 +27,43 @@
  * - Forgot the PIN: the only way back is to pair again, which the PC must
  *   approve (FORGOT_PIN). Pairing again clears the old lock.
  */
-import 'react-native-get-random-values';
-import {AppState, Platform} from 'react-native';
+import {AppState} from 'react-native';
 import * as Keychain from 'react-native-keychain';
 
 import {
-  fromHex,
-  pbkdf2Sha256Async,
-  PIN_ITERATIONS,
-  sameBytes,
-  sha256,
-  toHex,
-  utf8,
-} from './pinHash';
+  cleanMinutes,
+  countedTry,
+  DEFAULT_AWAY_MINUTES,
+  fingerprintHere,
+  fingerSecretMatches,
+  forgetMeasured,
+  hashPin,
+  makeSerial,
+  pinMatches,
+  randomBytes,
+  resetFinger as resetFingerEntry,
+  storeFingerSecret as storeFingerEntry,
+  type PinAnswer,
+} from '../pinLock/pinCore';
+import {PIN_ITERATIONS, toHex} from './pinHash';
+
+// The try limit, waits and fingerprint are shared with the app PIN
+// (pinLock/pinCore.ts); re-exported here as before.
+export {
+  AWAY_MINUTES_CHOICES,
+  DEFAULT_AWAY_MINUTES,
+  describeWait,
+  FIRST_WAIT_MS,
+  fingerprintAvailable,
+  LONGEST_WAIT_MS,
+  setMonotonicClockForTests,
+  TRIES_BEFORE_WAIT,
+  WAIT_NOTE,
+  waitAfter,
+  type PinAnswer,
+} from '../pinLock/pinCore';
 
 export const PIN_PATTERN = /^\d{4,8}$/;
-export const TRIES_BEFORE_WAIT = 5;
-export const FIRST_WAIT_MS = 5 * 60 * 1000;
-export const LONGEST_WAIT_MS = 24 * 60 * 60 * 1000;
-export const DEFAULT_AWAY_MINUTES = 5;
-export const AWAY_MINUTES_CHOICES = [1, 5, 15, 30, 60];
 
 export const LOCKED =
   "This PC is locked on this device: enter its PIN to use it (it's asked when you use the PC)";
@@ -135,16 +152,7 @@ async function save(pc: string, record: LockRecord): Promise<void> {
 }
 
 /** One change at a time per PC (two quick taps can't both count once). */
-const queues = new Map<string, Promise<unknown>>();
-function serial<T>(pc: string, job: () => Promise<T>): Promise<T> {
-  const before = queues.get(pc) ?? Promise.resolve();
-  const run = before.then(job, job);
-  queues.set(
-    pc,
-    run.catch(() => {}),
-  );
-  return run;
-}
+const serial = makeSerial();
 
 // ---- Unlocked state (memory only) --------------------------------------
 
@@ -334,90 +342,8 @@ export async function unlockHomePc(pc: string): Promise<boolean> {
 
 // ---- Checking a PIN -------------------------------------------------------
 
-export type PinAnswer =
-  | {ok: true}
-  | {
-      ok: false;
-      reason: 'wrong' | 'wait' | 'error';
-      message: string;
-      /** Tries left before a wait (wrong), or when the wait ends (wait). */
-      triesLeft?: number;
-      waitUntil?: number;
-    };
-
-/** The wait after `fails` wrong tries (0 while tries are left). */
-export function waitAfter(fails: number): number {
-  if (fails <= 0 || fails % TRIES_BEFORE_WAIT !== 0) {
-    return 0;
-  }
-  const round = fails / TRIES_BEFORE_WAIT - 1;
-  return Math.min(LONGEST_WAIT_MS, FIRST_WAIT_MS * 2 ** Math.min(round, 20));
-}
-
-export function describeWait(until: number, now = Date.now()): string {
-  const minutes = Math.max(1, Math.ceil((until - now) / 60000));
-  if (minutes >= 120) {
-    return `about ${Math.round(minutes / 60)} hours`;
-  }
-  return minutes === 1 ? '1 minute' : `${minutes} minutes`;
-}
-
-async function hashPin(
-  pin: string,
-  salt: Uint8Array,
-  rounds: number,
-): Promise<Uint8Array> {
-  return pbkdf2Sha256Async(utf8(pin), salt, rounds);
-}
-
-// ---- Waiting: time the app measured itself --------------------------------
-
-/** Said with every wait: only time with the app open counts. */
-export const WAIT_NOTE = '(the wait counts down while PocketAgent is open)';
-
-/** A clock that can't be set (ms; NaN when there is none). */
-type Mono = () => number;
-const defaultMono: Mono = () =>
-  typeof performance !== 'undefined' && typeof performance.now === 'function'
-    ? performance.now()
-    : NaN;
-let monoClock: Mono = defaultMono;
-
-/** When each PC's wait was last measured, in this run of the app. */
-const measured = new Map<string, {wall: number; mono: number}>();
-
-/**
- * The wait left now. It goes down by the time since it was last measured
- * in this run of the app: the smaller of the wall clock's and the
- * monotonic clock's, so moving the date (either way) doesn't count. After
- * a restart nothing has been measured yet: the wait left stays as saved,
- * and counts down from now. Without a monotonic clock: the wall clock,
- * never backwards.
- */
-function waitLeftNow(pc: string, r: LockRecord, now: number): number {
-  let left =
-    r.waitLeft ??
-    (r.waitUntil > 0
-      ? // A record from before: what its end time says, at most its length.
-        Math.min(r.waitMs || LONGEST_WAIT_MS, Math.max(0, r.waitUntil - now))
-      : 0);
-  const mono = monoClock();
-  const last = measured.get(pc);
-  if (left > 0 && last) {
-    const wall = Math.max(0, now - last.wall);
-    const ran = Number.isFinite(mono - last.mono)
-      ? Math.max(0, Math.min(wall, mono - last.mono))
-      : wall;
-    left = Math.max(0, left - ran);
-  }
-  measured.set(pc, {wall: now, mono});
-  return left;
-}
-
-/** Tests only: the clock that can't be set. */
-export function setMonotonicClockForTests(clock?: Mono): void {
-  monoClock = clock ?? defaultMono;
-}
+/** Each PC's wait is measured under its own key (pinCore.waitLeftNow). */
+const waitKey = (pc: string) => `homepc:${pc}`;
 
 async function checkPin(
   pc: string,
@@ -437,59 +363,18 @@ async function checkPin(
   if (!record) {
     return {ok: true};
   }
-  const r = {...record};
-  const waitLeft = waitLeftNow(pc, r, now());
-  if (waitLeft !== (r.waitLeft ?? 0) || (!waitLeft && r.waitUntil > 0)) {
-    r.waitLeft = waitLeft;
-    r.waitUntil = waitLeft ? now() + waitLeft : 0;
-    await save(pc, r);
-  } else if (waitLeft) {
-    r.waitUntil = now() + waitLeft;
-  }
-  if (waitLeft > 0) {
-    return {
-      ok: false,
-      reason: 'wait',
-      waitUntil: r.waitUntil,
-      message: `Too many wrong PINs. Try again in ${describeWait(r.waitUntil, now())} ${WAIT_NOTE}.`,
-    };
-  }
-  // Counted as wrong before the check, so stopping the app mid-check
-  // doesn't give a free try; a right PIN resets it.
-  r.fails += 1;
-  await save(pc, r);
-  const hash = await hashPin(pin, fromHex(r.salt), r.rounds);
-  if (PIN_PATTERN.test(pin) && sameBytes(hash, fromHex(r.hash))) {
-    r.fails = 0;
-    r.waitUntil = 0;
-    r.waitMs = 0;
-    r.waitFrom = 0;
-    r.waitLeft = 0;
-    await save(pc, r);
-    return {ok: true, record: r};
-  }
-  const wait = waitAfter(r.fails);
-  if (wait) {
-    r.waitMs = wait;
-    r.waitFrom = now();
-    r.waitUntil = r.waitFrom + wait;
-    r.waitLeft = wait;
-    measured.set(pc, {wall: now(), mono: monoClock()});
-    await save(pc, r);
-    return {
-      ok: false,
-      reason: 'wait',
-      waitUntil: r.waitUntil,
-      message: `Wrong PIN. Too many wrong PINs: try again in ${describeWait(r.waitUntil, now())} ${WAIT_NOTE}.`,
-    };
-  }
-  const left = TRIES_BEFORE_WAIT - (r.fails % TRIES_BEFORE_WAIT);
-  return {
-    ok: false,
-    reason: 'wrong',
-    triesLeft: left,
-    message: `Wrong PIN. ${left} ${left === 1 ? 'try' : 'tries'} left before a wait.`,
-  };
+  const r = record;
+  const answer = await countedTry(
+    waitKey(pc),
+    r,
+    now,
+    next => save(pc, next),
+    async () =>
+      (await pinMatches(pin, r.salt, r.hash, r.rounds)) && PIN_PATTERN.test(pin)
+        ? true
+        : null,
+  );
+  return answer.ok ? {ok: true, record: answer.record} : answer;
 }
 
 /** The PIN window's Unlock: checks the PIN (counted), unlocks on success. */
@@ -511,12 +396,6 @@ export function tryPin(
 }
 
 // ---- Turning it on, changing it, off --------------------------------------
-
-function randomBytes(n: number): Uint8Array {
-  const out = new Uint8Array(n);
-  crypto.getRandomValues(out);
-  return out;
-}
 
 /** Turns the PIN on for a PC that has none (this device only). */
 export function turnOnPin(
@@ -554,9 +433,6 @@ export function turnOnPin(
     }
   });
 }
-
-const cleanMinutes = (m: number) =>
-  Number.isFinite(m) ? Math.min(24 * 60, Math.max(1, Math.round(m))) : 5;
 
 export interface LockChange {
   off?: boolean;
@@ -628,9 +504,7 @@ export function changeLock(
 }
 
 async function resetFinger(pc: string) {
-  try {
-    await Keychain.resetGenericPassword({service: fingerService(pc)});
-  } catch {}
+  await resetFingerEntry(fingerService(pc));
 }
 
 async function forgetLock(pc: string) {
@@ -657,53 +531,11 @@ export async function forgetHomePcLock(pc: string): Promise<void> {
 
 // ---- Fingerprint (Android only) --------------------------------------------
 
-/**
- * Fingerprint goes through react-native-keychain, already in the app: a
- * random secret is kept in the Android Keystore under a key that only opens
- * after the system's fingerprint check (androidx.biometric's prompt; no
- * Google Play services), and is invalidated when a new fingerprint is added
- * to the phone. Not on the desktop (its key store has no such check).
- */
-function fingerprintHere(): boolean {
-  return (
-    Platform.OS === 'android' &&
-    typeof (Keychain as any).getSupportedBiometryType === 'function'
-  );
-}
+/** Fingerprint: shared with the app PIN (pinLock/pinCore.ts). */
+const FINGER_TITLE = 'Unlock your Home PC';
 
-export async function fingerprintAvailable(): Promise<boolean> {
-  if (!fingerprintHere()) {
-    return false;
-  }
-  try {
-    return !!(await Keychain.getSupportedBiometryType());
-  } catch {
-    return false;
-  }
-}
-
-const fingerOptions = {
-  accessControl: Keychain.ACCESS_CONTROL?.BIOMETRY_CURRENT_SET,
-  storage: Keychain.STORAGE_TYPE?.AES_GCM,
-  authenticationPrompt: {
-    title: 'Unlock your Home PC',
-    cancel: 'Use the PIN',
-  },
-};
-
-async function storeFingerSecret(pc: string): Promise<string> {
-  if (!(await fingerprintAvailable())) {
-    throw new Error('No fingerprint is set up on this device');
-  }
-  const secret = toHex(randomBytes(32));
-  const saved = await Keychain.setGenericPassword(USER, secret, {
-    service: fingerService(pc),
-    ...fingerOptions,
-  });
-  if (!saved) {
-    throw new Error('The fingerprint key could not be made');
-  }
-  return toHex(sha256(utf8(secret)));
+function storeFingerSecret(pc: string): Promise<string> {
+  return storeFingerEntry(fingerService(pc), USER, FINGER_TITLE);
 }
 
 /** The PIN window's fingerprint button. */
@@ -720,23 +552,17 @@ export function tryFingerprint(pc: string): Promise<PinAnswer> {
         message: 'Fingerprint is not on for this PC; use the PIN.',
       };
     }
-    try {
-      const found = await Keychain.getGenericPassword({
-        service: fingerService(pc),
-        ...fingerOptions,
-      });
-      if (
-        found &&
-        found.username === USER &&
-        sameBytes(sha256(utf8(found.password)), fromHex(record.finger))
-      ) {
-        markUnlocked(pc);
-        finish(pc, true);
-        return {ok: true};
-      }
-    } catch {
-      // Cancelled, too many tries (Android's own limit), or the key was
-      // invalidated by a new fingerprint: the PIN still works.
+    if (
+      await fingerSecretMatches(
+        fingerService(pc),
+        USER,
+        FINGER_TITLE,
+        record.finger,
+      )
+    ) {
+      markUnlocked(pc);
+      finish(pc, true);
+      return {ok: true};
     }
     return {
       ok: false,
@@ -749,12 +575,12 @@ export function tryFingerprint(pc: string): Promise<PinAnswer> {
 /** Tests only. */
 export function resetHomePcLockForTests(): void {
   cache.clear();
-  queues.clear();
+  serial.clear();
   unlocked.clear();
   awaySince = null;
   listening = false;
   listeners.clear();
   waiting.splice(0);
   pending.clear();
-  measured.clear();
+  forgetMeasured('homepc:');
 }
