@@ -16,6 +16,14 @@
 //!   the notification, without it ("clipboard (N characters)"). The log is kept to
 //!   about 2 MB: past 1 MB it moves to answers.log.1 (replacing the older
 //!   one) and a new one starts.
+//! - Security review 2026-11-17: a device sees the private parts of a
+//!   question (the clipboard's text, the text of a change to a workspace
+//!   file, the model's thinking, this PC's own paths) only when it asked
+//!   that question itself (it gets them anyway). Every other device gets
+//!   the question with those parts replaced by what they are
+//!   (shared_view: "clipboard text, N characters, shown on the PC only"),
+//!   and can only refuse it. A question asked by this PC itself has no
+//!   asking device: no device sees its private parts.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -31,6 +39,10 @@ pub const WAIT: Duration = Duration::from_secs(120);
 
 struct Pending {
     text: String,
+    /// The question without its private parts (shared_view), when it has any.
+    shared: Option<String>,
+    /// The device that asked (its key); None: this PC.
+    asker: Option<String>,
     asked: Instant,
     tx: oneshot::Sender<(bool, String)>,
 }
@@ -48,7 +60,13 @@ pub struct Question {
     pub id: u64,
     pub text: String,
     pub seconds_left: u64,
+    /// Private parts left out for this device: it can only refuse.
+    pub only_refuse: bool,
 }
+
+/// Why a device's answer was not taken.
+pub const GONE: &str = "That question was already answered or has expired";
+pub const ONLY_REFUSE: &str = "Parts of that question are shown on the PC only, so it can only be allowed there";
 
 impl RemoteQuestions {
     pub fn set_allowed(&self, allowed: bool) {
@@ -63,8 +81,9 @@ impl RemoteQuestions {
     }
 
     /// Offers a question to devices (if allowed). The receiver gets the
-    /// first device answer: (yes, device name).
-    pub fn open(&self, text: &str) -> Option<(u64, oneshot::Receiver<(bool, String)>)> {
+    /// first device answer: (yes, device name). `asker`: the device that
+    /// asked (its key), the only one shown the private parts; None: this PC.
+    pub fn open(&self, text: &str, asker: Option<&str>) -> Option<(u64, oneshot::Receiver<(bool, String)>)> {
         if !self.allowed() {
             return None;
         }
@@ -74,6 +93,8 @@ impl RemoteQuestions {
             id,
             Pending {
                 text: text.to_string(),
+                shared: shared_view(text),
+                asker: asker.map(str::to_string),
                 asked: Instant::now(),
                 tx,
             },
@@ -85,31 +106,175 @@ impl RemoteQuestions {
         self.pending.lock().unwrap().remove(&id);
     }
 
-    /// The questions waiting (expired ones dropped).
-    pub fn list(&self) -> Vec<Question> {
+    /// The questions waiting (expired ones dropped), as `device` (its key)
+    /// may see them: whole if it asked or there is nothing private in them,
+    /// else without the private parts and to refuse only.
+    pub fn list_for(&self, device: &str) -> Vec<Question> {
         let mut pending = self.pending.lock().unwrap();
         pending.retain(|_, p| p.asked.elapsed() < WAIT);
         let mut list: Vec<Question> = pending
             .iter()
-            .map(|(id, p)| Question {
-                id: *id,
-                text: p.text.clone(),
-                seconds_left: WAIT.saturating_sub(p.asked.elapsed()).as_secs(),
+            .map(|(id, p)| {
+                let hidden = p.hidden_from(device);
+                Question {
+                    id: *id,
+                    text: match (&p.shared, hidden) {
+                        (Some(shared), true) => shared.clone(),
+                        _ => p.text.clone(),
+                    },
+                    seconds_left: WAIT.saturating_sub(p.asked.elapsed()).as_secs(),
+                    only_refuse: hidden,
+                }
             })
             .collect();
         list.sort_by_key(|q| q.id);
         list
     }
 
-    /// A device's answer; false if that question is gone (answered, expired).
-    pub fn answer(&self, id: u64, yes: bool, device: &str) -> bool {
-        let Some(p) = self.pending.lock().unwrap().remove(&id) else {
-            return false;
+    /// A device's answer (`device`: its key, `name`: its name); Err if that
+    /// question is gone (answered, expired: GONE), or it is a yes to a
+    /// question this device was shown without its private parts
+    /// (ONLY_REFUSE: the question stays open).
+    pub fn answer(&self, id: u64, yes: bool, device: &str, name: &str) -> Result<(), &'static str> {
+        let mut pending = self.pending.lock().unwrap();
+        if yes && pending.get(&id).is_some_and(|p| p.hidden_from(device)) {
+            return Err(ONLY_REFUSE);
+        }
+        let Some(p) = pending.remove(&id) else {
+            return Err(GONE);
         };
         if p.asked.elapsed() >= WAIT {
-            return false;
+            return Err(GONE);
         }
-        p.tx.send((yes, device.to_string())).is_ok()
+        p.tx.send((yes, name.to_string())).map_err(|_| GONE)
+    }
+}
+
+impl Pending {
+    /// Whether `device` is shown this question without its private parts.
+    fn hidden_from(&self, device: &str) -> bool {
+        self.shared.is_some() && self.asker.as_deref() != Some(device)
+    }
+}
+
+/// A device's key, short, for the PC user (approval::Refusals).
+pub fn short_key(key: &str) -> String {
+    let short: String = key.chars().filter(|c| c.is_ascii_alphanumeric()).take(8).collect();
+    format!("{short}\u{2026}")
+}
+
+/// What other devices are shown in place of the clipboard's text.
+pub fn clipboard_hidden(chars: usize) -> String {
+    format!("(clipboard text, {chars} characters, shown on the PC only)")
+}
+/// What other devices are shown in place of a change's text.
+pub const CHANGE_HIDDEN: &str = "(the change itself is shown on the PC only)";
+/// What other devices are shown in place of the model's thinking.
+pub const THINKING_HIDDEN: &str = "(the model's thinking is shown on the PC only)";
+
+/// A question without its private parts, for devices other than the one
+/// that asked it; None when it has none. The clipboard's text and a
+/// change's text (as the log leaves them out: loggable) and the model's
+/// thinking (approval::with_thinking; its warning line is the app's own
+/// and kept) are replaced by what they are; this PC's paths by `<path>`
+/// (hide_paths).
+pub fn shared_view(question: &str) -> Option<String> {
+    let (body, thinking) = split_thinking(question);
+    let first = body.split('\n').next().unwrap_or("");
+    let clipboard = first == CLIPBOARD_ASK || (first.starts_with('\u{201c}') && first.ends_with(CLIPBOARD_ASK_DEVICE));
+    let write = first.starts_with('\u{201c}') && first.ends_with(WRITE_ASK_DEVICE);
+    let mut out = if clipboard {
+        let text = body[first.len()..].trim_start_matches('\n');
+        format!("{first}\n\n{}", clipboard_hidden(text.chars().count()))
+    } else if write {
+        let what = body[first.len()..].trim_start_matches('\n').split('\n').next().unwrap_or("");
+        hide_paths(&format!("{first}\n{what}\n\n{CHANGE_HIDDEN}"))
+    } else {
+        hide_paths(body)
+    };
+    if let Some(thinking) = thinking {
+        out.push_str("\n\n");
+        if thinking.starts_with(crate::approval::THINKING_WARNING) {
+            out.push_str(crate::approval::THINKING_WARNING);
+            out.push('\n');
+        }
+        out.push_str(THINKING_HIDDEN);
+    }
+    (out != question).then_some(out)
+}
+
+/// The question and the model's thinking after it (approval::with_thinking:
+/// from its warning line or label to the end), if any.
+fn split_thinking(question: &str) -> (&str, Option<&str>) {
+    for mark in [crate::approval::THINKING_WARNING, crate::approval::MODEL_THINKING] {
+        if let Some(at) = question.rfind(&format!("\n\n{mark}")) {
+            return (&question[..at], Some(&question[at + 2..]));
+        }
+    }
+    (question, None)
+}
+
+/// Every absolute path (a drive path, a UNC path, a home or system folder
+/// on Linux) shown as `<path>`, up to the next space, quote or bracket:
+/// at the start of a word or after `=`, `:` or an opening quote or
+/// bracket (`key=C:\...`, `file:/home/...`). Also link.rs without_paths.
+pub fn hide_paths(text: &str) -> String {
+    text.split('\n').map(hide_paths_line).collect::<Vec<_>>().join("\n")
+}
+
+fn hide_paths_line(line: &str) -> String {
+    let mut cleaned = String::new();
+    for (i, word) in line.split(' ').enumerate() {
+        if i > 0 {
+            cleaned.push(' ');
+        }
+        cleaned.push_str(&hide_paths_word(word));
+    }
+    cleaned
+}
+
+fn path_starts(rest: &str) -> bool {
+    let b = rest.as_bytes();
+    let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
+    let unc = rest.starts_with("\\\\");
+    let home = ["/home/", "/Users/", "/root/", "/var/", "/tmp/", "/opt/", "/mnt/", "/media/", "/usr/", "/etc/", "/srv/", "/run/"]
+        .iter()
+        .any(|p| rest.starts_with(p));
+    drive || unc || home
+}
+
+fn hide_paths_word(word: &str) -> String {
+    let mut out = String::new();
+    let mut rest = word;
+    loop {
+        // Where a path may start: the word's start, or after one of these.
+        let mut at = None;
+        let mut prev: Option<char> = None;
+        for (i, c) in rest.char_indices() {
+            let may = match prev {
+                None => true,
+                Some(p) => matches!(p, '=' | ':' | '"' | '\'' | '(' | '[' | '`' | '<' | '{' | ','),
+            };
+            if may && path_starts(&rest[i..]) {
+                at = Some(i);
+                break;
+            }
+            prev = Some(c);
+        }
+        let Some(at) = at else {
+            out.push_str(rest);
+            return out;
+        };
+        out.push_str(&rest[..at]);
+        let tail = &rest[at..];
+        // A drive's own `:` is not an end.
+        let skip = if tail.as_bytes().get(1) == Some(&b':') { 2 } else { 0 };
+        let end = tail[skip..]
+            .find(['"', '\'', ')', ']', '`', ',', ';', '>', '}'])
+            .map(|e| e + skip)
+            .unwrap_or(tail.len());
+        out.push_str("<path>");
+        rest = &tail[end..];
     }
 }
 
@@ -165,18 +330,28 @@ pub fn loggable(question: &str) -> String {
 
 /// Characters that would let a question pretend to be more than one line,
 /// or hide or reorder what it says (line breaks, controls, bidi and other
-/// invisible format characters): written as escapes.
+/// invisible format characters; since the security review of 2026-11-17
+/// also blank look-alikes: Hangul fillers, the blank Braille pattern, wide
+/// spaces, variation selectors, the combining grapheme joiner): written as
+/// escapes.
 pub fn hidden_char(c: char) -> bool {
     c.is_control()
         || matches!(
             c,
             '\u{00AD}'
+                | '\u{034F}'
                 | '\u{061C}'
-                | '\u{180E}'
-                | '\u{200B}'..='\u{200F}'
+                | '\u{115F}'..='\u{1160}'
+                | '\u{180B}'..='\u{180E}'
+                | '\u{2000}'..='\u{200F}'
                 | '\u{2028}'..='\u{202E}'
                 | '\u{2060}'..='\u{206F}'
+                | '\u{2800}'
+                | '\u{3000}'
+                | '\u{3164}'
+                | '\u{FE00}'..='\u{FE0F}'
                 | '\u{FEFF}'
+                | '\u{FFA0}'
                 | '\u{FFF9}'..='\u{FFFB}'
                 | '\u{E0000}'..='\u{E007F}'
         )
@@ -372,29 +547,29 @@ mod tests {
     #[test]
     fn nothing_is_offered_until_allowed() {
         let q = RemoteQuestions::default();
-        assert!(q.open("Run this?").is_none());
+        assert!(q.open("Run this?", None).is_none());
         q.set_allowed(true);
-        let (id, _rx) = q.open("Run this?").unwrap();
-        let list = q.list();
+        let (id, _rx) = q.open("Run this?", None).unwrap();
+        let list = q.list_for("dev");
         assert_eq!(list.len(), 1);
         assert_eq!((list[0].id, list[0].text.as_str()), (id, "Run this?"));
         assert!(list[0].seconds_left <= 120 && list[0].seconds_left >= 118);
         // Switching it off drops what was waiting.
         q.set_allowed(false);
-        assert!(q.list().is_empty());
+        assert!(q.list_for("dev").is_empty());
     }
 
     #[test]
     fn the_first_answer_wins_once() {
         let q = RemoteQuestions::default();
         q.set_allowed(true);
-        let (id, mut rx) = q.open("Open this file?").unwrap();
-        assert!(q.answer(id, true, "Pixel"));
+        let (id, mut rx) = q.open("Open this file?", None).unwrap();
+        assert!(q.answer(id, true, "pk", "Pixel").is_ok());
         assert_eq!(rx.try_recv().unwrap(), (true, "Pixel".to_string()));
         // A second answer (or one to an unknown question) is refused.
-        assert!(!q.answer(id, false, "Laptop"));
-        assert!(!q.answer(999, true, "Pixel"));
-        assert!(q.list().is_empty());
+        assert!(q.answer(id, false, "lk", "Laptop").is_err());
+        assert!(q.answer(999, true, "pk", "Pixel").is_err());
+        assert!(q.list_for("dev").is_empty());
     }
 
     #[test]
@@ -413,7 +588,7 @@ mod tests {
         assert!(cut.starts_with(&"é".repeat(MAX_LOGGED)));
         assert!(cut.ends_with(&format!("[… {} characters in all]", MAX_LOGGED + 10)));
         assert_eq!(one_line(&"a".repeat(MAX_LOGGED)), "a".repeat(MAX_LOGGED));
-        for c in ['\u{200b}', '\u{2066}', '\u{feff}', '\u{2028}', '\u{1b}', '\u{e0041}'] {
+        for c in ['\u{200b}', '\u{2066}', '\u{feff}', '\u{2028}', '\u{1b}', '\u{e0041}', '\u{3164}', '\u{115f}', '\u{1160}', '\u{ffa0}', '\u{2800}', '\u{34f}', '\u{fe0f}', '\u{180b}', '\u{2003}', '\u{3000}'] {
             assert!(hidden_char(c), "{c:?}");
         }
         assert!(!hidden_char('é') && !hidden_char(' '));
@@ -482,8 +657,58 @@ mod tests {
     fn a_question_closed_on_the_pc_is_gone_for_devices() {
         let q = RemoteQuestions::default();
         q.set_allowed(true);
-        let (id, _rx) = q.open("x").unwrap();
+        let (id, _rx) = q.open("x", None).unwrap();
         q.close(id);
-        assert!(!q.answer(id, true, "Pixel"));
+        assert!(q.answer(id, true, "pk", "Pixel").is_err());
+    }
+
+    #[test]
+    fn other_devices_never_get_the_private_parts_of_a_question() {
+        let q = RemoteQuestions::default();
+        q.set_allowed(true);
+        // This PC's own model reads the clipboard: no device sees the text.
+        let clip = crate::approval::with_thinking(&crate::pc_extra::clipboard_question("hunter2 secret"), Some("the user won't notice"));
+        let (id, _rx) = q.open(&clip, None).unwrap();
+        let seen = &q.list_for("pk")[0];
+        assert!(seen.only_refuse);
+        assert!(!seen.text.contains("hunter2") && !seen.text.contains("notice"), "{}", seen.text);
+        assert!(seen.text.contains(&clipboard_hidden(14)), "{}", seen.text);
+        assert!(seen.text.contains(crate::approval::THINKING_WARNING) && seen.text.ends_with(THINKING_HIDDEN));
+        // A yes is refused (the question stays open), a no is taken.
+        assert_eq!(q.answer(id, true, "pk", "Pixel"), Err(ONLY_REFUSE));
+        assert_eq!(q.list_for("pk").len(), 1);
+        assert!(q.answer(id, false, "pk", "Pixel").is_ok());
+
+        // A device's own clipboard request: it sees it whole; others don't.
+        let asked = crate::pc_extra::clipboard_question_for("hunter2", Some("Pixel"));
+        let (id, _rx) = q.open(&asked, Some("pixel-key")).unwrap();
+        let own = &q.list_for("pixel-key")[0];
+        assert!(!own.only_refuse && own.text.contains("hunter2"));
+        let other = &q.list_for("laptop-key")[0];
+        assert!(other.only_refuse && !other.text.contains("hunter2"), "{}", other.text);
+        assert!(other.text.starts_with("\u{201c}Pixel"), "{}", other.text);
+        assert_eq!(q.answer(id, true, "laptop-key", "Laptop"), Err(ONLY_REFUSE));
+        assert!(q.answer(id, true, "pixel-key", "Pixel").is_ok());
+
+        // Nothing private: the same for every device, and any may allow.
+        let (id, _rx) = q.open("Press Play / pause on this PC?", None).unwrap();
+        assert!(!q.list_for("x")[0].only_refuse);
+        assert!(q.answer(id, true, "x", "X").is_ok());
+    }
+
+    #[test]
+    fn the_shared_view_leaves_out_changes_thinking_and_paths() {
+        let write = format!("\u{201c}Pixel{WRITE_ASK_DEVICE}\nnotes.md: replace its text, 1 line out, 1 in\n\n{}\nBefore and after:\n- my bank pin 1234\n+ x", crate::approval::MODEL_SAYS);
+        let shared = shared_view(&write).unwrap();
+        assert!(!shared.contains("1234"), "{shared}");
+        assert!(shared.contains("notes.md: replace") && shared.ends_with(CHANGE_HIDDEN), "{shared}");
+        let run = crate::approval::with_thinking("Run this?\n\nGet-Content C:\\Users\\ann\\secret.txt", Some("plan"));
+        let shared = shared_view(&run).unwrap();
+        assert_eq!(shared, format!("Run this?\n\nGet-Content <path>\n\n{THINKING_HIDDEN}"));
+        assert_eq!(shared_view("Open this page?\n\nhttps://example.org/a"), None);
+        assert_eq!(hide_paths("x key=C:\\Users\\ann\\a.txt,y"), "x key=<path>,y");
+        assert_eq!(hide_paths("(\"/home/ann/.ssh/id\") file:/etc/passwd"), "(\"<path>\") file:<path>");
+        assert_eq!(hide_paths("\\\\server\\share\\a b"), "<path> b");
+        assert_eq!(hide_paths("https://example.org/home/x 1:2"), "https://example.org/home/x 1:2");
     }
 }

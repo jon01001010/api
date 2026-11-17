@@ -564,30 +564,9 @@ pub fn without_paths(text: &str, known: &[(String, &str)]) -> String {
         }
     }
     // Anything still looking like an absolute path, up to the next space
-    // or quote: `C:\...`, `\\server\...`, `/home/...`, `/Users/...`.
-    let mut cleaned = String::new();
-    for (i, word) in out.split(' ').enumerate() {
-        if i > 0 {
-            cleaned.push(' ');
-        }
-        let start = word.find(|c: char| !matches!(c, '"' | '\'' | '(' | '[' | '`' | '\n')).unwrap_or(word.len());
-        let (lead, rest) = word.split_at(start);
-        let b = rest.as_bytes();
-        let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
-        let unc = rest.starts_with("\\\\");
-        let home = ["/home/", "/Users/", "/root/", "/var/", "/tmp/", "/opt/", "/mnt/", "/media/", "/usr/"]
-            .iter()
-            .any(|p| rest.starts_with(p));
-        if drive || unc || home {
-            cleaned.push_str(lead);
-            let end = rest.find(['"', '\'', ')', ']', '`', ',', ';', '\n']).unwrap_or(rest.len());
-            cleaned.push_str("<path>");
-            cleaned.push_str(&rest[end..]);
-        } else {
-            cleaned.push_str(word);
-        }
-    }
-    cleaned
+    // or quote: `C:\...`, `\\server\...`, `/home/...`, `/Users/...`, also
+    // after `=` or `:` (`key=C:\...`, security review 2026-11-17).
+    crate::remote_ask::hide_paths(&out)
 }
 
 /// `text` with every `what` (in any letter case, as Windows paths are) as `with`.
@@ -1261,7 +1240,7 @@ async fn may_read_now(app: &AppHandle, remote: &str, device: &str, chat: &str) -
         return true;
     }
     let allowed_now = link.read_grants.lock().unwrap().count(remote, Instant::now());
-    if !crate::approval::ask(app, &read_question(device, chat, allowed_now)).await {
+    if !crate::approval::ask_as(app, &read_question(device, chat, allowed_now), Some(remote)).await {
         return false;
     }
     if !tools_allowed(app) || !may_read(&load_phones(app), remote) {
@@ -1298,7 +1277,7 @@ pub fn act_note(device: &str, call: &RemoteCall, clipboard_chars: usize) -> Stri
 /// its length only) and told in a notification.
 async fn act_for(app: &AppHandle, remote: &str, device: &str, call: RemoteCall, thinking: Option<&str>) -> Result<serde_json::Value, String> {
     let still_allowed = || tools_allowed(app) && may_act(&load_phones(app), remote);
-    let by = crate::approval::Device { name: device, still_allowed: &still_allowed };
+    let by = crate::approval::Device { id: remote, name: device, still_allowed: &still_allowed };
     let (answer, clipboard_chars) = match &call {
         RemoteCall::Open(file) => {
             crate::pc::open_file(app, file, Some(&by), thinking).await?;
@@ -1385,7 +1364,7 @@ fn command_end(exit_code: Option<i32>, timed_out: bool) -> String {
 /// goes back without this PC's paths.
 async fn command_for(app: &AppHandle, remote: &str, device: &str, command: &str, thinking: Option<&str>) -> Result<serde_json::Value, String> {
     let still_allowed = || tools_allowed(app) && may_command(&load_phones(app), remote);
-    let by = crate::approval::Device { name: device, still_allowed: &still_allowed };
+    let by = crate::approval::Device { id: remote, name: device, still_allowed: &still_allowed };
     let ran = crate::pc::run_checked_command(app, command, Some(&by), thinking).await?;
     let how = command_end(ran.exit_code, ran.timed_out);
     crate::remote_ask::log_use(app, device, &format!("ran a command ({how}): {command}"));
@@ -1422,7 +1401,7 @@ async fn write_for(
     thinking: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     let still_allowed = || tools_allowed(app) && may_write(&load_phones(app), remote);
-    let by = crate::approval::Device { name: device, still_allowed: &still_allowed };
+    let by = crate::approval::Device { id: remote, name: device, still_allowed: &still_allowed };
     let workspace = crate::pc::workspace(app)?;
     let history = app.path().app_data_dir().map_err(|e| e.to_string())?.join(crate::pc_write::HISTORY);
     let (w, h) = (workspace.clone(), history.clone());
@@ -2031,7 +2010,7 @@ async fn serve_stream(
             } else if !may_answer(&load_phones(&app), &remote) {
                 serde_json::json!({"ok": false, "error": NOT_THIS_DEVICE})
             } else {
-                serde_json::json!({"ok": true, "questions": questions.list()})
+                serde_json::json!({"ok": true, "questions": questions.list_for(&remote)})
             };
             reply(&mut send, answer).await;
         }
@@ -2048,10 +2027,9 @@ async fn serve_stream(
                     .find(|p| p.id == remote)
                     .map(|p| p.name)
                     .unwrap_or_else(|| "a device".into());
-                if questions.answer(id, yes, &name) {
-                    serde_json::json!({"ok": true})
-                } else {
-                    serde_json::json!({"ok": false, "error": "That question was already answered or has expired"})
+                match questions.answer(id, yes, &remote, &name) {
+                    Ok(()) => serde_json::json!({"ok": true}),
+                    Err(error) => serde_json::json!({"ok": false, "error": error}),
                 }
             };
             reply(&mut send, answer).await;

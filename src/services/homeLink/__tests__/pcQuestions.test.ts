@@ -221,4 +221,33 @@ describe('the PC asks, the phone can answer', () => {
     await buttons[0].onPress();
     expect(answerQuestion).toHaveBeenCalledWith(PC, 7, false);
   });
+
+  it('a question shown without its private parts can only be refused here', async () => {
+    await setAnswerForPc(PC, true);
+    stopQuestionWatch();
+    const answerQuestion = jest.fn(async () => JSON.stringify({ok: true}));
+    (NativeModules as any).HomeLink = {
+      questions: jest.fn(async () =>
+        JSON.stringify({
+          ok: true,
+          questions: [
+            {
+              id: 8,
+              text: 'DesktopAgent wants to give the model the text on your clipboard:\n\n(clipboard text, 9 characters, shown on the PC only)',
+              secondsLeft: 100,
+              onlyRefuse: true,
+            },
+          ],
+        }),
+      ),
+      answerQuestion,
+    };
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    await lookOnce();
+    const [, message, buttons] = alert.mock.calls[0] as any;
+    expect(message).toContain('shown on your PC only; answer there');
+    expect(buttons.map((b: any) => b.text)).toEqual(["Don't allow"]);
+    await buttons[0].onPress();
+    expect(answerQuestion).toHaveBeenCalledWith(PC, 8, false);
+  });
 });
