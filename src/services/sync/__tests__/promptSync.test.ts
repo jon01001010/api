@@ -49,8 +49,10 @@ import {
   cleanItems,
   fingerprint,
   MAX_CLOCK_SKEW,
+  MAX_HISTORY_CHARS,
   MAX_PROMPT,
   merge,
+  trimHistory,
   promptHistory,
   readItems,
   type SyncItem,
@@ -233,4 +235,27 @@ describe('security review 2026-11-17', () => {
     const edited = item('systemPrompt', 'Evil 2', 4000);
     expect(merge(local, [edited], peer).takenHere).toEqual(['systemPrompt']);
   });
+});
+
+it('sync history keeps at most 10 versions within its size budget', () => {
+  const big = (n: number) => ({at: n, text: 'x'.repeat(MAX_HISTORY_CHARS / 2)});
+  expect(trimHistory([big(1), big(2), big(3)]).map(e => e.at)).toEqual([1, 2]);
+  // The newest is always kept, however big.
+  const huge = {at: 9, text: 'y'.repeat(MAX_HISTORY_CHARS + 1)};
+  expect(trimHistory([huge, big(1)]).map(e => e.at)).toEqual([9]);
+  const small = Array.from({length: 15}, (_, i) => ({at: i, text: 's'}));
+  expect(trimHistory(small)).toHaveLength(10);
+});
+
+it('the global prompt cap is the same as the sync cap', () => {
+  const {readFileSync} = require('fs');
+  const src = readFileSync(
+    require('path').join(__dirname, '../../../utils/globalToolSettings.ts'),
+    'utf8',
+  ).replace(/\r\n/g, '\n');
+  expect(src).toContain('export const MAX_GLOBAL_PROMPT = 32 * 1024;');
+  expect(MAX_PROMPT).toBe(32 * 1024);
+  expect(src).toMatch(
+    /if \(prompt\.length > MAX_GLOBAL_PROMPT\) \{\s*throw new Error/,
+  );
 });

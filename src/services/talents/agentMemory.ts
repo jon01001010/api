@@ -7,6 +7,28 @@ const MAX_MEMORY_BYTES = 256 * 1024;
 
 export const DEFAULT_MEMORY = '01 =MEM/1 | 02:@U=user | 03:@P=project | 04:@G=goal\n';
 
+/**
+ * Earlier versions kept per memory (the newest); older ones are removed
+ * when a new one is kept (security review 2026-11-17: a model or a synced
+ * device changing memory over and over can't fill the phone).
+ */
+export const MAX_SNAPSHOTS = 100;
+
+/** Keeps the newest `keep` snapshots in a history folder. */
+export async function pruneSnapshots(root: string, keep = MAX_SNAPSHOTS): Promise<number> {
+  if (!(await RNFS.exists(root))) return 0;
+  const names = (await RNFS.readDir(root))
+    .filter(item => item.isFile() && /^memory-[0-9]+-[a-z0-9]+\.txt$/.test(item.name))
+    .map(item => item.name)
+    // Oldest first (by the time in the name).
+    .sort((a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]) || a.localeCompare(b));
+  const extra = names.slice(0, Math.max(0, names.length - keep));
+  for (const name of extra) {
+    await RNFS.unlink(root + '/' + name).catch(() => {});
+  }
+  return extra.length;
+}
+
 function memoryBytes(value: string): number {
   return encodeURIComponent(value).replace(/%[a-fA-F0-9]{2}/g, 'x').length;
 }
@@ -26,6 +48,7 @@ export async function memoryReplace(next: string, expectedPrevious: string): Pro
   await RNFS.mkdir(HISTORY_ROOT);
   const snapshot = HISTORY_ROOT + '/memory-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '.txt';
   await RNFS.writeFile(snapshot, previous, 'utf8');
+  await pruneSnapshots(HISTORY_ROOT).catch(() => 0);
   const temporary = MEMORY_PATH + '.pending';
   try {
     await RNFS.writeFile(temporary, next, 'utf8');
@@ -73,6 +96,7 @@ export async function userMemoryReplace(next: string, expectedPrevious: string):
   const snapshot = USER_HISTORY_ROOT + '/memory-' + Date.now() + '-' +
     Math.random().toString(36).slice(2) + '.txt';
   await RNFS.writeFile(snapshot, expectedPrevious, 'utf8');
+  await pruneSnapshots(USER_HISTORY_ROOT).catch(() => 0);
   const temporary = USER_MEMORY_PATH + '.pending';
   try {
     await RNFS.writeFile(temporary, next, 'utf8');

@@ -345,6 +345,27 @@ export function merge(
   return result;
 }
 
+/**
+ * Most characters of one item's history in all (security review
+ * 2026-11-17: ten versions of up to 1 MB each was too much to keep); the
+ * newest version is always kept.
+ */
+export const MAX_HISTORY_CHARS = 2 * 1024 * 1024;
+
+/** The newest 10 versions, within MAX_HISTORY_CHARS (the newest always). */
+export function trimHistory<T extends {text: string}>(list: T[]): T[] {
+  const out: T[] = [];
+  let size = 0;
+  for (const entry of list.slice(0, 10)) {
+    size += entry.text.length;
+    if (out.length && size > MAX_HISTORY_CHARS) {
+      break;
+    }
+    out.push(entry);
+  }
+  return out;
+}
+
 async function keepHistory(key: SyncKey, previous: string) {
   try {
     const list: {at: number; text: string}[] = JSON.parse(
@@ -353,7 +374,7 @@ async function keepHistory(key: SyncKey, previous: string) {
     list.unshift({at: Date.now(), text: previous});
     await AsyncStorage.setItem(
       historyKey(key),
-      JSON.stringify(list.slice(0, 10)),
+      JSON.stringify(trimHistory(list)),
     );
   } catch {
     // History is a courtesy; the sync still goes on.

@@ -233,3 +233,23 @@ describe('model memory tools', () => {
     expect(result.summary).toBe((await memoryHistory())[0]);
   });
 });
+
+describe('memory snapshots are kept within a fixed number (review 2026-11-17)', () => {
+  it('keeps the newest MAX_SNAPSHOTS', async () => {
+    const {pruneSnapshots, MAX_SNAPSHOTS} = require('../agentMemory');
+    const root = '/docs/PruneTest';
+    for (let i = 0; i < MAX_SNAPSHOTS + 5; i++) {
+      mockFiles.set(`${root}/memory-${1000 + i}-a${i}.txt`, 'v');
+    }
+    mockFiles.set(`${root}/other.txt`, 'kept');
+    mockDirs.add(root);
+    expect(await pruneSnapshots(root)).toBe(5);
+    const left = [...mockFiles.keys()].filter(p => p.startsWith(root + '/'));
+    expect(left).toHaveLength(MAX_SNAPSHOTS + 1);
+    expect(left).not.toContain(`${root}/memory-1000-a0.txt`);
+    expect(left).toContain(
+      `${root}/memory-${1004 + MAX_SNAPSHOTS}-a${MAX_SNAPSHOTS + 4}.txt`,
+    );
+    expect(left).toContain(`${root}/other.txt`);
+  });
+});
