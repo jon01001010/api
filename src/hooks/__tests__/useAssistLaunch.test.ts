@@ -21,4 +21,13 @@ describe('opened as the phone assistant', () => {
     await listenForAssist(jest.fn(), 3);
     expect(startVoiceInput).toHaveBeenCalledTimes(3);
   });
+
+  it('opened by another app (not the system): listens, never sends by itself', async () => {
+    (startVoiceInput as jest.Mock).mockReset().mockResolvedValue('started');
+    await listenForAssist(jest.fn(), 3, false);
+    expect(startVoiceInput).toHaveBeenCalledWith({send: false});
+    (startVoiceInput as jest.Mock).mockClear();
+    await listenForAssist(jest.fn());
+    expect(startVoiceInput).toHaveBeenCalledWith({send: true});
+  });
 });

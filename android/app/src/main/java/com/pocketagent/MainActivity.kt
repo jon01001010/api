@@ -70,12 +70,42 @@ class MainActivity : ReactActivity() {
       super.onPause()
   }
 
-  /** Opened as the phone's assistant: JS starts listening (PhoneActionsModule). */
+  /**
+   * Opened as the phone's assistant: JS starts listening (PhoneActionsModule).
+   * This screen is exported, so any app could send ACTION_ASSIST: only when
+   * the system opened it (systemOpened) does a spoken message send by
+   * itself; otherwise listening opens and the words wait in the box until
+   * the user sends them (security review 2026-11-17).
+   */
   private fun noteAssist(intent: Intent?) {
       val action = intent?.action ?: return
       if (action == Intent.ACTION_ASSIST || action == Intent.ACTION_VOICE_COMMAND) {
-          PhoneActionsModule.onAssistLaunch()
+          PhoneActionsModule.onAssistLaunch(systemOpened(intent))
       }
+  }
+
+  /**
+   * Whether the system opened this (long-press power, a corner swipe): the
+   * launching package (getReferrer) is the system itself, the system UI or
+   * the phone's chosen assistant app, and the caller didn't name a
+   * referrer of its own (EXTRA_REFERRER, which getReferrer would report
+   * instead). No new permission.
+   */
+  private fun systemOpened(intent: Intent): Boolean {
+      if (intent.hasExtra(Intent.EXTRA_REFERRER) || intent.hasExtra(Intent.EXTRA_REFERRER_NAME)) {
+          return false
+      }
+      val from = referrer ?: return false
+      if (from.scheme != "android-app") return false
+      val pkg = from.host ?: return false
+      if (pkg == "android" || pkg == "com.android.systemui") return true
+      // The phone's chosen assistant (Settings > Default apps), if it says.
+      val assistant = try {
+          android.provider.Settings.Secure.getString(contentResolver, "assistant")
+      } catch (_: Exception) {
+          null
+      }
+      return !assistant.isNullOrEmpty() && assistant.substringBefore('/') == pkg
   }
 
   /**
