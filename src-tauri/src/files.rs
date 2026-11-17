@@ -7,6 +7,12 @@
 //! first and checked against the places never reachable (outside.rs), and
 //! each access is logged; a link inside the app's folder that leads out of
 //! it is refused.
+//!
+//! Security review 2026-11-17: the question outside the app's folder is
+//! asked on this PC only (approval::ask_on_this_pc, never answered from a
+//! paired device, like outside.rs), says that the app's screens ask, and
+//! nothing that runs (programs, scripts, shortcuts: runs_code) is ever
+//! written outside the app's folder.
 
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -15,7 +21,32 @@ use base64::Engine;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
-use crate::approval::ask;
+use crate::approval::ask_on_this_pc;
+
+/// Kinds of file that run (or start something) when opened: never
+/// written, copied or moved to outside the app's folder.
+pub const RUNS_CODE: &[&str] = &[
+    "exe", "dll", "sys", "drv", "ocx", "cpl", "scr", "com", "pif", "bat", "cmd", "ps1", "psm1", "psd1", "ps1xml",
+    "msi", "msp", "mst", "msc", "lnk", "url", "scf", "inf", "reg", "vbs", "vbe", "js", "jse", "mjs", "cjs", "wsf",
+    "wsh", "wsc", "hta", "jar", "py", "pyw", "pyc", "rb", "pl", "php", "sh", "bash", "zsh", "fish", "ksh", "csh",
+    "command", "run", "bin", "appimage", "desktop", "service", "timer", "deb", "rpm", "so", "ko", "elf", "xll",
+    "application", "appref-ms", "appx", "msix", "appxbundle", "msixbundle", "gadget", "library-ms",
+    "searchconnector-ms", "settingcontent-ms", "chm", "iso", "img", "vhd", "vhdx", "xbap", "apk",
+];
+
+/// Whether a file of this name runs (or starts something) when opened:
+/// by its kind (RUNS_CODE, any case), and on Linux a name with no kind
+/// at all may be a program.
+pub fn runs_code(name: &str) -> bool {
+    let name = name.trim_end_matches(['.', ' ']).to_lowercase();
+    match name.rsplit_once('.') {
+        Some((stem, kind)) if !stem.is_empty() => RUNS_CODE.contains(&kind),
+        _ => true,
+    }
+}
+
+pub const NEVER_RUNS: &str =
+    "Programs, scripts and shortcuts are never written outside the app's folder. Nothing was done.";
 
 /// The app's own file space, as the screens see it.
 pub const APP_PREFIX: &str = "/pocketagent";
@@ -97,6 +128,12 @@ fn stays_inside(root: &Path, real: &Path) -> bool {
 }
 
 async fn allowed(app: &AppHandle, input: &str, what: &str) -> Result<PathBuf, String> {
+    allowed_to(app, input, what, false).await
+}
+
+/// `allowed`; `writes`: something is written there (never a kind that
+/// runs, outside the app's folder).
+async fn allowed_to(app: &AppHandle, input: &str, what: &str, writes: bool) -> Result<PathBuf, String> {
     let root = app_root(app)?;
     let located = locate(&root, input)?;
     if located.own {
@@ -115,13 +152,25 @@ async fn allowed(app: &AppHandle, input: &str, what: &str) -> Result<PathBuf, St
             return Err(e);
         }
     };
-    let question = format!("DesktopAgent wants to {what}, outside its own folder:\n\n{}", real.display());
-    let yes = ask(app, &question).await;
+    let name = real.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if writes && runs_code(&name) {
+        crate::outside::audit(app, "app", what, "refused: runs code", &real.to_string_lossy(), None);
+        return Err(NEVER_RUNS.into());
+    }
+    let question = screens_question(what, &real.display().to_string());
+    // On this PC only: never answered from a paired device.
+    let yes = ask_on_this_pc(app, &question).await;
     crate::outside::audit(app, "app", what, if yes { "allowed" } else { "said no" }, &real.to_string_lossy(), None);
     if !yes {
         return Err("The user said no. Nothing was done.".into());
     }
     Ok(real)
+}
+
+/// The question for the app's screens outside the app's folder: who asks
+/// (the screens, not the model), what, where.
+pub fn screens_question(what: &str, path: &str) -> String {
+    format!("DesktopAgent's screens (the app itself, not the model) want to {what}, outside the app's own folder:\n\n{path}")
 }
 
 #[derive(Serialize)]
@@ -180,7 +229,7 @@ pub async fn fs_write(
     encoding: Option<String>,
     append: Option<bool>,
 ) -> Result<(), String> {
-    let real = allowed(&app, &path, "write to this file").await?;
+    let real = allowed_to(&app, &path, "write to this file", true).await?;
     let bytes = if encoding.as_deref() == Some("base64") {
         base64::engine::general_purpose::STANDARD
             .decode(content)
@@ -242,7 +291,7 @@ pub async fn fs_remove(app: AppHandle, path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn fs_copy(app: AppHandle, from: String, to: String) -> Result<(), String> {
     let source = allowed(&app, &from, "read this file (to copy it)").await?;
-    let target = allowed(&app, &to, "write a copy here").await?;
+    let target = allowed_to(&app, &to, "write a copy here", true).await?;
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -252,7 +301,7 @@ pub async fn fs_copy(app: AppHandle, from: String, to: String) -> Result<(), Str
 #[tauri::command]
 pub async fn fs_move(app: AppHandle, from: String, to: String) -> Result<(), String> {
     let source = allowed(&app, &from, "move this file").await?;
-    let target = allowed(&app, &to, "move a file here").await?;
+    let target = allowed_to(&app, &to, "move a file here", true).await?;
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -394,5 +443,21 @@ mod tests {
         assert!(locate(&root(), &outside("Users/me/../x")).is_err());
         assert!(locate(&root(), "relative/path").is_err());
         assert!(locate(&root(), "").is_err());
+    }
+
+    #[test]
+    fn nothing_that_runs_is_written_outside_and_only_this_pc_is_asked() {
+        for bad in ["a.exe", "A.EXE", "x.dll", "run.bat", "run.cmd", "p.ps1", "setup.msi", "Link.lnk", "s.scr", "c.com", "v.vbs", "j.js", "s.sh", "App.AppImage", "x.desktop", "x.reg", "x.hta", "program", "a.exe.", "a.exe ", "x.url"] {
+            assert!(runs_code(bad), "{bad}");
+        }
+        for ok in ["notes.txt", "a.md", "photo.JPG", "doc.pdf", "data.json", ".hidden.txt", "report.docx"] {
+            assert!(!runs_code(ok), "{ok}");
+        }
+        let q = screens_question("write to this file", "C:\\x\\a.txt");
+        assert!(q.starts_with("DesktopAgent's screens (the app itself, not the model) want to write to this file"), "{q}");
+        let src = include_str!("files.rs").replace("\r\n", "\n");
+        let body = &src[src.find("async fn allowed_to").unwrap()..src.find("pub fn screens_question").unwrap()];
+        assert!(body.contains("ask_on_this_pc(app, &question)"));
+        assert!(!body.contains(&["approval::", "ask("].concat()) && !body.contains(&["= ", "ask(app"].concat()));
     }
 }

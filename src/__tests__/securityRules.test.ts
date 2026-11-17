@@ -440,8 +440,20 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     ]);
     for (const [, name, body] of fns) {
       // fs_hash: the app's own files only, never outside (nothing to ask).
-      const rule = name === 'fs_hash' ? 'own_file(&app' : 'allowed(&app';
-      expect([name, body.includes(rule)]).toEqual([name, true]);
+      const rule = name === 'fs_hash' ? 'own_file' : 'allowed';
+      expect([
+        name,
+        body.includes(rule + '(&app') || body.includes('allowed_to(&app'),
+      ]).toEqual([name, true]);
+    }
+    // Whatever writes there: never a kind that runs (review 2026-11-17).
+    for (const [, name, body] of fns) {
+      if (['fs_write', 'fs_copy', 'fs_move'].includes(name)) {
+        expect([
+          name,
+          /allowed_to\(&app, &(path|to), "[^"]+", true\)/.test(body),
+        ]).toEqual([name, true]);
+      }
     }
     expect(files).toMatch(
       /fn own_file\([\s\S]*?if !located\.own \{\s*return Err[\s\S]*?if !stays_inside\(&root, &located\.real\) \{\s*return Err/,
@@ -453,9 +465,41 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // never reachable first, then asked, then logged. A link in the app's
     // own folder that leads out is refused.
     expect(files).toMatch(
-      /if located\.own \{\s*if !stays_inside\(&root, &located\.real\) \{\s*return Err[\s\S]*?return Ok\(located\.real\);\s*\}[\s\S]*?crate::outside::checked\(app, &located\.real\)[\s\S]*?let yes = ask\(app, &question\)\.await;\s*crate::outside::audit\(/,
+      /if located\.own \{\s*if !stays_inside\(&root, &located\.real\) \{\s*return Err[\s\S]*?return Ok\(located\.real\);\s*\}[\s\S]*?crate::outside::checked\(app, &located\.real\)[\s\S]*?if writes && runs_code\(&name\) \{[\s\S]*?return Err[\s\S]*?let yes = ask_on_this_pc\(app, &question\)\.await;\s*crate::outside::audit\(/,
     );
-    expect(tauri('src/approval.rs')).toContain('blocking_show()');
+    // On this PC only, like outside.rs (review 2026-11-17): never answered
+    // from a paired device.
+    expect(files).not.toMatch(/approval::ask\b|use crate::approval::ask;/);
+    // "Don't allow" first (the default button); closing the dialog is no.
+    const approvalDialog = tauri('src/approval.rs');
+    expect(approvalDialog).toContain(
+      'rfd::MessageButtons::OkCancelCustom(DONT.into(), ALLOW.into())',
+    );
+    expect(approvalDialog).toContain(
+      'rfd::MessageButtons::YesNoCancelCustom(DONT.into(), ALLOW_ONCE.into(), ALWAYS.into())',
+    );
+    expect(approvalDialog).toMatch(
+      /pub fn allowed_by\(result: &rfd::MessageDialogResult\) -> bool \{\s*matches!\(result, rfd::MessageDialogResult::Custom\(label\) if label == ALLOW\)/,
+    );
+    expect(approvalDialog).not.toContain('blocking_show');
+    // One dialog at a time; an asker refused three times in a row waits.
+    expect(approvalDialog).toMatch(
+      /fn in_turn[\s\S]*?turn\(\)\.lock_owned\(\)\.await;\s*if skip\.load/,
+    );
+    expect(approvalDialog).toContain('pub const MAX_REFUSALS: u32 = 3;');
+    for (const ask of [
+      'pub async fn ask_as',
+      'pub async fn ask_on_this_pc',
+      'pub async fn ask_with_always',
+    ]) {
+      const at = approvalDialog.indexOf(ask);
+      expect([
+        ask,
+        /^[^{]*\{\s*if !may_ask\(app, (asker|None)\) \{/.test(
+          approvalDialog.slice(at),
+        ),
+      ]).toEqual([ask, true]);
+    }
     // Downloads use the same rule (own folder free, elsewhere ask), only
     // http/https, and never leave a half file looking like a finished one.
     const download = tauri('src/download.rs');
@@ -714,10 +758,10 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // no to one question; a device's yes allows once, never "always"; and
     // pairing a new device is asked on this PC only.
     expect(link).toMatch(
-      /Some\(Request::Questions\) if paired =>[\s\S]*?if !questions\.allowed\(\) \{\s*serde_json::json!\(\{"ok": false, "error": OFF_ANSWERS\}\)\s*\} else if !may_answer\(&load_phones\(&app\), &remote\) \{\s*serde_json::json!\(\{"ok": false, "error": NOT_THIS_DEVICE\}\)\s*\} else \{\s*serde_json::json!\(\{"ok": true, "questions": questions\.list\(\)\}\)/,
+      /Some\(Request::Questions\) if paired =>[\s\S]*?if !questions\.allowed\(\) \{\s*serde_json::json!\(\{"ok": false, "error": OFF_ANSWERS\}\)\s*\} else if !may_answer\(&load_phones\(&app\), &remote\) \{\s*serde_json::json!\(\{"ok": false, "error": NOT_THIS_DEVICE\}\)\s*\} else \{\s*serde_json::json!\(\{"ok": true, "questions": questions\.list_for\(&remote\)\}\)/,
     );
     expect(link).toMatch(
-      /Some\(Request::Answer \{ id, yes \}\) if paired =>[\s\S]*?if !questions\.allowed\(\) \{\s*serde_json::json!\(\{"ok": false, "error": OFF_ANSWERS\}\)\s*\} else if !may_answer\(&phones, &remote\) \{\s*serde_json::json!\(\{"ok": false, "error": NOT_THIS_DEVICE\}\)\s*\} else \{[\s\S]*?questions\.answer\(id, yes, &name\)/,
+      /Some\(Request::Answer \{ id, yes \}\) if paired =>[\s\S]*?if !questions\.allowed\(\) \{\s*serde_json::json!\(\{"ok": false, "error": OFF_ANSWERS\}\)\s*\} else if !may_answer\(&phones, &remote\) \{\s*serde_json::json!\(\{"ok": false, "error": NOT_THIS_DEVICE\}\)\s*\} else \{[\s\S]*?questions\.answer\(id, yes, &remote, &name\)/,
     );
     // Which devices may answer: each one allowed on its own, off by
     // default (old records without the field too, and again after pairing
@@ -947,7 +991,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // device named; a device's yes counts only while still allowed.
     const approvalRs = tauri('src/approval.rs');
     expect(approvalRs).toMatch(
-      /pub async fn ask_for[^{]*\{\s*let yes = ask\(app, &with_thinking\(question, thinking\)\)\.await && by\.is_none_or\(\|d\| \(d\.still_allowed\)\(\)\);/,
+      /pub async fn ask_for[^{]*\{\s*let yes = ask_as\(app, &with_thinking\(question, thinking\), by\.map\(\|d\| d\.id\)\)\.await\s*&& by\.is_none_or\(\|d\| \(d\.still_allowed\)\(\)\);/,
     );
     const pcOwn = tauri('src/pc.rs');
     const extraOwn = tauri('src/pc_extra.rs');
@@ -989,7 +1033,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /fn tools_allowed\(app: &AppHandle\) -> bool \{\s*read_entry\(app, TOOLS_ENTRY\)\.as_deref\(\) == Some\("on"\)/,
     );
     expect(link).toMatch(
-      /async fn may_read_now[\s\S]*?read_grants[\s\S]*?crate::approval::ask\(app, &read_question\(device, chat, allowed_now\)\)\.await[\s\S]*?if !tools_allowed\(app\) \|\| !may_read\(&load_phones\(app\), remote\) \{\s*return false;/,
+      /async fn may_read_now[\s\S]*?read_grants[\s\S]*?crate::approval::ask_as\(app, &read_question\(device, chat, allowed_now\), Some\(remote\)\)\.await[\s\S]*?if !tools_allowed\(app\) \|\| !may_read\(&load_phones\(app\), remote\) \{\s*return false;/,
     );
     expect(link).toContain(
       'const READ_GRANT_TIME: Duration = Duration::from_secs(12 * 60 * 60);',
@@ -1170,8 +1214,21 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /pub fn pick_private[\s\S]*?!c\.starts_with\(screens\) && !screens\.starts_with\(c\)/,
     );
     expect(approval).toMatch(
-      /Ok\(\(yes, name\)\) = device => \{\s*crate::remote_ask::log_answer\(app, &name, yes, question\);\s*answered_on_device\(/,
+      /Ok\(\(yes, name\)\) = device => \{[^}]*?skip\.store\(true, Ordering::SeqCst\);\s*crate::remote_ask::log_answer\(app, &name, yes, question\);\s*answered_on_device\(/,
     );
+    // Other devices never get a question's private parts (the clipboard,
+    // a change's text, the thinking, this PC's paths) and can only refuse
+    // it (review 2026-11-17).
+    expect(remote).toMatch(
+      /pub fn list_for\(&self, device: &str\)[\s\S]*?let hidden = p\.hidden_from\(device\);[\s\S]*?\(Some\(shared\), true\) => shared\.clone\(\)/,
+    );
+    expect(remote).toMatch(
+      /if yes && pending\.get\(&id\)\.is_some_and\(\|p\| p\.hidden_from\(device\)\) \{\s*return Err\(ONLY_REFUSE\);/,
+    );
+    expect(remote).toMatch(
+      /fn hidden_from\(&self, device: &str\) -> bool \{\s*self\.shared\.is_some\(\) && self\.asker\.as_deref\(\) != Some\(device\)/,
+    );
+    expect(tauri('src/link.rs')).toContain('questions.list_for(&remote)');
     expect(approval).toMatch(
       /fn answered_on_device[\s\S]*?notification\(\)[\s\S]*?already answered on/,
     );
@@ -1555,13 +1612,22 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // Its own key (not the PC's link key), no address hint (dials by key),
     // kept where the screens can't read or write it, like the link key
     // (Credential Manager on Windows, a private file on Linux); an older
-    // key file in the screens' folder is moved there (pairing is kept).
+    // key file in the screens' folder is never read: they could have
+    // planted it (review 2026-11-17).
     expect(client).toContain(
       'const CLIENT_KEY_ENTRY: &str = "DesktopAgent-link:client-key";',
     );
-    expect(client).toMatch(
-      /crate::link::read_entry\(app, CLIENT_KEY_ENTRY\)[\s\S]*?crate::link::write_entry\(app, CLIENT_KEY_ENTRY/,
+    const ownKey = client.slice(
+      client.indexOf('fn own_key(app'),
+      client.indexOf('fn own_key_in_use'),
     );
+    expect(ownKey).toContain('crate::link::read_entry(app, CLIENT_KEY_ENTRY)');
+    expect(
+      ownKey
+        .split('\n')
+        .filter(l => !l.trim().startsWith('//'))
+        .join('\n'),
+    ).not.toMatch(/std::fs::|client\.key|app_config_dir/);
     expect(client).toContain('Phone::with_key(key, None)');
     expect(client).not.toContain('Phone::new(');
     // The phone's own key file: owner only (0600).
@@ -1908,7 +1974,7 @@ describe('Paired devices: sync, mirrored chats, answers (review of 2026-11-15)',
     );
     // A PC question too long to show whole can only be refused here.
     expect(read('src/services/homeLink/pcQuestions.ts')).toMatch(
-      /questionView\(q\)\.shortened\s*\?\s*\[no\]/,
+      /questionView\(q\)\.shortened \|\| q\.onlyRefuse === true\s*\?\s*\[no\]/,
     );
   });
 });
@@ -2160,7 +2226,7 @@ describe('Rule 1: the model is treated as possibly hostile (chat guards, 2026-11
     const approval = tauri('src/approval.rs');
     expect(approval).toContain('pub const MAX_THINKING: usize = 600;');
     expect(approval).toMatch(
-      /pub async fn ask_for\([^)]*thinking: Option<&str>\) -> bool \{\s*let yes = ask\(app, &with_thinking\(question, thinking\)\)\.await[^;]*;\s*crate::remote_ask::log_asked\(app, by\.map\(\|d\| d\.name\), yes, question, thinking\);/,
+      /pub async fn ask_for\([^)]*thinking: Option<&str>\) -> bool \{\s*let yes = ask_as\(app, &with_thinking\(question, thinking\), by\.map\(\|d\| d\.id\)\)\.await[^;]*;\s*crate::remote_ask::log_asked\(app, by\.map\(\|d\| d\.name\), yes, question, thinking\);/,
     );
     // Every tool question on the PC passes the thinking along.
     for (const file of [

@@ -275,8 +275,11 @@ pub struct Guard {
     pub own: Vec<String>,
 }
 
-/// Folders closed wherever they are (any part of the path).
-const CLOSED_PARTS: &[&str] = &[".ssh", ".gnupg", ".aws"];
+/// Folders closed wherever they are (any part of the path): keys, and
+/// (security review 2026-11-17) settings that run code when a program
+/// starts or a folder is opened (an editor's tasks, git hooks and config,
+/// any `.config`, cargo's config).
+const CLOSED_PARTS: &[&str] = &[".ssh", ".gnupg", ".aws", ".vscode", ".git", ".config", ".idea", ".husky", ".cargo", ".kube", ".docker"];
 /// Files closed wherever they are (by name, any case): browsers' saved
 /// passwords and cookies, stored git and npm keys, shell start files,
 /// Windows' own user settings.
@@ -304,6 +307,38 @@ const CLOSED_NAMES: &[&str] = &[
     ".zshenv",
     ".zlogin",
     "ntuser.dat",
+    // Security review 2026-11-17: more start files and settings that run
+    // code or hold keys.
+    ".bash_aliases",
+    ".zlogout",
+    ".cshrc",
+    ".tcshrc",
+    ".kshrc",
+    ".mkshrc",
+    ".inputrc",
+    ".xprofile",
+    ".xinitrc",
+    ".xsession",
+    ".xsessionrc",
+    ".pam_environment",
+    ".gitconfig",
+    ".netrc",
+    "_netrc",
+    ".pypirc",
+    ".curlrc",
+    ".wgetrc",
+    ".vimrc",
+    "_vimrc",
+    ".exrc",
+    ".gvimrc",
+    ".emacs",
+    ".tmux.conf",
+    ".screenrc",
+    ".lesskey",
+    ".yarnrc",
+    ".yarnrc.yml",
+    "autorun.inf",
+    "desktop.ini",
 ];
 /// Windows: runs of folders closed wherever they are (any user, any drive).
 const CLOSED_RUNS_WINDOWS: &[&str] = &[
@@ -328,6 +363,14 @@ const CLOSED_TOP_UNIX: &[&str] = &[
 ];
 /// Under the home folder (both systems).
 const CLOSED_IN_HOME: &[&str] = &[
+    // Windows: all of AppData (Roaming, Local, LocalLow: programs'
+    // settings, start-up entries, the app's own; security review 2026-11-17).
+    "AppData",
+    ".local/bin",
+    ".local/share/applications",
+    ".local/share/keyrings",
+    ".local/share/systemd",
+    ".local/share/nautilus/scripts",
     ".config/gh",
     ".config/autostart",
     ".config/systemd/user",
@@ -392,6 +435,12 @@ impl Guard {
         add(&self.local, CLOSED_IN_LOCAL);
         add(&self.config, CLOSED_IN_CONFIG);
         add(&self.data, CLOSED_IN_DATA);
+        // Windows: %APPDATA% and %LOCALAPPDATA% whole, wherever they are
+        // (programs' settings that run code; the app's own is closed too).
+        // Linux: ~/.config whole, wherever XDG puts it.
+        for base in [&self.roaming, &self.local, &self.config].into_iter().flatten() {
+            out.push(self.style.key(base));
+        }
         out.extend(self.system.iter().chain(&self.own).map(|p| self.style.key(p)));
         out
     }
@@ -675,10 +724,15 @@ fn write_facts(real: &Path, content: &str) -> Result<(Option<String>, Facts), St
         Ok(_) => return Err("That is not a plain file".into()),
         Err(_) => None,
     };
+    let change = crate::pc_write::change(before.as_deref(), content);
+    // Never allowed unseen (security review 2026-11-17).
+    if !change.whole {
+        return Err(crate::pc_write::TOO_LONG_TO_SHOW.into());
+    }
     let facts = Facts {
         size_now: before.as_ref().map(|b| b.len() as u64),
         size_after: Some(content.len() as u64),
-        change: Some(crate::pc_write::change(before.as_deref(), content)),
+        change: Some(change),
     };
     Ok((before, facts))
 }
@@ -999,6 +1053,17 @@ mod tests {
             "C:\\Users\\me\\AppData\\Local\\app.pocketagent.desktop\\link\\answers.log",
             "C:\\Users\\me\\AppData\\Roaming\\Microsoft\\Credentials\\x",
             "C:\\Users\\other\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\x",
+            // Security review 2026-11-17: settings that run code.
+            "C:\\Users\\me\\AppData\\Roaming\\KeePass\\KeePass.config.xml",
+            "C:\\Users\\me\\AppData\\Roaming\\Code\\User\\settings.json",
+            "C:\\Users\\me\\AppData\\Local\\Programs\\x\\x.exe",
+            "C:\\Users\\me\\AppData\\LocalLow\\x",
+            "C:\\Users\\me\\Documents\\project\\.vscode\\tasks.json",
+            "C:\\Users\\me\\Documents\\project\\.git\\hooks\\pre-commit",
+            "C:\\Users\\me\\Documents\\project\\.git\\config",
+            "C:\\Users\\me\\.gitconfig",
+            "C:\\Users\\me\\_netrc",
+            "D:\\stick\\autorun.inf",
         ] {
             assert!(g.never_reachable(closed), "{closed}");
         }
@@ -1007,13 +1072,12 @@ mod tests {
             "C:\\Users\\me\\Downloads\\report.pdf",
             "C:\\Users\\me\\Documents\\notes.txt",
             "C:\\Users\\me\\Documents\\passwords.kdbx",
-            "C:\\Users\\me\\AppData\\Roaming\\KeePass\\KeePass.config.xml",
             "C:\\Users\\me\\Desktop\\Windows notes.txt",
             "C:\\Users\\me\\Documents\\windows",
             "D:\\Music\\x.mp3",
             "C:\\Users\\me\\Documents\\my.sshkeys.txt",
             "C:\\Users\\me\\Documents\\Mozilla\\Firefox notes.txt",
-            "C:\\Users\\me\\AppData\\Roaming\\app.pocketagent.desktopX\\x",
+            "C:\\Users\\me\\AppDataX\\x",
             "C:\\",
         ] {
             assert!(!g.never_reachable(open), "{open}");
@@ -1054,6 +1118,19 @@ mod tests {
             "/home/me/.config/app.pocketagent.desktop/link/answers.log",
             "/home/me/.local/share/app.pocketagent.desktop/Documents",
             "/home/me/backup/Cookies",
+            // Security review 2026-11-17: settings that run code.
+            "/home/me/.config",
+            "/home/me/.config/ghostwriter/x",
+            "/home/me/.config/fish/config.fish",
+            "/home/me/code/app/.vscode/settings.json",
+            "/home/me/code/app/.git/hooks/post-checkout",
+            "/home/me/.gitconfig",
+            "/home/me/.bash_aliases",
+            "/home/me/.xprofile",
+            "/home/me/.vimrc",
+            "/home/me/.local/bin/ls",
+            "/home/me/.local/share/applications/x.desktop",
+            "/home/me/.cargo/config.toml",
         ] {
             assert!(g.never_reachable(closed), "{closed}");
         }
@@ -1061,10 +1138,9 @@ mod tests {
             "/home/me",
             "/home/me/Downloads/a.txt",
             "/home/me/Documents/etc/notes.md",
-            "/home/me/.config",
-            "/home/me/.config/ghostwriter/x",
             "/home/me/.ssh-notes.txt",
-            "/home/me/.config/app.pocketagent.desktop2",
+            "/home/me/code/app/notes.git.txt",
+            "/home/me/.configX/x",
             "/tmp/x",
             "/media/usb/x.txt",
             "/",

