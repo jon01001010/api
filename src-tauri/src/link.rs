@@ -2082,7 +2082,9 @@ async fn serve_stream(
                         use tauri::Emitter;
                         let _ = app.emit(
                             "link-sync",
-                            serde_json::json!({"id": id, "device": name, "body": String::from_utf8_lossy(&body)}),
+                            // `key`: the device's public key (its id here),
+                            // which the screens key its sync records by.
+                            serde_json::json!({"id": id, "device": name, "key": remote, "body": String::from_utf8_lossy(&body)}),
                         );
                         let reply = tokio::time::timeout(Duration::from_secs(30), rx).await;
                         link.sync_waiting.lock().unwrap().remove(&id);

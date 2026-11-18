@@ -2756,6 +2756,12 @@ describe('Security review 2 (2026-11-18): the PC side', () => {
     expect(link).toContain('if !link.streams.lock().unwrap().take(&remote) {');
   });
 
+  it('a sync names the device by its public key for the screens', () => {
+    expect(tauri('src/link.rs')).toMatch(
+      /"link-sync",\s*(\/\/[^\n]*\n\s*)*serde_json::json!\(\{"id": id, "device": name, "key": remote, "body": /,
+    );
+  });
+
   it('links in the app folder never lead documents or vision files out', () => {
     expect(tauri('src/docs.rs')).toMatch(
       /pub async fn doc_to_text[\s\S]*?if !crate::files::stays_inside\(&root, &located\.real\) \{\s*return Err/,
