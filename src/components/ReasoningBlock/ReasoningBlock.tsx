@@ -12,6 +12,12 @@ import {
   tableRenderers,
   tableHTMLElementModels,
 } from '../MarkdownView/TableRenderers';
+import {
+  CSS_INLINE,
+  IGNORED_DOM_TAGS,
+  SAFE_RENDERERS_PROPS,
+  SafeImgRenderer,
+} from '../MarkdownView/safeHtml';
 
 interface ReasoningBlockProps {
   text: string;
@@ -47,7 +53,12 @@ export const ReasoningBlock: React.FC<ReasoningBlockProps> = React.memo(
       [tagsStyles, theme],
     );
 
-    const renderers = useMemo(() => ({...tableRenderers}), []);
+    // Pictures never load by themselves and links ask first, as in replies
+    // (MarkdownView/safeHtml.tsx, security review 2, 2026-11-18).
+    const renderers = useMemo(
+      () => ({img: SafeImgRenderer, ...tableRenderers}),
+      [],
+    );
 
     const defaultTextProps = useMemo(
       () => ({selectable: false, userSelect: 'none' as const}),
@@ -82,6 +93,9 @@ export const ReasoningBlock: React.FC<ReasoningBlockProps> = React.memo(
           systemFonts={systemFonts}
           renderers={renderers}
           customHTMLElementModels={tableHTMLElementModels}
+          ignoredDomTags={IGNORED_DOM_TAGS}
+          enableCSSInlineProcessing={CSS_INLINE}
+          renderersProps={SAFE_RENDERERS_PROPS}
         />
       </ThinkingBubble>
     );

@@ -69,6 +69,13 @@ export const PRIVATE_READS: Record<string, (args: Args) => boolean> = {
   outside_files: a => a?.action === 'read' || a?.action === 'list',
   // A workspace file (the user's own documents; security review 2026-11-17).
   file_read: () => true,
+  // The workspace's other reads: lines, matches (names and lines inside
+  // files), a diff, and the list of names (security review 2, 2026-11-18).
+  file_read_range: () => true,
+  file_search: () => true,
+  file_diff: () => true,
+  file_list: () => true,
+  pc_workspace_list: () => true,
   clipboard_read: () => true,
   pc_clipboard_read: () => true,
   pc_workspace_read: () => true,

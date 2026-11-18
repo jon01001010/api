@@ -105,7 +105,10 @@ export class FileToolsEngine implements TalentEngine {
           });
         return {
           type: 'text',
-          summary: names.length ? names.join('\n') : 'Workspace is empty',
+          // Names are the user's data too (security review 2, 2026-11-18).
+          summary: names.length
+            ? wrapUntrusted(names.join('\n'))
+            : 'Workspace is empty',
         };
       }
 
@@ -149,8 +152,10 @@ export class FileToolsEngine implements TalentEngine {
         const matches = [...byName, ...inside].slice(0, 100);
         return {
           type: 'text',
+          // Names and lines from files: data, never instructions
+          // (security review 2, 2026-11-18).
           summary: matches.length
-            ? matches.join('\n')
+            ? wrapUntrusted(matches.join('\n'))
             : 'No matching filenames',
         };
       }
@@ -212,7 +217,10 @@ export class FileToolsEngine implements TalentEngine {
         if (typeof args.content === 'string') {
           return {
             type: 'text',
-            summary: diffLines(current, checkText(args.content)),
+            // A file's text is data (security review 2, 2026-11-18).
+            summary: wrapUntrusted(
+              diffLines(current, checkText(args.content)),
+            ),
           };
         }
         const [latest] = await listFileHistory(name);
@@ -227,7 +235,9 @@ export class FileToolsEngine implements TalentEngine {
             'Changes since ' +
             latest.id +
             ':\n' +
-            diffLines(await readFileSnapshot(name, latest.id), current),
+            wrapUntrusted(
+              diffLines(await readFileSnapshot(name, latest.id), current),
+            ),
         };
       }
 

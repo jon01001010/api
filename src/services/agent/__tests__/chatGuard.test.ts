@@ -52,6 +52,16 @@ describe('what reads private data and what goes out (explicit lists)', () => {
     }
     // A workspace file is private too (review 2026-11-17).
     expect(readsPrivate('file_read', {filename: 'notes.md'})).toBe(true);
+    // And the workspace's other reads (review 2, 2026-11-18).
+    for (const name of [
+      'file_read_range',
+      'file_search',
+      'file_diff',
+      'file_list',
+      'pc_workspace_list',
+    ]) {
+      expect(readsPrivate(name, {filename: 'notes.md'})).toBe(true);
+    }
     for (const name of ['web_search', 'calculate', 'pc_info']) {
       expect(readsPrivate(name, {})).toBe(false);
     }

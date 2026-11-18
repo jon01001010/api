@@ -11,6 +11,12 @@ import {useTheme} from '../../hooks';
 import {CodeRenderer} from './CodeRenderer';
 import {createTagsStyles} from './styles';
 import {tableHTMLElementModels, tableRenderers} from './TableRenderers';
+import {
+  CSS_INLINE,
+  IGNORED_DOM_TAGS,
+  SAFE_RENDERERS_PROPS,
+  SafeImgRenderer,
+} from './safeHtml';
 import {PHOSPHOR_FONT} from '../../theme/phosphor';
 
 /**
@@ -51,8 +57,11 @@ const DEFAULT_TEXT_PROPS = {
 // reference changes between renders). Component functions inside the
 // map can still call hooks — they're rendered as part of the React tree,
 // not stored as data.
+// `img` never fetches by itself and links ask first (safeHtml.tsx,
+// security review 2, 2026-11-18).
 const renderers = {
   code: (props: any) => <CodeRenderer {...props} />,
+  img: SafeImgRenderer,
   ...tableRenderers,
 };
 
@@ -66,9 +75,12 @@ export const MarkdownProvider: React.FC<React.PropsWithChildren> = ({
     <TRenderEngineProvider
       tagsStyles={tagsStyles}
       customHTMLElementModels={tableHTMLElementModels}
+      ignoredDomTags={IGNORED_DOM_TAGS}
+      enableCSSInlineProcessing={CSS_INLINE}
       systemFonts={SYSTEM_FONTS}>
       <RenderHTMLConfigProvider
         defaultTextProps={DEFAULT_TEXT_PROPS}
+        renderersProps={SAFE_RENDERERS_PROPS}
         renderers={renderers}>
         {children}
       </RenderHTMLConfigProvider>

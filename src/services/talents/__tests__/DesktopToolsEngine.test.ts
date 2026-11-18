@@ -193,6 +193,8 @@ describe('outside_files', () => {
     });
     const r = await run({action: 'list', place: 'downloads', path: ''});
     expect(r.summary).toContain('a.txt (3 bytes)\nwork/');
+    // Names from the user's folders are data (security review 2).
+    expect(r.summary).toContain('BEGIN UNTRUSTED WEB CONTENT');
     invoke.mockRejectedValueOnce('The user said no. Nothing was done.');
     const no = await run({action: 'delete', path: '/home/me/x.txt'});
     expect(no.type).toBe('text');

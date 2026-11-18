@@ -2319,6 +2319,12 @@ describe('Rule 1: the model is treated as possibly hostile (chat guards, 2026-11
       'outside_files',
       // A workspace file (review 2026-11-17).
       'file_read',
+      // The workspace's other reads (review 2, 2026-11-18).
+      'file_read_range',
+      'file_search',
+      'file_diff',
+      'file_list',
+      'pc_workspace_list',
       'clipboard_read',
       'pc_clipboard_read',
       'pc_workspace_read',
@@ -2347,6 +2353,13 @@ describe('Rule 1: the model is treated as possibly hostile (chat guards, 2026-11
     ]);
     expect(read('src/services/talents/PcPictureEngine.ts')).toContain(
       "readonly sendsTo = 'your Home PC, to make a picture';",
+    );
+    // What those reads give back reaches the model wrapped as data (review
+    // 2, 2026-11-18): every workspace read, and the outside list.
+    const files = read('src/services/talents/FileToolsEngine.ts');
+    expect(files.match(/wrapUntrusted\(/g)?.length).toBe(6);
+    expect(read('src/services/talents/DesktopToolsEngine.ts')).toContain(
+      "lines.length ? wrapUntrusted(lines.join('\\n')) : '(empty)'",
     );
     // The guard reads a chain's and a shortcut's steps exactly as they run
     // (one normaliser: stepArgs.ts), and the marks survive a restart
@@ -2674,5 +2687,67 @@ describe('Rule 1: several models ("and" / "or") ask first, never add tools, coun
     expect(
       engine.match(/wrapModelAnswer\(a\.model, a\.answer\)/g),
     ).toHaveLength(2);
+  });
+});
+
+describe('Security review 2 (2026-11-18), app code', () => {
+  it('a reply never fetches a picture or anything else by itself', () => {
+    const safe = read('src/components/MarkdownView/safeHtml.tsx');
+    // The only HTML renderers of model text: the reply and the thinking.
+    expect(filesMatching(/from 'react-native-render-html'/)).toEqual(
+      [
+        'src/components/MarkdownView/MarkdownProvider.tsx',
+        'src/components/MarkdownView/MarkdownView.tsx',
+        'src/components/MarkdownView/TableRenderers.tsx',
+        'src/components/ReasoningBlock/ReasoningBlock.tsx',
+      ].sort(),
+    );
+    for (const file of [
+      'src/components/MarkdownView/MarkdownProvider.tsx',
+      'src/components/ReasoningBlock/ReasoningBlock.tsx',
+    ]) {
+      const src = read(file);
+      expect([file, /img: SafeImgRenderer/.test(src)]).toEqual([file, true]);
+      expect(src).toContain('ignoredDomTags={IGNORED_DOM_TAGS}');
+      expect(src).toContain('enableCSSInlineProcessing={CSS_INLINE}');
+      expect(src).toContain('renderersProps={SAFE_RENDERERS_PROPS}');
+    }
+    expect(safe).toContain('export const CSS_INLINE = false;');
+    const {IGNORED_DOM_TAGS} = require('../components/MarkdownView/safeHtml');
+    for (const tag of [
+      'picture',
+      'source',
+      'video',
+      'audio',
+      'iframe',
+      'object',
+      'embed',
+      'link',
+      'meta',
+      'base',
+    ]) {
+      expect(IGNORED_DOM_TAGS).toContain(tag);
+    }
+    // Shown without asking: the app's own files and data pictures only;
+    // a site's picture loads only after "Load", a link only after "Open".
+    expect(safe).toContain('if (allowed && isWebAddress(src)) {');
+    expect(safe).toContain(
+      'askToLoadPicture(src as string).then(yes => yes && setAllowed(true));',
+    );
+    expect(safe).toMatch(
+      /text: 'Open',\n\s*onPress: \(\) => \{\n\s*Linking\.openURL\(href\)/,
+    );
+    // Link previews (which fetch a page) need onPreviewDataFetched, which
+    // no screen passes.
+    expect(read('src/components/TextMessage/TextMessage.tsx')).toMatch(
+      /usePreviewData &&\n\s*!!onPreviewDataFetched &&/,
+    );
+    expect(filesMatching(/onPreviewDataFetched/)).toEqual(
+      [
+        'src/components/ChatView/ChatView.tsx',
+        'src/components/Message/Message.tsx',
+        'src/components/TextMessage/TextMessage.tsx',
+      ].sort(),
+    );
   });
 });

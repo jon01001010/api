@@ -373,7 +373,9 @@ async function outsideFiles(
     }
     return {
       type: 'text',
-      summary: `${done.path} (outside the workspace; the user allowed this list):\n${lines.join('\n') || '(empty)'}`,
+      // Names from the user's folders: data, never instructions (security
+      // review 2, 2026-11-18).
+      summary: `${done.path} (outside the workspace; the user allowed this list):\n${lines.length ? wrapUntrusted(lines.join('\n')) : '(empty)'}`,
     };
   }
   if (action === 'read') {

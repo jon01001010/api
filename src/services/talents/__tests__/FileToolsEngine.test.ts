@@ -96,7 +96,12 @@ describe('bug fixes', () => {
     put('notes.md', 'x');
     put('notes2.md', 'y');
     const r = await run('file_search', {query: 'notes'});
-    expect(r.summary?.split('\n').sort()).toEqual(['notes.md', 'notes2.md']);
+    // Names from the workspace are data (security review 2, 2026-11-18).
+    expect(r.summary).toContain('BEGIN UNTRUSTED WEB CONTENT');
+    expect(unwrapped(r.summary).split('\n').sort()).toEqual([
+      'notes.md',
+      'notes2.md',
+    ]);
   });
 
   it('file_info reports text files as editable', async () => {
@@ -180,7 +185,7 @@ describe('history, undo and diff', () => {
     for (let i = 1; i <= MAX_SNAPSHOTS + 3; i++) {
       await run('file_edit', {filename: 'a.txt', content: 'v' + i});
     }
-    expect((await run('file_list', {})).summary).toBe('a.txt');
+    expect(unwrapped((await run('file_list', {})).summary)).toBe('a.txt');
     const hist = await run('file_history', {filename: 'a.txt'});
     expect(hist.summary?.split('\n')).toHaveLength(MAX_SNAPSHOTS);
   });
@@ -194,9 +199,10 @@ describe('history, undo and diff', () => {
 
   it('file_diff compares with proposed content, or with the last version', async () => {
     put('a.txt', 'a\nb\nc');
-    expect(
-      (await run('file_diff', {filename: 'a.txt', content: 'a\nB\nc'})).summary,
-    ).toBe('+1 -1 lines\n  a\n- b\n+ B\n  c');
+    const diff = await run('file_diff', {filename: 'a.txt', content: 'a\nB\nc'});
+    // A file's text is data (security review 2, 2026-11-18).
+    expect(diff.summary).toContain('BEGIN UNTRUSTED WEB CONTENT');
+    expect(unwrapped(diff.summary)).toBe('+1 -1 lines\n  a\n- b\n+ B\n  c');
     await run('file_edit', {filename: 'a.txt', content: 'a\nb\nc\nd'});
     expect((await run('file_diff', {filename: 'a.txt'})).summary).toContain(
       '+ d',
