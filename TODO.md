@@ -987,7 +987,7 @@ A small separate watch app (Wear OS), not the whole PocketAgent: speak or tap on
 - [ ] **Link:** (a) the home link (iroh) over the watch's Wi-Fi/LTE, phone not needed nearby, pairing by QR like the phone; and/or (b) Bluetooth LE straight to the phone (AOSP Bluetooth APIs, no Google): works with no Wi-Fi, low power, ~10 m, slow but fine for text and compressed voice. BLE's own pairing is weak, so our own encryption on top (keys exchanged by QR, as the home link). Needs new phone permissions (BLUETOOTH_CONNECT / SCAN / ADVERTISE) and a foreground service to listen: owner to approve (rule 5: phone stays small).
 - [ ] Garmin watches can't run this (their apps talk only through Garmin's phone app).
 
-## VPN built into the app (user, 2026-11-17, write-up only)
+## VPN built into the app (user, 2026-11-17, write-up only; put off by the owner 2026-11-18)
 
 The user wants a VPN built into the app, over the home link (iroh: direct when possible, else an encrypted relay; no PocketAgent-run server, no outside account). Today the link carries only what the app needs (models, sync, questions, pictures, tools; `Http` tunnel media only), so it is not a VPN yet. Not decided yet: which of the two below, or both.
 
