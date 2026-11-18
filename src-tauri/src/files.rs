@@ -142,13 +142,30 @@ async fn allowed_to(app: &AppHandle, input: &str, what: &str, writes: bool) -> R
         }
         return Ok(located.real);
     }
-    // Outside the app's folder: resolved (links, junctions, short names),
-    // refused if it doesn't resolve cleanly or is never reachable
-    // (outside.rs), then asked every time, and logged.
-    let real = match crate::outside::checked(app, &located.real) {
+    // Outside the app's folder: refused, with no dialog (owner, 2026-11-18).
+    // Nothing in the app needs it (a picked file is copied in, downloads go
+    // into the app's folder, a model run from elsewhere has its own picker
+    // and question), so a hijacked screen gets no door and no dialog to
+    // pester the user with. The model reaches outside only through
+    // `outside_files` (outside.rs: asked on this PC every time, logged).
+    // Still logged here, so a refusal can be traced.
+    let _ = writes;
+    crate::outside::audit(app, "app", what, "refused: outside the app's folder", &located.real.to_string_lossy(), None);
+    Err(OUTSIDE_REFUSED.into())
+}
+
+/// What the screens get for a path outside the app's folder.
+pub const OUTSIDE_REFUSED: &str = "Only the app's own folder can be used here. To use a file elsewhere on this PC, add it with \"Add a file\" (it is copied in), or ask the model to use it (it asks you first).";
+
+/// The old way: outside the app's folder, resolved, checked against the
+/// places never reachable, then asked on this PC and logged. Not used since
+/// 2026-11-18 (outside paths are refused, above); kept for reference.
+#[allow(dead_code)]
+async fn allowed_outside_asked(app: &AppHandle, real: PathBuf, what: &str, writes: bool) -> Result<PathBuf, String> {
+    let real = match crate::outside::checked(app, &real) {
         Ok(real) => real,
         Err(e) => {
-            crate::outside::audit(app, "app", what, "refused", &located.real.to_string_lossy(), None);
+            crate::outside::audit(app, "app", what, "refused", &real.to_string_lossy(), None);
             return Err(e);
         }
     };
@@ -456,8 +473,12 @@ mod tests {
         let q = screens_question("write to this file", "C:\\x\\a.txt");
         assert!(q.starts_with("DesktopAgent's screens (the app itself, not the model) want to write to this file"), "{q}");
         let src = include_str!("files.rs").replace("\r\n", "\n");
-        let body = &src[src.find("async fn allowed_to").unwrap()..src.find("pub fn screens_question").unwrap()];
+        let body = &src[src.find("async fn allowed_outside_asked").unwrap()..src.find("pub fn screens_question").unwrap()];
         assert!(body.contains("ask_on_this_pc(app, &question)"));
+        // Outside the app's folder the screens are refused, never asked.
+        let used = &src[src.find("async fn allowed_to").unwrap()..src.find("pub const OUTSIDE_REFUSED").unwrap()];
+        assert!(used.contains("Err(OUTSIDE_REFUSED.into())"));
+        assert!(!used.contains("ask_on_this_pc") && !used.contains("checked(app"));
         assert!(!body.contains(&["approval::", "ask("].concat()) && !body.contains(&["= ", "ask(app"].concat()));
     }
 }

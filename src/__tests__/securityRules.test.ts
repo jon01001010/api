@@ -428,7 +428,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(handlers.sort()).toEqual(listed.sort());
   });
 
-  it('every file command outside the app folder asks first (native dialog)', () => {
+  it('every file command keeps to the app folder (outside: refused, no dialog)', () => {
     const files = tauri('src/files.rs');
     const fns = [...files.matchAll(/pub async fn (fs_\w+)\(([\s\S]*?)\n}\n/g)];
     expect(fns.map(m => m[1]).sort()).toEqual([
@@ -466,11 +466,11 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     expect(files).toMatch(
       /if !algorithm\.eq_ignore_ascii_case\("sha256"\) \{\s*return Err/,
     );
-    // Outside the app's folder: resolved and checked against the places
-    // never reachable first, then asked, then logged. A link in the app's
-    // own folder that leads out is refused.
+    // Outside the app's folder: refused with no dialog, and logged (owner,
+    // 2026-11-18); the model reaches outside only through outside_files.
+    // A link in the app's own folder that leads out is refused.
     expect(files).toMatch(
-      /if located\.own \{\s*if !stays_inside\(&root, &located\.real\) \{\s*return Err[\s\S]*?return Ok\(located\.real\);\s*\}[\s\S]*?crate::outside::checked\(app, &located\.real\)[\s\S]*?if writes && runs_code\(&name\) \{[\s\S]*?return Err[\s\S]*?let yes = ask_on_this_pc\(app, &question\)\.await;\s*crate::outside::audit\(/,
+      /if located\.own \{\s*if !stays_inside\(&root, &located\.real\) \{\s*return Err[\s\S]*?return Ok\(located\.real\);\s*\}[\s\S]*?crate::outside::audit\(app, "app", what, "refused: outside the app's folder"[^;]*;\s*Err\(OUTSIDE_REFUSED\.into\(\)\)\s*\}/,
     );
     // On this PC only, like outside.rs (review 2026-11-17): never answered
     // from a paired device.

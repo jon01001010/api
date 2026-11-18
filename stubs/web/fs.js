@@ -1,7 +1,6 @@
 /**
  * Files on the web build. Inside the .exe: real files through the native
- * side (the app's own folder needs no prompt; anywhere else asks first, on
- * the native side). In a plain browser: in memory (stubs/windows/memory-fs).
+ * side, in the app's own folder only (anywhere else is refused there). In a plain browser: in memory (stubs/windows/memory-fs).
  */
 const {isTauri, invoke, Channel} = require('./tauri');
 
