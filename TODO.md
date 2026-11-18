@@ -1074,7 +1074,8 @@ Owner: "Model is narrator, and its tools are the game's possibilities; verbs cha
   - Away from the PC (the game on a phone or laptop): the game pairs over the home link like a device, with a "model only" right (no tools, no sync, no questions), so the PC's model is reachable anywhere without opening ports.
   - Caps per app: request size, requests per minute, one at a time; a notification "VerbVoxel is using your model" while it runs; every call logged (app, time, sizes; never the text).
   - The game treats the PC like any other model choice; its narrator plans stay data checked by the game (above).
-- [ ] Open questions for the owner: who owns VerbVoxel's code and licence; fonts and assets bundled (no Google fonts).
+- [x] VerbVoxel is the owner's own game (2026-11-18): its own app and repository, its licence the owner's choice.
+- [ ] Bundle its fonts and assets in the game (no Google fonts).
 
 ## Files between phone and PC (owner, 2026-11-18, write-up only)
 
