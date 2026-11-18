@@ -1,6 +1,7 @@
 import React from 'react';
 import {AppState, Text} from 'react-native';
 import * as Keychain from 'react-native-keychain';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {fireEvent, render, waitFor} from '@testing-library/react-native';
 
 import {AppLockRoot} from '../AppLockRoot';
@@ -9,11 +10,28 @@ import {
   turnOnAppPin,
 } from '../../../services/appLock/appLock';
 
+jest.mock('@react-native-async-storage/async-storage', () => {
+  const values = new Map<string, string>();
+  const store = {
+    getItem: jest.fn(async (key: string) => values.get(key) ?? null),
+    setItem: jest.fn(async (key: string, value: string) => {
+      values.set(key, value);
+    }),
+    removeItem: jest.fn(async (key: string) => {
+      values.delete(key);
+    }),
+    clear: jest.fn(async () => values.clear()),
+  };
+  return {__esModule: true, default: store, ...store};
+});
+
 const mockErase = jest.fn(async () => true);
 jest.mock('../../../services/appLock/appErase', () => ({
   eraseAvailable: () => true,
   eraseEverything: () => mockErase(),
+  setSecureWindow: (on: boolean) => mockSecure(on),
 }));
+const mockSecure = jest.fn();
 
 const store = new Map<string, {username: string; password: string}>();
 const K = Keychain as jest.Mocked<typeof Keychain>;
@@ -22,7 +40,9 @@ jest
   .spyOn(AppState, 'addEventListener')
   .mockImplementation((() => ({remove: () => {}})) as any);
 
-beforeEach(() => {
+beforeEach(async () => {
+  await AsyncStorage.clear();
+  mockSecure.mockClear();
   store.clear();
   resetAppLockForTests();
   K.setGenericPassword.mockImplementation((async (

@@ -22,6 +22,9 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   setItem: jest.fn(async (k: string, v: string) => {
     mockStore[k] = v;
   }),
+  removeItem: jest.fn(async (k: string) => {
+    delete mockStore[k];
+  }),
 }));
 const mockText = {prompt: '', user: '', model: ''};
 jest.mock('../../../utils/globalToolSettings', () => ({
@@ -62,6 +65,7 @@ async function answerLast(alert: jest.SpyInstance, button: string) {
   await buttons.find((b: any) => b.text === button).onPress();
 }
 import {
+  LOCKED_ANSWER,
   answerSync,
   keptInStepNotice,
   resetKeptInStepNotice,
@@ -237,7 +241,10 @@ it('says what changed after a sync in the background', () => {
 });
 
 it('a device that sends the same text "5 minutes from now" every time no longer wins', async () => {
-  jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  // The model's notes are asked first too (review 2): the user takes them.
+  jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => {
+    buttons?.find(b => b.text === 'Take it')?.onPress?.();
+  });
   mockText.user = 'x';
   const t0 = Date.now();
   const send = (now: number) =>
@@ -248,7 +255,8 @@ it('a device that sends the same text "5 minutes from now" every time no longer 
     });
   mockText.model = 'PC notes';
   await answerSync(send(t0), 'Pixel');
-  // Newer than the PC's notes then: taken (the model's notes are not asked).
+  await new Promise(r => setTimeout(r, 0));
+  // Newer than the PC's notes then: taken (after the user's yes).
   expect(mockText.model).toBe('Evil notes');
   // The user puts their notes back a minute later (within the skew).
   mockText.model = 'PC notes again';
@@ -298,4 +306,51 @@ it('"Kept in step" on the PC: one at a time, later ones shown together after', (
   expect(alert).toHaveBeenCalledTimes(3);
   alert.mockRestore();
   resetKeptInStepNotice();
+});
+
+describe('security review 2 (2026-11-18), the PC side', () => {
+  it('while DesktopAgent is locked a sync is answered "try later", nothing changes', async () => {
+    const lock = require('../../appLock/appLock');
+    const spy = jest.spyOn(lock, 'appUnlockedNow').mockReturnValue(false);
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    mockText.prompt = 'PC prompt';
+    const reply = JSON.parse(
+      await answerSync(
+        JSON.stringify({
+          items: [
+            {key: 'systemPrompt', text: 'Device prompt', updatedAt: Date.now()},
+          ],
+        }),
+        'Pixel',
+      ),
+    );
+    expect(reply).toEqual({ok: false, error: LOCKED_ANSWER});
+    expect(mockText.prompt).toBe('PC prompt');
+    expect(alert).not.toHaveBeenCalled();
+    spy.mockRestore();
+    alert.mockRestore();
+  });
+
+  it("a device is known by its key: another with the same name doesn't share its answers", async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    mockText.prompt = 'PC prompt';
+    const body = (text: string) =>
+      JSON.stringify({
+        items: [{key: 'systemPrompt', text, updatedAt: Date.now() + 1000}],
+      });
+    await answerSync(body('From A'), 'Pixel', 'KEYAAAAAAAAA');
+    const keepA = alert.mock.calls
+      .at(-1)?.[2]
+      ?.find((b: any) => b.text === 'Keep mine');
+    await keepA!.onPress!();
+    const asked = alert.mock.calls.length;
+    // The same name, another key: asked about its own text.
+    await answerSync(body('From B'), 'Pixel', 'KEYBBBBBBBBB');
+    expect(alert.mock.calls.length).toBe(asked + 1);
+    // The first device again, a changed text: held ("Keep mine", a day).
+    await answerSync(body('From A, changed'), 'Pixel', 'KEYAAAAAAAAA');
+    expect(alert.mock.calls.length).toBe(asked + 1);
+    expect(mockText.prompt).toBe('PC prompt');
+    alert.mockRestore();
+  });
 });

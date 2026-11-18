@@ -1,12 +1,21 @@
 import * as React from 'react';
-import {Modal, StyleSheet, useColorScheme, View} from 'react-native';
+import {Platform, StyleSheet, useColorScheme, View} from 'react-native';
 
 import {
   appLockedNow,
+  holdAlertsWhileLocked,
   loadAppLock,
   subscribeAppLock,
 } from '../../services/appLock/appLock';
 import {AppLockScreen} from './AppLockScreen';
+import {LockLayer} from './LockLayer';
+
+// Phone: dialogs wait while locked, so none is drawn over the PIN screen
+// (the desktop holds its own in web/AlertHost.js; security review 2,
+// 2026-11-18).
+if (Platform.OS !== 'web') {
+  holdAlertsWhileLocked();
+}
 
 type Phase = 'reading' | 'locked' | 'error' | 'open';
 
@@ -16,7 +25,8 @@ type Phase = 'reading' | 'locked' | 'error' | 'open';
  * stores, and with them the chats) is loaded only after the PIN: `loadApp`
  * is called then, once. When the app locks again later (away longer than
  * the chosen minutes), the PIN screen covers everything, in a window of its
- * own above the app's dialogs.
+ * own above the app's dialogs (LockLayer: a Modal on the phone; on the
+ * desktop a layer above every other one, with the app behind it inert).
  */
 export function AppLockRoot({
   loadApp,
@@ -69,13 +79,9 @@ export function AppLockRoot({
     <View style={styles.fill}>
       <App />
       {locked ? (
-        <Modal
-          visible
-          animationType="none"
-          statusBarTranslucent
-          onRequestClose={() => {}}>
+        <LockLayer>
           <AppLockScreen error={phase === 'error'} />
-        </Modal>
+        </LockLayer>
       ) : null}
     </View>
   );

@@ -2002,8 +2002,17 @@ describe('App PIN and erase PIN (2026-11-17)', () => {
         'src/services/loops/loopRunner.ts',
         'src/services/loops/planRunner.ts',
         'src/services/phoneActions/pcReminders.ts',
+        // Only whether it is locked now (review 2, 2026-11-18).
+        'src/services/sync/hostSync.web.ts',
+        'src/services/talents/fileApprovalGate.ts',
         'src/services/voice/wakeWord.ts',
       ].sort(),
+    );
+    expect(read('src/services/sync/hostSync.web.ts')).toContain(
+      "import {appUnlockedNow} from '../appLock/appLock';",
+    );
+    expect(read('src/services/talents/fileApprovalGate.ts')).toContain(
+      "import {appUnlockedNow, subscribeAppLock} from '../appLock/appLock';",
     );
     // Setting, changing, trying a PIN and erasing: the PIN screen and the
     // Settings card only.
@@ -2737,6 +2746,10 @@ describe('Security review 2 (2026-11-18), app code', () => {
     expect(safe).toMatch(
       /text: 'Open',\n\s*onPress: \(\) => \{\n\s*Linking\.openURL\(href\)/,
     );
+    // On the desktop a link goes to the native question (open_external).
+    expect(safe).toMatch(
+      /if \(\(globalThis as any\)\.__TAURI_INTERNALS__\) \{[\s\S]{0,200}Linking\.openURL\(href\)/,
+    );
     // Link previews (which fetch a page) need onPreviewDataFetched, which
     // no screen passes.
     expect(read('src/components/TextMessage/TextMessage.tsx')).toMatch(
@@ -2749,5 +2762,146 @@ describe('Security review 2 (2026-11-18), app code', () => {
         'src/components/TextMessage/TextMessage.tsx',
       ].sort(),
     );
+  });
+
+  it('the app lock: a timer while away, a marker, the native side told', () => {
+    const lock = read('src/services/appLock/appLock.ts');
+    // Locks while away as soon as the minutes pass.
+    expect(lock).toMatch(
+      /awayTimer = setTimeout\(\(\) => \{\n\s*awayTimer = undefined;\n\s*if \(awaySince !== null && state === 'unlocked' && cache\) \{\n\s*setState\('locked'\);/,
+    );
+    expect(lock).toMatch(/awaySince = now;\n\s*armAwayTimer\(\);/);
+    // The "PIN is on" marker: missing record with the marker is 'error'.
+    expect(lock).toMatch(
+      /if \(!record\) \{\n\s*if \(markedOn\) \{[\s\S]{0,200}setState\('error'\);\n\s*return 'error';/,
+    );
+    expect(lock).toMatch(
+      /if \(!record\) \{\n\s*if \(await readMarker\(\)\) \{/,
+    );
+    // Removed only when turned off with the PIN.
+    expect(lock.match(/writeMarker\(false\)/g)?.length).toBe(2);
+    expect(lock).toMatch(
+      /if \(change\.off\) \{[\s\S]{0,300}await writeMarker\(false\);/,
+    );
+    // Every change is told to the desktop's native side.
+    expect(lock).toMatch(
+      /function setState\(next: State\) \{\n\s*state = next;\n\s*const locked = isLockedState\(\);\n\s*tellNative\(locked\);/,
+    );
+    expect(lock).toContain(
+      "Promise.resolve(tauri.invoke('app_set_locked', {locked})).catch(() => {});",
+    );
+  });
+
+  it('a failed erase is a wrong PIN; the PC clears its page only after the erase', () => {
+    const lock = read('src/services/appLock/appLock.ts');
+    expect(lock).toContain("match => match === 'erase',");
+    expect(lock).toMatch(
+      /if \(await eraseEverything\(\)\) \{[\s\S]{0,700}return wrongTry\(WAIT_KEY, record, now, save\);/,
+    );
+    expect(read('src/services/pinLock/pinCore.ts')).toMatch(
+      /if \(match !== null && keepCount\?\.\(match\)\) \{\n\s*return \{ok: true, match, record: r\};/,
+    );
+    const erase = read('src/services/appLock/appErase.ts');
+    expect(erase.indexOf("await t.invoke('app_erase_all');")).toBeLessThan(
+      erase.indexOf('localStorage?.clear()'),
+    );
+    const kotlin = read(
+      'android/app/src/main/java/com/pocketagent/AppEraseModule.kt',
+    );
+    expect(kotlin).toContain(
+      'roots.add(context.createDeviceProtectedStorageContext().dataDir)',
+    );
+    expect(kotlin).toContain('LoopAlarmsModule.cancelAll(context)');
+    expect(kotlin).toContain('NotificationManager::class.java)?.cancelAll()');
+  });
+
+  it('Android: no recents preview or screenshots while the PIN is on, no new permission', () => {
+    const kotlin = read(
+      'android/app/src/main/java/com/pocketagent/AppEraseModule.kt',
+    );
+    expect(kotlin).toContain(
+      'activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)',
+    );
+    expect(kotlin).toContain('activity.setRecentsScreenshotEnabled(!on)');
+    expect(
+      read('android/app/src/main/java/com/pocketagent/MainActivity.kt'),
+    ).toContain('AppEraseModule.applySavedSecure(this)');
+    const lock = read('src/services/appLock/appLock.ts');
+    expect(lock).toMatch(
+      /function pinTurned\(on: boolean\) \{\n\s*setSecureWindow\(on\);/,
+    );
+    expect(lock).toMatch(/setState\('unlocked'\);\n\s*pinTurned\(true\);/);
+    expect(lock).toMatch(/setState\('off'\);\n\s*pinTurned\(false\);/);
+  });
+
+  it('nothing is drawn over the PIN screen; a locked PC answers no sync', () => {
+    // The phone: dialogs wait; the PIN screen uses none.
+    const root = read('src/components/AppLock/AppLockRoot.tsx');
+    expect(root).toMatch(
+      /if \(Platform\.OS !== 'web'\) \{\n\s*holdAlertsWhileLocked\(\);/,
+    );
+    expect(root).toContain('<LockLayer>');
+    expect(read('src/components/AppLock/AppLockScreen.tsx')).not.toMatch(
+      /Alert\b/,
+    );
+    // The desktop: its dialogs wait, and the PIN layer is the top one.
+    const host = read('web/AlertHost.js');
+    expect(host).toContain('if (!current || locked) {');
+    expect(read('src/components/AppLock/LockLayer.web.tsx')).toContain(
+      'export const LOCK_Z_INDEX = 2147483647;',
+    );
+    // A question from a running task is refused while locked.
+    expect(read('src/services/talents/fileApprovalGate.ts')).toMatch(
+      /AppState\.currentState !== 'active' \|\|[\s\S]{0,200}!appUnlockedNow\(\)/,
+    );
+    // The PC answers a paired device "try later" while locked, first thing.
+    expect(read('src/services/sync/hostSync.web.ts')).toMatch(
+      /\): Promise<string> \{\n\s*if \(!appUnlockedNow\(\)\) \{\n\s*return JSON\.stringify\(\{ok: false, error: LOCKED_ANSWER\}\);/,
+    );
+  });
+
+  it('sync: everything that reaches the model is asked first, "Keep mine" holds, devices by key', () => {
+    const {
+      ASK_FIRST,
+      KEEP_MINE_MS,
+      ASK_GAP_MS,
+    } = require('../services/sync/promptSync');
+    expect(ASK_FIRST).toEqual([
+      'systemPrompt',
+      'userMemory',
+      'modelMemory',
+      'assistants',
+      'customTools',
+    ]);
+    expect(KEEP_MINE_MS).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000);
+    expect(ASK_GAP_MS).toBeGreaterThanOrEqual(30 * 60 * 1000);
+    const sync = read('src/services/sync/promptSync.ts');
+    expect(sync).toContain(
+      '(seen?.keptAt !== undefined && t < seen.keptAt + KEEP_MINE_MS) ||',
+    );
+    expect(sync).toContain(
+      '(seen?.askedAt !== undefined && t < seen.askedAt + ASK_GAP_MS) ||',
+    );
+    expect(read('src/services/sync/hostSync.web.ts')).toContain(
+      'const peer = key ? `key:${key}` : `device:${from}`;',
+    );
+  });
+
+  it('loop alarms: private titles whenever the PIN is on, set again when it is turned on', () => {
+    const notify = read('src/services/loops/loopNotify.ts');
+    expect(notify).toContain(
+      'const hidden = appLockOn() || (await appLockMarked());',
+    );
+    expect(notify).toMatch(
+      /subscribeAppPinOn\(\(\) => \{\n\s*resetAlarmsOnPinChange\(\);/,
+    );
+  });
+
+  it('desktop links go to the native question (open_external), web and mail only', () => {
+    const stub = read('stubs/web/react-native.js');
+    expect(stub).toContain(
+      "tauri.invoke('open_external', {target: address, thinking: null}),",
+    );
+    expect(stub).toContain('/^(https?:\\/\\/|mailto:)/i.test(address)');
   });
 });

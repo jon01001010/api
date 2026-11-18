@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Alert, StyleSheet, View} from 'react-native';
+import {Alert, Platform, StyleSheet, View} from 'react-native';
 import {Button, Card, Switch, Text} from 'react-native-paper';
 
 import {TextInput} from '../TextInput';
@@ -18,6 +18,14 @@ import {
 } from '../../services/appLock/appLock';
 
 type Form = 'none' | 'turnOn' | 'change';
+
+/** Android: what the secure window means (security review 2, 2026-11-18). */
+export const SECURE_WINDOW_NOTE =
+  " While it is on, Android's recent-apps view shows PocketAgent blank, and screenshots and screen recordings of it are blocked.";
+
+/** What an erase can't reach (security review 2, 2026-11-18). */
+export const ERASE_OUTSIDE_NOTE =
+  "It can't erase what is outside the app: chats you exported to the phone's Downloads folder (or saved elsewhere on the PC), and what you shared with other apps.";
 type EraseChoice = 'keep' | 'set' | 'remove';
 
 /**
@@ -144,6 +152,7 @@ export const AppLockSettings: React.FC<{cardStyle?: object}> = ({
             Ask for a PIN when PocketAgent starts, and after it was away (in the
             background, minimised or in the tray) for {minutes} min. Nothing of
             the app shows before it.
+            {Platform.OS === 'android' ? SECURE_WINDOW_NOTE : ''}
           </Text>
           <Switch
             value={on || form === 'turnOn'}
@@ -258,7 +267,7 @@ export const AppLockSettings: React.FC<{cardStyle?: object}> = ({
                   asking: chats, memory, assistants, loops, tools, settings,
                   keys, pairings, files, pictures and downloaded models. The app
                   then starts as new. Nothing is sent to your other devices. It
-                  must differ from the app PIN.
+                  must differ from the app PIN. {ERASE_OUTSIDE_NOTE}
                 </Text>
                 <View style={styles.buttons}>
                   <Button

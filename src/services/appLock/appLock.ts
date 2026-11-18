@@ -25,8 +25,17 @@
  *   starts as new. Nothing is sent to paired devices.
  * - Nothing here is reachable by the model: no tool, prompt, sync or report
  *   uses this file (securityRules.test.ts).
+ * - Security review 2 (2026-11-18): a timer locks while away, as soon as
+ *   the chosen minutes pass (nothing is shown first on return); on Android
+ *   the window is secure while the PIN is on (no recents preview, no
+ *   screenshots); a "PIN is on" marker outside the key store makes a
+ *   missing or unreadable key-store record 'error' (locked), never 'off';
+ *   the desktop's native side is told when the app locks and unlocks
+ *   (`app_set_locked`); a failed erase is exactly a wrong PIN; while
+ *   locked, dialogs wait (holdAlertsWhileLocked).
  */
-import {AppState, Platform} from 'react-native';
+import {Alert, AppState, Platform} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Keychain from 'react-native-keychain';
 
 import {PIN_ITERATIONS, toHex} from '../homeLink/pinHash';
@@ -43,9 +52,10 @@ import {
   randomBytes,
   resetFinger,
   storeFingerSecret,
+  wrongTry,
   type PinAnswer,
 } from '../pinLock/pinCore';
-import {eraseAvailable, eraseEverything} from './appErase';
+import {eraseAvailable, eraseEverything, setSecureWindow} from './appErase';
 
 export {
   AWAY_MINUTES_CHOICES,
@@ -145,6 +155,65 @@ async function save(record: AppLockRecord): Promise<void> {
 const serial = makeSerial();
 const one = <T>(job: () => Promise<T>) => serial('app', job);
 
+// ---- "PIN is on" marker (outside the key store) -------------------------
+
+/**
+ * Written when the PIN is turned on, removed only when it is turned off
+ * with the PIN (and by an erase, with everything else). If it says on but
+ * the key store's record is missing or unreadable (a key store wiped by a
+ * restart on Linux, an entry deleted by another program), the app stays
+ * locked ('error'), never 'off'.
+ */
+const MARKER_KEY = '@pocketagent/app-lock/on/v1';
+/** As last read or written (undefined: not read yet). */
+let marked: boolean | undefined;
+
+async function readMarker(): Promise<boolean> {
+  try {
+    marked = (await AsyncStorage.getItem(MARKER_KEY)) === 'on';
+  } catch {
+    // Unreadable: as last known.
+  }
+  return marked === true;
+}
+
+async function writeMarker(on: boolean): Promise<void> {
+  if (on) {
+    await AsyncStorage.setItem(MARKER_KEY, 'on');
+  } else {
+    await AsyncStorage.removeItem(MARKER_KEY);
+  }
+  marked = on;
+}
+
+/** Whether the app PIN is on, by the marker or the record (fresh read). */
+export async function appLockMarked(): Promise<boolean> {
+  return (await readMarker()) || !!cache;
+}
+
+type PinOnListener = (on: boolean) => void;
+const pinOnListeners = new Set<PinOnListener>();
+
+/**
+ * Told when the app PIN is turned on or off (loopNotify sets its alarms
+ * again, with private titles while it is on).
+ */
+export function subscribeAppPinOn(listener: PinOnListener): () => void {
+  pinOnListeners.add(listener);
+  return () => {
+    pinOnListeners.delete(listener);
+  };
+}
+
+function pinTurned(on: boolean) {
+  setSecureWindow(on);
+  pinOnListeners.forEach(l => {
+    try {
+      l(on);
+    } catch {}
+  });
+}
+
 // ---- Locked or not (memory only) -----------------------------------------
 
 /**
@@ -156,6 +225,8 @@ let state: State = 'unknown';
 let awaySince: number | null = null;
 let listening = false;
 let awayPoll: ReturnType<typeof setInterval> | undefined;
+/** Locks while away, as soon as the chosen minutes pass. */
+let awayTimer: ReturnType<typeof setTimeout> | undefined;
 
 type Listener = (locked: boolean) => void;
 const listeners = new Set<Listener>();
@@ -163,9 +234,28 @@ const waiters: (() => void)[] = [];
 
 const awayMs = () => (cache?.awayMinutes ?? DEFAULT_AWAY_MINUTES) * 60 * 1000;
 
+/**
+ * Desktop: the native side is told on every change (and at start, once
+ * the state is known), so it can hold what it shows by itself while
+ * locked. Errors are ignored.
+ */
+function tellNative(locked: boolean) {
+  if (Platform.OS !== 'web') {
+    return;
+  }
+  const tauri = (globalThis as any).__TAURI_INTERNALS__;
+  if (typeof tauri?.invoke !== 'function') {
+    return;
+  }
+  try {
+    Promise.resolve(tauri.invoke('app_set_locked', {locked})).catch(() => {});
+  } catch {}
+}
+
 function setState(next: State) {
   state = next;
   const locked = isLockedState();
+  tellNative(locked);
   listeners.forEach(l => l(locked));
   if (!locked) {
     waiters.splice(0).forEach(w => w());
@@ -227,9 +317,11 @@ export function noteAppAway(away: boolean, now = Date.now()): void {
   if (away) {
     if (awaySince === null) {
       awaySince = now;
+      armAwayTimer();
     }
     return;
   }
+  clearAwayTimer();
   if (awaySince === null) {
     return;
   }
@@ -238,6 +330,32 @@ export function noteAppAway(away: boolean, now = Date.now()): void {
   if (state === 'unlocked' && cache && gone > awayMs()) {
     setState('locked');
   }
+}
+
+function clearAwayTimer() {
+  if (awayTimer !== undefined) {
+    clearTimeout(awayTimer);
+    awayTimer = undefined;
+  }
+}
+
+/**
+ * While away: locks as soon as the chosen minutes pass, so the app's
+ * content is never shown first on return (security review 2, 2026-11-18).
+ * Coming back early stops it (noteAppAway(false)); the check on return
+ * stays for a timer the system held back.
+ */
+function armAwayTimer() {
+  clearAwayTimer();
+  if (state !== 'unlocked' || !cache) {
+    return;
+  }
+  awayTimer = setTimeout(() => {
+    awayTimer = undefined;
+    if (awaySince !== null && state === 'unlocked' && cache) {
+      setState('locked');
+    }
+  }, awayMs());
 }
 
 /** Desktop: minimised or hidden in the tray (the window's own answer). */
@@ -287,18 +405,37 @@ function listen() {
  */
 export async function loadAppLock(): Promise<'off' | 'locked' | 'error'> {
   listen();
+  const markedOn = await readMarker();
   try {
     const record = await load();
     if (!record) {
+      if (markedOn) {
+        // The marker says on, the key store has nothing: never 'off'.
+        cache = undefined;
+        setSecureWindow(true);
+        setState('error');
+        return 'error';
+      }
+      setSecureWindow(false);
       setState('off');
       return 'off';
     }
+    if (!markedOn) {
+      // A PIN turned on before the marker existed.
+      try {
+        await writeMarker(true);
+      } catch {}
+    }
+    setSecureWindow(true);
     if (state !== 'unlocked') {
       setState('locked');
+    } else {
+      tellNative(false);
     }
     return 'locked';
   } catch {
     cache = undefined;
+    setSecureWindow(true);
     setState('error');
     return 'error';
   }
@@ -330,6 +467,14 @@ async function checkAppPin(
     };
   }
   if (!record) {
+    if (await readMarker()) {
+      // The PIN is on, but its record is gone: never open.
+      return {
+        ok: false,
+        reason: 'error',
+        message: "Couldn't read the PIN setting; try again",
+      };
+    }
     return {ok: true, match: 'none'};
   }
   const r = record;
@@ -350,6 +495,8 @@ async function checkAppPin(
       }
       return isB && r.erase ? 'erase' : null;
     },
+    // The erase PIN stays counted as a wrong try until the erase worked.
+    match => match === 'erase',
   );
   if (!answer.ok) {
     return answer;
@@ -357,15 +504,29 @@ async function checkAppPin(
   return {ok: true, match: answer.match, record: answer.record};
 }
 
-/** The erase PIN was entered: erase now, without asking. */
-async function eraseNow(): Promise<PinAnswer> {
-  cache = undefined;
+/**
+ * The erase PIN was entered: erase now, without asking. `record` is the
+ * record with this try counted as wrong (countedTry's keepCount).
+ */
+async function eraseNow(
+  record: AppLockRecord | undefined,
+  now: () => number,
+): Promise<PinAnswer> {
   if (await eraseEverything()) {
+    cache = undefined;
     // The app is closed (phone) or restarts as new (PC); nothing to say.
     return {ok: false, reason: 'error', message: 'Checking…'};
   }
-  // Couldn't erase here: looks like any wrong PIN.
-  return {ok: false, reason: 'wrong', message: 'Wrong PIN.'};
+  // Couldn't erase here: exactly a wrong PIN (the same answer, the same
+  // try count and wait; security review 2, 2026-11-18).
+  if (!record) {
+    return {
+      ok: false,
+      reason: 'error',
+      message: "Couldn't read the PIN setting; try again",
+    };
+  }
+  return wrongTry(WAIT_KEY, record, now, save);
 }
 
 /** The lock screen's Unlock. */
@@ -379,7 +540,7 @@ export function tryAppPin(
       return answer;
     }
     if (answer.match === 'erase') {
-      return eraseNow();
+      return eraseNow(answer.record, now);
     }
     setState(answer.match === 'none' ? 'off' : 'unlocked');
     return {ok: true};
@@ -473,6 +634,9 @@ export function turnOnAppPin(
       if (await load()) {
         return {ok: false, error: 'A PIN is already set.'};
       }
+      // The marker first: a record without it would read as 'off' if the
+      // marker were lost; a marker without a record only locks.
+      await writeMarker(true);
       await save({
         v: 1,
         rounds: PIN_ITERATIONS,
@@ -488,9 +652,14 @@ export function turnOnAppPin(
       listen();
       // The user just typed it: no need to ask again now.
       setState('unlocked');
+      pinTurned(true);
       return {ok: true};
     } catch (e) {
       cache = undefined;
+      // Not turned on: the marker goes again (if it was written).
+      try {
+        await writeMarker(false);
+      } catch {}
       return {ok: false, error: `Couldn't save the PIN: ${String(e)}`};
     }
   });
@@ -530,7 +699,7 @@ export function changeAppLock(
       return answer;
     }
     if (answer.match === 'erase') {
-      return eraseNow();
+      return eraseNow(answer.record, now);
     }
     const record = answer.record;
     if (!record) {
@@ -541,7 +710,10 @@ export function changeAppLock(
         await Keychain.resetGenericPassword({service: LOCK_SERVICE});
         await resetFinger(FINGER_SERVICE);
         cache = null;
+        // Only here (with the PIN) does the marker go.
+        await writeMarker(false);
         setState('off');
+        pinTurned(false);
         return {ok: true};
       }
       const next: AppLockRecord = {...record};
@@ -629,10 +801,37 @@ export function privateNotice(
   title: string,
   body: string,
 ): {title: string; body: string} {
-  if (!cache) {
+  if (!cache && marked !== true) {
     return {title, body};
   }
   return {title: 'PocketAgent', body: 'Open PocketAgent to see it.'};
+}
+
+// ---- Dialogs wait while locked ----------------------------------------------
+
+let alertsHeld = false;
+
+/**
+ * Phone: while the app is locked, every Alert.alert (a sync question, a
+ * notice, a question from a running task) waits and is shown after the
+ * unlock, in order, so nothing is drawn over the PIN screen. The desktop
+ * holds its dialogs in web/AlertHost.js. The PIN screen itself uses no
+ * Alert.
+ */
+export function holdAlertsWhileLocked(target: {alert: Function} = Alert): void {
+  if (alertsHeld || !target || typeof target.alert !== 'function') {
+    return;
+  }
+  alertsHeld = true;
+  const show = target.alert.bind(target);
+  target.alert = (...args: unknown[]) => {
+    if (appUnlockedNow()) {
+      return show(...args);
+    }
+    whenAppUnlocked()
+      .then(() => show(...args))
+      .catch(() => {});
+  };
 }
 
 /** Tests only. */
@@ -646,6 +845,8 @@ export function resetAppLockForTests(): void {
     clearInterval(awayPoll);
   }
   awayPoll = undefined;
+  clearAwayTimer();
+  marked = undefined;
   listeners.clear();
   waiters.splice(0);
   forgetMeasured(WAIT_KEY);

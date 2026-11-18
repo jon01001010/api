@@ -8,6 +8,9 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   setItem: jest.fn(async (k: string, v: string) => {
     mockStore[k] = v;
   }),
+  removeItem: jest.fn(async (k: string) => {
+    delete mockStore[k];
+  }),
 }));
 const mockText = {prompt: '', user: '', model: ''};
 jest.mock('../../../utils/globalToolSettings', () => ({
@@ -43,9 +46,18 @@ jest.mock('../syncSources', () => ({
   },
 }));
 
+import {Alert} from 'react-native';
+
 import {
+  ASK_FIRST,
+  ASK_GAP_MS,
+  KEEP_MINE_MS,
   applyItems,
   claimedTime,
+  holdForAnswer,
+  loadPeer,
+  movePeerOnce,
+  resetAsking,
   cleanItems,
   fingerprint,
   MAX_CLOCK_SKEW,
@@ -258,4 +270,95 @@ it('the global prompt cap is the same as the sync cap', () => {
   expect(src).toMatch(
     /if \(prompt\.length > MAX_GLOBAL_PROMPT\) \{\s*throw new Error/,
   );
+});
+
+describe('security review 2 (2026-11-18): asked first, and not worn down', () => {
+  let alert: jest.SpyInstance;
+  beforeEach(() => {
+    resetAsking();
+    alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  });
+  afterEach(() => alert.mockRestore());
+  const press = async (button: string) => {
+    const buttons = alert.mock.calls.at(-1)[2];
+    await buttons.find((b: any) => b.text === button).onPress();
+  };
+
+  it("everything that reaches the model's prompt or tools is asked first", () => {
+    expect(ASK_FIRST).toEqual([
+      'systemPrompt',
+      'userMemory',
+      'modelMemory',
+      'assistants',
+      'customTools',
+    ]);
+  });
+
+  it('"Keep mine" holds that item from that device for a day, whatever it sends', async () => {
+    let t = 1_000_000;
+    const clock = () => t;
+    const take = jest.fn(async () => {});
+    const hold = (text: string) =>
+      holdForAnswer(
+        [item('modelMemory', text, t)],
+        'Pixel',
+        take,
+        'key:abc',
+        clock,
+      );
+    expect(await hold('notes v1')).toEqual([]);
+    expect(alert).toHaveBeenCalledTimes(1);
+    await press('Keep mine');
+    // One character changed each sync: never asked, never taken.
+    for (const text of ['notes v2', 'notes v3', 'notes v4']) {
+      t += 60 * 60_000;
+      expect(await hold(text)).toEqual([]);
+    }
+    expect(alert).toHaveBeenCalledTimes(1);
+    expect(take).not.toHaveBeenCalled();
+    // A day later it may ask again (the declined text itself never).
+    t = 1_000_000 + KEEP_MINE_MS + 1;
+    await hold('notes v1');
+    expect(alert).toHaveBeenCalledTimes(1);
+    await hold('notes v5');
+    expect(alert).toHaveBeenCalledTimes(2);
+    await press('Take it');
+    expect(take).toHaveBeenCalledTimes(1);
+  });
+
+  it('at most one question per device and item in a while; another device is its own', async () => {
+    let t = 5_000_000;
+    const clock = () => t;
+    const take = jest.fn(async () => {});
+    const hold = (text: string, peer = 'key:abc') =>
+      holdForAnswer([item('assistants', text, t)], 'Pixel', take, peer, clock);
+    await hold('[1]');
+    // Closed without an answer.
+    alert.mock.calls.at(-1)[3].onDismiss();
+    t += 60_000;
+    await hold('[2]');
+    expect(alert).toHaveBeenCalledTimes(1);
+    // A clock set back doesn't make room.
+    t -= 10 * 60_000;
+    await hold('[3]');
+    expect(alert).toHaveBeenCalledTimes(1);
+    await hold('[3]', 'key:other');
+    expect(alert).toHaveBeenCalledTimes(2);
+    t = 5_000_000 + ASK_GAP_MS + 1;
+    await hold('[4]');
+    expect(alert).toHaveBeenCalledTimes(3);
+    expect(take).not.toHaveBeenCalled();
+  });
+
+  it("a device's old name-kept record moves to its key once", async () => {
+    mockStore[
+      `@pocketagent/sync/peer/${encodeURIComponent('device:Pixel')}/v1`
+    ] = JSON.stringify({systemPrompt: {seenPrint: 'p', seenAt: 1}});
+    await movePeerOnce('device:Pixel', 'key:abc');
+    expect((await loadPeer('key:abc')).systemPrompt?.seenPrint).toBe('p');
+    expect(await loadPeer('device:Pixel')).toEqual({});
+    // Not again: a second device named "Pixel" starts as new.
+    await movePeerOnce('device:Pixel', 'key:def');
+    expect(await loadPeer('key:def')).toEqual({});
+  });
 });

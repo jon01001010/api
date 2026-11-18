@@ -20,6 +20,7 @@ import {
 import {describeAssistantDeletes} from './assistantDeletes';
 import {describeLoopReport, type LoopReport} from './loopSync';
 import {mirrorOnPc, readAllChats, SYNC_ROOM, writeChats} from './chatSync';
+import {appUnlockedNow} from '../appLock/appLock';
 
 import {
   applyItems,
@@ -28,6 +29,7 @@ import {
   holdForAnswer,
   loadPeer,
   merge,
+  movePeerOnce,
   readItems,
   rememberSync,
 } from './promptSync';
@@ -127,11 +129,31 @@ export function resetKeptInStepNotice(): void {
   waitingCount = 0;
 }
 
+/**
+ * The answer while DesktopAgent is locked (app PIN): nothing is merged,
+ * written, asked or shown; the device tries again later (security review
+ * 2, 2026-11-18).
+ */
+export const LOCKED_ANSWER =
+  'DesktopAgent is locked; keeping in step waits until it is unlocked. Try again later.';
+
+/** A device's public key as the link gives it (plain characters only). */
+export function cleanDeviceKey(key: unknown): string | undefined {
+  return typeof key === 'string' && /^[A-Za-z0-9_+/=:.-]{8,200}$/.test(key)
+    ? key
+    : undefined;
+}
+
 /** One sync from a paired device: merge, write here, answer (exported for tests). */
 export async function answerSync(
   body: string,
   device: string,
+  /** The device's public key (the link's id for it), when the link gives it. */
+  deviceKey?: string,
 ): Promise<string> {
+  if (!appUnlockedNow()) {
+    return JSON.stringify({ok: false, error: LOCKED_ANSWER});
+  }
   let remote: unknown;
   let chats: any;
   try {
@@ -142,7 +164,14 @@ export async function answerSync(
     return JSON.stringify({ok: false, error: 'Not readable'});
   }
   const from = device || 'a paired device';
-  const peer = `device:${from}`;
+  // Known by its public key (names can repeat or change; security review
+  // 2, 2026-11-18); what was kept under its name moves over once. Without
+  // a key from the link: by name, as before.
+  const key = cleanDeviceKey(deviceKey);
+  const peer = key ? `key:${key}` : `device:${from}`;
+  if (key) {
+    await movePeerOnce(`device:${from}`, peer);
+  }
   const local = await readItems();
   const now = Date.now();
   const received = cleanItems(remote);
@@ -257,11 +286,21 @@ export function startHostSync(): void {
   hostAnswersAllowed().then(allowed =>
     invoke('link_answers_allow', {allowed}).catch(() => {}),
   );
-  listen<{id: number; device: string; body: string}>('link-sync', async e => {
+  listen<{
+    id: number;
+    device: string;
+    body: string;
+    key?: string;
+    deviceKey?: string;
+  }>('link-sync', async e => {
     const {id, device, body} = e.payload;
     let reply: string;
     try {
-      reply = await answerSync(body, device);
+      reply = await answerSync(
+        body,
+        device,
+        e.payload.key ?? e.payload.deviceKey,
+      );
     } catch (err) {
       reply = JSON.stringify({ok: false, error: String(err)});
     }

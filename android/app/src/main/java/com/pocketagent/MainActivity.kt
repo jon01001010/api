@@ -35,6 +35,8 @@ class MainActivity : ReactActivity() {
       fixExternalDisplayDensity()
 
       WindowCompat.enableEdgeToEdge(window)  // enable E2E pre-Android 15
+      // App PIN on: no recents preview or screenshots from the first frame.
+      AppEraseModule.applySavedSecure(this)
       noteAssist(intent)
       LoopAlarmsModule.noteOpened(intent)
     // Optional: fully transparent nav bar (can reduce contrast on 3-button nav)

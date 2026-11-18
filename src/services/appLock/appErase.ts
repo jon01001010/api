@@ -40,15 +40,34 @@ export async function eraseEverything(): Promise<boolean> {
     if (typeof t?.invoke !== 'function') {
       return false;
     }
+    await t.invoke('app_erase_all');
     try {
-      // The page's own storage first (the native side removes its folder
-      // too, after the restart when Windows still holds it).
+      // The page's own storage, only once the native erase worked (a
+      // failed erase must look like a wrong PIN, with nothing changed;
+      // security review 2, 2026-11-18). The native side removes its folder
+      // too, after the restart when Windows still holds it.
       (globalThis as any).localStorage?.clear();
       (globalThis as any).sessionStorage?.clear();
     } catch {}
-    await t.invoke('app_erase_all');
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Phone: while the app PIN is on, the window is secure (AppEraseModule.kt:
+ * FLAG_SECURE, and no recents screenshot on Android 13+): the recent-apps
+ * preview shows nothing, and screenshots are blocked. Elsewhere nothing.
+ */
+export function setSecureWindow(on: boolean): void {
+  if (Platform.OS !== 'android') {
+    return;
+  }
+  try {
+    const mod = NativeModules.AppErase;
+    if (typeof mod?.setSecureWindow === 'function') {
+      Promise.resolve(mod.setSecureWindow(on)).catch(() => {});
+    }
+  } catch {}
 }

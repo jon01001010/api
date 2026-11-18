@@ -19,7 +19,15 @@
  * - a link opens only after the user saw its whole address and said yes.
  */
 import React from 'react';
-import {Alert, Image, Linking, Pressable, StyleSheet, Text, View} from 'react-native';
+import {
+  Alert,
+  Image,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import {showHidden} from '../../utils/shownText';
 
@@ -49,7 +57,8 @@ export const IGNORED_DOM_TAGS = [
 /** Inline CSS is not read (no background pictures or fonts from elsewhere). */
 export const CSS_INLINE = false;
 
-const DATA_PICTURE = /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i;
+const DATA_PICTURE =
+  /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i;
 
 /** A picture shown without asking: the app's own file or one in the reply. */
 export function isLocalPicture(src: unknown): boolean {
@@ -79,7 +88,9 @@ export function siteOf(src: string): string {
 /** The whole address, its hidden characters shown, at most 2000 characters. */
 const shownAddress = (src: string) => {
   const s = src.trim();
-  return showHidden(s.length > 2000 ? `${s.slice(0, 2000)}… (${s.length} characters)` : s);
+  return showHidden(
+    s.length > 2000 ? `${s.slice(0, 2000)}… (${s.length} characters)` : s,
+  );
 };
 
 /** Asks before loading a picture from elsewhere; resolves true on "Load". */
@@ -100,6 +111,12 @@ export function askToLoadPicture(src: string): Promise<boolean> {
 /** Asks before opening a link from a reply, showing the whole address. */
 export function askToOpenLink(href: string): void {
   if (!href) {
+    return;
+  }
+  if ((globalThis as any).__TAURI_INTERNALS__) {
+    // The desktop's own question shows the whole address and asks
+    // (open_external, through Linking.openURL: stubs/web/react-native.js).
+    Linking.openURL(href).catch(() => {});
     return;
   }
   Alert.alert(
@@ -173,9 +190,7 @@ export function SafePicture({
       style={styles.placeholder}>
       <Text style={styles.placeholderText}>
         {label ? `${showHidden(label.slice(0, 200))} · ` : ''}
-        {web
-          ? `Picture from ${siteOf(src)}, tap to load`
-          : 'Picture not shown'}
+        {web ? `Picture from ${siteOf(src)}, tap to load` : 'Picture not shown'}
       </Text>
     </Pressable>
   );

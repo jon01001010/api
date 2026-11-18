@@ -1,11 +1,15 @@
-import {AppState} from 'react-native';
+import {AppState, Platform} from 'react-native';
 import * as Keychain from 'react-native-keychain';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {pbkdf2Sync} from 'crypto';
 
 import * as pinHash from '../../homeLink/pinHash';
 import {
+  appLockedNow,
+  appLockMarked,
   appLockOn,
   appLockSettings,
+  holdAlertsWhileLocked,
   appUnlockedNow,
   changeAppLock,
   loadAppLock,
@@ -18,11 +22,28 @@ import {
 } from '../appLock';
 import {FIRST_WAIT_MS, setMonotonicClockForTests} from '../../pinLock/pinCore';
 
+jest.mock('@react-native-async-storage/async-storage', () => {
+  const values = new Map<string, string>();
+  const store = {
+    getItem: jest.fn(async (key: string) => values.get(key) ?? null),
+    setItem: jest.fn(async (key: string, value: string) => {
+      values.set(key, value);
+    }),
+    removeItem: jest.fn(async (key: string) => {
+      values.delete(key);
+    }),
+    clear: jest.fn(async () => values.clear()),
+  };
+  return {__esModule: true, default: store, ...store};
+});
+
 const mockErase = jest.fn(async () => true);
 jest.mock('../appErase', () => ({
   eraseAvailable: () => true,
   eraseEverything: () => mockErase(),
+  setSecureWindow: (on: boolean) => mockSecure(on),
 }));
+const mockSecure = jest.fn();
 
 const SERVICE = 'pocketagent-app-lock';
 const store = new Map<string, {username: string; password: string}>();
@@ -32,7 +53,9 @@ jest
   .spyOn(AppState, 'addEventListener')
   .mockImplementation((() => ({remove: () => {}})) as any);
 
-beforeEach(() => {
+beforeEach(async () => {
+  await AsyncStorage.clear();
+  mockSecure.mockClear();
   store.clear();
   mockErase.mockClear();
   resetAppLockForTests();
@@ -268,5 +291,146 @@ describe('erase PIN (duress style)', () => {
     await restart();
     expect(await tryAppPin('9999')).toMatchObject({reason: 'wrong'});
     expect(mockErase).not.toHaveBeenCalled();
+  });
+});
+
+describe('security review 2 (2026-11-18)', () => {
+  const MARKER = '@pocketagent/app-lock/on/v1';
+
+  it('a marker outside the key store: a missing record is locked, never off', async () => {
+    await turnOnAppPin('2468');
+    expect(await AsyncStorage.getItem(MARKER)).toBe('on');
+    // The key store lost its entry (a restart on Linux, another program).
+    store.delete(SERVICE);
+    expect(await restart()).toBe('error');
+    expect(appUnlockedNow()).toBe(false);
+    expect(await tryAppPin('2468')).toMatchObject({ok: false, reason: 'error'});
+    expect(appUnlockedNow()).toBe(false);
+    expect(await appLockMarked()).toBe(true);
+    // Unreadable is locked too.
+    resetAppLockForTests();
+    K.getGenericPassword.mockRejectedValueOnce(new Error('keystore'));
+    expect(await loadAppLock()).toBe('error');
+  });
+
+  it('the marker goes only when the PIN is turned off with the PIN', async () => {
+    await turnOnAppPin('2468');
+    await changeAppLock('1111', {off: true});
+    expect(await AsyncStorage.getItem(MARKER)).toBe('on');
+    await changeAppLock('2468', {off: true});
+    expect(await AsyncStorage.getItem(MARKER)).toBeNull();
+    expect(await restart()).toBe('off');
+  });
+
+  it('a PIN from before the marker gets one at the next start', async () => {
+    await turnOnAppPin('2468');
+    await AsyncStorage.removeItem(MARKER);
+    expect(await restart()).toBe('locked');
+    expect(await AsyncStorage.getItem(MARKER)).toBe('on');
+  });
+
+  it('locks while away as soon as the minutes pass, before any return', async () => {
+    // Fake timers only after the PIN is set (hashing yields to timers).
+    await turnOnAppPin('2468', 1);
+    jest.useFakeTimers();
+    try {
+      noteAppAway(true);
+      jest.advanceTimersByTime(59_000);
+      expect(appLockedNow()).toBe(false);
+      jest.advanceTimersByTime(2_000);
+      expect(appLockedNow()).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('coming back early stops the timer', async () => {
+    // Fake timers only after the PIN is set (hashing yields to timers).
+    await turnOnAppPin('2468', 1);
+    jest.useFakeTimers();
+    try {
+      noteAppAway(true);
+      jest.advanceTimersByTime(30_000);
+      noteAppAway(false);
+      jest.advanceTimersByTime(5 * 60_000);
+      expect(appLockedNow()).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('a failed erase is exactly a wrong PIN: same answer, same count', async () => {
+    await turnOnAppPin('2468');
+    await changeAppLock('2468', {erasePin: '9999'});
+    await restart();
+    mockErase.mockResolvedValue(false);
+    const wrong = await tryAppPin('1111');
+    const erase = await tryAppPin('9999');
+    expect(mockErase).toHaveBeenCalledTimes(1);
+    expect(wrong).toEqual({
+      ok: false,
+      reason: 'wrong',
+      triesLeft: 4,
+      message: 'Wrong PIN. 4 tries left before a wait.',
+    });
+    expect(erase).toEqual({
+      ok: false,
+      reason: 'wrong',
+      triesLeft: 3,
+      message: 'Wrong PIN. 3 tries left before a wait.',
+    });
+    expect(record().fails).toBe(2);
+    await tryAppPin('1111');
+    await tryAppPin('1111');
+    // The fifth (a failed erase) starts the wait like any wrong PIN.
+    expect(await tryAppPin('9999')).toMatchObject({reason: 'wait'});
+    mockErase.mockResolvedValue(true);
+  });
+
+  it('the window is secure while the PIN is on (phone)', async () => {
+    await turnOnAppPin('2468');
+    expect(mockSecure).toHaveBeenLastCalledWith(true);
+    await restart();
+    expect(mockSecure).toHaveBeenLastCalledWith(true);
+    await changeAppLock('2468', {off: true});
+    expect(mockSecure).toHaveBeenLastCalledWith(false);
+  });
+
+  it('desktop: the native side is told on every change, and at start', async () => {
+    const invoke = jest.fn(async (_cmd: string, _args?: any) => undefined);
+    (globalThis as any).__TAURI_INTERNALS__ = {invoke};
+    jest.replaceProperty(Platform, 'OS', 'web');
+    try {
+      await turnOnAppPin('2468');
+      await restart();
+      const told = () =>
+        invoke.mock.calls.filter(c => c[0] === 'app_set_locked').map(c => c[1]);
+      expect(told().at(-1)).toEqual({locked: true});
+      await tryAppPin('2468');
+      expect(told().at(-1)).toEqual({locked: false});
+      invoke.mockRejectedValue(new Error('no such command'));
+      await expect(changeAppLock('2468', {off: true})).resolves.toEqual({
+        ok: true,
+      });
+    } finally {
+      delete (globalThis as any).__TAURI_INTERNALS__;
+      resetAppLockForTests();
+    }
+  });
+
+  it('dialogs wait while locked and come after the unlock', async () => {
+    const original = jest.fn();
+    const target = {alert: original as Function};
+    holdAlertsWhileLocked(target);
+    await turnOnAppPin('2468');
+    target.alert('Shown at once', 'unlocked');
+    expect(original).toHaveBeenCalledTimes(1);
+    await restart();
+    target.alert('Take the system prompt?', 'x');
+    await new Promise(r => setTimeout(r, 0));
+    expect(original).toHaveBeenCalledTimes(1);
+    await tryAppPin('2468');
+    await new Promise(r => setTimeout(r, 0));
+    expect(original).toHaveBeenLastCalledWith('Take the system prompt?', 'x');
   });
 });

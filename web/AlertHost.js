@@ -4,9 +4,16 @@
  * nothing happened. stubs/web/react-native.js sends every Alert.alert here,
  * and this shows it as a dialog with the title, message and all its buttons,
  * each doing what it does on the phone.
+ *
+ * While the app is locked (app PIN), dialogs wait in the queue and are
+ * shown after the unlock: nothing is drawn over the PIN screen (security
+ * review 2, 2026-11-18; the PIN screen's own layer is above this one too:
+ * src/components/AppLock/LockLayer.web.tsx).
  */
 import React, {useEffect, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+
+import {appLockedNow, subscribeAppLock} from '../src/services/appLock/appLock';
 
 const queue = [];
 let notify = null;
@@ -27,14 +34,19 @@ export function showDesktopAlert(title, message, buttons, options) {
 
 export function AlertHost() {
   const [current, setCurrent] = useState(queue[0] || null);
+  const [locked, setLocked] = useState(appLockedNow());
   useEffect(() => {
     notify = () => setCurrent(queue[0] || null);
     notify();
+    const stop = subscribeAppLock(isLocked => setLocked(isLocked));
+    setLocked(appLockedNow());
     return () => {
       notify = null;
+      stop();
     };
   }, []);
-  if (!current) {
+  // Locked: the queue is kept, nothing is shown until the unlock.
+  if (!current || locked) {
     return null;
   }
   const close = button => {

@@ -218,9 +218,7 @@ export class FileToolsEngine implements TalentEngine {
           return {
             type: 'text',
             // A file's text is data (security review 2, 2026-11-18).
-            summary: wrapUntrusted(
-              diffLines(current, checkText(args.content)),
-            ),
+            summary: wrapUntrusted(diffLines(current, checkText(args.content))),
           };
         }
         const [latest] = await listFileHistory(name);

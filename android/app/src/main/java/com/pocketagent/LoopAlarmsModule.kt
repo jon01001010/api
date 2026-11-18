@@ -55,6 +55,20 @@ class LoopAlarmsModule(private val context: ReactApplicationContext) :
 
         fun notifyId(id: String) = 8900 + (id.hashCode() and 0xffff)
 
+        /** Cancels every loop alarm and its notification (the erase PIN). */
+        fun cancelAll(context: Context) {
+            val alarms = context.getSystemService(AlarmManager::class.java)
+            val manager = context.getSystemService(NotificationManager::class.java)
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            for (id in prefs.getStringSet(KEY_IDS, emptySet()) ?: emptySet()) {
+                val pending = alarmIntent(context, id, "")
+                alarms?.cancel(pending)
+                pending.cancel()
+                manager?.cancel(notifyId(id))
+            }
+            prefs.edit().remove(KEY_IDS).commit()
+        }
+
         fun alarmIntent(context: Context, id: String, title: String): PendingIntent {
             val intent = Intent(context, LoopAlarmReceiver::class.java)
                 .setData(Uri.fromParts("pocketagent-loop", id, null))

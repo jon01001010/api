@@ -7,6 +7,7 @@ import {
   thinkingShown,
   thinkingWarning,
 } from '../agent/chatGuard';
+import {appUnlockedNow, subscribeAppLock} from '../appLock/appLock';
 
 export type FileProposal = {
   action:
@@ -140,7 +141,10 @@ function ask(proposal: FileProposal, signal?: AbortSignal): Promise<Answer> {
     active ||
     !uiMounted ||
     signal?.aborted ||
-    AppState.currentState !== 'active'
+    AppState.currentState !== 'active' ||
+    // Locked (app PIN): no question over the PIN screen; refused like one
+    // asked in the background (security review 2, 2026-11-18).
+    !appUnlockedNow()
   ) {
     return Promise.resolve({approved: false});
   }
@@ -173,4 +177,8 @@ function ask(proposal: FileProposal, signal?: AbortSignal): Promise<Answer> {
 }
 AppState.addEventListener('change', state => {
   if (state !== 'active') rejectFileApproval();
+});
+// The app locked while a question was open: it is refused.
+subscribeAppLock(locked => {
+  if (locked) rejectFileApproval();
 });

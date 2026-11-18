@@ -15,7 +15,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {NativeModules, Platform} from 'react-native';
 
 import {isFinished, type Loop} from './loops';
-import {appLockOn, privateNotice} from '../appLock/appLock';
+import {
+  appLockMarked,
+  appLockOn,
+  privateNotice,
+  subscribeAppPinOn,
+} from '../appLock/appLock';
 
 const KEY = '@pocketagent/loops/notify/v1';
 
@@ -79,14 +84,31 @@ export async function syncLoopAlarms(
   }
   try {
     const plan = alarmPlan(loops, await isLoopNotifyOn(), now);
-    // With the app PIN on, a notification doesn't name the loop.
+    // With the app PIN on, a notification doesn't name the loop. Decided
+    // by the "PIN is on" marker as well as the record (security review 2,
+    // 2026-11-18: never by a record not read yet).
+    const hidden = appLockOn() || (await appLockMarked());
     await mod.schedule(
-      appLockOn() ? plan.map(a => ({...a, title: 'a loop'})) : plan,
+      hidden ? plan.map(a => ({...a, title: 'a loop'})) : plan,
     );
   } catch {
     // No alarms: the app still asks while it is open.
   }
 }
+
+/**
+ * The app PIN turned on (or off): the alarms already set are set again, so
+ * none still carries a loop's name while the PIN is on.
+ */
+export function resetAlarmsOnPinChange(): Promise<void> {
+  const {loadLoops} = require('./loops');
+  return Promise.resolve(loadLoops())
+    .then((loops: Loop[]) => syncLoopAlarms(loops))
+    .catch(() => {});
+}
+subscribeAppPinOn(() => {
+  resetAlarmsOnPinChange();
+});
 
 /** The loop whose notification opened the app, once (phone only). */
 export async function takeOpenedLoop(): Promise<string | undefined> {

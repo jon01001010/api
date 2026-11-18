@@ -133,6 +133,35 @@ describe('loop notifications: the phone', () => {
     expect(mod.schedule.mock.calls.at(-1)?.[0]).toHaveLength(1);
   });
 
+  it('titles are private whenever the PIN is on, by its marker too (review 2)', async () => {
+    const {loop: l} = await start();
+    expect(mod.schedule).toHaveBeenLastCalledWith([
+      expect.objectContaining({title: l.title}),
+    ]);
+    // The key store's record not read yet (or gone): the marker decides.
+    await AsyncStorage.setItem('@pocketagent/app-lock/on/v1', 'on');
+    await syncLoopAlarms(await loadLoops());
+    expect(mod.schedule).toHaveBeenLastCalledWith([
+      expect.objectContaining({id: l.id, title: 'a loop'}),
+    ]);
+  });
+
+  it('turning the PIN on sets the alarms already there again, privately', async () => {
+    const Keychain = require('react-native-keychain');
+    Keychain.getGenericPassword.mockResolvedValue(false);
+    Keychain.setGenericPassword.mockResolvedValue(true);
+    const lock = require('../../appLock/appLock');
+    const {loop: l} = await start();
+    mod.schedule.mockClear();
+    expect((await lock.turnOnAppPin('2468')).ok).toBe(true);
+    await new Promise(r => setTimeout(r, 0));
+    await new Promise(r => setTimeout(r, 0));
+    expect(mod.schedule).toHaveBeenLastCalledWith([
+      expect.objectContaining({id: l.id, title: 'a loop'}),
+    ]);
+    lock.resetAppLockForTests();
+  });
+
   it('nothing to do where there is no native module', async () => {
     jest.replaceProperty(Platform, 'OS', 'web');
     await syncLoopAlarms([loop()]);

@@ -18,6 +18,13 @@
  * a new system prompt or new notes in
  * "your memory" from another device are taken only after the user says yes
  * (holdForAnswer); a system prompt is at most MAX_PROMPT.
+ *
+ * Security review 2 (2026-11-18): every item that reaches the model's
+ * prompt or tools (the model's notes, assistants and custom tools too) is
+ * asked first; "Keep mine" holds that item from that device for a day,
+ * whatever it sends meanwhile, and questions are rate-limited per device
+ * and item, so a device changing one character each sync can't wear the
+ * user down.
  */
 import {Alert} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -201,11 +208,23 @@ export interface Merged {
  * What this device remembers of one other device, per item: the text it
  * last sent (`seenPrint`, its fingerprint) and the time that text counts
  * from (`seenAt`: its time when first seen here, clamped, and no later than
- * this device's clock then); and a text the user chose not to take
- * (`declined`, its fingerprint: not asked again).
+ * this device's clock then); a text the user chose not to take
+ * (`declined`, its fingerprint: not asked again); when the user last said
+ * "Keep mine" (`keptAt`: nothing from that device for that item is asked
+ * or taken for KEEP_MINE_MS) and when it was last asked (`askedAt`: at
+ * most one question per ASK_GAP_MS).
  */
 export type PeerState = Partial<
-  Record<SyncKey, {seenPrint?: string; seenAt?: number; declined?: string}>
+  Record<
+    SyncKey,
+    {
+      seenPrint?: string;
+      seenAt?: number;
+      declined?: string;
+      keptAt?: number;
+      askedAt?: number;
+    }
+  >
 >;
 
 const peerKey = (peer: string) =>
@@ -225,6 +244,30 @@ async function savePeer(peer: string, state: PeerState): Promise<void> {
     await AsyncStorage.setItem(peerKey(peer), JSON.stringify(state));
   } catch {
     // At worst the next sync compares by time alone.
+  }
+}
+
+/**
+ * Once: what was kept under a device's old id (its name, before devices
+ * were known by their key) moves to its new one, if that has nothing yet
+ * (security review 2, 2026-11-18). The old record is removed, so a second
+ * device with the same name can't take it.
+ */
+export async function movePeerOnce(from: string, to: string): Promise<void> {
+  if (from === to) {
+    return;
+  }
+  try {
+    const old = await AsyncStorage.getItem(peerKey(from));
+    if (old === null) {
+      return;
+    }
+    if ((await AsyncStorage.getItem(peerKey(to))) === null) {
+      await AsyncStorage.setItem(peerKey(to), old);
+    }
+    await AsyncStorage.removeItem(peerKey(from));
+  } catch {
+    // At worst the device starts as new here.
   }
 }
 
@@ -478,8 +521,24 @@ export async function applyItems(
   return changed;
 }
 
-/** Items taken only after the user says yes (from any other device). */
-export const ASK_FIRST: SyncKey[] = ['systemPrompt', 'userMemory'];
+/**
+ * Items taken only after the user says yes (from any other device): all
+ * that reach the model's prompt or its tools (security review 2,
+ * 2026-11-18: the model's notes, assistants and custom tools too). Loops
+ * arrive paused and are started by the user.
+ */
+export const ASK_FIRST: SyncKey[] = [
+  'systemPrompt',
+  'userMemory',
+  'modelMemory',
+  'assistants',
+  'customTools',
+];
+
+/** "Keep mine": that item from that device isn't asked or taken for this long. */
+export const KEEP_MINE_MS = 24 * 60 * 60 * 1000;
+/** At most one question per device and item in this time. */
+export const ASK_GAP_MS = 30 * 60 * 1000;
 
 /** Questions open now (one per device and item). */
 const asking = new Set<string>();
@@ -487,8 +546,11 @@ const asking = new Set<string>();
 /**
  * Splits the items to take: those taken now, and (ASK_FIRST) those the
  * user is asked about first, each in its own question, taken (`take`) only
- * on yes. A text the user said no to is not asked about again (until the
- * other device changes it). Returns the items to take now.
+ * on yes. Not asked (and not taken): a text the user said no to, anything
+ * of that item from that device for KEEP_MINE_MS after "Keep mine"
+ * (whatever it sends meanwhile), and more than one question per device and
+ * item within ASK_GAP_MS (a time before the last question, a clock set
+ * back, counts as within it). Returns the items to take now.
  */
 export async function holdForAnswer(
   items: SyncItem[],
@@ -496,6 +558,7 @@ export async function holdForAnswer(
   take: (item: SyncItem) => Promise<void>,
   /** Where the answer is remembered (default: `from`). */
   peerId: string = from,
+  clock: () => number = Date.now,
 ): Promise<SyncItem[]> {
   const now: SyncItem[] = [];
   const peer = await loadPeer(peerId);
@@ -506,10 +569,19 @@ export async function holdForAnswer(
     }
     const print = fingerprint(item.text);
     const id = `${peerId}:${item.key}`;
-    if (peer[item.key]?.declined === print || asking.has(id)) {
+    const seen = peer[item.key];
+    const t = clock();
+    if (
+      seen?.declined === print ||
+      (seen?.keptAt !== undefined && t < seen.keptAt + KEEP_MINE_MS) ||
+      (seen?.askedAt !== undefined && t < seen.askedAt + ASK_GAP_MS) ||
+      asking.has(id)
+    ) {
       continue;
     }
     asking.add(id);
+    peer[item.key] = {...seen, askedAt: t};
+    await savePeer(peerId, peer);
     const {textView} = require('../../utils/shownText');
     const label = SYNC_LABEL[item.key];
     Alert.alert(
@@ -522,7 +594,11 @@ export async function holdForAnswer(
           onPress: async () => {
             asking.delete(id);
             const state = await loadPeer(peerId);
-            state[item.key] = {...state[item.key], declined: print};
+            state[item.key] = {
+              ...state[item.key],
+              declined: print,
+              keptAt: clock(),
+            };
             await savePeer(peerId, state);
           },
         },
@@ -530,6 +606,13 @@ export async function holdForAnswer(
           text: 'Take it',
           onPress: async () => {
             asking.delete(id);
+            // Said yes: the next change may be asked at once.
+            const state = await loadPeer(peerId);
+            const seenHere = state[item.key];
+            if (seenHere?.askedAt !== undefined) {
+              delete seenHere.askedAt;
+              await savePeer(peerId, state);
+            }
             await take(item);
           },
         },

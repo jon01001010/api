@@ -1,6 +1,5 @@
 import * as React from 'react';
 import {
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -31,6 +30,9 @@ export function AppLockScreen({error}: {error?: boolean}): React.JSX.Element {
     error ? "Couldn't read the PIN setting." : '',
   );
   const [busy, setBusy] = React.useState(false);
+  // Shown here, not in a dialog: dialogs wait while the app is locked
+  // (holdAlertsWhileLocked, web/AlertHost.js).
+  const [forgot, setForgot] = React.useState(false);
   const finger = appFingerprintOn();
 
   const unlock = async () => {
@@ -118,11 +120,16 @@ export function AppLockScreen({error}: {error?: boolean}): React.JSX.Element {
           {message}
         </Text>
       ) : null}
-      <Pressable
-        onPress={() => Alert.alert('Forgot the PIN?', FORGOT_APP_PIN)}
-        testID="app-lock-forgot">
+      <Pressable onPress={() => setForgot(f => !f)} testID="app-lock-forgot">
         <Text style={[styles.forgot, {color: c.text}]}>Forgot the PIN?</Text>
       </Pressable>
+      {forgot ? (
+        <Text
+          style={[styles.message, {color: c.text}]}
+          testID="app-lock-forgot-text">
+          {FORGOT_APP_PIN}
+        </Text>
+      ) : null}
     </View>
   );
 }

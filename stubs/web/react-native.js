@@ -24,6 +24,34 @@ if (
 }
 const {makeStub} = require('../windows/_stub');
 
+// Links (Linking.openURL): react-native-web opens them with window.open,
+// which the desktop window blocks, so on the desktop nothing happened.
+// Inside DesktopAgent a web page or an e-mail draft goes to the native
+// `open_external` instead, which shows the whole address, asks the user
+// and has its own allow-list (src-tauri/src/open.rs); anything else, and a
+// plain browser, as before (security review 2, 2026-11-18).
+if (RNW.Linking && typeof RNW.Linking.openURL === 'function') {
+  const webOpenURL = RNW.Linking.openURL.bind(RNW.Linking);
+  RNW.Linking.openURL = (url, target) => {
+    const tauri = typeof window !== 'undefined' && window.__TAURI_INTERNALS__;
+    const address = typeof url === 'string' ? url.trim() : '';
+    if (
+      tauri &&
+      typeof tauri.invoke === 'function' &&
+      /^(https?:\/\/|mailto:)/i.test(address)
+    ) {
+      // A "no" in the native question is the user's answer, not an error.
+      return Promise.resolve(
+        tauri.invoke('open_external', {target: address, thinking: null}),
+      ).then(
+        () => undefined,
+        () => undefined,
+      );
+    }
+    return webOpenURL(url, target);
+  };
+}
+
 // Modules whose job means nothing in a desktop window: they quietly succeed.
 const QUIET = {
   // Keeping a phone screen on while a reply is generated.

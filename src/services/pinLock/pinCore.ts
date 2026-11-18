@@ -177,6 +177,12 @@ export type PinAnswer =
  * hashing), else counted as wrong before `check` runs, and reset when
  * `check` says the PIN was right (any non-null answer). `save` writes the
  * record to the key store.
+ *
+ * `keepCount(match)`: a match whose outcome isn't known yet (the erase
+ * PIN: did the erase work?). The try stays counted as wrong (nothing is
+ * reset or saved); if the outcome fails, the caller answers with
+ * `wrongTry` on the returned record, exactly as for a wrong PIN (security
+ * review 2, 2026-11-18).
  */
 export async function countedTry<R extends WaitState, M>(
   key: string,
@@ -184,6 +190,7 @@ export async function countedTry<R extends WaitState, M>(
   now: () => number,
   save: (r: R) => Promise<void>,
   check: () => Promise<M | null>,
+  keepCount?: (match: M) => boolean,
 ): Promise<
   | {ok: true; match: M; record: R}
   | (Exclude<PinAnswer, {ok: true}> & {record?: undefined})
@@ -210,6 +217,9 @@ export async function countedTry<R extends WaitState, M>(
   r.fails += 1;
   await save(r);
   const match = await check();
+  if (match !== null && keepCount?.(match)) {
+    return {ok: true, match, record: r};
+  }
   if (match !== null) {
     r.fails = 0;
     r.waitUntil = 0;
@@ -219,6 +229,19 @@ export async function countedTry<R extends WaitState, M>(
     await save(r);
     return {ok: true, match, record: r};
   }
+  return wrongTry(key, r, now, save);
+}
+
+/**
+ * The answer to a wrong try already counted in `r` (its `fails` raised and
+ * saved): a wait after every 5th, else the tries left.
+ */
+export async function wrongTry<R extends WaitState>(
+  key: string,
+  r: R,
+  now: () => number,
+  save: (r: R) => Promise<void>,
+): Promise<Exclude<PinAnswer, {ok: true}> & {record?: undefined}> {
   const wait = waitAfter(r.fails);
   if (wait) {
     r.waitMs = wait;
