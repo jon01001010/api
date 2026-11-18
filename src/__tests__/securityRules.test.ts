@@ -1449,11 +1449,15 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     ]) {
       expect([banned, sign.includes(banned)]).toEqual([banned, false]);
     }
-    const uses = [...sign.matchAll(/uses: ([^\s]+)/g)].map(m => m[1]);
+    // (Each pinned by its commit's SHA: review 2, 2026-11-18.)
+    const uses = [...sign.matchAll(/uses: ([^\s]+)@[0-9a-f]{40} /g)].map(
+      m => m[1],
+    );
     expect(uses.sort()).toEqual([
-      'actions/download-artifact@v4',
-      'actions/upload-artifact@v4',
+      'actions/download-artifact',
+      'actions/upload-artifact',
     ]);
+    expect(sign.match(/uses: /g)).toHaveLength(2);
     // The signed APK is verified, and it is what the release publishes.
     expect(signing).toMatch(/apksigner" sign [\s\S]*?--out signed\.apk/);
     expect(signing).toMatch(/rm -f "\$keystore"\n\s+mv signed\.apk/);
@@ -2784,5 +2788,97 @@ describe('Security review 2 (2026-11-18): the PC side', () => {
     expect(erase).toMatch(
       /if erase\(\)\.is_empty\(\) \{\s*return std::fs::remove_file\(mark\)/,
     );
+  });
+});
+
+// ---- Security review 2 (2026-11-18), the build pipeline -------------------
+describe('Security review 2 (2026-11-18): the build pipeline', () => {
+  const workflows = () => {
+    const dirs = ['.github/workflows', '.github/actions'];
+    const out: [string, string][] = [];
+    for (const dir of dirs) {
+      const walk = (rel: string) => {
+        for (const e of fs.readdirSync(path.join(ROOT, rel), {
+          withFileTypes: true,
+        })) {
+          const child = `${rel}/${e.name}`;
+          if (e.isDirectory()) {
+            walk(child);
+          } else if (/\.ya?ml$/.test(e.name)) {
+            out.push([child, read(child)]);
+          }
+        }
+      };
+      walk(dir);
+    }
+    return out;
+  };
+
+  it('every action is pinned by its full commit SHA, its version in a comment', () => {
+    for (const [file, text] of workflows()) {
+      for (const m of text.matchAll(/uses: ([^\n]+)/g)) {
+        const use = m[1].trim();
+        if (use.startsWith('./')) {
+          continue;
+        }
+        expect([file, use]).toEqual([
+          file,
+          expect.stringMatching(/^[\w.-]+\/[\w./-]+@[0-9a-f]{40} # v\d/),
+        ]);
+      }
+    }
+    expect(read('.github/dependabot.yml')).toContain(
+      'package-ecosystem: github-actions',
+    );
+  });
+
+  it('release jobs alone may attest provenance; it never blocks a release', () => {
+    for (const [file, text] of workflows()) {
+      const jobs = file.includes('/workflows/') ? jobsOf(text) : {};
+      for (const [name, job] of Object.entries(jobs)) {
+        const attests = job.includes('actions/attest-build-provenance@');
+        expect([file, name, job.includes('id-token: write')]).toEqual([
+          file,
+          name,
+          attests,
+        ]);
+        if (attests) {
+          expect(name).toBe('release');
+          expect(job).toContain('attestations: write');
+          expect(
+            stepNamed(
+              job,
+              job.match(/- name: (Record build provenance[^\n]*)/)![1],
+            ),
+          ).toContain('continue-on-error: true');
+        }
+      }
+    }
+  });
+
+  it('pinned downloads: llama.rn file by file, the AppImage tools, no unpinned clone', () => {
+    const linux = read('.github/workflows/pocketagent-linux.yml');
+    const apk = read('.github/workflows/pocketagent-integration-apk.yml');
+    for (const text of [linux, apk]) {
+      expect(text).toContain('run: node scripts/native-libs/check-native.js');
+    }
+    const tools = stepNamed(
+      linux,
+      'Add the pinned AppImage tools (checksums checked)',
+    );
+    expect(tools).toContain('echo "$3  $file" | sha256sum -c -');
+    expect(tools).not.toContain('/continuous/');
+    expect(tools).toContain('if [ "$cli" != "2.12.3" ]; then');
+    expect(linux).not.toContain('path: ~/.cache/tauri');
+    expect(linux).toContain('SD_CLI_SHA256');
+    expect(read('package.json')).toContain('"@tauri-apps/cli": "2.12.3"');
+    // No unpinned clone at install time.
+    const postinstall = read('scripts/postinstall.sh');
+    expect(
+      postinstall
+        .split('\n')
+        .filter(l => !l.trim().startsWith('#'))
+        .join('\n'),
+    ).not.toMatch(/git clone/);
   });
 });

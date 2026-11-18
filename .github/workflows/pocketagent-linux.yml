@@ -26,6 +26,11 @@ env:
   # pictures are far too slow there. Change both together, on purpose.
   SD_TAG: master-1039-290148d
   SD_COMMIT: 290148d2e31ca6ef9757d567905776b5f3646db5
+  # The SHA-256 of the sd-cli built from SD_COMMIT (x64), copied by the owner
+  # from a build's summary ("sd-cli SHA-256"). While it is set, a cached copy
+  # must match it, not only the hash in its own cache key (which whoever
+  # saved the cache wrote); empty: the key's hash is checked, as before.
+  SD_CLI_SHA256: ''
 jobs:
   linux:
     # Two builds: regular PCs (x64) and ARM (arm64: e.g. a PineTab 2).
@@ -38,6 +43,11 @@ jobs:
             runner: ubuntu-22.04
             llama_tar: llama-b11662-bin-ubuntu-vulkan-x64.tar.gz
             llama_sha256: f1f99964b67e3f8ca8efc9564db7c12d038862d1ca22b9311fc971544ccac446
+            # Tauri's AppImage tools, pinned (see "Add the pinned AppImage tools").
+            tools_arch: x86_64
+            apprun_sha256: f30140a43a0a59e46db21bdefdf749b9e9f2c6946e92afabbacf98b8ae73fb4f
+            linuxdeploy_sha256: 36a2d7e274d12e1050d0e9ecfe11d339ed54720b2bec464c286d53f8b07f5c62
+            appimage_plugin_sha256: 992d502a248e14ab185448ddf6f6e7d25558cb84d4623c354c3af350c25fccb3
           # ARM: llama.cpp's processor-only build (the graphics chips on ARM
           # tablets have unfinished Vulkan on Linux). It is built on 24.04,
           # so this needs glibc 2.39 or newer (Arch-based systems are fine).
@@ -45,17 +55,25 @@ jobs:
             runner: ubuntu-24.04-arm
             llama_tar: llama-b11662-bin-ubuntu-arm64.tar.gz
             llama_sha256: fe476ad75e27ffe610a96cab3453f39c2da41f0c04d9ef8e7befcd69de3cec64
+            tools_arch: aarch64
+            apprun_sha256: 072f17c0895a85c490282fe5395c5007e5fc75da727e553b3b8fb680feb11578
+            linuxdeploy_sha256: 556ab80baa98e600aa80f0dcedfb70bca0e1ce7e9f147fb345be3fcc3e91b2b1
+            appimage_plugin_sha256: 83c292149274965a865dcd44c135cfca8ba28c6b7de3eb628d4b8b5f248af17c
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
       LLAMA_TAR: ${{ matrix.llama_tar }}
       LLAMA_SHA256: ${{ matrix.llama_sha256 }}
+      TOOLS_ARCH: ${{ matrix.tools_arch }}
+      APPRUN_SHA256: ${{ matrix.apprun_sha256 }}
+      LINUXDEPLOY_SHA256: ${{ matrix.linuxdeploy_sha256 }}
+      APPIMAGE_PLUGIN_SHA256: ${{ matrix.appimage_plugin_sha256 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           fetch-depth: 0  # the version counts commits (scripts/build-info)
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22.21.0'
       - name: Install system libraries for the app window
@@ -86,7 +104,7 @@ jobs:
       # returned 504 for hours on 2026-11-08.
       - name: Restore llama.rn's native libraries (cached copy)
         id: rnllama-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             node_modules/llama.rn/android/src/main/jniLibs
@@ -101,9 +119,14 @@ jobs:
             echo "Attempt $attempt failed; trying again in 120 s"
             sleep 120
           done
+      # The download checks the archive; a cached copy was trusted by its
+      # marker file alone. Every file is checked against the list kept in
+      # the repository (scripts/native-libs).
+      - name: Check llama.rn's native libraries file by file
+        run: node scripts/native-libs/check-native.js
       - name: Keep a copy of llama.rn's native libraries
         if: steps.rnllama-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             node_modules/llama.rn/android/src/main/jniLibs
@@ -122,7 +145,7 @@ jobs:
       # returned 504 for hours on 2026-11-08.
       - name: Restore the pinned llama.cpp archive (cached copy)
         id: llama-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.LLAMA_TAR }}
           key: llama-cpp-${{ env.LLAMA_SHA256 }}
@@ -138,7 +161,7 @@ jobs:
           test -x src-tauri/llama/llama-server
       - name: Keep a copy of the llama.cpp archive
         if: steps.llama-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.LLAMA_TAR }}
           key: llama-cpp-${{ env.LLAMA_SHA256 }}
@@ -149,7 +172,7 @@ jobs:
       - name: Restore the pinned picture maker build (cached copy)
         id: sd-cache
         if: matrix.arch == 'x64'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: sd-built
           key: sd-cli-${{ env.SD_COMMIT }}-cpu-avx2-${{ matrix.runner }}-sha256-none
@@ -164,6 +187,11 @@ jobs:
           set -euo pipefail
           if [ -n "$CACHED_KEY" ]; then
             expected="${CACHED_KEY##*-sha256-}"
+            # The SHA-256 pinned here wins over the one in the cache's key.
+            if [ -n "$SD_CLI_SHA256" ] && [ "$expected" != "$SD_CLI_SHA256" ]; then
+              echo "::error::The cached sd-cli's recorded SHA-256 is not the one pinned in this workflow (SD_CLI_SHA256)."
+              exit 1
+            fi
             if ! [[ "$expected" =~ ^[0-9a-f]{64}$ ]]; then
               echo "::error::The cached sd-cli has no recorded SHA-256 ($CACHED_KEY)."
               exit 1
@@ -191,6 +219,9 @@ jobs:
             cp sd-src/build/bin/sd-cli sd-built/
           fi
           sha=$(sha256sum sd-built/sd-cli | cut -d' ' -f1)
+          if [ -n "$SD_CLI_SHA256" ] && [ "$sha" != "$SD_CLI_SHA256" ]; then
+            echo "::warning::This sd-cli's SHA-256 is not SD_CLI_SHA256 (a fresh build of the same commit can differ): check it, then pin the new one."
+          fi
           echo "sha256=$sha" >> "$GITHUB_OUTPUT"
           echo "sd-cli SHA-256: \`$sha\`" >> "$GITHUB_STEP_SUMMARY"
           cp sd-built/sd-cli src-tauri/sd/sd-cli
@@ -201,19 +232,71 @@ jobs:
           (src-tauri/sd/sd-cli --help || true) | head -5
       - name: Keep a copy of the picture maker build
         if: matrix.arch == 'x64' && steps.sd-cache.outputs.cache-matched-key == ''
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: sd-built
           key: sd-cli-${{ env.SD_COMMIT }}-cpu-avx2-${{ matrix.runner }}-sha256-${{ steps.sd-build.outputs.sha256 }}
       - name: Rust tests (native side)
         working-directory: src-tauri
         run: cargo test --locked
-      - name: Restore Tauri's packaging tools (cached copy)
-        id: tauri-tools
-        uses: actions/cache/restore@v4
+      # Tauri's AppImage tools. The bundler (tauri-bundler 2.10.3, in the
+      # Tauri CLI 2.12.3 that yarn.lock pins: src/bundle/linux/appimage/
+      # linuxdeploy.rs, prepare_tools) downloads AppRun, linuxdeploy and
+      # linuxdeploy-plugin-appimage into ~/.cache/tauri without any
+      # checksum, the plugin from a moving `continuous` release, and the
+      # cache of that folder was keyed on yarn.lock only. Here each comes
+      # from a fixed release, is checked against its SHA-256 (also when it
+      # comes from the cache, keyed on those SHA-256s), and is put where the
+      # bundler looks, under the names it looks for, so it downloads none.
+      # The bundler changes its linuxdeploy copy in place (3 bytes zeroed),
+      # so only the untouched copies in appimage-tools are cached.
+      - name: Restore the pinned AppImage tools (cached copy)
+        id: appimage-tools
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ~/.cache/tauri
-          key: tauri-tools-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('yarn.lock') }}
+          path: appimage-tools
+          key: appimage-tools-${{ matrix.tools_arch }}-${{ matrix.apprun_sha256 }}-${{ matrix.linuxdeploy_sha256 }}-${{ matrix.appimage_plugin_sha256 }}
+      - name: Add the pinned AppImage tools (checksums checked)
+        run: |
+          set -euo pipefail
+          # Written for this bundler version only; a new Tauri CLI may name
+          # or fetch them differently: check linuxdeploy.rs, then update.
+          cli=$(node -p "require('@tauri-apps/cli/package.json').version")
+          if [ "$cli" != "2.12.3" ]; then
+            echo "::error::Tauri CLI $cli: check its tauri-bundler's AppImage tools (prepare_tools) and update this step."
+            exit 1
+          fi
+          mkdir -p appimage-tools
+          get() { # file, address, SHA-256
+            local file="appimage-tools/$1"
+            if [ ! -f "$file" ] || [ -L "$file" ]; then
+              rm -f "$file"
+              curl -sSfL --retry 8 --retry-delay 60 --retry-all-errors -o "$file" "$2"
+            fi
+            echo "$3  $file" | sha256sum -c -
+          }
+          releases=https://github.com/tauri-apps/binary-releases/releases/download
+          get "AppRun-$TOOLS_ARCH" "$releases/apprun-old/AppRun-$TOOLS_ARCH" "$APPRUN_SHA256"
+          get "linuxdeploy-$TOOLS_ARCH.AppImage" \
+            "$releases/linuxdeploy-07333c6/linuxdeploy-$TOOLS_ARCH.AppImage" "$LINUXDEPLOY_SHA256"
+          # A fixed release of the plugin, not `continuous`.
+          get "linuxdeploy-plugin-appimage-$TOOLS_ARCH.AppImage" \
+            "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-appimage-$TOOLS_ARCH.AppImage" \
+            "$APPIMAGE_PLUGIN_SHA256"
+          # Where the bundler looks (dirs::cache_dir()/tauri), fresh.
+          tools="${XDG_CACHE_HOME:-$HOME/.cache}/tauri"
+          rm -rf "$tools"
+          mkdir -p "$tools"
+          install -m 755 "appimage-tools/AppRun-$TOOLS_ARCH" "$tools/AppRun-$TOOLS_ARCH"
+          install -m 755 "appimage-tools/linuxdeploy-$TOOLS_ARCH.AppImage" "$tools/linuxdeploy-07333c6-$TOOLS_ARCH.AppImage"
+          install -m 755 "appimage-tools/linuxdeploy-plugin-appimage-$TOOLS_ARCH.AppImage" "$tools/linuxdeploy-plugin-appimage.AppImage"
+          ls -la "$tools"
+      - name: Keep a copy of the pinned AppImage tools
+        if: steps.appimage-tools.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: appimage-tools
+          key: appimage-tools-${{ matrix.tools_arch }}-${{ matrix.apprun_sha256 }}-${{ matrix.linuxdeploy_sha256 }}-${{ matrix.appimage_plugin_sha256 }}
       - name: Build the Linux packages
         timeout-minutes: 40
         shell: bash
@@ -227,14 +310,8 @@ jobs:
             sleep 60
           done
           exit 1
-      - name: Keep a copy of Tauri's packaging tools
-        if: success() && steps.tauri-tools.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.cache/tauri
-          key: tauri-tools-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('yarn.lock') }}
       - name: Upload the packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: desktopagent-linux-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           path: |
@@ -244,7 +321,7 @@ jobs:
           retention-days: 1
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: desktopagent-linux-logs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           path: linux-build.log
@@ -260,9 +337,13 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      # Build provenance (who built what, from which commit), checked with
+      # `gh attestation verify`: this job only.
+      id-token: write
+      attestations: write
     steps:
       - name: Download the packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: desktopagent-linux-${{ github.run_id }}-${{ github.run_attempt }}-*
           merge-multiple: true
@@ -278,6 +359,15 @@ jobs:
           if [ ${#packages[@]} -eq 0 ]; then echo "Nothing built"; exit 1; fi
           sha256sum -- "${packages[@]}" > SHA256SUMS
           cat SHA256SUMS
+      # GitHub's own action; it never fails the release (attestations need a
+      # public repository or a paid plan).
+      - name: Record build provenance for the packages
+        continue-on-error: true
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: |
+            pkg/*.AppImage
+            pkg/*.deb
       - name: Publish pre-release
         env:
           # Your own token (repo secret, this repo only: Contents + Workflows),
