@@ -142,6 +142,34 @@ Two read-only reviews; each finding checked in the code first. Branch: the secur
 - Phone: the approval window shows ⟦U+…⟧ markers and "The app counted …".
 - Both: an HTML page with `<link rel=dns-prefetch>` makes no DNS lookup.
 
+## Security review 2 (2026-11-18)
+
+App side (JS, the phone's Kotlin); the Rust / PC build side is a separate branch. Each item checked in the code first; tests in the item's own test file and pinned in `securityRules.test.ts` ("Security review 2 (2026-11-18), app code").
+
+1. **Pictures in replies loaded from any address: fixed.** `safeHtml.tsx` (an `img` renderer that never fetches, dropped fetching tags, no inline CSS, links ask) in replies and the thinking; a site's picture loads only after "Load" with the whole address shown. It doesn't go through the read-then-leak guard (the renderer doesn't know the chat): it always asks instead. Link previews checked: off (no screen passes `onPreviewDataFetched`).
+2. **PC pop-ups over the lock screen: fixed.** `AlertHost` holds its queue while locked; the PC's lock layer is a page-wide box at the highest z-index with the rest of the page inert (`LockLayer.web.tsx`; the phone keeps its Modal); `answerSync` answers "locked, try later" before anything else. Phone: every `Alert` waits while locked (`holdAlertsWhileLocked`), a task's question is refused while locked, and the lock screen's "Forgot the PIN?" is shown on the screen (not a dialog).
+3. **Read-then-leak missed file tools: fixed.** `file_read_range`, `file_search`, `file_diff`, `file_list` and `pc_workspace_list` are private reads; their output and `outside_files`' list are wrapped. Checked, not added: `file_info` / `file_history` (names the model gave, sizes, times), `memory_get` (memory is in the prompt anyway: owner decision 13 of the first review), `pc_info`.
+4. **Sync could change prompt-carrying data / wear the user down: fixed, partly.** `modelMemory`, `assistants` and `customTools` are asked first too (phone and PC); "Keep mine" holds that device's item for 24 h (and that text for good); at most one question per device and item per 30 min. The PC keys a device's records by its public key, **but only once the link passes it**: the `link-sync` event has only the name today, so the Rust side must add `"key": <the device's id>` to it (`hostSync.web.ts` reads `key` or `deviceKey`; until then, by name as before; an old name-kept record moves over once).
+5. **Lock only on return; recents preview: fixed.** A timer locks while away when the minutes pass. Android: `AppEraseModule.setSecureWindow` (`FLAG_SECURE` + `setRecentsScreenshotEnabled(false)` on 13+), toggled when the PIN is turned on / off and at start, remembered for the next start's first frame (`MainActivity`); the settings text says screenshots are blocked. No new permission.
+6. **Lock marker: fixed.** `@pocketagent/app-lock/on/v1` in app storage; marker on + record missing or unreadable = 'error' (locked), never 'off'; a PIN from before gets its marker at the next start.
+7. **Native side told about the lock: fixed (JS side).** `app_set_locked {locked}` on every change and at start, errors ignored; the command itself is on the Rust branch.
+8. **Erase details: fixed.** By-hand erase also covers device-protected storage and cancels loop alarms, notifications and jobs first; a failed erase keeps the try counted and answers exactly like a wrong PIN (`countedTry` `keepCount` + `wrongTry`); the PC clears the page's storage only after `app_erase_all` worked. Exports to Downloads: said in the erase PIN's settings text and SECURITY.md (behaviour unchanged).
+9. **Loop alarm titles: fixed.** Private whenever the marker or the record says the PIN is on; alarms set again when the PIN is turned on (`subscribeAppPinOn`).
+10. **Links on the desktop did nothing: fixed.** `Linking.openURL` for http(s) / mailto goes to `open_external` (asks, own allow-list); a "no" isn't an error; anything else is never passed on.
+
+### Check on the phone / Windows / Linux
+
+- Phone: a reply with `![x](https://example.org/a.png)` shows "Picture from example.org, tap to load"; a tap shows the whole address; "Load" shows it. A `data:` picture shows at once. A link in a reply asks first.
+- Phone: PIN on, open recent apps: PocketAgent's preview is blank; a screenshot in the app is refused by Android; PIN off: both work again. After a restart with the PIN on, the preview is blank from the start.
+- Phone: PIN on with 1 minute, leave the app for 2 minutes and come back: the PIN screen, with nothing of the chats shown first.
+- Phone: a sync question or a "taken from the PC" notice while locked comes only after the unlock.
+- Phone: set an erase PIN with Android refusing nothing: the app closes and is new; (if possible) a build where `clearApplicationUserData` is refused: the by-hand erase also empties `/data/user_de/0/<package>` and no loop notification comes later.
+- Phone: PIN on, a running loop's notification says "a loop", also for alarms set before the PIN was turned on.
+- Windows / Linux: locked, a paired phone's sync says the PC is locked; after the unlock it works. No dialog shows over the lock screen; Tab can't reach the app behind it.
+- Windows / Linux: a link in a reply, the About screen's links: the native "open this page?" question, then the browser.
+- Linux: turn the PIN on, remove the key store entry (`secret-tool clear …` or Seahorse), restart: the lock screen with "Try again", never the chats.
+- Windows / Linux, with the Rust branch: the native side gets `app_set_locked` (whatever it holds while locked); a sync's records are kept by the device's key (two phones with the same name are asked separately).
+
 ## Roadmap (agreed 2026-11-08)
 
 **No point in any of this without real security.** Every step keeps the rules in SECURITY.md (off until switched on; anything outside the app asks, natively, every time), and each new ability gets its rule test before it ships.
