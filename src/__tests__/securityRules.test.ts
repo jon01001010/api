@@ -2912,6 +2912,8 @@ describe('Security review 2 (2026-11-18), app code', () => {
     );
     expect(stub).toContain('/^(https?:\\/\\/|mailto:)/i.test(address)');
   });
+});
+
 // ---- Security review 2 (2026-11-18), the PC side --------------------------
 // Kept apart from the blocks above (the phone side is pinned there).
 describe('Security review 2 (2026-11-18): the PC side', () => {

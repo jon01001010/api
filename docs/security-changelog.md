@@ -4,6 +4,26 @@ Every security fix in PocketAgent (Android) and DesktopAgent (Windows / Linux), 
 
 No release has been made to other people yet: all of these were found in our own reviews, before release. Credit for outside reports will be given here.
 
+## 2026-11-18: security review 2 (app PIN, earlier fixes, builds)
+
+- **Pictures in chat replies no longer load by themselves** (phone): a reply could carry an image address with private text in it, fetched as soon as the reply was shown. Now only the app's own pictures and inline ones show; any other picture is "Picture from <site>, tap to load", and loading it shows the full address first. Tags that fetch (video, audio, frames, links, styles) are ignored. Links in replies ask before opening.
+- **Linux kept secrets in a store a restart wipes**, so after a reboot the app PIN was gone (the app opened unlocked) and saved API keys were lost. Secrets on Linux now live in an owner-only file; a "PIN is on" marker outside the key store keeps the app locked if the PIN's record ever goes missing.
+- **While the app is locked:** pop-ups wait until it is unlocked; the PC answers a paired device's sync "locked, try later"; native "Allow?" questions wait at most 30 s and are then refused; native notifications say only that something needs attention. The lock starts as soon as the chosen minutes pass; on Android the recent-apps preview is blank and screenshots are blocked while the PIN is on.
+- **Read-then-ask covers more file tools** (read a range, search, diff, list), and their output is marked as data, not instructions.
+- **Syncs ask first** before another device changes model memory, assistants or custom tools too (not only the system prompt and your notes); "Keep mine" holds for 24 hours per device, the same question comes at most every 30 minutes, and devices are known by their key, not their name.
+- **"Allow?" floods:** one waiting question per asker, at most 8 requests at once per device, checks repeated right before a dialog shows, and the model's refusals no longer block the app's own questions.
+- **Erase:** a failed erase looks exactly like a wrong PIN; the phone's fallback erase also clears device-protected storage and cancels alarms and notifications; the PC also removes WebKitGTK's folders on Linux and retries a partly failed erase at every start.
+- **Links leading out of the app folder** are no longer followed when reading documents or a model's vision file.
+- **Builds:** every GitHub Action pinned to an exact commit; build provenance attested for the APK, the Windows installer and the Linux packages; Linux packaging tools and llama.rn's native libraries checked against pinned hashes; an unused, unpinned download in the install script switched off.
+
+## 2026-11-18: the app's screens stay in the app folder
+
+- On the PC, the app's own screens could reach files outside the app's folder after a native "Allow?". Nothing in the app needed it, so such paths are now refused without a dialog (and logged). The model reaches files elsewhere only through `outside_files`, asked on the PC every time.
+
+## 2026-11-17: first review of the PC and the phone (20 fixes) and the app PIN
+
+- See TODO.md "Security review 2026-11-17": private parts of questions stay on the PC, "Don't allow" is the default button, document and command limits, sync merges on the phone, read_url limits, untrusted output marked, storage caps, and the app PIN with an erase PIN.
+
 ## 2026-11-15: second review, app code
 
 - **"Recently deleted" can't be emptied by syncs:** up to 3 versions of a chat are kept (the first one is never dropped for a later one), sizes are counted in UTF-8 bytes and the list is stored in parts well under Android's 2 MB read limit, and a list that can't be read is never saved over (nothing is removed or replaced then). Assistants and loops read their lists the same safe way.
