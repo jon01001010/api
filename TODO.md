@@ -1057,6 +1057,18 @@ Example from the owner: VerbVoxel, a single-file voxel game (HTML, ~1.3 MB, WebG
 - [ ] **Outside the app (later, optional):** the same call for pages in a normal browser on the PC, through a local endpoint on 127.0.0.1 with its own token per page (like the phone's local text API), never the model server itself.
 - [ ] Note: VerbVoxel loads fonts from fonts.googleapis.com; the preview lock blocks that (it would fall back to system fonts), and "no Google anywhere" means bundling the font in the page instead.
 
+## The game as the container: the model as narrator (owner, 2026-11-18, idea, write-up only)
+
+Owner: "Model is narrator, and its tools are the game's possibilities; verbs change and are created, so it needs a model to help. Player 'builds boat', model makes it." Built on a VerbVoxel-style voxel game (single page, WebGL, its own simulation of materials, verbs, crafting, rooms).
+
+- [ ] **Narrator / game master:** the player says what they want in plain words ("build a boat", "make this lava cross the river safely"); the model turns it into a plan made only of the game's own moves (place / remove voxels of a material, shape, move, apply a verb, spawn from a recipe), checked by the game's rules (materials carried, cost, physics) before anything happens. It also narrates what happens ("the hull holds; the stern takes water").
+- [ ] **The model's only tools are game moves.** Its answer is data (a structured plan), never code: the game reads it, refuses anything not a known move, and the simulation decides the outcome. So the world is its container: a hostile or tricked model can only change voxels, never files, the device or the network.
+- [ ] **New verbs, made with the model:** a new verb ("caulk", "sail", "graft") is written as a recipe of existing moves and materials (data, like a custom tool), shown to the player, tried in a preview (a ghost build, undoable), and only then saved. New verbs can be shared like tools (QR / code), arriving switched off.
+- [ ] **Preview and undo:** every build shows as a ghost first (Build / Change / Cancel); one tap undoes the last model action; the world keeps a short history.
+- [ ] **Where the brain runs:** the home PC's model over the home link for building and new verbs (bigger, slower); optionally a small model on the device for quick narration. Uses the "pages and games that ask the model" bridge (above), extended with the game's move list as the only tools. No cloud needed; a cloud model only if the player picks one.
+- [ ] **Also useful beyond play:** a safe place to watch what a model does with real freedom (it can only act through verbs), to test a new model before trusting it with real tools, and to let several models play characters together.
+- [ ] Open questions for the owner: is the game part of PocketAgent / DesktopAgent (a built-in "world") or its own app paired over the home link; who owns VerbVoxel's code and licence; fonts and assets bundled (no Google fonts).
+
 ## Files between phone and PC (owner, 2026-11-18, write-up only)
 
 Today: the phone can read the PC's workspace (May read, asked per chat); the PC can't reach the phone's, and workspace files are not in sync.
