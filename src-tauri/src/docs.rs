@@ -280,6 +280,9 @@ pub fn to_text(name: &str, bytes: Vec<u8>) -> Result<String, String> {
     Ok(text)
 }
 
+/// What the screens get for a link in the app's folder that leads out.
+pub const LINK_OUT: &str = "That is a link to somewhere outside the app's folder; it isn't followed";
+
 /// Reads a workspace document as text (app folder only, no question needed).
 #[tauri::command]
 pub async fn doc_to_text(app: tauri::AppHandle, path: String) -> Result<String, String> {
@@ -288,6 +291,10 @@ pub async fn doc_to_text(app: tauri::AppHandle, path: String) -> Result<String, 
     let located = crate::files::locate(&root, &path)?;
     if !located.own {
         return Err("Only documents in the workspace can be read".into());
+    }
+    // A link placed in the app's folder can't lead out of it (files.rs).
+    if !crate::files::stays_inside(&root, &located.real) {
+        return Err(LINK_OUT.into());
     }
     let real = located.real;
     tauri::async_runtime::spawn_blocking(move || read_document(&real))
@@ -419,5 +426,33 @@ mod tests {
         assert_eq!(docx(&mut doc).unwrap_err(), TOO_BIG_INSIDE);
         let mut doc = open_doc(word, MAX_ENTRIES, 100_000).unwrap();
         assert!(docx(&mut doc).unwrap().starts_with("aaa"));
+    }
+
+    /// Security review 2 (2026-11-18): a link in the app's folder can't
+    /// lead a document read (or a model's vision file) out of it.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_out_of_the_app_folder_is_not_followed() {
+        let base = std::env::temp_dir().join(format!("pa-docs-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("app");
+        let outside = base.join("private.txt");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(&outside, b"secret").unwrap();
+        std::fs::write(root.join("mine.txt"), b"ok").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("link.txt")).unwrap();
+        let link = crate::files::locate(&root, "/pocketagent/link.txt").unwrap();
+        assert!(link.own, "named inside the app's folder");
+        assert!(!crate::files::stays_inside(&root, &link.real), "but it leads out");
+        let mine = crate::files::locate(&root, "/pocketagent/mine.txt").unwrap();
+        assert!(crate::files::stays_inside(&root, &mine.real));
+        std::fs::remove_dir_all(&base).unwrap();
+
+        let src = include_str!("docs.rs").replace("\r\n", "\n");
+        let cmd = &src[src.find("pub async fn doc_to_text").unwrap()..src.find("pub fn read_document").unwrap()];
+        assert!(cmd.contains("if !crate::files::stays_inside(&root, &located.real) {\n        return Err(LINK_OUT.into());"));
+        let server = include_str!("model_server.rs").replace("\r\n", "\n");
+        assert!(server.contains("!crate::files::stays_inside(&root, &found.real) {\n                return Err(\"The vision file must be one the app downloaded\""));
+        assert!(server.contains("&& crate::files::stays_inside(&root, &model);"));
     }
 }

@@ -692,38 +692,20 @@ pub(crate) fn write_entry(_app: &AppHandle, name: &str, value: &str) -> Result<(
 fn entry_file(app: &AppHandle, name: &str) -> Result<std::path::PathBuf, String> {
     let config = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    // Never inside the folder the screens can reach.
-    if config.starts_with(&data) || data.starts_with(&config) {
-        return Err("No private folder for the link on this system".into());
-    }
+    // Never inside the folder the screens can reach (private_file.rs).
+    let dir = crate::private_file::private_dir(&config, &data, "link")?;
     let file: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
-    Ok(config.join("link").join(file))
+    Ok(dir.join(file))
 }
 
 #[cfg(not(windows))]
 pub(crate) fn read_entry(app: &AppHandle, name: &str) -> Option<String> {
-    std::fs::read_to_string(entry_file(app, name).ok()?).ok()
+    crate::private_file::read(&entry_file(app, name).ok()?)
 }
 
 #[cfg(not(windows))]
 pub(crate) fn write_entry(app: &AppHandle, name: &str, value: &str) -> Result<(), String> {
-    use std::io::Write;
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-    let file = entry_file(app, name)?;
-    let dir = file.parent().ok_or("Bad folder")?;
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
-    let tmp = file.with_extension("new");
-    let mut out = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&tmp)
-        .map_err(|e| e.to_string())?;
-    out.write_all(value.as_bytes()).map_err(|e| e.to_string())?;
-    drop(out);
-    std::fs::rename(&tmp, &file).map_err(|e| e.to_string())
+    crate::private_file::write(&entry_file(app, name)?, value)
 }
 
 fn load_phones(app: &AppHandle) -> Vec<Phone> {
@@ -889,13 +871,7 @@ fn apply_removal(app: &AppHandle, state: &mut circle::State, notice: &circle::Re
     let paired_here = removed_name.is_some() && forget_here(app, &notice.removed, "removed-by-notice").is_ok();
     let told = paired_here || used_here;
     if told {
-        use tauri_plugin_notification::NotificationExt;
-        let _ = app
-            .notification()
-            .builder()
-            .title("Removed on another of your devices")
-            .body(removal_note(by_name.as_deref(), removed_name.as_deref()))
-            .show();
+        crate::app_lock::notify(app, "Removed on another of your devices", &removal_note(by_name.as_deref(), removed_name.as_deref()));
     }
     state.add_news(circle::News {
         removed: notice.removed.clone(),
@@ -1041,6 +1017,54 @@ pub struct Link {
     read_grants: Mutex<ReadGrants>,
     /// One "read the workspace?" question at a time.
     read_asking: tokio::sync::Mutex<()>,
+    /// Requests under way per device (MAX_STREAMS_PER_DEVICE).
+    streams: Mutex<Streams>,
+}
+
+/// Most requests (streams) one device may have under way at once, over all
+/// its connections (security review 2, 2026-11-18: no flood of requests or
+/// questions). Room for a phone's tunnel, which carries each of its local
+/// connections to the model server on a stream of its own (a reply as it is
+/// written, a status check, the questions list), plus a tool and a sync.
+pub const MAX_STREAMS_PER_DEVICE: usize = 8;
+/// What a device is told for a request over that.
+pub const TOO_MANY_STREAMS: &str = "Too many requests at once from this device; try again in a moment";
+
+/// Requests under way per device.
+#[derive(Default)]
+pub struct Streams(std::collections::HashMap<String, usize>);
+
+impl Streams {
+    /// True if the device may start one more (it is counted then).
+    pub fn take(&mut self, id: &str) -> bool {
+        let n = self.0.entry(id.to_string()).or_insert(0);
+        if *n >= MAX_STREAMS_PER_DEVICE {
+            return false;
+        }
+        *n += 1;
+        true
+    }
+
+    pub fn release(&mut self, id: &str) {
+        if let Some(n) = self.0.get_mut(id) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                self.0.remove(id);
+            }
+        }
+    }
+}
+
+/// One request under way: freed when dropped.
+struct StreamTurn {
+    app: AppHandle,
+    id: String,
+}
+
+impl Drop for StreamTurn {
+    fn drop(&mut self) {
+        self.app.state::<Link>().streams.lock().unwrap_or_else(|e| e.into_inner()).release(&self.id);
+    }
 }
 
 impl Link {
@@ -1139,13 +1163,7 @@ async fn picture_for(
         None,
         None,
         move |req| {
-            use tauri_plugin_notification::NotificationExt;
-            let _ = note_app
-                .notification()
-                .builder()
-                .title(format!("Picture for {device}"))
-                .body(picture_note(&device, &req.prompt))
-                .show();
+            crate::app_lock::notify(&note_app, &format!("Picture for {device}"), &picture_note(&device, &req.prompt));
         },
     );
     // Dropping the maker's future frees its slot and ends sd-cli (Slot).
@@ -1300,8 +1318,7 @@ async fn act_for(app: &AppHandle, remote: &str, device: &str, call: RemoteCall, 
     };
     let note = act_note(device, &call, clipboard_chars);
     crate::remote_ask::log_use(app, device, &note);
-    use tauri_plugin_notification::NotificationExt;
-    let _ = app.notification().builder().title(format!("{device} used this PC")).body(note).show();
+    crate::app_lock::notify(app, &format!("{device} used this PC"), &note);
     Ok(answer)
 }
 
@@ -1434,13 +1451,7 @@ async fn command_for(app: &AppHandle, remote: &str, device: &str, command: &str,
     let ran = crate::pc::run_checked_command(app, command, Some(&by), thinking).await?;
     let how = command_end(ran.exit_code, ran.timed_out);
     crate::remote_ask::log_use(app, device, &format!("ran a command ({how}): {command}"));
-    use tauri_plugin_notification::NotificationExt;
-    let _ = app
-        .notification()
-        .builder()
-        .title(format!("{device} ran a command on this PC"))
-        .body(command_note(device, command, ran.exit_code, ran.timed_out))
-        .show();
+    crate::app_lock::notify(app, &format!("{device} ran a command on this PC"), &command_note(device, command, ran.exit_code, ran.timed_out));
     Ok(serde_json::json!({
         "exitCode": ran.exit_code,
         "timedOut": ran.timed_out,
@@ -1485,8 +1496,7 @@ async fn write_for(
         .map_err(|e| e.to_string())??;
     let note = crate::pc_write::note(device, &plan);
     crate::remote_ask::log_use(app, device, &note);
-    use tauri_plugin_notification::NotificationExt;
-    let _ = app.notification().builder().title(format!("{device} changed a file on this PC")).body(note).show();
+    crate::app_lock::notify(app, &format!("{device} changed a file on this PC"), &note);
     Ok(serde_json::json!({
         "done": true,
         "file": plan.file,
@@ -1566,14 +1576,8 @@ async fn tool_for(
             })
             .await?;
             crate::remote_ask::log_use(app, device, &format!("read workspace file {file}"));
-            use tauri_plugin_notification::NotificationExt;
             let chats = app.state::<Link>().read_grants.lock().unwrap().count(remote, Instant::now());
-            let _ = app
-                .notification()
-                .builder()
-                .title(format!("{device} read a file on this PC"))
-                .body(read_note(device, &file, chats))
-                .show();
+            crate::app_lock::notify(app, &format!("{device} read a file on this PC"), &read_note(device, &file, chats));
             Ok(read)
         }
         // Actions went to act_for above.
@@ -1670,9 +1674,25 @@ impl iroh::protocol::ProtocolHandler for Handler {
                 }
                 return Ok(());
             };
+            // At most MAX_STREAMS_PER_DEVICE under way per device; one more
+            // is told so here (not read), and this connection takes no
+            // other request until that is said.
+            if !link.streams.lock().unwrap().take(&remote) {
+                let (mut send, mut recv) = (send, recv);
+                let _ = recv.stop(0u32.into());
+                let _ = tokio::time::timeout(
+                    Duration::from_secs(2),
+                    reply(&mut send, serde_json::json!({"ok": false, "error": TOO_MANY_STREAMS})),
+                )
+                .await;
+                let _ = send.finish();
+                continue;
+            }
+            let turn = StreamTurn { app: self.app.clone(), id: remote.clone() };
             let app = self.app.clone();
             let remote = remote.clone();
             tauri::async_runtime::spawn(async move {
+                let _turn = turn;
                 let _ = serve_stream(app, remote, send, recv).await;
             });
         }
@@ -2161,7 +2181,22 @@ async fn serve_stream(
                     let _ = recv.stop(0u32.into());
                     match text {
                         Err(error) => Err(error),
-                        Ok(text) => tool_for(&app, &remote, &device, &chat, call, text, args.thinking.as_deref()).await,
+                        Ok(text) => {
+                            // A question refused without being asked (its
+                            // one already waiting, the cool-down, the app
+                            // locked on the PC): the device is told why.
+                            let (done, why) = crate::approval::with_reason(tool_for(
+                                &app,
+                                &remote,
+                                &device,
+                                &chat,
+                                call,
+                                text,
+                                args.thinking.as_deref(),
+                            ))
+                            .await;
+                            done.map_err(|error| why.unwrap_or(error))
+                        }
                     }
                 }
             };
@@ -2659,6 +2694,33 @@ pub async fn link_device_may_write(app: AppHandle, id: String, allowed: bool) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn at_most_a_few_requests_at_once_per_device() {
+        let mut streams = Streams::default();
+        for _ in 0..MAX_STREAMS_PER_DEVICE {
+            assert!(streams.take("dev"));
+        }
+        assert!(!streams.take("dev"), "one more is refused");
+        assert!(streams.take("other"), "another device is counted apart");
+        streams.release("dev");
+        assert!(streams.take("dev"));
+        for _ in 0..MAX_STREAMS_PER_DEVICE {
+            streams.release("dev");
+        }
+        streams.release("dev");
+        assert!(streams.0.get("dev").is_none());
+        let src = include_str!("link.rs").replace("\r\n", "\n");
+        // Counted before a stream's task starts, freed when it ends.
+        let accept = &src[src.find("loop {\n            let Ok((send, recv)) = connection.accept_bi().await").unwrap()..];
+        let take = accept.find("link.streams.lock().unwrap().take(&remote)").unwrap();
+        let spawn = accept.find("tauri::async_runtime::spawn(async move {\n                let _turn = turn;").unwrap();
+        assert!(take < spawn);
+        // A device's question refused without being asked says why.
+        assert!(src.contains("crate::approval::with_reason(tool_for("));
+        assert!(src.contains("done.map_err(|error| why.unwrap_or(error))"));
+    }
+
 
     #[test]
     fn only_model_requests_with_the_password_pass() {

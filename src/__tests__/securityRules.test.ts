@@ -408,6 +408,9 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
         'link_circle',
         // The erase PIN (erase.rs): only the app's own folders and keys.
         'app_erase_all',
+        // The app PIN: the screens tell the native side it is locked
+        // (app_lock.rs; review 2, 2026-11-18).
+        'app_set_locked',
       ].sort(),
     );
     // The window is allowed exactly those, plus Tauri's core basics.
@@ -495,12 +498,13 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     for (const ask of [
       'pub async fn ask_as',
       'pub async fn ask_on_this_pc',
+      'pub async fn ask_model_on_this_pc',
       'pub async fn ask_with_always',
     ]) {
       const at = approvalDialog.indexOf(ask);
       expect([
         ask,
-        /^[^{]*\{\s*if !may_ask\(app, (asker|None)\) \{/.test(
+        /^[^{]*\{\s*if !may_ask\(app, (asker|None|Asker::\w+)\) \{/.test(
           approvalDialog.slice(at),
         ),
       ]).toEqual([ask, true]);
@@ -814,7 +818,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     ]);
     expect(removal).toContain('notices: Vec<homelink::circle::Removal>,');
     expect(link).toMatch(
-      /async fn picture_for[\s\S]*?crate::image_gen::first_downloaded_set\(app\)\?[\s\S]*?crate::image_gen::make\([\s\S]*?notification\(\)[\s\S]*?picture_note\([\s\S]*?if size > MAX_PICTURE as u64 \{\s*return Err/,
+      /async fn picture_for[\s\S]*?crate::image_gen::first_downloaded_set\(app\)\?[\s\S]*?crate::image_gen::make\([\s\S]*?(?:notification\(\)|app_lock::notify\()[\s\S]*?picture_note\([\s\S]*?if size > MAX_PICTURE as u64 \{\s*return Err/,
     );
     expect(link).toContain('pub const MAX_PICTURE: usize = 8 * 1024 * 1024;');
     expect(link).toMatch(
@@ -900,7 +904,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     // every time naming the device, and checks the switch and the flag
     // again after the answer; then logged and notified.
     expect(link).toMatch(
-      /async fn act_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_act\(&load_phones\(app\), remote\);[\s\S]*?crate::pc::open_file\(app, file, Some\(&by\), thinking\)\.await\?[\s\S]*?crate::pc_extra::print_workspace_file\(app, file, Some\(&by\), thinking\)\.await\?[\s\S]*?crate::pc_extra::press_media_key\(app, key, Some\(&by\), thinking\)\.await\?[\s\S]*?crate::pc_extra::read_clipboard\(app, Some\(&by\), thinking\)\.await\?[\s\S]*?log_use\(app, device, &note\)[\s\S]*?notification\(\)/,
+      /async fn act_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_act\(&load_phones\(app\), remote\);[\s\S]*?crate::pc::open_file\(app, file, Some\(&by\), thinking\)\.await\?[\s\S]*?crate::pc_extra::print_workspace_file\(app, file, Some\(&by\), thinking\)\.await\?[\s\S]*?crate::pc_extra::press_media_key\(app, key, Some\(&by\), thinking\)\.await\?[\s\S]*?crate::pc_extra::read_clipboard\(app, Some\(&by\), thinking\)\.await\?[\s\S]*?log_use\(app, device, &note\)[\s\S]*?(?:notification\(\)|app_lock::notify\()/,
     );
     expect(link).toMatch(
       /async fn tool_for[^{]*\{\s*if let RemoteCall::Command\(command\) = &call \{\s*return command_for\(app, remote, device, command, thinking\)\.await;\s*\}\s*if matches!\(call, RemoteCall::Open\(_\) \| RemoteCall::Print\(_\) \| RemoteCall::Media\(_\) \| RemoteCall::ClipboardRead\) \{\s*return act_for\(app, remote, device, call, thinking\)\.await;/,
@@ -924,7 +928,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'can run anything you can on this PC, after you allow each command',
     );
     expect(link).toMatch(
-      /async fn command_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_command\(&load_phones\(app\), remote\);[\s\S]*?let ran = crate::pc::run_checked_command\(app, command, Some\(&by\), thinking\)\.await\?;[\s\S]*?log_use\(app, device, &format!\("ran a command \(\{how\}\): \{command\}"\)\)[\s\S]*?notification\(\)[\s\S]*?command_note\([\s\S]*?"output": output_for_device\(&ran\.output, &local_folders\(app\)\)/,
+      /async fn command_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_command\(&load_phones\(app\), remote\);[\s\S]*?let ran = crate::pc::run_checked_command\(app, command, Some\(&by\), thinking\)\.await\?;[\s\S]*?log_use\(app, device, &format!\("ran a command \(\{how\}\): \{command\}"\)\)[\s\S]*?(?:notification\(\)|app_lock::notify\()[\s\S]*?command_note\([\s\S]*?"output": output_for_device\(&ran\.output, &local_folders\(app\)\)/,
     );
     // Stage 4: "may write", its own flag (separate from the other three),
     // off by default (old records too, and again after pairing anew),
@@ -950,7 +954,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       /let checked = check_tool\([\s\S]*?RemoteCall::Write \{ bytes, \.\. \} => read_text\(&mut recv, \*bytes\)\.await,/,
     );
     expect(link).toMatch(
-      /async fn write_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_write\(&load_phones\(app\), remote\);[\s\S]*?crate::pc_write::plan\([\s\S]*?if !crate::approval::ask_for\(app, &crate::pc_write::question\(device, &plan\), Some\(&by\), thinking\)\.await \{\s*return Err[\s\S]*?crate::pc_write::apply\([\s\S]*?log_use\(app, device, &note\)[\s\S]*?notification\(\)/,
+      /async fn write_for[\s\S]*?let still_allowed = \|\| tools_allowed\(app\) && may_write\(&load_phones\(app\), remote\);[\s\S]*?crate::pc_write::plan\([\s\S]*?if !crate::approval::ask_for\(app, &crate::pc_write::question\(device, &plan\), Some\(&by\), thinking\)\.await \{\s*return Err[\s\S]*?crate::pc_write::apply\([\s\S]*?log_use\(app, device, &note\)[\s\S]*?(?:notification\(\)|app_lock::notify\()/,
     );
     const writeFor = link.slice(
       link.indexOf('async fn write_for'),
@@ -1045,7 +1049,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
       'const READ_GRANT_TIME: Duration = Duration::from_secs(12 * 60 * 60);',
     );
     expect(link).toMatch(
-      /async fn tool_for[\s\S]*?\}\s*if call != RemoteCall::PcInfo && !may_read_now\(app, remote, device, chat\)\.await \{\s*return Err[\s\S]*?crate::pc::pc_info\(a\)[\s\S]*?crate::pc_files::list\(&dir\)[\s\S]*?crate::pc::workspace_file\(app, &file\)\?[\s\S]*?crate::pc_files::read_for_device\(&path, &name, crate::pc_files::DEVICE_READ_TIME\)[\s\S]*?log_use[\s\S]*?notification\(\)[\s\S]*?read_note\(/,
+      /async fn tool_for[\s\S]*?\}\s*if call != RemoteCall::PcInfo && !may_read_now\(app, remote, device, chat\)\.await \{\s*return Err[\s\S]*?crate::pc::pc_info\(a\)[\s\S]*?crate::pc_files::list\(&dir\)[\s\S]*?crate::pc::workspace_file\(app, &file\)\?[\s\S]*?crate::pc_files::read_for_device\(&path, &name, crate::pc_files::DEVICE_READ_TIME\)[\s\S]*?log_use[\s\S]*?(?:notification\(\)|app_lock::notify\()[\s\S]*?read_note\(/,
     );
     expect(link).toMatch(
       /pub async fn link_forget\(app: AppHandle, id: String\) -> Result<\(\), String> \{\s*forget_here\(&app, &id, "removed"\)\s*\}/,
@@ -1237,7 +1241,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     );
     expect(tauri('src/link.rs')).toContain('questions.list_for(&remote)');
     expect(approval).toMatch(
-      /fn answered_on_device[\s\S]*?notification\(\)[\s\S]*?already answered on/,
+      /fn answered_on_device[\s\S]*?(?:notification\(\)|app_lock::notify\()[\s\S]*?already answered on/,
     );
     // Off until switched on: nothing starts the link at app start.
     expect(tauri('src/lib.rs')).not.toMatch(/link::start|link_on\(/);
@@ -1731,7 +1735,7 @@ describe('Rule 6: the Windows app opens doors only on purpose, and asks', () => 
     const outside = tauri('src/outside.rs');
     // Every access asks, on this PC only (never a device), never "always".
     expect(outside).toMatch(
-      /if !crate::approval::ask_on_this_pc\(&app, &question\)\.await \{\s*audit\(&app, "model", action\.word\(\), "said no", &shown, thinking\);\s*return Err/,
+      /if !crate::approval::ask_model_on_this_pc\(&app, &question\)\.await \{\s*audit\(&app, "model", action\.word\(\), "said no", &shown, thinking\);\s*return Err/,
     );
     expect(outside).not.toMatch(
       /ask_with_always|Answer::Always|ALWAYS|ask_for\(|approval::ask\(|remember/,
@@ -2674,5 +2678,105 @@ describe('Rule 1: several models ("and" / "or") ask first, never add tools, coun
     expect(
       engine.match(/wrapModelAnswer\(a\.model, a\.answer\)/g),
     ).toHaveLength(2);
+  });
+});
+
+// ---- Security review 2 (2026-11-18), the PC side --------------------------
+// Kept apart from the blocks above (the phone side is pinned there).
+describe('Security review 2 (2026-11-18): the PC side', () => {
+  const tauri = (file: string) => read(`src-tauri/${file}`);
+
+  it("Linux keeps the screens' secrets in an owner-only file, not the kernel key store", () => {
+    const secrets = tauri('src/secrets.rs');
+    // Windows: Credential Manager; Linux: a private file (a reboot clears
+    // the kernel key store, so the app PIN and every key were lost).
+    expect(secrets).toMatch(/#\[cfg\(windows\)\]\s*pub fn read\(/);
+    expect(secrets).toMatch(/#\[cfg\(not\(windows\)\)\]\s*mod file_store/);
+    expect(secrets).toContain(
+      'crate::private_file::private_dir(&config, &data, "secrets")',
+    );
+    // Old entries are moved out, once.
+    expect(secrets).toMatch(
+      /let Some\(json\) = legacy\.get\(service\) else[\s\S]*?write_in\(dir, service, &secret, legacy\)\?/,
+    );
+    const store = tauri('src/private_file.rs');
+    expect(store).toContain('.mode(0o600)');
+    expect(store).toContain('Permissions::from_mode(0o700)');
+    expect(store).toMatch(
+      /if config\.starts_with\(data\) \|\| data\.starts_with\(config\) \{\s*return Err/,
+    );
+    // The link uses the same file helpers.
+    expect(tauri('src/link.rs')).toContain(
+      'crate::private_file::private_dir(&config, &data, "link")',
+    );
+  });
+
+  it('while the app is locked, native questions wait or are refused and notifications say nothing', () => {
+    const lock = tauri('src/app_lock.rs');
+    expect(lock).toMatch(
+      /#\[tauri::command\]\s*pub async fn app_set_locked\(locked: bool\)/,
+    );
+    expect(lock).toContain(
+      'pub const LOCKED_WAIT: Duration = Duration::from_secs(30);',
+    );
+    // Locked until known when the app PIN is on.
+    expect(lock).toContain('tokio::sync::watch::channel(true)');
+    expect(lock).toMatch(
+      /pub fn init\(app: &AppHandle\) \{\s*if let Ok\(None\) = crate::secrets::read\(app, LOCK_SERVICE\) \{\s*set_locked\(false\);/,
+    );
+    expect(lock).toMatch(
+      /pub fn shown<'a>\(locked: bool[^{]*\{\s*if locked \{\s*\(BLANK_TITLE, BLANK_BODY\)/,
+    );
+    // Every native notification goes through it.
+    for (const file of ['src/link.rs', 'src/approval.rs']) {
+      expect([file, tauri(file).includes('.notification()')]).toEqual([
+        file,
+        false,
+      ]);
+    }
+    expect(tauri('src/pc_extra.rs')).toContain(
+      'crate::app_lock::shown(crate::app_lock::is_locked(), &title, &body)',
+    );
+    expect(tauri('src/lib.rs')).toContain('app_lock::init(app.handle());');
+  });
+
+  it('no flood of questions: per-asker refusals, one waiting question, few requests per device', () => {
+    const approval = tauri('src/approval.rs');
+    expect(approval).toMatch(
+      /pub enum Asker \{[\s\S]*?Screens,[\s\S]*?Model,[\s\S]*?Device\(String\),/,
+    );
+    expect(approval).toMatch(
+      /fn get_ready\(asker: &Asker\)[\s\S]*?WaitTurn::take\(asker\) else \{\s*note_why\(&already_waiting/,
+    );
+    expect(tauri('src/outside.rs')).toContain(
+      'crate::approval::ask_model_on_this_pc(&app, &question)',
+    );
+    const link = tauri('src/link.rs');
+    expect(link).toContain('pub const MAX_STREAMS_PER_DEVICE: usize = 8;');
+    expect(link).toContain('if !link.streams.lock().unwrap().take(&remote) {');
+  });
+
+  it('links in the app folder never lead documents or vision files out', () => {
+    expect(tauri('src/docs.rs')).toMatch(
+      /pub async fn doc_to_text[\s\S]*?if !crate::files::stays_inside\(&root, &located\.real\) \{\s*return Err/,
+    );
+    const server = tauri('src/model_server.rs');
+    expect(server).toContain('&& crate::files::stays_inside(&root, &model);');
+    expect(server).toMatch(
+      /!found\.own \|\| !is_gguf\(&found\.real\) \|\| !crate::files::stays_inside\(&root, &found\.real\)/,
+    );
+  });
+
+  it("the erase PIN: WebKitGTK's own folders on Linux, and the mark outside what is removed", () => {
+    const erase = tauri('src/erase.rs');
+    expect(erase).toContain('fn remove_webkit_roots(');
+    expect(erase).toMatch(/left\.extend\(webkit_erase\(app\)\);/);
+    // The mark first, and removed last, only once nothing is left.
+    expect(erase).toMatch(
+      /if let Some\(mark\) = mark\(&handle\)[\s\S]*?std::fs::write\(&mark[\s\S]*?erase_all_now\(&handle\);/,
+    );
+    expect(erase).toMatch(
+      /if erase\(\)\.is_empty\(\) \{\s*return std::fs::remove_file\(mark\)/,
+    );
   });
 });

@@ -299,12 +299,15 @@ pub async fn start_model(
     if !model.is_absolute() || !is_gguf(&model) {
         return Err("Choose a .gguf model file".into());
     }
-    let own_models = located.own || model.starts_with(&root);
-    // The vision part: only one the app downloaded itself (no question).
+    // In the app's folder and staying there once links are followed: a link
+    // placed there to a file elsewhere is asked about like that file.
+    let own_models = (located.own || model.starts_with(&root)) && crate::files::stays_inside(&root, &model);
+    // The vision part: only one the app downloaded itself (no question),
+    // never a link leading out of the app's folder.
     let projection = match projection_path.as_deref() {
         Some(p) => {
             let found = crate::files::locate(&root, p)?;
-            if !found.own || !is_gguf(&found.real) {
+            if !found.own || !is_gguf(&found.real) || !crate::files::stays_inside(&root, &found.real) {
                 return Err("The vision file must be one the app downloaded".into());
             }
             Some(found.real)
