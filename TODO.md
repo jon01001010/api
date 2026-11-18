@@ -979,6 +979,14 @@ Research (2026-11-07): **iroh 1.x** (Rust, MIT/Apache, 1.0 in June 2026; we pin 
 - [ ] Keep the tunnel alive in the background (foreground service) for long replies with the screen off. (2026-11-15: the link is reopened between replies, `keepLink.ts`; no foreground service yet)
 - [ ] Desktop-to-phone the other way (PC uses the phone's tools), shared tasks: later.
 
+## Watch remote (owner, 2026-11-18, write-up only; peripherals to be revisited)
+
+A small separate watch app (Wear OS), not the whole PocketAgent: speak or tap on the watch, the phone's or home PC's model answers, the answer shows or is read out; the PC's "Allow?" questions can show with Allow / Don't allow (same rules as on the phone); app PIN on the watch too. Models on the watch itself: no (1.5–2 GB RAM, slow, battery).
+
+- [ ] **Owner decision:** Wear OS is Google's system (GrapheneOS has no watch OS; Wear OS pairs with a GrapheneOS phone only through sandboxed Google Play). Our watch app uses no Google libraries and not Google's Data Layer, so the phone needs no Google Play for our part.
+- [ ] **Link:** (a) the home link (iroh) over the watch's Wi-Fi/LTE, phone not needed nearby, pairing by QR like the phone; and/or (b) Bluetooth LE straight to the phone (AOSP Bluetooth APIs, no Google): works with no Wi-Fi, low power, ~10 m, slow but fine for text and compressed voice. BLE's own pairing is weak, so our own encryption on top (keys exchanged by QR, as the home link). Needs new phone permissions (BLUETOOTH_CONNECT / SCAN / ADVERTISE) and a foreground service to listen: owner to approve (rule 5: phone stays small).
+- [ ] Garmin watches can't run this (their apps talk only through Garmin's phone app).
+
 ## VPN built into the app (user, 2026-11-17, write-up only)
 
 The user wants a VPN built into the app, over the home link (iroh: direct when possible, else an encrypted relay; no PocketAgent-run server, no outside account). Today the link carries only what the app needs (models, sync, questions, pictures, tools; `Http` tunnel media only), so it is not a VPN yet. Not decided yet: which of the two below, or both.
