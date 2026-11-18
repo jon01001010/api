@@ -98,6 +98,8 @@ Nothing goes to other people (testers included, beyond the owner) until every bo
 
 **Testers**
 - [ ] A small group of invited testers tries to break it; findings fixed before the release widens; testers credited.
+  - [x] Tester pack (2026-11-18): `docs/testers.md` (install and check downloads on Android / Windows / Linux, what to try, public-repo warning, how to report, how to remove), bug report form rewritten for both apps (no iPhone examples; privacy warning; security problems reported privately).
+  - [ ] **Owner:** put a private contact for security reports in `docs/testers.md` (placeholder there) before inviting anyone.
 
 **Out of scope for release**
 - iPhone / Apple: not made (decided: no Apple).

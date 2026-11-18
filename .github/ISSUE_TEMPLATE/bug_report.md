@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Something in PocketAgent or DesktopAgent doesn't work as it should
 title: "[Bug]: "
 labels: bug
 assignees: ''
@@ -8,31 +8,34 @@ assignees: ''
 ---
 
 <!--
-⚠️ IMPORTANT: Please fill out ALL sections below. Issues without sufficient information may be closed without investigation.
+This repository is PUBLIC: everyone can read this report and see its screenshots.
+Never post API keys, PINs, pairing QR codes, private chats or file contents. Crop or blur screenshots.
+A security problem (something that gets around an "Allow?", the PIN, or reads or sends something it shouldn't)
+must NOT be reported here: tell the owner privately (see docs/testers.md).
 -->
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+**What happened**
+What you saw, and what you expected instead.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '...'
-3. Scroll down to '...'
-4. See error
+**Steps to make it happen again**
+1.
+2.
+3.
 
-**Environment (please complete the following information):**
-- Device: [e.g., iPhone 12, Samsung Galaxy S21]
-- OS: [e.g., iOS 14.4, Android 11]
-- App Version: [e.g., 1.11.17]
-- Device RAM: [e.g., 4GB, 6GB, 8GB]
+**Which app and build**
+- App: PocketAgent (Android) / DesktopAgent (Windows) / DesktopAgent (Linux)
+- Build: paste from Settings → App Info (copy button next to the version)
+- If phone and PC were both involved: the build of each
 
-**Model Information (required for model/inference crashes):**
-- Model name: [exact name as shown in the app]
-- Model source: [Built-in / Downloaded from HuggingFace]
-- HuggingFace link: [if downloaded externally, provide the full URL]
-- Quantization: [e.g., Q4_K_M, Q8_0]
-- Context length: [if you changed it from default]
+**Device**
+- Phone or PC model:
+- System: [e.g. Android 15, GrapheneOS, Windows 11, Ubuntu 24.04]
+- Memory (RAM), and the graphics card on a PC:
+
+**Model (if a model was involved)**
+- Model name, as shown in the app:
+- Where it runs: on this device / the home PC / a cloud server
+- Changed settings (context length, thinking), if any:
 
 **Screenshots**
-If applicable add screenshots (of errors, settings screen) to help explain your problem.
+Optional; cropped, with nothing private in them.

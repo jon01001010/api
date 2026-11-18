@@ -35,6 +35,8 @@ Every successful APK build is published as a **pre-release** with a direct `.apk
 
 The **Tests** workflow runs the type check and the full Jest suite on every pull request and push to `main`.
 
+**Invited testers:** start with [docs/testers.md](docs/testers.md) (installing on Android, Windows and Linux, what to try, how to report).
+
 ## Upstream acknowledgements
 
 PocketAgent is based on **PocketPal AI** by its original contributors, under the repository's [MIT license](LICENSE). It also uses llama.rn and llama.cpp. The original project is at [a-ghorbani/pocketpal-ai](https://github.com/a-ghorbani/pocketpal-ai). The original upstream documentation remains available there.
