@@ -46,11 +46,11 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           fetch-depth: 0  # the version counts commits (scripts/build-info)
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22.21.0'
       - name: Install locked dependencies and patches
@@ -79,7 +79,7 @@ jobs:
       - name: Restore the pinned llama.cpp archive (cached copy)
         id: llama-cache
         if: github.event_name == 'push' || inputs.stage == 'exe'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.LLAMA_ZIP }}
           key: llama-cpp-${{ env.LLAMA_SHA256 }}
@@ -97,14 +97,14 @@ jobs:
           test -f src-tauri/llama/llama-server.exe
       - name: Keep a copy of the llama.cpp archive
         if: steps.llama-cache.outputs.cache-hit != 'true' && (github.event_name == 'push' || inputs.stage == 'exe')
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.LLAMA_ZIP }}
           key: llama-cpp-${{ env.LLAMA_SHA256 }}
       - name: Restore the pinned stable-diffusion.cpp archive (cached copy)
         id: sd-cache
         if: github.event_name == 'push' || inputs.stage == 'exe'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.SD_ZIP }}
           key: sd-cpp-${{ env.SD_SHA256 }}
@@ -128,7 +128,7 @@ jobs:
           ls src-tauri/sd
       - name: Keep a copy of the stable-diffusion.cpp archive
         if: steps.sd-cache.outputs.cache-hit != 'true' && (github.event_name == 'push' || inputs.stage == 'exe')
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.SD_ZIP }}
           key: sd-cpp-${{ env.SD_SHA256 }}
@@ -136,10 +136,14 @@ jobs:
         if: github.event_name == 'push' || inputs.stage == 'exe'
         working-directory: src-tauri
         run: cargo test --locked
+      # NSIS for the installer: tauri-bundler 2.10.3 checks the NSIS zip
+      # (SHA-1), makensis.exe and the nsis_tauri_utils plugin against the
+      # hashes built into it at every build, cached or not (nsis/mod.rs), so
+      # this cache can't slip it other files (review 2, 2026-11-18).
       - name: Restore Tauri's packaging tools (cached copy)
         id: tauri-tools
         if: github.event_name == 'push' || inputs.stage == 'exe'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/AppData/Local/tauri
           key: tauri-tools-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
@@ -159,13 +163,13 @@ jobs:
           exit 1
       - name: Keep a copy of Tauri's packaging tools
         if: success() && steps.tauri-tools.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/AppData/Local/tauri
           key: tauri-tools-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
       - name: Upload the installer
         if: success() && (github.event_name == 'push' || inputs.stage == 'exe')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pocketagent-windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: src-tauri/target/release/bundle/nsis/*.exe
@@ -175,7 +179,7 @@ jobs:
       # read the Start-up time card's profile (file:line:column).
       - name: Keep the web app's source map
         if: success() && (github.event_name == 'push' || inputs.stage == 'exe')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pocketagent-windows-sourcemap-${{ github.run_id }}-${{ github.run_attempt }}
           path: web/maps/bundle.js.map
@@ -202,7 +206,7 @@ jobs:
 
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pocketagent-windows-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -220,9 +224,13 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      # Build provenance (who built what, from which commit), checked with
+      # `gh attestation verify`: this job only.
+      id-token: write
+      attestations: write
     steps:
       - name: Download the installer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pocketagent-windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: exe
@@ -238,6 +246,13 @@ jobs:
           mv "$src" "exe/${asset}"
           (cd exe && sha256sum "$asset" > SHA256SUMS)
           cat exe/SHA256SUMS
+      # GitHub's own action; it never fails the release (attestations need a
+      # public repository or a paid plan).
+      - name: Record build provenance for the installer
+        continue-on-error: true
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: exe/DesktopAgent-Windows-*-setup.exe
       - name: Publish pre-release
         env:
           # Your own token (repo secret, this repo only: Contents + Workflows),

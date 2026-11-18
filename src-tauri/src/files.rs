@@ -119,7 +119,7 @@ pub async fn allowed_path(app: &AppHandle, input: &str, what: &str) -> Result<Pa
 
 /// Whether a path in the app's own folder stays in it once links are
 /// followed (a link placed there can't lead the screens out unasked).
-fn stays_inside(root: &Path, real: &Path) -> bool {
+pub(crate) fn stays_inside(root: &Path, real: &Path) -> bool {
     let Ok(root) = std::fs::canonicalize(root) else {
         // No folder yet: nothing in it can lead out.
         return true;

@@ -100,6 +100,8 @@ pub fn notify(app: AppHandle, title: String, body: String) -> Result<(), String>
     use tauri_plugin_notification::NotificationExt;
     let title: String = title.chars().take(80).collect();
     let body: String = body.chars().take(300).collect();
+    // While the app is locked, nothing about what it is (app_lock.rs).
+    let (title, body) = crate::app_lock::shown(crate::app_lock::is_locked(), &title, &body);
     app.notification()
         .builder()
         .title(title)

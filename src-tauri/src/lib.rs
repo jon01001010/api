@@ -3,6 +3,7 @@
 //! themselves, each through a command listed in capabilities/default.json.
 //! Anything outside the app's own folder asks the user first (approval.rs).
 
+mod app_lock;
 mod approval;
 mod docs;
 mod download;
@@ -28,6 +29,8 @@ mod pc_extra;
 mod pc_files;
 mod pc_write;
 mod preview;
+#[cfg(not(windows))]
+mod private_file;
 mod profile;
 mod remembered;
 mod remote_ask;
@@ -55,6 +58,9 @@ pub fn run() {
         // Tray icon by the clock: open DesktopAgent, or quit.
         .setup(|app| {
             let _ = pc_extra::tray(app);
+            // Locked until the screens say otherwise, if the app PIN is on
+            // (app_lock.rs).
+            app_lock::init(app.handle());
             Ok(())
         })
         .manage(timing::Timing::new())
@@ -151,6 +157,7 @@ pub fn run() {
             link_client::link_use_one_key,
             link::link_circle,
             erase::app_erase_all,
+            app_lock::app_set_locked,
         ])
         .build(tauri::generate_context!())
         .expect("error while building PocketAgent");
@@ -202,6 +209,7 @@ mod tests {
             include_str!("link_client.rs"),
             include_str!("remote_ask.rs"),
             include_str!("erase.rs"),
+            include_str!("app_lock.rs"),
         ];
         for source in sources {
             let lines: Vec<&str> = source.lines().collect();

@@ -12,10 +12,25 @@
 //!   its last button, which would be a yes here).
 //! - One dialog at a time, across the app: the others wait their turn
 //!   (a question a device answers while waiting is never shown here).
-//! - MAX_REFUSALS refusals in a row from the same asker (this PC, or one
-//!   paired device) within a minute: it can't ask again for COOL_DOWN.
+//! - MAX_REFUSALS refusals in a row from the same asker (Asker) within a
+//!   minute: it can't ask again for COOL_DOWN.
+//!
+//! Security review 2 (2026-11-18):
+//! - Refusals are counted per asker: this PC's own screens, this PC's model
+//!   and each paired device on their own (`Asker`), so the model's
+//!   refusals can't block the user's own screens' questions.
+//! - At most one question waiting per asker; another one from the same
+//!   asker is refused at once (`ALREADY_WAITING`).
+//! - The cool-down and the app lock are looked at again right before a
+//!   dialog shows (in_turn), not only when it was asked.
+//! - While the app is locked (app_lock.rs), questions wait for the unlock
+//!   (at most app_lock::LOCKED_WAIT) and are then refused
+//!   (app_lock::LOCKED_REFUSAL); they are not offered to paired devices
+//!   while they wait, and notifications say nothing about them.
 
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -26,30 +41,132 @@ use tauri::{AppHandle, Manager};
 pub const DONT: &str = "Don't allow";
 pub const ALLOW: &str = "Allow";
 
+/// Who asks. Each counts its refusals and its one waiting question on its
+/// own.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Asker {
+    /// This PC's own screens, for the user's own actions (pairing, a
+    /// device's switches, a screenshot, a model file from elsewhere).
+    Screens,
+    /// This PC's model: its tools (ask_for without a device) and its files
+    /// outside the workspace (outside.rs).
+    Model,
+    /// A paired device, by its key.
+    Device(String),
+}
+
+/// ask_as / ask_for: no device is this PC's model (only the model's tools
+/// come through them without a device).
+impl From<Option<&str>> for Asker {
+    fn from(device: Option<&str>) -> Self {
+        match device {
+            Some(key) => Asker::Device(key.to_string()),
+            None => Asker::Model,
+        }
+    }
+}
+
+impl Asker {
+    /// Its key in Refusals and the waiting list.
+    pub fn key(&self) -> String {
+        match self {
+            Asker::Screens => "pc:screens".into(),
+            Asker::Model => "pc:model".into(),
+            Asker::Device(key) => format!("device:{key}"),
+        }
+    }
+
+    /// The device's key, if a device asks (it alone may see the private
+    /// parts of its question, remote_ask::shared_view).
+    fn device(&self) -> Option<&str> {
+        match self {
+            Asker::Device(key) => Some(key),
+            _ => None,
+        }
+    }
+
+    /// How the user is told who it is.
+    pub fn who(&self) -> String {
+        match self {
+            Asker::Device(key) => format!("the paired device {}", crate::remote_ask::short_key(key)),
+            Asker::Model => "this PC's model".to_string(),
+            Asker::Screens => "this PC's app".to_string(),
+        }
+    }
+}
+
+// Why a question was refused without being asked, for whoever wants to
+// pass it on (link.rs gives it to the asking device; with_reason).
+tokio::task_local! {
+    static WHY: RefCell<Option<String>>;
+}
+
+fn note_why(text: &str) {
+    let _ = WHY.try_with(|why| *why.borrow_mut() = Some(text.to_string()));
+}
+
+/// Runs `job`; also returns why a question in it was refused without
+/// being asked (cool-down, one already waiting, the app locked), if one
+/// was. None when every question was asked (and answered either way).
+#[cfg_attr(not(feature = "link"), allow(dead_code))]
+pub async fn with_reason<F: Future>(job: F) -> (F::Output, Option<String>) {
+    WHY.scope(RefCell::new(None), async move {
+        let out = job.await;
+        let why = WHY.with(|why| why.borrow_mut().take());
+        (out, why)
+    })
+    .await
+}
+
 /// One native dialog at a time, across the app.
 fn turn() -> Arc<tokio::sync::Mutex<()>> {
     static TURN: OnceLock<Arc<tokio::sync::Mutex<()>>> = OnceLock::new();
     TURN.get_or_init(|| Arc::new(tokio::sync::Mutex::new(()))).clone()
 }
 
-/// Runs `show` (a blocking dialog) when no other dialog is up. None when
-/// `skip` was set while it waited (answered elsewhere meanwhile): then it
-/// is never shown.
+/// Why a dialog was not shown after all.
+#[derive(Debug, PartialEq)]
+pub enum NotShown {
+    /// Answered elsewhere while it waited its turn.
+    Answered,
+    /// The app stayed locked (app_lock::LOCKED_WAIT).
+    Locked,
+    /// Its asker began to cool down while it waited (the message).
+    Cooling(String),
+}
+
+/// Runs `show` (a blocking dialog) when no other dialog is up. Not shown
+/// when `skip` was set while it waited (answered elsewhere meanwhile),
+/// when the app is locked and stays locked (app_lock::LOCKED_WAIT), or
+/// when its asker began to cool down meanwhile (looked at again right
+/// before showing).
 fn in_turn<T: Send + 'static>(
+    asker: Option<Asker>,
     skip: Arc<AtomicBool>,
     show: impl FnOnce() -> T + Send + 'static,
-) -> tauri::async_runtime::JoinHandle<Option<T>> {
+) -> tauri::async_runtime::JoinHandle<Result<T, NotShown>> {
     tauri::async_runtime::spawn(async move {
         let mine = turn().lock_owned().await;
         if skip.load(Ordering::SeqCst) {
-            return None;
+            return Err(NotShown::Answered);
+        }
+        if !crate::app_lock::wait_unlocked(crate::app_lock::LOCKED_WAIT).await {
+            return Err(NotShown::Locked);
+        }
+        if skip.load(Ordering::SeqCst) {
+            return Err(NotShown::Answered);
+        }
+        if let Some(asker) = &asker {
+            if let Err(message) = refusals().lock().unwrap().check(&asker.key(), &asker.who(), Instant::now()) {
+                return Err(NotShown::Cooling(message));
+            }
         }
         tauri::async_runtime::spawn_blocking(move || {
             let _mine = mine;
             show()
         })
         .await
-        .ok()
+        .map_err(|_| NotShown::Answered)
     })
 }
 
@@ -99,8 +216,8 @@ pub const MAX_REFUSALS: u32 = 3;
 pub const REFUSALS_WITHIN: Duration = Duration::from_secs(60);
 pub const COOL_DOWN: Duration = Duration::from_secs(120);
 
-/// Refusals in a row per asker ("" for this PC, else a device's key):
-/// (count, last refusal, cooling down until).
+/// Refusals in a row per asker (Asker::key): (count, last refusal,
+/// cooling down until).
 #[derive(Default)]
 pub struct Refusals {
     map: HashMap<String, (u32, Instant, Option<Instant>)>,
@@ -153,33 +270,100 @@ fn refusals() -> &'static Mutex<Refusals> {
     R.get_or_init(|| Mutex::new(Refusals::default()))
 }
 
-fn who_asks(asker: Option<&str>) -> String {
-    match asker {
-        Some(device) => format!("the paired device {}", crate::remote_ask::short_key(device)),
-        None => "this PC's app".to_string(),
+/// What an asker is told when it asks while its last question still waits.
+pub fn already_waiting(who: &str) -> String {
+    format!("{who} already has a question waiting on this PC, so this one was refused at once. Answer that one first. Nothing was done.")
+}
+
+/// The askers with a question waiting (Asker::key): one each.
+#[derive(Default)]
+pub struct Waiting {
+    keys: HashSet<String>,
+}
+
+impl Waiting {
+    /// True if `key` had none waiting (it has one now).
+    pub fn take(&mut self, key: &str) -> bool {
+        self.keys.insert(key.to_string())
+    }
+
+    pub fn release(&mut self, key: &str) {
+        self.keys.remove(key);
+    }
+}
+
+fn waiting() -> &'static Mutex<Waiting> {
+    static W: OnceLock<Mutex<Waiting>> = OnceLock::new();
+    W.get_or_init(|| Mutex::new(Waiting::default()))
+}
+
+/// An asker's one waiting question: freed when dropped (answered,
+/// refused, or the request went away).
+struct WaitTurn(String);
+
+impl WaitTurn {
+    fn take(asker: &Asker) -> Option<Self> {
+        let key = asker.key();
+        waiting().lock().unwrap().take(&key).then_some(WaitTurn(key))
+    }
+}
+
+impl Drop for WaitTurn {
+    fn drop(&mut self) {
+        waiting().lock().unwrap_or_else(|e| e.into_inner()).release(&self.0);
     }
 }
 
 fn tell_cooling(app: &AppHandle, message: String) {
-    use tauri_plugin_notification::NotificationExt;
-    let _ = app.notification().builder().title("DesktopAgent stopped asking").body(message).show();
+    crate::app_lock::notify(app, "DesktopAgent stopped asking", &message);
 }
 
 /// Whether `asker` may ask now; tells the PC user (a notification) when not.
-fn may_ask(app: &AppHandle, asker: Option<&str>) -> bool {
-    let checked = refusals().lock().unwrap().check(asker.unwrap_or(""), &who_asks(asker), Instant::now());
+fn may_ask(app: &AppHandle, asker: impl Into<Asker>) -> bool {
+    let asker = asker.into();
+    let checked = refusals().lock().unwrap().check(&asker.key(), &asker.who(), Instant::now());
     match checked {
         Ok(()) => true,
         Err(message) => {
+            note_why(&message);
             tell_cooling(app, message);
             false
         }
     }
 }
 
-fn answered(app: &AppHandle, asker: Option<&str>, yes: bool) {
-    if refusals().lock().unwrap().record(asker.unwrap_or(""), yes, Instant::now()) {
-        tell_cooling(app, cooling_message(&who_asks(asker), COOL_DOWN.as_secs()));
+fn answered(app: &AppHandle, asker: &Asker, yes: bool) {
+    if refusals().lock().unwrap().record(&asker.key(), yes, Instant::now()) {
+        tell_cooling(app, cooling_message(&asker.who(), COOL_DOWN.as_secs()));
+    }
+}
+
+/// Before a question goes up: its asker's one waiting place (refused at
+/// once when it has a question waiting already) and, while the app is
+/// locked, the wait for the unlock (refused when it stays locked). None:
+/// refused, the reason noted (with_reason).
+async fn get_ready(asker: &Asker) -> Option<WaitTurn> {
+    let Some(place) = WaitTurn::take(asker) else {
+        note_why(&already_waiting(&asker.who()));
+        return None;
+    };
+    if !crate::app_lock::wait_unlocked(crate::app_lock::LOCKED_WAIT).await {
+        note_why(crate::app_lock::LOCKED_REFUSAL);
+        return None;
+    }
+    Some(place)
+}
+
+/// A dialog that was not shown: noted (with_reason), and the PC user told
+/// when its asker began to cool down meanwhile.
+fn not_shown(app: &AppHandle, why: NotShown) {
+    match why {
+        NotShown::Answered => {}
+        NotShown::Locked => note_why(crate::app_lock::LOCKED_REFUSAL),
+        NotShown::Cooling(message) => {
+            note_why(&message);
+            tell_cooling(app, message);
+        }
     }
 }
 
@@ -187,92 +371,120 @@ const TITLE: &str = "DesktopAgent: allow this?";
 
 /// Waits for this PC's dialog or, while allowed, a paired device's answer,
 /// whichever comes first. A device answer is logged on this PC. `asker`:
-/// the device that asked (None: this PC), which alone may see the private
-/// parts of the question (remote_ask::shared_view).
+/// who asked; only the device that asked may see the private parts of the
+/// question (remote_ask::shared_view). None: refused before it was shown
+/// (with_reason says why).
 async fn first_answer<T: Send + 'static>(
     app: &AppHandle,
     question: &str,
-    asker: Option<&str>,
+    asker: &Asker,
     show: impl FnOnce() -> T + Send + 'static,
     from_device: impl FnOnce(bool) -> T,
-    refused: impl Fn() -> T,
-) -> T {
+) -> Option<T> {
     let skip = Arc::new(AtomicBool::new(false));
-    let dialog = in_turn(skip.clone(), show);
+    let dialog = in_turn(Some(asker.clone()), skip.clone(), show);
     let questions = app.state::<crate::remote_ask::RemoteQuestions>();
-    let Some((id, device)) = questions.open(question, asker) else {
-        return dialog.await.ok().flatten().unwrap_or_else(&refused);
+    let Some((id, device)) = questions.open(question, asker.device()) else {
+        return match dialog.await {
+            Ok(Ok(answer)) => Some(answer),
+            Ok(Err(why)) => {
+                not_shown(app, why);
+                None
+            }
+            Err(_) => None,
+        };
     };
     let mut dialog = dialog;
     let answer = tokio::select! {
-        here = &mut dialog => here.ok().flatten().unwrap_or_else(&refused),
+        here = &mut dialog => match here {
+            Ok(Ok(answer)) => Some(answer),
+            Ok(Err(why)) => {
+                not_shown(app, why);
+                None
+            }
+            Err(_) => None,
+        },
         // Expired or closed on the device side: wait for this PC's dialog.
         Ok((yes, name)) = device => {
             // Still waiting for its turn here: never shown.
             skip.store(true, Ordering::SeqCst);
             crate::remote_ask::log_answer(app, &name, yes, question);
             answered_on_device(app, &name, yes, question, dialog);
-            from_device(yes)
+            Some(from_device(yes))
         }
     };
     questions.close(id);
     answer
 }
 
-/// A device answered first. The PC user is told at once (a notification),
-/// and the PC's own dialog, if it is up (it can't be closed from here),
-/// stays harmless: whatever is pressed there now changes nothing, and a
-/// note says so.
+/// A device answered first. The PC user is told at once (a notification;
+/// nothing about the question while the app is locked), and the PC's own
+/// dialog, if it is up (it can't be closed from here), stays harmless:
+/// whatever is pressed there now changes nothing, and a note says so.
 fn answered_on_device<T: Send + 'static>(
     app: &AppHandle,
     device: &str,
     yes: bool,
     question: &str,
-    dialog: tauri::async_runtime::JoinHandle<Option<T>>,
+    dialog: tauri::async_runtime::JoinHandle<Result<T, NotShown>>,
 ) {
-    use tauri_plugin_notification::NotificationExt;
     let note = crate::remote_ask::answered_note(device, yes, question);
-    let _ = app
-        .notification()
-        .builder()
-        .title(format!("Answered on {device}"))
-        .body(note.clone())
-        .show();
+    crate::app_lock::notify(app, &format!("Answered on {device}"), &note);
     let app = app.clone();
     let device = device.to_string();
     tauri::async_runtime::spawn(async move {
         // The PC user pressed a button (or closed it): nothing more is done.
         // Never shown (it was still waiting its turn): nothing to say.
-        if !matches!(dialog.await, Ok(Some(_))) {
+        if !matches!(dialog.await, Ok(Ok(_))) {
             return;
         }
         let text = format!("This was already answered on {device}, so your answer here changed nothing.\n\n{note}");
-        let _ = in_turn(Arc::new(AtomicBool::new(false)), move || {
-            native(&app, "DesktopAgent: already answered", &text, rfd::MessageLevel::Info, rfd::MessageButtons::Ok)
+        let app2 = app.clone();
+        let _ = in_turn(None, Arc::new(AtomicBool::new(false)), move || {
+            native(&app2, "DesktopAgent: already answered", &text, rfd::MessageLevel::Info, rfd::MessageButtons::Ok)
         })
         .await;
     });
 }
 
+/// The plain "Allow?" for `asker`, after may_ask: its one waiting place,
+/// the app lock, then this PC's dialog or (while allowed) a device's
+/// answer. The answer counts towards its refusals; a question refused
+/// before it was shown does not.
+async fn ask_checked(app: &AppHandle, question: &str, asker: Asker) -> bool {
+    let Some(_place) = get_ready(&asker).await else {
+        return false;
+    };
+    let app2 = app.clone();
+    let text = question.to_string();
+    let show = move || allowed_by(&native(&app2, TITLE, &text, rfd::MessageLevel::Warning, allow_buttons()));
+    let Some(yes) = first_answer(app, question, &asker, show, |yes| yes).await else {
+        return false;
+    };
+    answered(app, &asker, yes);
+    yes
+}
+
 /// Asks the user; true only if they press Allow (here, or on a paired
-/// device while that is allowed). Asked by this PC.
+/// device while that is allowed). Asked by this PC's own screens (the
+/// screenshot).
 pub async fn ask(app: &AppHandle, question: &str) -> bool {
-    ask_as(app, question, None).await
+    if !may_ask(app, Asker::Screens) {
+        return false;
+    }
+    ask_checked(app, question, Asker::Screens).await
 }
 
 /// `ask`, naming who asks: a paired device's key (it alone may see the
 /// private parts of the question, remote_ask::shared_view), or None for
-/// this PC. Refused at once while that asker cools down (Refusals).
+/// this PC's model (its tools, through ask_for). Refused at once while
+/// that asker cools down (Refusals) or has a question waiting already
+/// (Waiting); while the app is locked it waits for the unlock (app_lock).
 pub async fn ask_as(app: &AppHandle, question: &str, asker: Option<&str>) -> bool {
     if !may_ask(app, asker) {
         return false;
     }
-    let app2 = app.clone();
-    let text = question.to_string();
-    let show = move || allowed_by(&native(&app2, TITLE, &text, rfd::MessageLevel::Warning, allow_buttons()));
-    let yes = first_answer(app, question, asker, show, |yes| yes, || false).await;
-    answered(app, asker, yes);
-    yes
+    ask_checked(app, question, asker.into()).await
 }
 
 /// A paired device asking for one of this PC's tools (link.rs "tool"): its
@@ -418,24 +630,47 @@ pub fn with_thinking(question: &str, thinking: Option<&str>) -> String {
     q
 }
 
-/// Asks on this PC only (pairing a new device; the model reaching a file
-/// outside its workspace, outside.rs; the screens outside the app folder,
-/// files.rs). Waits its turn like every dialog; refused at once while this
-/// PC's asks cool down (Refusals).
+/// Asks on this PC only, for this PC's own screens (pairing a new device,
+/// a device's switches; the model's files outside its workspace use
+/// ask_model_on_this_pc). Waits its turn like every dialog; refused at
+/// once while the screens' asks cool down (Refusals) or one of theirs is
+/// waiting already (Waiting); waits for the unlock (app_lock).
 pub async fn ask_on_this_pc(app: &AppHandle, question: &str) -> bool {
-    if !may_ask(app, None) {
+    if !may_ask(app, Asker::Screens) {
         return false;
     }
+    on_this_pc(app, question, Asker::Screens).await
+}
+
+/// `ask_on_this_pc`, asked by this PC's model (its files outside the
+/// workspace, outside.rs): its refusals count apart from the screens'.
+pub async fn ask_model_on_this_pc(app: &AppHandle, question: &str) -> bool {
+    if !may_ask(app, Asker::Model) {
+        return false;
+    }
+    on_this_pc(app, question, Asker::Model).await
+}
+
+/// The dialog on this PC only (never offered to a device), after may_ask.
+async fn on_this_pc(app: &AppHandle, question: &str, asker: Asker) -> bool {
+    let Some(_place) = get_ready(&asker).await else {
+        return false;
+    };
     let app2 = app.clone();
     let text = question.to_string();
-    let yes = in_turn(Arc::new(AtomicBool::new(false)), move || {
+    let shown = in_turn(Some(asker.clone()), Arc::new(AtomicBool::new(false)), move || {
         allowed_by(&native(&app2, TITLE, &text, rfd::MessageLevel::Warning, allow_buttons()))
     })
-    .await
-    .ok()
-    .flatten()
-    .unwrap_or(false);
-    answered(app, None, yes);
+    .await;
+    let yes = match shown {
+        Ok(Ok(yes)) => yes,
+        Ok(Err(why)) => {
+            not_shown(app, why);
+            return false;
+        }
+        Err(_) => return false,
+    };
+    answered(app, &asker, yes);
     yes
 }
 
@@ -499,16 +734,23 @@ pub fn answer_from(result: &rfd::MessageDialogResult) -> Answer {
 }
 
 /// Asks with three buttons: Don't allow, Allow once, Always allow this
-/// file. A device can only allow once, never "always". Asked by this PC.
+/// file. A device can only allow once, never "always". Asked by this PC's
+/// screens (a model file from elsewhere, model_server.rs).
 pub async fn ask_with_always(app: &AppHandle, question: &str) -> Answer {
-    if !may_ask(app, None) {
+    if !may_ask(app, Asker::Screens) {
         return Answer::No;
     }
+    let asker = Asker::Screens;
+    let Some(_place) = get_ready(&asker).await else {
+        return Answer::No;
+    };
     let app2 = app.clone();
     let text = question.to_string();
     let show = move || answer_from(&native(&app2, TITLE, &text, rfd::MessageLevel::Warning, always_buttons()));
-    let answer = first_answer(app, question, None, show, device_answer, || Answer::No).await;
-    answered(app, None, answer != Answer::No);
+    let Some(answer) = first_answer(app, question, &asker, show, device_answer).await else {
+        return Answer::No;
+    };
+    answered(app, &asker, answer != Answer::No);
     answer
 }
 
@@ -654,6 +896,70 @@ mod tests {
         assert!(!r.record("a", false, t + Duration::from_secs(1)));
         assert!(!r.record("a", false, t + Duration::from_secs(200)));
         assert!(r.check("a", "x", t + Duration::from_secs(200)).is_ok());
+    }
+
+    #[test]
+    fn the_models_refusals_never_block_the_screens() {
+        // Review 2 (2026-11-18): this PC's model and this PC's own screens
+        // count apart (they were both "" before).
+        assert_ne!(Asker::Model.key(), Asker::Screens.key());
+        assert_eq!(Asker::from(None), Asker::Model);
+        assert_eq!(Asker::from(Some("abc")), Asker::Device("abc".into()));
+        // A device's key can't pass for this PC.
+        assert!(!Asker::Device("pc:model".into()).key().starts_with("pc:"));
+        let mut r = Refusals::default();
+        let t = Instant::now();
+        let (model, screens) = (Asker::Model.key(), Asker::Screens.key());
+        for i in 0..MAX_REFUSALS {
+            r.record(&model, false, t + Duration::from_secs(i.into()));
+        }
+        assert!(r.check(&model, &Asker::Model.who(), t + Duration::from_secs(5)).is_err());
+        assert!(r.check(&screens, &Asker::Screens.who(), t + Duration::from_secs(5)).is_ok());
+        assert!(Asker::Model.who().contains("model"));
+    }
+
+    #[test]
+    fn one_waiting_question_per_asker() {
+        let mut w = Waiting::default();
+        let (a, b) = (Asker::Device("a".into()).key(), Asker::Device("b".into()).key());
+        assert!(w.take(&a));
+        assert!(!w.take(&a), "a second one from the same asker is refused");
+        assert!(w.take(&b), "another asker may ask");
+        assert!(w.take(&Asker::Model.key()) && w.take(&Asker::Screens.key()));
+        w.release(&a);
+        assert!(w.take(&a));
+        assert!(already_waiting("the paired device a").contains("refused at once"));
+    }
+
+    #[test]
+    fn the_reason_reaches_whoever_asks_for_it() {
+        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        let (out, why) = rt.block_on(with_reason(async {
+            note_why(crate::app_lock::LOCKED_REFUSAL);
+            7
+        }));
+        assert_eq!((out, why.as_deref()), (7, Some(crate::app_lock::LOCKED_REFUSAL)));
+        let (_, why) = rt.block_on(with_reason(async {}));
+        assert_eq!(why, None);
+        // Outside with_reason it is simply not kept.
+        note_why("nobody listens");
+    }
+
+    #[test]
+    fn checked_again_right_before_showing() {
+        let src = include_str!("approval.rs").replace("\r\n", "\n");
+        let turn = &src[src.find("fn in_turn<").unwrap()..src.find("/// A native message dialog").unwrap()];
+        let lock = turn.find("crate::app_lock::wait_unlocked").unwrap();
+        let cool = turn.find("refusals().lock().unwrap().check(").unwrap();
+        let show = turn.find("spawn_blocking").unwrap();
+        assert!(lock < show && cool < show && lock < cool);
+        // Every way to ask takes its one waiting place and waits for the
+        // unlock first (get_ready).
+        for f in ["async fn ask_checked", "async fn on_this_pc", "pub async fn ask_with_always"] {
+            let body = &src[src.find(f).unwrap()..];
+            let body = &body[..body.find("\n}\n").unwrap()];
+            assert!(body.contains("get_ready(&asker).await"), "{f}");
+        }
     }
 
     #[test]

@@ -847,7 +847,7 @@ pub async fn outside_files(
     let was = stamp(&real);
     let question = crate::approval::with_thinking(&question(action, &shown, &facts, reason.as_deref()), thinking);
     // On this PC only (never a device), every time, never "always".
-    if !crate::approval::ask_on_this_pc(&app, &question).await {
+    if !crate::approval::ask_model_on_this_pc(&app, &question).await {
         audit(&app, "model", action.word(), "said no", &shown, thinking);
         return Err(SAID_NO.into());
     }

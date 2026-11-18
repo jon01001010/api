@@ -71,6 +71,7 @@ const COMMANDS: &[&str] = &[
     "link_use_one_key",
     "link_circle",
     "app_erase_all",
+    "app_set_locked",
 ];
 
 fn main() {

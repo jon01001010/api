@@ -17,7 +17,7 @@ Both run AI models on your own device. Nothing goes to any server unless you set
 
 ## Installing
 
-Every build is on the [Releases](https://github.com/jon01001010/api/releases) page. **Phone and PC builds come in matching sets**: take all of them from the same set; the home link warns "Phone and PC apps differ" when they don't match, and mixed builds aren't supported. Each release has a `SHA256SUMS` file, so you can check the download is the real one (steps below).
+Every build is on the [Releases](https://github.com/jon01001010/api/releases) page. **Phone and PC builds come in matching sets**: take all of them from the same set; the home link warns "Phone and PC apps differ" when they don't match, and mixed builds aren't supported. Each release has a `SHA256SUMS` file, so you can check the download is the real one (steps below). With the GitHub CLI you can also check that a file was built by this repository's own workflow, from which commit: `gh attestation verify <file> --repo jon01001010/api`.
 
 ### Android (PocketAgent)
 

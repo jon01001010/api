@@ -76,6 +76,7 @@
     "allow-link-key-mode",
     "allow-link-use-one-key",
     "allow-link-circle",
-    "allow-app-erase-all"
+    "allow-app-erase-all",
+    "allow-app-set-locked"
   ]
 }
