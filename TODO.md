@@ -979,6 +979,14 @@ Research (2026-11-07): **iroh 1.x** (Rust, MIT/Apache, 1.0 in June 2026; we pin 
 - [ ] Keep the tunnel alive in the background (foreground service) for long replies with the screen off. (2026-11-15: the link is reopened between replies, `keepLink.ts`; no foreground service yet)
 - [ ] Desktop-to-phone the other way (PC uses the phone's tools), shared tasks: later.
 
+## Files between phone and PC (owner, 2026-11-18, write-up only)
+
+Today: the phone can read the PC's workspace (May read, asked per chat); the PC can't reach the phone's, and workspace files are not in sync.
+
+- [ ] **(37) Send to PC / Send to phone:** a button on a workspace file sends it over the home link into the other device's workspace; the receiving device asks "Take this file from <device>?" (name, size, kind) first; never into another folder; same name → "keep both". Phone → PC works on today's link; PC → phone needs (38).
+- [ ] **(38) The PC asks the phone:** the PC (its model or the user) asks for phone info or a phone workspace file; the phone shows "Your PC asks to read … Allow / Don't allow". Needs the phone listening in the background (switched on by the user; battery); per-device switches off by default, like the PC's tools for devices. Also the base for "the PC uses the phone's model" later.
+- [ ] **(39) Full workspace sync (owner's option):** a switch "Keep all workspace files in step" (off by default, on both devices). Before every sync that moves files, a pop-up shows **what** (the list of files, new / changed / deleted on each side), **the total size** and **about how long** (from the link's measured speed), with Sync / Not now. A large file (e.g. over 50 MB, or the whole batch over 200 MB) is called out: "This uses about N MB of data", stronger when the phone is on mobile data (Android's metered-network flag) with an option "only on Wi-Fi". Newer edit wins; the older version kept 30 days under Recently deleted; changed on both since the last sync → keep both (renamed). Size cap on the phone (free space shown); models and the app's own files never synced. Same encryption as the home link; nothing to any server.
+
 ## Watch remote (owner, 2026-11-18, write-up only; peripherals to be revisited)
 
 A small separate watch app (Wear OS), not the whole PocketAgent: speak or tap on the watch, the phone's or home PC's model answers, the answer shows or is read out; the PC's "Allow?" questions can show with Allow / Don't allow (same rules as on the phone); app PIN on the watch too. Models on the watch itself: no (1.5–2 GB RAM, slow, battery).
