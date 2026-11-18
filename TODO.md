@@ -1047,6 +1047,16 @@ Research (2026-11-07): **iroh 1.x** (Rust, MIT/Apache, 1.0 in June 2026; we pin 
 - [ ] Keep the tunnel alive in the background (foreground service) for long replies with the screen off. (2026-11-15: the link is reopened between replies, `keepLink.ts`; no foreground service yet)
 - [ ] Desktop-to-phone the other way (PC uses the phone's tools), shared tasks: later.
 
+## Pages and games that ask the model (owner, 2026-11-18, write-up only)
+
+Example from the owner: VerbVoxel, a single-file voxel game (HTML, ~1.3 MB, WebGL) with characters you "Talk" to. Idea: its characters answer through the home PC's model (or the phone's own), so the game needs no cloud and no key.
+
+- [ ] **A narrow bridge, not the model server:** the page never gets the PC's model address or password. The HTML preview (phone and PC) offers one call, e.g. `window.pocketagent.ask(text, {system})` → reply text: text only, no tools, no files, no other network; the app sends it to the model the user picked (this device, or the Home PC over the link) and returns the text.
+- [ ] **Off by default, per page:** the first call asks "This page wants to use your model (<model>, on <device>). Allow for this page / Not now"; the choice is remembered per page (its hash or saved name), and can be taken back. Caps: size of each question and reply, calls per minute, one at a time; a "Stop" while it runs.
+- [ ] **Treat the page as untrusted:** its text goes to the model as data (it can't change the user's system prompt, memory or tools); replies go only back to that page; nothing the page sends is saved in chats unless the user chooses; the read-then-ask guard still applies to the rest of the app.
+- [ ] **Outside the app (later, optional):** the same call for pages in a normal browser on the PC, through a local endpoint on 127.0.0.1 with its own token per page (like the phone's local text API), never the model server itself.
+- [ ] Note: VerbVoxel loads fonts from fonts.googleapis.com; the preview lock blocks that (it would fall back to system fonts), and "no Google anywhere" means bundling the font in the page instead.
+
 ## Files between phone and PC (owner, 2026-11-18, write-up only)
 
 Today: the phone can read the PC's workspace (May read, asked per chat); the PC can't reach the phone's, and workspace files are not in sync.
