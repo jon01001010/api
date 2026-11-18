@@ -1067,7 +1067,14 @@ Owner: "Model is narrator, and its tools are the game's possibilities; verbs cha
 - [ ] **Preview and undo:** every build shows as a ghost first (Build / Change / Cancel); one tap undoes the last model action; the world keeps a short history.
 - [ ] **Where the brain runs:** the home PC's model over the home link for building and new verbs (bigger, slower); optionally a small model on the device for quick narration. Uses the "pages and games that ask the model" bridge (above), extended with the game's move list as the only tools. No cloud needed; a cloud model only if the player picks one.
 - [ ] **Also useful beyond play:** a safe place to watch what a model does with real freedom (it can only act through verbs), to test a new model before trusting it with real tools, and to let several models play characters together.
-- [ ] Open questions for the owner: is the game part of PocketAgent / DesktopAgent (a built-in "world") or its own app paired over the home link; who owns VerbVoxel's code and licence; fonts and assets bundled (no Google fonts).
+- [x] **Decided (owner, 2026-11-18): the game is its own app.** It has its own model settings area (e.g. a Claude API key), and DesktopAgent is one more choice there ("Your PC's model").
+- [ ] **DesktopAgent's API for other apps** (needed for that choice): "Let other apps use this PC's model", off by default.
+  - Not the model server itself (its address and password stay private): a small front door in DesktopAgent, OpenAI-compatible chat only (`/v1/chat/completions`, `/v1/models`), so the game can use the same kind of client as for cloud models. No tools, files or other endpoints; text (and inline pictures at most).
+  - On this PC: listens on 127.0.0.1 only. An app connects once with a pairing code shown in DesktopAgent; the PC asks natively "Let <app> use this PC's model?"; the app gets its own token (kept in the credential store on the PC, hashed), listed in Settings with Remove and "last used". Host / Origin checks so a web page in a browser can't use it (as the phone's local text API).
+  - Away from the PC (the game on a phone or laptop): the game pairs over the home link like a device, with a "model only" right (no tools, no sync, no questions), so the PC's model is reachable anywhere without opening ports.
+  - Caps per app: request size, requests per minute, one at a time; a notification "VerbVoxel is using your model" while it runs; every call logged (app, time, sizes; never the text).
+  - The game treats the PC like any other model choice; its narrator plans stay data checked by the game (above).
+- [ ] Open questions for the owner: who owns VerbVoxel's code and licence; fonts and assets bundled (no Google fonts).
 
 ## Files between phone and PC (owner, 2026-11-18, write-up only)
 
