@@ -76,6 +76,12 @@ export const ChatPalModelPickerSheet = observer(
     chatInputHeight,
   }: ChatPalModelPickerSheetProps) => {
     const [activeTab, setActiveTab] = React.useState<Tab>('models');
+    // Read here, in the observed render, so the lists follow the stores:
+    // read only inside the list's renderItem, MobX doesn't see it, and the
+    // list stays as it was when the sheet first appeared (empty on the PC,
+    // where the models are found after the app starts).
+    const models = modelStore.availableModels.slice();
+    const pals = palStore.pals.slice();
     const theme = useTheme();
     const l10n = useContext(L10nContext);
     const styles = createStyles({theme});
@@ -331,12 +337,19 @@ export const ChatPalModelPickerSheet = observer(
           <BottomSheetScrollView
             contentContainerStyle={{paddingBottom: chatInputHeight + 66}}>
             {item.id === 'models'
-              ? modelStore.availableModels.map(renderModelItem)
-              : [renderDisablePalItem(), ...palStore.pals.map(renderPalItem)]}
+              ? models.map(renderModelItem)
+              : [renderDisablePalItem(), ...pals.map(renderPalItem)]}
           </BottomSheetScrollView>
         </View>
       ),
-      [chatInputHeight, renderDisablePalItem, renderModelItem, renderPalItem],
+      [
+        chatInputHeight,
+        models,
+        pals,
+        renderDisablePalItem,
+        renderModelItem,
+        renderPalItem,
+      ],
     );
 
     const onViewableItemsChanged = React.useCallback(
@@ -389,6 +402,7 @@ export const ChatPalModelPickerSheet = observer(
           bounces={false}
           showsVerticalScrollIndicator={false}
           keyExtractor={item => item.id}
+          extraData={[models, pals]}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
